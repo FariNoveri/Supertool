@@ -326,24 +326,32 @@ local function setupFlying()
         bodyGyro.Parent = hr
         
         flying = true
-        notify("🚁 Flying Mode ON", Color3.fromRGB(0, 255, 0))
+        notify("🚁 Flying Mode ON - Use joystick to fly!", Color3.fromRGB(0, 255, 0))
         
         connections.flyLoop = RunService.Heartbeat:Connect(function()
-            if not flying or not hr or not bodyVel then return end
+            if not flying or not hr or not bodyVel or not humanoid then return end
             
             local moveVector = Vector3.new(0, 0, 0)
-            local rotVector = Vector3.new(0, 0, 0)
             
             if isMobile then
-                -- Mobile flying controls (touch to move)
-                local cam = camera
-                local cf = cam.CFrame
-                local forward = cf.LookVector
-                local right = cf.RightVector
-                local up = cf.UpVector
+                -- Mobile flying - menggunakan movement dari joystick/thumbstick
+                local moveVec = humanoid.MoveDirection
+                local cam = camera.CFrame
                 
-                -- Simple auto-hover
-                moveVector = up * (flySpeed * 0.1)
+                if moveVec.Magnitude > 0 then
+                    -- Convert movement ke camera direction
+                    local forward = cam.LookVector
+                    local right = cam.RightVector
+                    
+                    moveVector = (forward * moveVec.Z + right * moveVec.X).Unit
+                    moveVector = moveVector * flySpeed
+                    
+                    -- Auto-hover saat bergerak
+                    moveVector = moveVector + Vector3.new(0, flySpeed * 0.3, 0)
+                else
+                    -- Hover di tempat
+                    moveVector = Vector3.new(0, flySpeed * 0.2, 0)
+                end
             else
                 -- Desktop flying controls
                 local cam = camera
@@ -370,10 +378,11 @@ local function setupFlying()
                 if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
                     moveVector = moveVector - up
                 end
+                
+                moveVector = moveVector * flySpeed
             end
             
-            bodyVel.Velocity = moveVector * flySpeed
-            bodyGyro.AngularVelocity = rotVector
+            bodyVel.Velocity = moveVector
         end)
     end
     
@@ -580,26 +589,68 @@ local function setupUI()
     
     local tabContainer, contentArea = createTabSystem()
     
-    -- Movement Tab
+    -- Movement Tab  
     local movementTab = createTab("Movement", "🚀", tabContainer, contentArea)
     local startFly, stopFly = setupFlying()
     
-    createButton("🚁 Toggle Flying", function()
+    -- Create scrollable container for movement tab
+    local movementScroll = Instance.new("ScrollingFrame")
+    movementScroll.Size = UDim2.new(1, -20, 0, 400)
+    movementScroll.Position = UDim2.new(0, 10, 0, 0)
+    movementScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    movementScroll.ScrollBarThickness = 8
+    movementScroll.BackgroundTransparency = 1
+    movementScroll.BorderSizePixel = 0
+    movementScroll.Parent = movementTab
+    
+    local movementLayout = Instance.new("UIListLayout")
+    movementLayout.Padding = UDim.new(0, 8)
+    movementLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    movementLayout.Parent = movementScroll
+    
+    movementLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        movementScroll.CanvasSize = UDim2.new(0, 0, 0, movementLayout.AbsoluteContentSize.Y + 20)
+    end)
+    
+    createButton("🚁 Toggle Flying (Use Joystick!)", function()
         if flying then stopFly() else startFly() end
-    end, movementTab)
+    end, movementScroll)
     
     local toggleNoclip = setupNoclip()
-    createButton("👻 Toggle Noclip", toggleNoclip, movementTab)
+    createButton("👻 Toggle Noclip", toggleNoclip, movementScroll)
     
-    createButton("⚡ Fly Speed +", function()
+    createButton("⚡ Fly Speed + (Current: " .. flySpeed .. ")", function()
         flySpeed = flySpeed + 5
         notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
-    end, movementTab)
+    end, movementScroll)
     
-    createButton("⚡ Fly Speed -", function()
+    createButton("⚡ Fly Speed - (Current: " .. flySpeed .. ")", function()
         flySpeed = math.max(1, flySpeed - 5)
         notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
-    end, movementTab)
+    end, movementScroll)
+    
+    -- Add more movement features
+    createButton("🏃 Super Speed", function()
+        if humanoid then
+            humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 50 or 16
+            notify("Speed: " .. humanoid.WalkSpeed, Color3.fromRGB(255, 255, 0))
+        end
+    end, movementScroll)
+    
+    createButton("🦘 Super Jump", function()
+        if humanoid then
+            humanoid.JumpPower = humanoid.JumpPower == 50 and 120 or 50
+            notify("Jump Power: " .. humanoid.JumpPower, Color3.fromRGB(255, 255, 0))
+        end
+    end, movementScroll)
+    
+    createButton("🌊 Walk on Water", function()
+        local walkOnWater = not workspace.Terrain.ReadVoxels
+        for _, part in pairs(workspace:GetPartsByMaterial(Enum.Material.Water)) do
+            part.CanCollide = walkOnWater
+        end
+        notify("Walk on water: " .. (walkOnWater and "ON" or "OFF"), Color3.fromRGB(0, 150, 255))
+    end, movementScroll)
     
     -- Player Tab
     local playerTab = createTab("Player", "🎮", tabContainer, contentArea)
