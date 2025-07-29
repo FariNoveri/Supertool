@@ -207,24 +207,13 @@ local function createTabSystem()
     tabLayout.Padding = UDim.new(0, 5)
     tabLayout.Parent = tabContainer
 
-    -- Content area
-    local contentArea = Instance.new("ScrollingFrame")
+    -- Content area (non-scrollable container)
+    local contentArea = Instance.new("Frame")
     contentArea.Size = UDim2.new(1, 0, 1, -110)
     contentArea.Position = UDim2.new(0, 0, 0, 110)
-    contentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
-    contentArea.ScrollBarThickness = 8
     contentArea.BackgroundTransparency = 1
     contentArea.BorderSizePixel = 0
     contentArea.Parent = frame
-
-    local contentLayout = Instance.new("UIListLayout")
-    contentLayout.Padding = UDim.new(0, 8)
-    contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    contentLayout.Parent = contentArea
-
-    contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        contentArea.CanvasSize = UDim2.new(0, 0, 0, contentLayout.AbsoluteContentSize.Y + 20)
-    end)
 
     return tabContainer, contentArea
 end
@@ -245,9 +234,14 @@ local function createTab(name, icon, tabContainer, contentArea)
     btnCorner.CornerRadius = UDim.new(0, 8)
     btnCorner.Parent = btn
 
-    local page = Instance.new("Frame")
-    page.Size = UDim2.new(1, 0, 0, 0)
+    -- Create scrollable page for each tab
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.Position = UDim2.new(0, 0, 0, 0)
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.ScrollBarThickness = 8
     page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
     page.Visible = false
     page.Parent = contentArea
 
@@ -255,6 +249,11 @@ local function createTab(name, icon, tabContainer, contentArea)
     layout.Padding = UDim.new(0, 8)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = page
+    
+    -- Auto-resize canvas
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
+    end)
 
     tabPages[name] = {page = page, button = btn}
 
@@ -593,41 +592,22 @@ local function setupUI()
     local movementTab = createTab("Movement", "🚀", tabContainer, contentArea)
     local startFly, stopFly = setupFlying()
     
-    -- Create scrollable container for movement tab
-    local movementScroll = Instance.new("ScrollingFrame")
-    movementScroll.Size = UDim2.new(1, -20, 0, 400)
-    movementScroll.Position = UDim2.new(0, 10, 0, 0)
-    movementScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    movementScroll.ScrollBarThickness = 8
-    movementScroll.BackgroundTransparency = 1
-    movementScroll.BorderSizePixel = 0
-    movementScroll.Parent = movementTab
-    
-    local movementLayout = Instance.new("UIListLayout")
-    movementLayout.Padding = UDim.new(0, 8)
-    movementLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    movementLayout.Parent = movementScroll
-    
-    movementLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        movementScroll.CanvasSize = UDim2.new(0, 0, 0, movementLayout.AbsoluteContentSize.Y + 20)
-    end)
-    
     createButton("🚁 Toggle Flying (Use Joystick!)", function()
         if flying then stopFly() else startFly() end
-    end, movementScroll)
+    end, movementTab)
     
     local toggleNoclip = setupNoclip()
-    createButton("👻 Toggle Noclip", toggleNoclip, movementScroll)
+    createButton("👻 Toggle Noclip", toggleNoclip, movementTab)
     
     createButton("⚡ Fly Speed + (Current: " .. flySpeed .. ")", function()
         flySpeed = flySpeed + 5
         notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
-    end, movementScroll)
+    end, movementTab)
     
     createButton("⚡ Fly Speed - (Current: " .. flySpeed .. ")", function()
         flySpeed = math.max(1, flySpeed - 5)
         notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
-    end, movementScroll)
+    end, movementTab)
     
     -- Add more movement features
     createButton("🏃 Super Speed", function()
@@ -635,14 +615,14 @@ local function setupUI()
             humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 50 or 16
             notify("Speed: " .. humanoid.WalkSpeed, Color3.fromRGB(255, 255, 0))
         end
-    end, movementScroll)
+    end, movementTab)
     
     createButton("🦘 Super Jump", function()
         if humanoid then
             humanoid.JumpPower = humanoid.JumpPower == 50 and 120 or 50
             notify("Jump Power: " .. humanoid.JumpPower, Color3.fromRGB(255, 255, 0))
         end
-    end, movementScroll)
+    end, movementTab)
     
     createButton("🌊 Walk on Water", function()
         local walkOnWater = not workspace.Terrain.ReadVoxels
@@ -650,14 +630,119 @@ local function setupUI()
             part.CanCollide = walkOnWater
         end
         notify("Walk on water: " .. (walkOnWater and "ON" or "OFF"), Color3.fromRGB(0, 150, 255))
-    end, movementScroll)
+    end, movementTab)
+    
+    createButton("🚀 Rocket Jump", function()
+        if hr then
+            local rocket = Instance.new("BodyVelocity")
+            rocket.MaxForce = Vector3.new(4000, 4000, 4000)
+            rocket.Velocity = Vector3.new(0, 100, 0)
+            rocket.Parent = hr
+            task.wait(0.5)
+            rocket:Destroy()
+            notify("🚀 ROCKET JUMP!", Color3.fromRGB(255, 100, 0))
+        end
+    end, movementTab)
+    
+    createButton("🌪️ Spin Attack", function()
+        if hr then
+            local spin = Instance.new("BodyAngularVelocity")
+            spin.MaxTorque = Vector3.new(0, 4000, 0)
+            spin.AngularVelocity = Vector3.new(0, 50, 0)
+            spin.Parent = hr
+            task.wait(2)
+            spin:Destroy()
+            notify("🌪️ Spin complete!", Color3.fromRGB(255, 255, 0))
+        end
+    end, movementTab)
     
     -- Player Tab
     local playerTab = createTab("Player", "🎮", tabContainer, contentArea)
     local createPlayerList, refreshPlayerList = setupPlayerSystem()
-    local playerList = createPlayerList(playerTab)
     
     createButton("🔄 Refresh Player List", refreshPlayerList, playerTab, Color3.fromRGB(0, 150, 255))
+    
+    -- Create player list directly in the scrollable tab
+    local playerListFrame = Instance.new("Frame")
+    playerListFrame.Size = UDim2.new(1, -20, 0, 300)
+    playerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    playerListFrame.BorderSizePixel = 0
+    playerListFrame.Parent = playerTab
+    
+    local playerListScroll = Instance.new("ScrollingFrame")
+    playerListScroll.Size = UDim2.new(1, 0, 1, 0)
+    playerListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    playerListScroll.ScrollBarThickness = 6
+    playerListScroll.BackgroundTransparency = 1
+    playerListScroll.BorderSizePixel = 0
+    playerListScroll.Parent = playerListFrame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = playerListFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 4)
+    listLayout.Parent = playerListScroll
+
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        playerListScroll.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 20)
+    end)
+    
+    -- Update refreshPlayerList to use the new structure
+    refreshPlayerList = function()
+        for _, child in ipairs(playerListScroll:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player then
+                createButton("🎮 " .. p.Name, function()
+                    selectedPlayer = p
+                    -- Clear previous action buttons
+                    for _, child in ipairs(playerListScroll:GetChildren()) do
+                        if child:IsA("TextButton") and child.Text:find("🔄") then
+                            child:Destroy()
+                        end
+                    end
+                    
+                    -- Create action buttons
+                    createButton("🔄 Teleport to " .. p.Name, function()
+                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
+                            hr.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+                            notify("Teleported to " .. p.Name, Color3.fromRGB(0, 255, 255))
+                        end
+                    end, playerListScroll, Color3.fromRGB(0, 150, 255))
+                    
+                    createButton("🎯 Follow " .. p.Name, function()
+                        followTarget = p
+                        notify("Following " .. p.Name, Color3.fromRGB(255, 165, 0))
+                        if connections.followLoop then connections.followLoop:Disconnect() end
+                        connections.followLoop = RunService.Heartbeat:Connect(function()
+                            if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") and hr then
+                                hr.CFrame = followTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 5)
+                            end
+                        end)
+                    end, playerListScroll, Color3.fromRGB(255, 165, 0))
+                    
+                    createButton("🧲 Bring " .. p.Name, function()
+                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
+                            p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 0, -5)
+                            notify("Brought " .. p.Name, Color3.fromRGB(255, 0, 255))
+                        end
+                    end, playerListScroll, Color3.fromRGB(255, 0, 255))
+                    
+                    createButton("🚫 Stop Follow", function()
+                        followTarget = nil
+                        if connections.followLoop then connections.followLoop:Disconnect() end
+                        notify("Stopped following", Color3.fromRGB(255, 100, 100))
+                    end, playerListScroll, Color3.fromRGB(255, 100, 100))
+                    
+                end, playerListScroll)
+            end
+        end
+    end
     
     -- Utility Tab
     local utilityTab = createTab("Utility", "🛠️", tabContainer, contentArea)
