@@ -1,4 +1,4 @@
--- MainLoader.lua (Versi Android Final dengan UI Persegi Panjang + Filter Tabs + Scroll)
+-- MainLoader.lua (Versi Android Final dengan UI Persegi Panjang + Filter Tabs + Scroll + Nama Target + List Pemain)
 -- Dibuat oleh Fari Noveri - UI & kontrol Android lengkap
 
 local Players = game:GetService("Players")
@@ -10,6 +10,7 @@ local humanoid, hr, char
 local flying, noclip, autoHeal, noFall, godMode = false, false, false, false, false
 local savedPos = nil
 local followTarget = nil
+local gendongWeld = nil
 local up, down = false, false
 
 local gui = Instance.new("ScreenGui")
@@ -18,19 +19,47 @@ gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- Logo toggle
+-- Logo toggle + drag
 local logo = Instance.new("ImageButton")
 logo.Size = UDim2.new(0, 50, 0, 50)
-logo.Position = UDim2.new(0, 10, 0, 10)
+logo.Position = UDim2.new(0.5, -25, 0, 10)
 logo.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 logo.BorderSizePixel = 0
 logo.Image = "rbxassetid://3570695787"
 logo.Parent = gui
 
--- Main frame (persegi panjang horizontal)
+local dragging = false
+local dragInput, dragStart, startPos
+logo.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = logo.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		end)
+	end
+end)
+logo.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+		logo.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+logo.MouseButton1Click:Connect(function()
+	frame.Visible = not frame.Visible
+end)
+
+-- Main frame (UI persegi panjang horizontal)
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 700, 0, 400)
-frame.Position = UDim2.new(0, 70, 0, 70)
+frame.Position = UDim2.new(0.5, -350, 0.5, -200)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 0
 frame.Visible = true
@@ -111,7 +140,6 @@ local function createTab(name)
 	return page
 end
 
--- Buttons inside a page
 local function createButton(text, callback, parent)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(1, -20, 0, 36)
@@ -128,98 +156,62 @@ local function createButton(text, callback, parent)
 	return btn
 end
 
-local function createToggle(text, stateRef, callback, parent)
-	local btn = createButton(text .. " ❌", function()
-		stateRef[1] = not stateRef[1]
-		btn.Text = text .. (stateRef[1] and " ✅" or " ❌")
-		callback(stateRef[1])
-	end, parent)
-	callback(stateRef[1])
-end
+-- Tambahkan list pemain di tab Player
+local playerTab = createTab("Player")
+local playerListFrame = Instance.new("ScrollingFrame")
+playerListFrame.Size = UDim2.new(1, -20, 0, 250)
+playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+playerListFrame.ScrollBarThickness = 6
+playerListFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+playerListFrame.BorderSizePixel = 0
+playerListFrame.Parent = playerTab
 
--- Init player state
-local function refreshCharacter()
-	char = player.Character or player.CharacterAdded:Wait()
-	humanoid = char:WaitForChild("Humanoid")
-	hr = char:WaitForChild("HumanoidRootPart")
-end
-refreshCharacter()
-player.CharacterAdded:Connect(function()
-	task.wait(1)
-	refreshCharacter()
-	if savedPos then hr.CFrame = CFrame.new(savedPos) end
+local listLayout = Instance.new("UIListLayout")
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0, 2)
+listLayout.Parent = playerListFrame
+
+listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	playerListFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- Tabs & Features
-local movementTab = createTab("Movement")
-local playerTab = createTab("Player")
-local otherTab = createTab("Other")
-
-createToggle("🕊️ Fly", {flying}, function(val) flying = val end, movementTab)
-createButton("⬆️ Naik", function() up = true task.delay(0.3, function() up = false end) end, movementTab)
-createButton("⬇️ Turun", function() down = true task.delay(0.3, function() down = false end) end, movementTab)
-createToggle("👻 Noclip", {noclip}, function(val) noclip = val end, movementTab)
-createToggle("🛡️ No Fall", {noFall}, function(val) noFall = val end, movementTab)
-createButton("📍 Simpan Lokasi", function() if hr then savedPos = hr.Position end end, movementTab)
-createButton("🚀 Teleport ke Lokasi", function() if savedPos and hr then hr.CFrame = CFrame.new(savedPos) end end, movementTab)
-
-createToggle("❤️ Auto Heal", {autoHeal}, function(val) autoHeal = val end, playerTab)
-createToggle("💀 God Mode", {godMode}, function(val) godMode = val end, playerTab)
-createButton("🧲 Tarik Pemain", function()
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-			p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 5, 0)
-		end
+local function refreshPlayerList()
+	for _, child in ipairs(playerListFrame:GetChildren()) do
+		if child:IsA("TextButton") then child:Destroy() end
 	end
-end, playerTab)
-createButton("🌍 Teleport ke Pemain", function()
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-			hr.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
-			break
-		end
-	end
-end, playerTab)
-createButton("🎯 Follow Pemain", function()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= player then
-			followTarget = p
-			break
+			createButton("🎮 " .. p.Name, function()
+				createButton("🔄 Teleport ke " .. p.Name, function()
+					if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+						player.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+					end
+				end, playerListFrame)
+				createButton("🎯 Follow " .. p.Name, function()
+					followTarget = p
+				end, playerListFrame)
+				createButton("🧲 Tarik " .. p.Name, function()
+					if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+						p.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+					end
+				end, playerListFrame)
+				createButton("🤝 Gendong " .. p.Name, function()
+					if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+						if gendongWeld then gendongWeld:Destroy() end
+						gendongWeld = Instance.new("WeldConstraint")
+						gendongWeld.Part0 = player.Character.HumanoidRootPart
+						gendongWeld.Part1 = p.Character.HumanoidRootPart
+						gendongWeld.Parent = player.Character.HumanoidRootPart
+					end
+				end, playerListFrame)
+				createButton("🚫 Batal Gendong", function()
+					if gendongWeld then gendongWeld:Destroy() gendongWeld = nil end
+				end, playerListFrame)
+			end, playerListFrame)
 		end
 	end
-end, playerTab)
+end
 
-logo.MouseButton1Click:Connect(function()
-	frame.Visible = not frame.Visible
-end)
-
-RunService.RenderStepped:Connect(function()
-	if flying and hr then
-		local dir = humanoid.MoveDirection * 2
-		if up then dir += Vector3.new(0, 2, 0) end
-		if down then dir -= Vector3.new(0, 2, 0) end
-		hr.Velocity = dir * 30
-	end
-	if noclip and char then
-		for _,v in ipairs(char:GetDescendants()) do
-			if v:IsA("BasePart") then v.CanCollide = false end
-		end
-	end
-	if autoHeal and humanoid and humanoid.Health < humanoid.MaxHealth then
-		humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 0.5)
-	end
-	if godMode and humanoid then
-		humanoid.Health = humanoid.MaxHealth
-		humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-	end
-	if noFall and humanoid then
-		if humanoid:GetState() == Enum.HumanoidStateType.Freefall then
-			humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-		end
-	end
-	if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") and hr then
-		hr.CFrame = followTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 0, -3)
-	end
-end)
-
-print("✅ SuperTool Android UI Final: Persegi Panjang dengan Tab & Scroll")
+Players.PlayerAdded:Connect(refreshPlayerList)
+Players.PlayerRemoving:Connect(refreshPlayerList)
+task.defer(refreshPlayerList)
