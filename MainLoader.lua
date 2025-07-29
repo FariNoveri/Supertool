@@ -1,5 +1,5 @@
--- MainLoader.lua (Versi Android Full Tombol + Scroll + God Mode + UI Rectified)
--- Dibuat oleh Fari Noveri - UI & kontrol khusus Android
+-- MainLoader.lua (Versi Android Final dengan UI Persegi Panjang + Filter Tabs + Scroll)
+-- Dibuat oleh Fari Noveri - UI & kontrol Android lengkap
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -18,6 +18,7 @@ gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = player:WaitForChild("PlayerGui")
 
+-- Logo toggle
 local logo = Instance.new("ImageButton")
 logo.Size = UDim2.new(0, 50, 0, 50)
 logo.Position = UDim2.new(0, 10, 0, 10)
@@ -26,32 +27,92 @@ logo.BorderSizePixel = 0
 logo.Image = "rbxassetid://3570695787"
 logo.Parent = gui
 
-local frameHolder = Instance.new("Frame")
-frameHolder.Size = UDim2.new(0, 300, 0, 450)
-frameHolder.Position = UDim2.new(0, 70, 0, 60)
-frameHolder.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frameHolder.BorderSizePixel = 0
-frameHolder.Visible = true
-frameHolder.Parent = gui
+-- Main frame (persegi panjang horizontal)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 700, 0, 400)
+frame.Position = UDim2.new(0, 70, 0, 70)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Visible = true
+frame.Parent = gui
 
-local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-scrollFrame.ScrollBarThickness = 6
-scrollFrame.BackgroundTransparency = 1
-scrollFrame.BorderSizePixel = 0
-scrollFrame.Parent = frameHolder
+-- Tabs panel
+local tabFrame = Instance.new("Frame")
+tabFrame.Size = UDim2.new(0, 130, 1, 0)
+tabFrame.Position = UDim2.new(0, 0, 0, 0)
+tabFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+tabFrame.BorderSizePixel = 0
+tabFrame.Parent = frame
 
-local layoutList = Instance.new("UIListLayout")
-layoutList.Padding = UDim.new(0, 4)
-layoutList.SortOrder = Enum.SortOrder.LayoutOrder
-layoutList.Parent = scrollFrame
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 4)
+tabLayout.Parent = tabFrame
 
-layoutList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layoutList.AbsoluteContentSize.Y + 10)
+-- Scrollable content panel
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Size = UDim2.new(1, -140, 1, 0)
+contentFrame.Position = UDim2.new(0, 140, 0, 0)
+contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+contentFrame.ScrollBarThickness = 6
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+contentFrame.Parent = frame
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.Padding = UDim.new(0, 4)
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Parent = contentFrame
+
+contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	contentFrame.CanvasSize = UDim2.new(0, 0, 0, contentLayout.AbsoluteContentSize.Y + 10)
 end)
 
-local function createButton(text, callback)
+-- Tab system
+local tabPages = {}
+local currentTab = nil
+
+local function switchTab(name)
+	for tabName, page in pairs(tabPages) do
+		page.Visible = (tabName == name)
+	end
+	currentTab = name
+end
+
+local function createTab(name)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -10, 0, 32)
+	btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.Font = Enum.Font.Gotham
+	btn.Text = name
+	btn.TextScaled = true
+	btn.Parent = tabFrame
+	btn.MouseButton1Click:Connect(function() switchTab(name) end)
+
+	local page = Instance.new("Frame")
+	page.Size = UDim2.new(1, 0, 0, 0)
+	page.BackgroundTransparency = 1
+	page.Visible = false
+	page.Name = name
+	page.Parent = contentFrame
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 4)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = page
+
+	tabPages[name] = page
+
+	if not currentTab then
+		switchTab(name)
+	end
+
+	return page
+end
+
+-- Buttons inside a page
+local function createButton(text, callback, parent)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(1, -20, 0, 36)
 	btn.Position = UDim2.new(0, 10, 0, 0)
@@ -60,22 +121,23 @@ local function createButton(text, callback)
 	btn.Font = Enum.Font.GothamSemibold
 	btn.Text = text
 	btn.TextScaled = true
-	btn.AutoButtonColor = true
 	btn.BorderSizePixel = 0
-	btn.Parent = scrollFrame
+	btn.AutoButtonColor = true
+	btn.Parent = parent
 	btn.MouseButton1Click:Connect(callback)
 	return btn
 end
 
-local function createToggle(text, stateRef, callback)
+local function createToggle(text, stateRef, callback, parent)
 	local btn = createButton(text .. " ❌", function()
 		stateRef[1] = not stateRef[1]
 		btn.Text = text .. (stateRef[1] and " ✅" or " ❌")
 		callback(stateRef[1])
-	end)
+	end, parent)
 	callback(stateRef[1])
 end
 
+-- Init player state
 local function refreshCharacter()
 	char = player.Character or player.CharacterAdded:Wait()
 	humanoid = char:WaitForChild("Humanoid")
@@ -88,27 +150,28 @@ player.CharacterAdded:Connect(function()
 	if savedPos then hr.CFrame = CFrame.new(savedPos) end
 end)
 
--- Tombol Fitur
-createToggle("🕊️ Fly", {flying}, function(val) flying = val end)
-createButton("⬆️ Naik", function() up = true task.delay(0.3, function() up = false end) end)
-createButton("⬇️ Turun", function() down = true task.delay(0.3, function() down = false end) end)
-createToggle("👻 Noclip", {noclip}, function(val) noclip = val end)
-createToggle("🛡️ No Fall", {noFall}, function(val) noFall = val end)
-createToggle("❤️ Auto Heal", {autoHeal}, function(val) autoHeal = val end)
-createToggle("💀 God Mode", {godMode}, function(val) godMode = val end)
-createButton("📍 Simpan Lokasi", function() if hr then savedPos = hr.Position end end)
-createButton("🚀 Teleport ke Lokasi", function() if savedPos and hr then hr.CFrame = CFrame.new(savedPos) end end)
+-- Tabs & Features
+local movementTab = createTab("Movement")
+local playerTab = createTab("Player")
+local otherTab = createTab("Other")
 
--- Tarik Pemain
+createToggle("🕊️ Fly", {flying}, function(val) flying = val end, movementTab)
+createButton("⬆️ Naik", function() up = true task.delay(0.3, function() up = false end) end, movementTab)
+createButton("⬇️ Turun", function() down = true task.delay(0.3, function() down = false end) end, movementTab)
+createToggle("👻 Noclip", {noclip}, function(val) noclip = val end, movementTab)
+createToggle("🛡️ No Fall", {noFall}, function(val) noFall = val end, movementTab)
+createButton("📍 Simpan Lokasi", function() if hr then savedPos = hr.Position end end, movementTab)
+createButton("🚀 Teleport ke Lokasi", function() if savedPos and hr then hr.CFrame = CFrame.new(savedPos) end end, movementTab)
+
+createToggle("❤️ Auto Heal", {autoHeal}, function(val) autoHeal = val end, playerTab)
+createToggle("💀 God Mode", {godMode}, function(val) godMode = val end, playerTab)
 createButton("🧲 Tarik Pemain", function()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
 			p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 5, 0)
 		end
 	end
-end)
-
--- Teleport ke Pemain
+end, playerTab)
 createButton("🌍 Teleport ke Pemain", function()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -116,9 +179,7 @@ createButton("🌍 Teleport ke Pemain", function()
 			break
 		end
 	end
-end)
-
--- Follow Pemain (ambil pertama selain diri sendiri)
+end, playerTab)
 createButton("🎯 Follow Pemain", function()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= player then
@@ -126,10 +187,10 @@ createButton("🎯 Follow Pemain", function()
 			break
 		end
 	end
-end)
+end, playerTab)
 
 logo.MouseButton1Click:Connect(function()
-	frameHolder.Visible = not frameHolder.Visible
+	frame.Visible = not frame.Visible
 end)
 
 RunService.RenderStepped:Connect(function()
@@ -161,4 +222,4 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
-print("✅ SuperTool Android Final: UI Rectified & Semua Fungsi Fix")
+print("✅ SuperTool Android UI Final: Persegi Panjang dengan Tab & Scroll")
