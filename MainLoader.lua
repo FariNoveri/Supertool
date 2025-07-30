@@ -1,5 +1,5 @@
--- MainLoader.lua - Android Optimized with Robust GUI Initialization
--- Dibuat oleh Fari Noveri - Full Android Touch Support + Fixed Features
+-- MainLoader.lua - Android Optimized with Fixed Macro Playback
+-- Dibuat oleh Fari Noveri - Full Android Touch Support + All Features
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -32,7 +32,7 @@ local function notify(message, color)
     color = color or Color3.fromRGB(0, 255, 0)
     local success, errorMsg = pcall(function()
         if not gui then
-            print("Notify: GUI not available, fallback to print - " .. message)
+            print("Notify: GUI not available - " .. message)
             return
         end
         local notif = Instance.new("TextLabel")
@@ -100,7 +100,7 @@ local function createGUI()
         print("ScreenGui created and parented to PlayerGui")
 
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 100, 0, 100) -- Ukuran lebih besar
+        logo.Size = UDim2.new(0, 100, 0, 100)
         logo.Position = UDim2.new(0.5, -50, 0.5, -50) -- Tengah layar untuk debug
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
@@ -779,15 +779,16 @@ local function setupTrajectoryAndMacro()
         macroRecording = true
         macroActions = {}
         notify("🎥 Recording Macro...", Color3.fromRGB(0, 255, 0))
+        print("Started recording macro")
         
         connections.macroRecordLoop = RunService.Heartbeat:Connect(function(deltaTime)
             if not macroRecording or not humanoid or not hr then return end
             table.insert(macroActions, {
-                time = tick(),
                 position = hr.Position,
                 moveDirection = humanoid.MoveDirection,
                 jump = humanoid.Jump
             })
+            print("Recorded action: Position=" .. tostring(hr.Position) .. ", MoveDir=" .. tostring(humanoid.MoveDirection) .. ", Jump=" .. tostring(humanoid.Jump))
         end)
     end
 
@@ -795,38 +796,72 @@ local function setupTrajectoryAndMacro()
         macroRecording = false
         if connections.macroRecordLoop then connections.macroRecordLoop:Disconnect() end
         notify("🎥 Macro Recorded (" .. #macroActions .. " actions)", Color3.fromRGB(0, 255, 0))
+        print("Stopped recording macro: " .. #macroActions .. " actions recorded")
     end
 
     local function playMacro()
         if #macroActions == 0 then
             notify("⚠️ No Macro Recorded!", Color3.fromRGB(255, 100, 100))
+            print("PlayMacro: No actions recorded")
             return
         end
-        macroPlaying = true
-        notify("▶️ Playing Macro...", Color3.fromRGB(0, 255, 255))
-
-        if hr and macroActions[1] and macroActions[1].position then
-            hr.CFrame = CFrame.new(macroActions[1].position)
-            notify("📍 Reset to macro start position", Color3.fromRGB(0, 255, 255))
+        if not humanoid or not hr then
+            notify("⚠️ Cannot play macro: Character not ready", Color3.fromRGB(255, 100, 100))
+            print("PlayMacro: Character not ready")
+            return
         end
 
-        local startTime = tick()
-        connections.macroPlayLoop = RunService.Heartbeat:Connect(function()
-            if not macroPlaying or not humanoid or not hr then return end
-            local currentTime = tick() - startTime
+        macroPlaying = true
+        notify("▶️ Playing Macro (" .. #macroActions .. " actions)...", Color3.fromRGB(0, 255, 255))
+        print("Playing macro with " .. #macroActions .. " actions")
 
-            for _, action in ipairs(macroActions) do
-                if math.abs(action.time - startTime - currentTime) < 0.05 then
-                    hr.Position = action.position
-                    humanoid.MoveDirection = action.moveDirection
-                    humanoid.Jump = action.jump
-                end
+        -- Reset to initial position
+        if macroActions[1] and macroActions[1].position then
+            local success, errorMsg = pcall(function()
+                hr.CFrame = CFrame.new(macroActions[1].position)
+            end)
+            if success then
+                notify("📍 Reset to macro start position", Color3.fromRGB(0, 255, 255))
+                print("Reset to start position: " .. tostring(macroActions[1].position))
+            else
+                notify("⚠️ Failed to reset position: " .. errorMsg, Color3.fromRGB(255, 100, 100))
+                print("Reset position error: " .. errorMsg)
+            end
+        else
+            notify("⚠️ No valid start position in macro", Color3.fromRGB(255, 100, 100))
+            print("PlayMacro: No valid start position")
+        end
+
+        -- Play actions sequentially
+        local actionIndex = 1
+        connections.macroPlayLoop = RunService.Heartbeat:Connect(function(deltaTime)
+            if not macroPlaying or not humanoid or not hr then
+                macroPlaying = false
+                if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
+                notify("⚠️ Macro stopped: Character not ready", Color3.fromRGB(255, 100, 100))
+                print("Macro stopped: Character not ready")
+                return
             end
 
-            if currentTime >= (macroActions[#macroActions].time - macroActions[1].time) then
+            if actionIndex <= #macroActions then
+                local action = macroActions[actionIndex]
+                local success, errorMsg = pcall(function()
+                    hr.CFrame = CFrame.new(action.position)
+                    humanoid.MoveDirection = action.moveDirection
+                    humanoid.Jump = action.jump
+                end)
+                if success then
+                    print("Playing action " .. actionIndex .. ": Position=" .. tostring(action.position) .. ", MoveDir=" .. tostring(action.moveDirection) .. ", Jump=" .. tostring(action.jump))
+                else
+                    notify("⚠️ Error playing action " .. actionIndex .. ": " .. errorMsg, Color3.fromRGB(255, 100, 100))
+                    print("Play action error: " .. errorMsg)
+                end
+                actionIndex = actionIndex + 1
+            else
                 macroPlaying = false
                 connections.macroPlayLoop:Disconnect()
                 notify("⏹️ Macro Finished", Color3.fromRGB(255, 100, 100))
+                print("Macro finished")
             end
         end)
     end
@@ -835,6 +870,7 @@ local function setupTrajectoryAndMacro()
         macroPlaying = false
         if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
         notify("⏹️ Macro Stopped", Color3.fromRGB(255, 100, 100))
+        print("Macro stopped manually")
     end
 
     local function toggleAutoPlay()
