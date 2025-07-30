@@ -1,4 +1,4 @@
--- MainLoader.lua - Android Optimized Complete Version with Trajectory, Autoplay, and New Features
+-- MainLoader.lua - Android Optimized Complete Version with Fixed Player, Trajectory, and Macro
 -- Dibuat oleh Fari Noveri - Full Android Touch Support + All Features
 
 local Players = game:GetService("Players")
@@ -15,7 +15,6 @@ local flying, noclip, autoHeal, noFall, godMode = false, false, false, false, fa
 local flySpeed = 16
 local savedPositions = {}
 local followTarget = nil
-local gendongWeld = nil
 local connections = {}
 local antiRagdoll = false
 local improvedFlying = false
@@ -24,7 +23,6 @@ local improvedFlying = false
 local gui, frame, logo
 local tabPages = {}
 local currentTab = nil
-local isMinimized = false
 
 -- Mobile detection
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
@@ -44,13 +42,15 @@ local function initChar()
         notify("⚠️ Failed to initialize character, retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(1)
         initChar() -- Retry if failed
+    else
+        notify("👤 Character initialized", Color3.fromRGB(0, 255, 0))
     end
 end
 
 -- Notification system
 local function notify(message, color)
     color = color or Color3.fromRGB(0, 255, 0)
-    local success, notif = pcall(function()
+    local success, errorMsg = pcall(function()
         local notif = Instance.new("TextLabel")
         notif.Size = UDim2.new(0, 300, 0, 50)
         notif.Position = UDim2.new(0.5, -150, 0, 100)
@@ -74,7 +74,7 @@ local function notify(message, color)
         notif:Destroy()
     end)
     if not success then
-        warn("Notify error: " .. notif)
+        warn("Notify error: " .. errorMsg)
     end
 end
 
@@ -85,17 +85,17 @@ local function createGUI()
         gui.Name = "SuperToolUI_Mobile"
         gui.ResetOnSpawn = false
         gui.IgnoreGuiInset = true
-        gui.Enabled = true -- Pastikan GUI aktif
+        gui.Enabled = true
         gui.Parent = player:WaitForChild("PlayerGui", 5)
 
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 70, 0, 70)
-        logo.Position = UDim2.new(0, 20, 0, 20) -- Pindah lebih dekat ke pojok kiri atas
+        logo.Position = UDim2.new(0, 20, 0, 20)
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
         logo.ImageTransparency = 0.2
-        logo.Visible = true -- Pastikan logo terlihat
+        logo.Visible = true
         logo.Parent = gui
         
         local logoCorner = Instance.new("UICorner")
@@ -123,9 +123,10 @@ local function createGUI()
         warn("createGUI error: " .. errorMsg)
         notify("⚠️ Failed to create GUI, retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(1)
-        createGUI() -- Retry if failed
+        createGUI()
+    else
+        notify("🖼️ GUI Initialized", Color3.fromRGB(0, 255, 0))
     end
-    notify("🖼️ GUI Initialized", Color3.fromRGB(0, 255, 0))
 end
 
 -- Touch drag system for mobile
@@ -215,6 +216,7 @@ local function createTabSystem()
     
     closeBtn.Activated:Connect(function()
         frame.Visible = false
+        notify("🖼️ GUI Closed", Color3.fromRGB(255, 100, 100))
     end)
 
     local tabContainer = Instance.new("Frame")
@@ -287,6 +289,7 @@ local function createTab(name, icon, tabContainer, contentArea)
             end
         end
         currentTab = name
+        notify("📑 Switched to " .. name .. " tab", Color3.fromRGB(0, 255, 0))
     end)
 
     if not currentTab then
@@ -320,7 +323,13 @@ local function createButton(text, callback, parent, color)
         btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
         task.wait(0.1)
         btn.BackgroundColor3 = color
-        if callback then callback() end
+        if callback then
+            local success, errorMsg = pcall(callback)
+            if not success then
+                warn("Button callback error: " .. errorMsg)
+                notify("⚠️ Error in button action: " .. text, Color3.fromRGB(255, 100, 100))
+            end
+        end
     end)
     
     return btn
@@ -331,7 +340,10 @@ local function setupFlying()
     local bodyVel, bodyGyro
     
     local function startFly()
-        if not hr then return end
+        if not hr or not humanoid then
+            notify("⚠️ Cannot start flying: Character not ready", Color3.fromRGB(255, 100, 100))
+            return
+        end
         
         bodyVel = Instance.new("BodyVelocity")
         bodyVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -347,7 +359,7 @@ local function setupFlying()
         notify("🚁 Flying Mode ON - Use joystick/camera to fly!", Color3.fromRGB(0, 255, 0))
         
         connections.flyLoop = RunService.Heartbeat:Connect(function()
-            if not flying or not hr or not bodyVel or not humanoid then return end
+            if not flying or not hr or not bodyVel or not humanoid or not camera then return end
             
             local moveVector = Vector3.new(0, 0, 0)
             local cam = camera.CFrame
@@ -355,13 +367,11 @@ local function setupFlying()
             local right = cam.RightVector
             
             if improvedFlying then
-                -- Freecam-like: terbang mengikuti arah kamera
                 local moveDir = humanoid.MoveDirection
                 if moveDir.Magnitude > 0 then
                     moveVector = forward * moveDir.Z * flySpeed + right * moveDir.X * flySpeed
                 end
             else
-                -- Mode terbang biasa
                 if isMobile then
                     local moveVec = humanoid.MoveDirection
                     if moveVec.Magnitude > 0 then
@@ -395,7 +405,7 @@ local function setupFlying()
             end
             
             bodyVel.Velocity = moveVector
-            bodyGyro.CFrame = cam -- Align karakter dengan arah kamera
+            bodyGyro.CFrame = cam
         end)
     end
     
@@ -559,6 +569,7 @@ local function setupPlayerSystem()
     local function createPlayerList(parent)
         playerListFrame = Instance.new("ScrollingFrame")
         playerListFrame.Size = UDim2.new(1, -20, 0, 300)
+        playerListFrame.Position = UDim2.new(0, 10, 0, 50)
         playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
         playerListFrame.ScrollBarThickness = 8
         playerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -578,58 +589,73 @@ local function setupPlayerSystem()
             playerListFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 20)
         end)
         
+        notify("🎮 Player list frame created", Color3.fromRGB(0, 255, 0))
         return playerListFrame
     end
     
     local function refreshPlayerList()
-        if not playerListFrame then return end
+        if not playerListFrame then
+            notify("⚠️ Player list frame not initialized", Color3.fromRGB(255, 100, 100))
+            return
+        end
         
         for _, child in ipairs(playerListFrame:GetChildren()) do
             if child:IsA("TextButton") then child:Destroy() end
         end
         
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= player then
-                createButton("🎮 " .. p.Name, function()
-                    selectedPlayer = p
-                    for _, child in ipairs(playerListFrame:GetChildren()) do
-                        if child:IsA("TextButton") and (child.Text:find("🔄") or child.Text:find("🧲") or child.Text:find("🎯") or child.Text:find("🚫")) then
-                            child:Destroy()
-                        end
-                    end
-                    
-                    createButton("🔄 Teleport to " .. p.Name, function()
-                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
-                            hr.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
-                            notify("Teleported to " .. p.Name, Color3.fromRGB(0, 255, 255))
-                        end
-                    end, playerListFrame, Color3.fromRGB(0, 150, 255))
-                    
-                    createButton("🧲 Teleport " .. p.Name .. " to Me", function()
-                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
-                            p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 0, -5)
-                            notify("Teleported " .. p.Name .. " to you", Color3.fromRGB(255, 0, 255))
-                        end
-                    end, playerListFrame, Color3.fromRGB(255, 0, 255))
-                    
-                    createButton("🎯 Follow " .. p.Name, function()
-                        followTarget = p
-                        notify("Following " .. p.Name, Color3.fromRGB(255, 165, 0))
-                        if connections.followLoop then connections.followLoop:Disconnect() end
-                        connections.followLoop = RunService.Heartbeat:Connect(function()
-                            if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") and hr then
-                                hr.CFrame = followTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 5)
+        local players = Players:GetPlayers()
+        if #players <= 1 then
+            createButton("⚠️ No other players found", function() end, playerListFrame, Color3.fromRGB(255, 100, 100))
+            notify("⚠️ No other players found", Color3.fromRGB(255, 100, 100))
+        else
+            for _, p in ipairs(players) do
+                if p ~= player then
+                    createButton("🎮 " .. p.Name, function()
+                        selectedPlayer = p
+                        for _, child in ipairs(playerListFrame:GetChildren()) do
+                            if child:IsA("TextButton") and (child.Text:find("🔄") or child.Text:find("🧲") or child.Text:find("🎯") or child.Text:find("🚫")) then
+                                child:Destroy()
                             end
-                        end)
-                    end, playerListFrame, Color3.fromRGB(255, 165, 0))
-                    
-                    createButton("🚫 Stop Follow", function()
-                        followTarget = nil
-                        if connections.followLoop then connections.followLoop:Disconnect() end
-                        notify("Stopped following", Color3.fromRGB(255, 100, 100))
-                    end, playerListFrame, Color3.fromRGB(255, 100, 100))
-                end, playerListFrame)
+                        end
+                        
+                        createButton("🔄 Teleport to " .. p.Name, function()
+                            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
+                                hr.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+                                notify("Teleported to " .. p.Name, Color3.fromRGB(0, 255, 255))
+                            else
+                                notify("⚠️ Cannot teleport: Target not ready", Color3.fromRGB(255, 100, 100))
+                            end
+                        end, playerListFrame, Color3.fromRGB(0, 150, 255))
+                        
+                        createButton("🧲 Teleport " .. p.Name .. " to Me", function()
+                            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
+                                p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 0, -5)
+                                notify("Teleported " .. p.Name .. " to you", Color3.fromRGB(255, 0, 255))
+                            else
+                                notify("⚠️ Cannot teleport: Target not ready", Color3.fromRGB(255, 100, 100))
+                            end
+                        end, playerListFrame, Color3.fromRGB(255, 0, 255))
+                        
+                        createButton("🎯 Follow " .. p.Name, function()
+                            followTarget = p
+                            notify("Following " .. p.Name, Color3.fromRGB(255, 165, 0))
+                            if connections.followLoop then connections.followLoop:Disconnect() end
+                            connections.followLoop = RunService.Heartbeat:Connect(function()
+                                if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") and hr then
+                                    hr.CFrame = followTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 5)
+                                end
+                            end)
+                        end, playerListFrame, Color3.fromRGB(255, 165, 0))
+                        
+                        createButton("🚫 Stop Follow", function()
+                            followTarget = nil
+                            if connections.followLoop then connections.followLoop:Disconnect() end
+                            notify("Stopped following", Color3.fromRGB(255, 100, 100))
+                        end, pesan dariRGB(255, 100, 100))
+                    end, playerListFrame)
+                end
             end
+            notify("🎮 Player list refreshed (" .. (#players - 1) .. " players)", Color3.fromRGB(0, 255, 0))
         end
     end
     
@@ -643,14 +669,13 @@ local function setupTrajectoryAndMacro()
     local macroPlaying = false
     local macroActions = {}
     local trajectoryParts = {}
-    local initialVelocity = 50 -- Kecepatan awal proyektil (studs/s)
-    local gravity = 196.2 -- Gravitasi Roblox (studs/s^2)
-    local maxPoints = 50 -- Jumlah titik pada lintasan
-    local timeStep = 0.1 -- Interval waktu antar titik (detik)
-    local autoPlayOnRespawn = false -- Status autoplay setelah respawn
-    local groundLevel = 0 -- Ketinggian dasar (disesuaikan dengan peta)
+    local initialVelocity = 50
+    local gravity = 196.2
+    local maxPoints = 50
+    local timeStep = 0.1
+    local autoPlayOnRespawn = false
+    local groundLevel = 0
 
-    -- Membersihkan titik-titik lintasan
     local function clearTrajectory()
         for _, part in ipairs(trajectoryParts) do
             part:Destroy()
@@ -658,37 +683,36 @@ local function setupTrajectoryAndMacro()
         trajectoryParts = {}
     end
 
-    -- Menggambar lintasan dengan pewarnaan berdasarkan ketinggian
     local function drawTrajectory()
         clearTrajectory()
-        if not trajectoryEnabled or not hr or not camera then return end
+        if not trajectoryEnabled or not hr or not camera then
+            notify("⚠️ Cannot draw trajectory: Character or camera not ready", Color3.fromRGB(255, 100, 100))
+            return
+        end
 
-        local startPos = hr.Position + Vector3.new(0, 2, 0) -- Mulai dari posisi karakter
-        local direction = camera.CFrame.LookVector * initialVelocity -- Arah berdasarkan kamera
+        local startPos = hr.Position + Vector3.new(0, 2, 0)
+        local direction = camera.CFrame.LookVector * initialVelocity
         local velocity = direction
         local position = startPos
         local prevHeight = startPos.Y
 
         for i = 1, maxPoints do
-            -- Hitung posisi berdasarkan fisika proyektil
             local t = i * timeStep
             local newPos = position + velocity * timeStep + Vector3.new(0, -0.5 * gravity * timeStep^2, 0)
             velocity = velocity + Vector3.new(0, -gravity * timeStep, 0)
 
-            -- Tentukan warna berdasarkan ketinggian
             local height = newPos.Y - groundLevel
             local color
             if height < 50 then
-                color = BrickColor.new("Lime green") -- Dataran rendah
+                color = BrickColor.new("Lime green")
             elseif height < 100 then
-                color = BrickColor.new("Really red") -- Naik ke atas
+                color = BrickColor.new("Really red")
             else
-                color = BrickColor.new("Cyan") -- Dataran tinggi
+                color = BrickColor.new("Cyan")
             end
 
-            -- Buat titik visual untuk lintasan
             local point = Instance.new("Part")
-            point.Size = Vector3.new(0.2, 0.2, 0.2)
+            point.Size = Vector3.new(0.5, 0.5, 0.5) -- Ukuran lebih besar
             point.Position = newPos
             point.Anchored = true
             point.CanCollide = false
@@ -697,13 +721,11 @@ local function setupTrajectoryAndMacro()
             point.Parent = workspace
             table.insert(trajectoryParts, point)
 
-            -- Cek tabrakan dengan raycasting
             local ray = Ray.new(position, (newPos - position).Unit * (newPos - position).Magnitude)
             local hit, hitPos = workspace:FindPartOnRay(ray, char)
             if hit then
-                -- Tambahkan titik kuning untuk tabrakan
                 local hitPoint = Instance.new("Part")
-                hitPoint.Size = Vector3.new(0.3, 0.3, 0.3)
+                hitPoint.Size = Vector3.new(0.7, 0.7, 0.7)
                 hitPoint.Position = hitPos
                 hitPoint.Anchored = true
                 hitPoint.CanCollide = false
@@ -719,12 +741,17 @@ local function setupTrajectoryAndMacro()
         end
     end
 
-    -- Toggle visualisasi lintasan
     local function toggleTrajectory()
         trajectoryEnabled = not trajectoryEnabled
         if trajectoryEnabled then
             notify("📏 Trajectory Mode ON", Color3.fromRGB(255, 0, 0))
-            connections.trajectoryLoop = RunService.RenderStepped:Connect(drawTrajectory)
+            connections.trajectoryLoop = RunService.RenderStepped:Connect(function()
+                if hr and camera then
+                    drawTrajectory()
+                else
+                    notify("⚠️ Trajectory paused: Character or camera not ready", Color3.fromRGB(255, 100, 100))
+                end
+            end)
         else
             notify("📏 Trajectory Mode OFF", Color3.fromRGB(255, 100, 100))
             clearTrajectory()
@@ -732,7 +759,6 @@ local function setupTrajectoryAndMacro()
         end
     end
 
-    -- Merekam aksi untuk macro
     local function startRecordingMacro()
         macroRecording = true
         macroActions = {}
@@ -755,7 +781,6 @@ local function setupTrajectoryAndMacro()
         notify("🎥 Macro Recorded (" .. #macroActions .. " actions)", Color3.fromRGB(0, 255, 0))
     end
 
-    -- Memutar macro
     local function playMacro()
         if #macroActions == 0 then
             notify("⚠️ No Macro Recorded!", Color3.fromRGB(255, 100, 100))
@@ -763,6 +788,12 @@ local function setupTrajectoryAndMacro()
         end
         macroPlaying = true
         notify("▶️ Playing Macro...", Color3.fromRGB(0, 255, 255))
+
+        -- Reset ke posisi awal
+        if hr and macroActions[1] and macroActions[1].position then
+            hr.CFrame = CFrame.new(macroActions[1].position)
+            notify("📍 Reset to macro start position", Color3.fromRGB(0, 255, 255))
+        end
 
         local startTime = tick()
         connections.macroPlayLoop = RunService.Heartbeat:Connect(function()
@@ -791,17 +822,15 @@ local function setupTrajectoryAndMacro()
         notify("⏹️ Macro Stopped", Color3.fromRGB(255, 100, 100))
     end
 
-    -- Toggle autoplay setelah respawn
     local function toggleAutoPlay()
         autoPlayOnRespawn = not autoPlayOnRespawn
         notify("🔄 AutoPlay on Respawn: " .. (autoPlayOnRespawn and "ON" or "OFF"), Color3.fromRGB(0, 255, autoPlayOnRespawn and 0 or 100))
     end
 
-    -- Handle respawn untuk autoplay
     player.CharacterAdded:Connect(function()
         task.wait(1)
         initChar()
-        notify("Character loaded", Color3.fromRGB(0, 255, 0))
+        notify("👤 Character loaded", Color3.fromRGB(0, 255, 0))
         if autoPlayOnRespawn and #macroActions > 0 then
             playMacro()
         end
@@ -853,6 +882,8 @@ local function setupUI()
             if humanoid then
                 humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 50 or 16
                 notify("Speed: " .. humanoid.WalkSpeed, Color3.fromRGB(255, 255, 0))
+            else
+                notify("⚠️ Cannot set speed: Character not ready", Color3.fromRGB(255, 100, 100))
             end
         end, movementTab)
         
@@ -860,6 +891,8 @@ local function setupUI()
             if humanoid then
                 humanoid.JumpPower = humanoid.JumpPower == 50 and 120 or 50
                 notify("Jump Power: " .. humanoid.JumpPower, Color3.fromRGB(255, 255, 0))
+            else
+                notify("⚠️ Cannot set jump: Character not ready", Color3.fromRGB(255, 100, 100))
             end
         end, movementTab)
         
@@ -880,6 +913,8 @@ local function setupUI()
                 task.wait(0.5)
                 rocket:Destroy()
                 notify("🚀 ROCKET JUMP!", Color3.fromRGB(255, 100, 0))
+            else
+                notify("⚠️ Cannot rocket jump: Character not ready", Color3.fromRGB(255, 100, 100))
             end
         end, movementTab)
         
@@ -892,6 +927,8 @@ local function setupUI()
                 task.wait(2)
                 spin:Destroy()
                 notify("🌪️ Spin complete!", Color3.fromRGB(255, 255, 0))
+            else
+                notify("⚠️ Cannot spin: Character not ready", Color3.fromRGB(255, 100, 100))
             end
         end, movementTab)
         
@@ -901,34 +938,7 @@ local function setupUI()
         
         createButton("🔄 Refresh Player List", refreshPlayerList, playerTab, Color3.fromRGB(0, 150, 255))
         
-        local playerListFrame = Instance.new("Frame")
-        playerListFrame.Size = UDim2.new(1, -20, 0, 300)
-        playerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        playerListFrame.BorderSizePixel = 0
-        playerListFrame.Parent = playerTab
-        
-        local playerListScroll = Instance.new("ScrollingFrame")
-        playerListScroll.Size = UDim2.new(1, 0, 1, 0)
-        playerListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-        playerListScroll.ScrollBarThickness = 6
-        playerListScroll.BackgroundTransparency = 1
-        playerListScroll.BorderSizePixel = 0
-        playerListScroll.Parent = playerListFrame
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = playerListFrame
-
-        local listLayout = Instance.new("UIListLayout")
-        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        listLayout.Padding = UDim.new(0, 4)
-        listLayout.Parent = playerListScroll
-
-        listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            playerListScroll.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 20)
-        end)
-        
-        refreshPlayerList() -- Initialize player list
+        local playerListFrame = createPlayerList(playerTab)
         
         -- Utility Tab
         local utilityTab = createTab("Utility", "🛠️", tabContainer, contentArea)
@@ -964,6 +974,8 @@ local function setupUI()
             if hr then
                 hr.CFrame = CFrame.new(0, 50, 0)
                 notify("Teleported to spawn", Color3.fromRGB(0, 255, 255))
+            else
+                notify("⚠️ Cannot teleport: Character not ready", Color3.fromRGB(255, 100, 100))
             end
         end, utilityTab)
         
@@ -981,6 +993,8 @@ local function setupUI()
             if humanoid then
                 humanoid.Health = 0
                 notify("Character reset", Color3.fromRGB(255, 100, 100))
+            else
+                notify("⚠️ Cannot reset: Character not ready", Color3.fromRGB(255, 100, 100))
             end
         end, settingsTab, Color3.fromRGB(255, 100, 100))
         
@@ -1003,8 +1017,14 @@ local function setupUI()
         refreshPlayerList()
         
         -- Auto-refresh player list
-        Players.PlayerAdded:Connect(refreshPlayerList)
-        Players.PlayerRemoving:Connect(refreshPlayerList)
+        Players.PlayerAdded:Connect(function()
+            task.wait(0.5)
+            refreshPlayerList()
+        end)
+        Players.PlayerRemoving:Connect(function()
+            task.wait(0.5)
+            refreshPlayerList()
+        end)
         
         notify("🚀 Super Tool Mobile Loaded!", Color3.fromRGB(0, 255, 0))
     end)
@@ -1012,7 +1032,7 @@ local function setupUI()
         warn("setupUI error: " .. errorMsg)
         notify("⚠️ Failed to setup UI, retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(1)
-        setupUI() -- Retry if failed
+        setupUI()
     end
 end
 
@@ -1033,7 +1053,7 @@ local function init()
         warn("Initialization error: " .. errorMsg)
         notify("⚠️ Script initialization failed, retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(2)
-        init() -- Retry initialization
+        init()
     end
 end
 
