@@ -1,5 +1,5 @@
--- MinimalGUI_Krnl.lua - GUI Minimal untuk Krnl Android
--- Fokus bikin logo dan frame muncul, fitur full nyusul
+-- NoCombatGUI_Krnl.lua - GUI Minimal tanpa Combat untuk Krnl Android
+-- Fokus logo dan frame muncul, fitur lain ditunda
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -10,23 +10,13 @@ local camera = workspace.CurrentCamera
 local humanoid, hr, char
 local gui, frame, logo
 
--- Feature states (nyusul kalau GUI muncul)
+-- Feature states (ditunda sampai GUI muncul)
 local flying, noclip, autoHeal, noFall, godMode = false, false, false, false, false
 local flySpeed = 16
 local savedPositions = {}
 local followTarget = nil
 local connections = {}
 local antiRagdoll = false
-local aimbotEnabled = false
-local aimbulletEnabled = false
-local targetPart = "Head"
-local aimbotSpeed = 0.5
-local aimbulletSpeed = 100
-local useFOV = false
-local fovRadius = 100
-local espEnabled = false
-local ignoreTeam = false
-local bulletSpeed = 100
 local antiSpectate = false
 local antiReport = false
 local nickHidden = false
@@ -69,13 +59,13 @@ local function notify(message, color)
     end
 end
 
--- Initialize character (delayed)
+-- Initialize character
 local function initChar()
     local success, errorMsg = pcall(function()
-        task.wait(10) -- Delay super panjang
+        task.wait(15) -- Delay ekstra panjang
         char = player.Character or player.CharacterAdded:Wait()
-        humanoid = char:WaitForChild("Humanoid", 30)
-        hr = char:WaitForChild("HumanoidRootPart", 30)
+        humanoid = char:WaitForChild("Humanoid", 40)
+        hr = char:WaitForChild("HumanoidRootPart", 40)
         if not humanoid or not hr then
             error("Failed to find Humanoid or HumanoidRootPart")
         end
@@ -84,7 +74,7 @@ local function initChar()
     if not success then
         warn("initChar error: " .. tostring(errorMsg))
         notify("⚠️ Init character failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(10)
+        task.wait(15)
         initChar()
     end
 end
@@ -98,18 +88,18 @@ local function createGUI()
         end
 
         gui = Instance.new("ScreenGui")
-        gui.Name = "MinimalGUI_Krnl"
+        gui.Name = "NoCombatGUI_Krnl"
         gui.ResetOnSpawn = false
         gui.IgnoreGuiInset = true
         gui.Enabled = true
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
         local coreGui = game:GetService("CoreGui")
-        local playerGui = player:WaitForChild("PlayerGui", 30)
-        gui.Parent = coreGui -- Prioritas CoreGui
+        local playerGui = player:WaitForChild("PlayerGui", 40)
+        gui.Parent = coreGui
+        task.wait(3)
         if playerGui then
-            task.wait(2)
-            gui.Parent = playerGui -- Fallback ke PlayerGui
+            gui.Parent = playerGui
         end
         warn("GUI parented to " .. (gui.Parent == playerGui and "PlayerGui" or "CoreGui"))
 
@@ -180,7 +170,7 @@ local function createGUI()
     if not success then
         warn("createGUI error: " .. tostring(errorMsg))
         notify("⚠️ GUI creation failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(10)
+        task.wait(15)
         createGUI()
     end
 end
@@ -233,7 +223,7 @@ end
 -- Setup UI
 local function setupUI()
     local success, errorMsg = pcall(function()
-        task.wait(10) -- Delay super panjang
+        task.wait(15) -- Delay super panjang
         createGUI()
         makeDraggable(logo)
         
@@ -247,7 +237,7 @@ local function setupUI()
     if not success then
         warn("setupUI error: " .. tostring(errorMsg))
         notify("⚠️ UI setup failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(10)
+        task.wait(15)
         setupUI()
     end
 end
