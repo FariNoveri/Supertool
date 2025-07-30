@@ -1,4 +1,4 @@
--- MainLoader.lua - Android Optimized with Fixed GUI, Cleaned Debug, Synced Flying, Combat Features
+-- MainLoader.lua - Android Optimized with Cleaned Debug, Fixed Macro Stop, Synced Flying, Combat Features
 -- Dibuat oleh Fari Noveri - Full Android Touch Support + Straight-Line Trajectory + Combat Tab
 
 local Players = game:GetService("Players")
@@ -100,11 +100,7 @@ local function createGUI()
         gui.ResetOnSpawn = false
         gui.IgnoreGuiInset = true
         gui.Enabled = true
-        local playerGui = player:WaitForChild("PlayerGui", 10)
-        if not playerGui then
-            error("PlayerGui not found")
-        end
-        gui.Parent = playerGui
+        gui.Parent = player:WaitForChild("PlayerGui", 10)
 
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 80, 0, 80)
@@ -112,7 +108,6 @@ local function createGUI()
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
-        logo.Visible = true
         logo.Parent = gui
         
         local logoCorner = Instance.new("UICorner")
@@ -120,11 +115,16 @@ local function createGUI()
         logoCorner.Parent = logo
 
         frame = Instance.new("Frame")
-        frame.Size = isMobile and UDim2.new(0.95, 0, 0.85, 0) or UDim2.new(0, 900, 0, 550)
-        frame.Position = isMobile and UDim2.new(0.025, 0, 0.075, 0) or UDim2.new(0.5, -450, 0.5, -275)
+        if isMobile then
+            frame.Size = UDim2.new(0.95, 0, 0.85, 0)
+            frame.Position = UDim2.new(0.025, 0, 0.075, 0)
+        else
+            frame.Size = UDim2.new(0, 900, 0, 550)
+            frame.Position = UDim2.new(0.5, -450, 0.5, -275)
+        end
         frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         frame.BorderSizePixel = 0
-        frame.Visible = true -- Set default to visible for debugging
+        frame.Visible = false
         frame.Parent = gui
         
         local frameCorner = Instance.new("UICorner")
@@ -133,7 +133,7 @@ local function createGUI()
     end)
     if not success then
         warn("createGUI error: " .. errorMsg)
-        notify("⚠️ Failed to create GUI: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("⚠️ Failed to create GUI", Color3.fromRGB(255, 100, 100))
         task.wait(2)
         createGUI()
     end
@@ -226,7 +226,6 @@ local function createTabSystem()
     
     closeBtn.Activated:Connect(function()
         frame.Visible = false
-        notify("🖼️ GUI Closed", Color3.fromRGB(255, 100, 100))
     end)
 
     local tabContainer = Instance.new("Frame")
@@ -294,7 +293,6 @@ local function createTab(name, icon, tabContainer, contentArea)
             data.button.BackgroundColor3 = (tabName == name) and Color3.fromRGB(50, 150, 255) or Color3.fromRGB(60, 60, 60)
         end
         currentTab = name
-        notify("📑 Switched to " .. name, Color3.fromRGB(0, 255, 0))
     end)
 
     if not currentTab then
@@ -1193,9 +1191,6 @@ local function setupUI()
             frame.Visible = not frame.Visible
             if frame.Visible then
                 TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = frame.Size}):Play()
-                notify("🖼️ GUI Toggled ON", Color3.fromRGB(0, 255, 0))
-            else
-                notify("🖼️ GUI Toggled OFF", Color3.fromRGB(255, 100, 100))
             end
         end)
         
@@ -1383,7 +1378,7 @@ local function setupUI()
     end)
     if not success then
         warn("setupUI error: " .. errorMsg)
-        notify("⚠️ Failed to setup UI: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("⚠️ Failed to setup UI", Color3.fromRGB(255, 100, 100))
         task.wait(2)
         setupUI()
     end
@@ -1408,18 +1403,10 @@ local function init()
         if player.Character then
             initChar()
         end
-        -- Force GUI visibility check
-        if gui and frame then
-            gui.Enabled = true
-            frame.Visible = true
-            notify("🖼️ GUI Initialized", Color3.fromRGB(0, 255, 0))
-        else
-            error("GUI or Frame not initialized")
-        end
     end)
     if not success then
         warn("init error: " .. errorMsg)
-        notify("⚠️ Failed to initialize: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("⚠️ Failed to initialize", Color3.fromRGB(255, 100, 100))
         task.wait(2)
         init()
     end
