@@ -1,4 +1,4 @@
--- MainLoader.lua - Android Optimized Complete Version
+-- MainLoader.lua - Android Optimized Complete Version with Trajectory, Autoplay, and New Features
 -- Dibuat oleh Fari Noveri - Full Android Touch Support + All Features
 
 local Players = game:GetService("Players")
@@ -17,6 +17,8 @@ local savedPositions = {}
 local followTarget = nil
 local gendongWeld = nil
 local connections = {}
+local antiRagdoll = false
+local improvedFlying = false
 
 -- UI Variables
 local gui, frame, logo
@@ -68,7 +70,6 @@ local function createGUI()
     gui.IgnoreGuiInset = true
     gui.Parent = player:WaitForChild("PlayerGui")
 
-    -- Logo (bigger for mobile)
     logo = Instance.new("ImageButton")
     logo.Size = UDim2.new(0, 70, 0, 70)
     logo.Position = UDim2.new(0, 20, 0, 100)
@@ -82,7 +83,6 @@ local function createGUI()
     logoCorner.CornerRadius = UDim.new(0, 35)
     logoCorner.Parent = logo
 
-    -- Main frame (responsive)
     frame = Instance.new("Frame")
     if isMobile then
         frame.Size = UDim2.new(0.95, 0, 0.8, 0)
@@ -124,7 +124,6 @@ local function makeDraggable(element)
             end
         end)
     else
-        -- Desktop drag
         element.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 dragging = true
@@ -153,7 +152,6 @@ end
 
 -- Tab system
 local function createTabSystem()
-    -- Title bar
     local titleBar = Instance.new("Frame")
     titleBar.Size = UDim2.new(1, 0, 0, 50)
     titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -173,7 +171,6 @@ local function createTabSystem()
     title.Font = Enum.Font.GothamBold
     title.Parent = titleBar
     
-    -- Close button
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 40, 0, 40)
     closeBtn.Position = UDim2.new(1, -45, 0, 5)
@@ -193,7 +190,6 @@ local function createTabSystem()
         frame.Visible = false
     end)
 
-    -- Tab buttons container
     local tabContainer = Instance.new("Frame")
     tabContainer.Size = UDim2.new(1, 0, 0, 60)
     tabContainer.Position = UDim2.new(0, 0, 0, 50)
@@ -207,7 +203,6 @@ local function createTabSystem()
     tabLayout.Padding = UDim.new(0, 5)
     tabLayout.Parent = tabContainer
 
-    -- Content area (non-scrollable container)
     local contentArea = Instance.new("Frame")
     contentArea.Size = UDim2.new(1, 0, 1, -110)
     contentArea.Position = UDim2.new(0, 0, 0, 110)
@@ -234,7 +229,6 @@ local function createTab(name, icon, tabContainer, contentArea)
     btnCorner.CornerRadius = UDim.new(0, 8)
     btnCorner.Parent = btn
 
-    -- Create scrollable page for each tab
     local page = Instance.new("ScrollingFrame")
     page.Size = UDim2.new(1, 0, 1, 0)
     page.Position = UDim2.new(0, 0, 0, 0)
@@ -250,7 +244,6 @@ local function createTab(name, icon, tabContainer, contentArea)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = page
     
-    -- Auto-resize canvas
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
     end)
@@ -296,7 +289,6 @@ local function createButton(text, callback, parent, color)
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = btn
     
-    -- Touch feedback
     btn.Activated:Connect(function()
         btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
         task.wait(0.1)
@@ -307,7 +299,7 @@ local function createButton(text, callback, parent, color)
     return btn
 end
 
--- Flying system
+-- Improved Flying system (Analog + Freecam-like)
 local function setupFlying()
     local bodyVel, bodyGyro
     
@@ -315,73 +307,68 @@ local function setupFlying()
         if not hr then return end
         
         bodyVel = Instance.new("BodyVelocity")
-        bodyVel.MaxForce = Vector3.new(4000, 4000, 4000)
+        bodyVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bodyVel.Velocity = Vector3.new(0, 0, 0)
         bodyVel.Parent = hr
         
         bodyGyro = Instance.new("BodyAngularVelocity")
-        bodyGyro.MaxTorque = Vector3.new(4000, 4000, 4000)
+        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         bodyGyro.AngularVelocity = Vector3.new(0, 0, 0)
         bodyGyro.Parent = hr
         
         flying = true
-        notify("🚁 Flying Mode ON - Use joystick to fly!", Color3.fromRGB(0, 255, 0))
+        notify("🚁 Flying Mode ON - Use joystick/camera to fly!", Color3.fromRGB(0, 255, 0))
         
         connections.flyLoop = RunService.Heartbeat:Connect(function()
             if not flying or not hr or not bodyVel or not humanoid then return end
             
             local moveVector = Vector3.new(0, 0, 0)
+            local cam = camera.CFrame
+            local forward = cam.LookVector
+            local right = cam.RightVector
             
-            if isMobile then
-                -- Mobile flying - menggunakan movement dari joystick/thumbstick
-                local moveVec = humanoid.MoveDirection
-                local cam = camera.CFrame
-                
-                if moveVec.Magnitude > 0 then
-                    -- Convert movement ke camera direction
-                    local forward = cam.LookVector
-                    local right = cam.RightVector
-                    
-                    moveVector = (forward * moveVec.Z + right * moveVec.X).Unit
-                    moveVector = moveVector * flySpeed
-                    
-                    -- Auto-hover saat bergerak
-                    moveVector = moveVector + Vector3.new(0, flySpeed * 0.3, 0)
-                else
-                    -- Hover di tempat
-                    moveVector = Vector3.new(0, flySpeed * 0.2, 0)
+            if improvedFlying then
+                -- Freecam-like: terbang mengikuti arah kamera
+                local moveDir = humanoid.MoveDirection
+                if moveDir.Magnitude > 0 then
+                    moveVector = forward * moveDir.Z * flySpeed + right * moveDir.X * flySpeed
                 end
             else
-                -- Desktop flying controls
-                local cam = camera
-                local cf = cam.CFrame
-                local forward = cf.LookVector
-                local right = cf.RightVector
-                local up = cf.UpVector
-                
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    moveVector = moveVector + forward
+                -- Mode terbang biasa
+                if isMobile then
+                    local moveVec = humanoid.MoveDirection
+                    if moveVec.Magnitude > 0 then
+                        moveVector = (forward * moveVec.Z + right * moveVec.X).Unit * flySpeed
+                        moveVector = moveVector + Vector3.new(0, flySpeed * 0.3, 0)
+                    else
+                        moveVector = Vector3.new(0, flySpeed * 0.2, 0)
+                    end
+                else
+                    local up = cam.UpVector
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                        moveVector = moveVector + forward
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                        moveVector = moveVector - forward
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                        moveVector = moveVector - right
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                        moveVector = moveVector + right
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                        moveVector = moveVector + up
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                        moveVector = moveVector - up
+                    end
+                    moveVector = moveVector * flySpeed
                 end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    moveVector = moveVector - forward
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    moveVector = moveVector - right
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    moveVector = moveVector + right
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                    moveVector = moveVector + up
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                    moveVector = moveVector - up
-                end
-                
-                moveVector = moveVector * flySpeed
             end
             
             bodyVel.Velocity = moveVector
+            bodyGyro.CFrame = cam -- Align karakter dengan arah kamera
         end)
     end
     
@@ -393,7 +380,12 @@ local function setupFlying()
         notify("🚁 Flying Mode OFF", Color3.fromRGB(255, 100, 100))
     end
     
-    return startFly, stopFly
+    local function toggleImprovedFlying()
+        improvedFlying = not improvedFlying
+        notify("🛩️ Improved Flying: " .. (improvedFlying and "ON" or "OFF"), Color3.fromRGB(0, 255, improvedFlying and 0 or 100))
+    end
+    
+    return startFly, stopFly, toggleImprovedFlying
 end
 
 -- Noclip system
@@ -469,6 +461,52 @@ local function setupGodMode()
     return toggleGodMode
 end
 
+-- No Fall Damage system
+local function setupNoFallDamage()
+    local function toggleNoFallDamage()
+        noFall = not noFall
+        if noFall then
+            notify("🛡️ No Fall Damage ON", Color3.fromRGB(0, 255, 0))
+            connections.fallDamageLoop = humanoid.StateChanged:Connect(function(oldState, newState)
+                if newState == Enum.HumanoidStateType.Freefall and noFall then
+                    humanoid.FallDamage = 0
+                end
+            end)
+        else
+            notify("🛡️ No Fall Damage OFF", Color3.fromRGB(255, 100, 100))
+            if connections.fallDamageLoop then connections.fallDamageLoop:Disconnect() end
+        end
+    end
+    
+    return toggleNoFallDamage
+end
+
+-- Anti Ragdoll system
+local function setupAntiRagdoll()
+    local function toggleAntiRagdoll()
+        antiRagdoll = not antiRagdoll
+        if antiRagdoll then
+            notify("🛡️ Anti Ragdoll ON", Color3.fromRGB(0, 255, 0))
+            if humanoid then
+                humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+            end
+            connections.ragdollLoop = humanoid.StateChanged:Connect(function(oldState, newState)
+                if newState == Enum.HumanoidStateType.Ragdoll and antiRagdoll then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end)
+        else
+            notify("🛡️ Anti Ragdoll OFF", Color3.fromRGB(255, 100, 100))
+            if humanoid then
+                humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+            end
+            if connections.ragdollLoop then connections.ragdollLoop:Disconnect() end
+        end
+    end
+    
+    return toggleAntiRagdoll
+end
+
 -- Position save/load system
 local function setupPositions()
     local function savePosition(name)
@@ -486,7 +524,7 @@ local function setupPositions()
     return savePosition, loadPosition
 end
 
--- Player interaction system
+-- Player interaction system (with teleport enhancements)
 local function setupPlayerSystem()
     local playerListFrame
     local selectedPlayer = nil
@@ -527,20 +565,25 @@ local function setupPlayerSystem()
             if p ~= player then
                 createButton("🎮 " .. p.Name, function()
                     selectedPlayer = p
-                    -- Clear previous action buttons
                     for _, child in ipairs(playerListFrame:GetChildren()) do
-                        if child:IsA("TextButton") and child.Text:find("🔄") then
+                        if child:IsA("TextButton") and (child.Text:find("🔄") or child.Text:find("🧲") or child.Text:find("🎯") or child.Text:find("🚫")) then
                             child:Destroy()
                         end
                     end
                     
-                    -- Create action buttons
                     createButton("🔄 Teleport to " .. p.Name, function()
                         if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
                             hr.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
                             notify("Teleported to " .. p.Name, Color3.fromRGB(0, 255, 255))
                         end
                     end, playerListFrame, Color3.fromRGB(0, 150, 255))
+                    
+                    createButton("🧲 Teleport " .. p.Name .. " to Me", function()
+                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
+                            p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 0, -5)
+                            notify("Teleported " .. p.Name .. " to you", Color3.fromRGB(255, 0, 255))
+                        end
+                    end, playerListFrame, Color3.fromRGB(255, 0, 255))
                     
                     createButton("🎯 Follow " .. p.Name, function()
                         followTarget = p
@@ -553,25 +596,191 @@ local function setupPlayerSystem()
                         end)
                     end, playerListFrame, Color3.fromRGB(255, 165, 0))
                     
-                    createButton("🧲 Bring " .. p.Name, function()
-                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
-                            p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 0, -5)
-                            notify("Brought " .. p.Name, Color3.fromRGB(255, 0, 255))
-                        end
-                    end, playerListFrame, Color3.fromRGB(255, 0, 255))
-                    
                     createButton("🚫 Stop Follow", function()
                         followTarget = nil
                         if connections.followLoop then connections.followLoop:Disconnect() end
                         notify("Stopped following", Color3.fromRGB(255, 100, 100))
                     end, playerListFrame, Color3.fromRGB(255, 100, 100))
-                    
                 end, playerListFrame)
             end
         end
     end
     
     return createPlayerList, refreshPlayerList
+end
+
+-- Sistem Visualisasi Lintasan dengan Pewarnaan dan Autoplay (Macro)
+local function setupTrajectoryAndMacro()
+    local trajectoryEnabled = false
+    local macroRecording = false
+    local macroPlaying = false
+    local macroActions = {}
+    local trajectoryParts = {}
+    local initialVelocity = 50 -- Kecepatan awal proyektil (studs/s)
+    local gravity = 196.2 -- Gravitasi Roblox (studs/s^2)
+    local maxPoints = 50 -- Jumlah titik pada lintasan
+    local timeStep = 0.1 -- Interval waktu antar titik (detik)
+    local autoPlayOnRespawn = false -- Status autoplay setelah respawn
+    local groundLevel = 0 -- Ketinggian dasar (disesuaikan dengan peta)
+
+    -- Membersihkan titik-titik lintasan
+    local function clearTrajectory()
+        for _, part in ipairs(trajectoryParts) do
+            part:Destroy()
+        end
+        trajectoryParts = {}
+    end
+
+    -- Menggambar lintasan dengan pewarnaan berdasarkan ketinggian
+    local function drawTrajectory()
+        clearTrajectory()
+        if not trajectoryEnabled or not hr or not camera then return end
+
+        local startPos = hr.Position + Vector3.new(0, 2, 0) -- Mulai dari posisi karakter
+        local direction = camera.CFrame.LookVector * initialVelocity -- Arah berdasarkan kamera
+        local velocity = direction
+        local position = startPos
+        local prevHeight = startPos.Y
+
+        for i = 1, maxPoints do
+            -- Hitung posisi berdasarkan fisika proyektil
+            local t = i * timeStep
+            local newPos = position + velocity * timeStep + Vector3.new(0, -0.5 * gravity * timeStep^2, 0)
+            velocity = velocity + Vector3.new(0, -gravity * timeStep, 0)
+
+            -- Tentukan warna berdasarkan ketinggian
+            local height = newPos.Y - groundLevel
+            local color
+            if height < 50 then
+                color = BrickColor.new("Lime green") -- Dataran rendah
+            elseif height < 100 then
+                color = BrickColor.new("Really red") -- Naik ke atas
+            else
+                color = BrickColor.new("Cyan") -- Dataran tinggi
+            end
+
+            -- Buat titik visual untuk lintasan
+            local point = Instance.new("Part")
+            point.Size = Vector3.new(0.2, 0.2, 0.2)
+            point.Position = newPos
+            point.Anchored = true
+            point.CanCollide = false
+            point.BrickColor = color
+            point.Material = Enum.Material.Neon
+            point.Parent = workspace
+            table.insert(trajectoryParts, point)
+
+            -- Cek tabrakan dengan raycasting
+            local ray = Ray.new(position, (newPos - position).Unit * (newPos - position).Magnitude)
+            local hit, hitPos = workspace:FindPartOnRay(ray, char)
+            if hit then
+                -- Tambahkan titik kuning untuk tabrakan
+                local hitPoint = Instance.new("Part")
+                hitPoint.Size = Vector3.new(0.3, 0.3, 0.3)
+                hitPoint.Position = hitPos
+                hitPoint.Anchored = true
+                hitPoint.CanCollide = false
+                hitPoint.BrickColor = BrickColor.new("Bright yellow")
+                hitPoint.Material = Enum.Material.Neon
+                hitPoint.Parent = workspace
+                table.insert(trajectoryParts, hitPoint)
+                break
+            end
+
+            position = newPos
+            prevHeight = height
+        end
+    end
+
+    -- Toggle visualisasi lintasan
+    local function toggleTrajectory()
+        trajectoryEnabled = not trajectoryEnabled
+        if trajectoryEnabled then
+            notify("📏 Trajectory Mode ON", Color3.fromRGB(255, 0, 0))
+            connections.trajectoryLoop = RunService.RenderStepped:Connect(drawTrajectory)
+        else
+            notify("📏 Trajectory Mode OFF", Color3.fromRGB(255, 100, 100))
+            clearTrajectory()
+            if connections.trajectoryLoop then connections.trajectoryLoop:Disconnect() end
+        end
+    end
+
+    -- Merekam aksi untuk macro
+    local function startRecordingMacro()
+        macroRecording = true
+        macroActions = {}
+        notify("🎥 Recording Macro...", Color3.fromRGB(0, 255, 0))
+        
+        connections.macroRecordLoop = RunService.Heartbeat:Connect(function(deltaTime)
+            if not macroRecording or not humanoid or not hr then return end
+            table.insert(macroActions, {
+                time = tick(),
+                position = hr.Position,
+                moveDirection = humanoid.MoveDirection,
+                jump = humanoid.Jump
+            })
+        end)
+    end
+
+    local function stopRecordingMacro()
+        macroRecording = false
+        if connections.macroRecordLoop then connections.macroRecordLoop:Disconnect() end
+        notify("🎥 Macro Recorded (" .. #macroActions .. " actions)", Color3.fromRGB(0, 255, 0))
+    end
+
+    -- Memutar macro
+    local function playMacro()
+        if #macroActions == 0 then
+            notify("⚠️ No Macro Recorded!", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        macroPlaying = true
+        notify("▶️ Playing Macro...", Color3.fromRGB(0, 255, 255))
+
+        local startTime = tick()
+        connections.macroPlayLoop = RunService.Heartbeat:Connect(function()
+            if not macroPlaying or not humanoid or not hr then return end
+            local currentTime = tick() - startTime
+
+            for _, action in ipairs(macroActions) do
+                if math.abs(action.time - startTime - currentTime) < 0.05 then
+                    hr.Position = action.position
+                    humanoid.MoveDirection = action.moveDirection
+                    humanoid.Jump = action.jump
+                end
+            }
+
+            if currentTime >= (macroActions[#macroActions].time - macroActions[1].time) then
+                macroPlaying = false
+                connections.macroPlayLoop:Disconnect()
+                notify("⏹️ Macro Finished", Color3.fromRGB(255, 100, 100))
+            end
+        end)
+    end
+
+    local function stopPlayingMacro()
+        macroPlaying = false
+        if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
+        notify("⏹️ Macro Stopped", Color3.fromRGB(255, 100, 100))
+    end
+
+    -- Toggle autoplay setelah respawn
+    local function toggleAutoPlay()
+        autoPlayOnRespawn = not autoPlayOnRespawn
+        notify("🔄 AutoPlay on Respawn: " .. (autoPlayOnRespawn and "ON" or "OFF"), Color3.fromRGB(0, 255, autoPlayOnRespawn and 0 or 100))
+    end
+
+    -- Handle respawn untuk autoplay
+    player.CharacterAdded:Connect(function()
+        task.wait(1)
+        initChar()
+        notify("Character loaded", Color3.fromRGB(0, 255, 0))
+        if autoPlayOnRespawn and #macroActions > 0 then
+            playMacro()
+        end
+    end)
+
+    return toggleTrajectory, startRecordingMacro, stopRecordingMacro, playMacro, stopPlayingMacro, toggleAutoPlay
 end
 
 -- Main setup function
@@ -590,13 +799,15 @@ local function setupUI()
     
     -- Movement Tab  
     local movementTab = createTab("Movement", "🚀", tabContainer, contentArea)
-    local startFly, stopFly = setupFlying()
+    local startFly, stopFly, toggleImprovedFlying = setupFlying()
+    local toggleNoclip = setupNoclip()
     
     createButton("🚁 Toggle Flying (Use Joystick!)", function()
         if flying then stopFly() else startFly() end
     end, movementTab)
     
-    local toggleNoclip = setupNoclip()
+    createButton("🛩️ Toggle Improved Flying", toggleImprovedFlying, movementTab, Color3.fromRGB(0, 150, 255))
+    
     createButton("👻 Toggle Noclip", toggleNoclip, movementTab)
     
     createButton("⚡ Fly Speed + (Current: " .. flySpeed .. ")", function()
@@ -609,7 +820,6 @@ local function setupUI()
         notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
     end, movementTab)
     
-    -- Add more movement features
     createButton("🏃 Super Speed", function()
         if humanoid then
             humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 50 or 16
@@ -662,7 +872,6 @@ local function setupUI()
     
     createButton("🔄 Refresh Player List", refreshPlayerList, playerTab, Color3.fromRGB(0, 150, 255))
     
-    -- Create player list directly in the scrollable tab
     local playerListFrame = Instance.new("Frame")
     playerListFrame.Size = UDim2.new(1, -20, 0, 300)
     playerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -690,68 +899,21 @@ local function setupUI()
         playerListScroll.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 20)
     end)
     
-    -- Update refreshPlayerList to use the new structure
-    refreshPlayerList = function()
-        for _, child in ipairs(playerListScroll:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
-        
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= player then
-                createButton("🎮 " .. p.Name, function()
-                    selectedPlayer = p
-                    -- Clear previous action buttons
-                    for _, child in ipairs(playerListScroll:GetChildren()) do
-                        if child:IsA("TextButton") and child.Text:find("🔄") then
-                            child:Destroy()
-                        end
-                    end
-                    
-                    -- Create action buttons
-                    createButton("🔄 Teleport to " .. p.Name, function()
-                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
-                            hr.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
-                            notify("Teleported to " .. p.Name, Color3.fromRGB(0, 255, 255))
-                        end
-                    end, playerListScroll, Color3.fromRGB(0, 150, 255))
-                    
-                    createButton("🎯 Follow " .. p.Name, function()
-                        followTarget = p
-                        notify("Following " .. p.Name, Color3.fromRGB(255, 165, 0))
-                        if connections.followLoop then connections.followLoop:Disconnect() end
-                        connections.followLoop = RunService.Heartbeat:Connect(function()
-                            if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") and hr then
-                                hr.CFrame = followTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 5)
-                            end
-                        end)
-                    end, playerListScroll, Color3.fromRGB(255, 165, 0))
-                    
-                    createButton("🧲 Bring " .. p.Name, function()
-                        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
-                            p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 0, -5)
-                            notify("Brought " .. p.Name, Color3.fromRGB(255, 0, 255))
-                        end
-                    end, playerListScroll, Color3.fromRGB(255, 0, 255))
-                    
-                    createButton("🚫 Stop Follow", function()
-                        followTarget = nil
-                        if connections.followLoop then connections.followLoop:Disconnect() end
-                        notify("Stopped following", Color3.fromRGB(255, 100, 100))
-                    end, playerListScroll, Color3.fromRGB(255, 100, 100))
-                    
-                end, playerListScroll)
-            end
-        end
-    end
+    refreshPlayerList() -- Initialize player list
     
     -- Utility Tab
     local utilityTab = createTab("Utility", "🛠️", tabContainer, contentArea)
     local toggleAutoHeal = setupAutoHeal()
     local toggleGodMode = setupGodMode()
+    local toggleNoFallDamage = setupNoFallDamage()
+    local toggleAntiRagdoll = setupAntiRagdoll()
     local savePosition, loadPosition = setupPositions()
-    
+    local toggleTrajectory, startRecordingMacro, stopRecordingMacro, playMacro, stopPlayingMacro, toggleAutoPlay = setupTrajectoryAndMacro()
+
     createButton("💚 Toggle Auto Heal", toggleAutoHeal, utilityTab)
     createButton("⚡ Toggle God Mode", toggleGodMode, utilityTab)
+    createButton("🛡️ Toggle No Fall Damage", toggleNoFallDamage, utilityTab, Color3.fromRGB(0, 255, 0))
+    createButton("🛡️ Toggle Anti Ragdoll", toggleAntiRagdoll, utilityTab, Color3.fromRGB(0, 255, 0))
     
     createButton("📍 Save Position 1", function()
         savePosition("pos1")
@@ -776,6 +938,13 @@ local function setupUI()
         end
     end, utilityTab)
     
+    createButton("📏 Toggle Trajectory", toggleTrajectory, utilityTab, Color3.fromRGB(255, 0, 0))
+    createButton("🎥 Start Recording Macro", startRecordingMacro, utilityTab, Color3.fromRGB(0, 255, 0))
+    createButton("⏹️ Stop Recording Macro", stopRecordingMacro, utilityTab, Color3.fromRGB(255, 100, 100))
+    createButton("▶️ Play Macro", playMacro, utilityTab, Color3.fromRGB(0, 255, 255))
+    createButton("🚫 Stop Macro", stopPlayingMacro, utilityTab, Color3.fromRGB(255, 100, 100))
+    createButton("🔄 Toggle AutoPlay on Respawn", toggleAutoPlay, utilityTab, Color3.fromRGB(0, 150, 255))
+    
     -- Settings Tab
     local settingsTab = createTab("Settings", "⚙️", tabContainer, contentArea)
     
@@ -796,7 +965,6 @@ local function setupUI()
     end, settingsTab)
     
     createButton("📱 Mobile Optimize", function()
-        -- Reduce graphics for better performance
         settings().Rendering.QualityLevel = 1
         notify("Optimized for mobile", Color3.fromRGB(0, 255, 0))
     end, settingsTab)
@@ -808,13 +976,6 @@ local function setupUI()
     -- Auto-refresh player list
     Players.PlayerAdded:Connect(refreshPlayerList)
     Players.PlayerRemoving:Connect(refreshPlayerList)
-    
-    -- Character respawn handling
-    player.CharacterAdded:Connect(function()
-        task.wait(1)
-        initChar()
-        notify("Character loaded", Color3.fromRGB(0, 255, 0))
-    end)
     
     notify("🚀 Super Tool Mobile Loaded!", Color3.fromRGB(0, 255, 0))
 end
