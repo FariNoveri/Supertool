@@ -1,5 +1,5 @@
--- MainLoader.lua - Android Optimized with Fixed Macro Playback
--- Dibuat oleh Fari Noveri - Full Android Touch Support + Fixed Macro
+-- MainLoader.lua - Android Optimized with Fixed Macro and Trajectory
+-- Dibuat oleh Fari Noveri - Full Android Touch Support + Beam-based Trajectory
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -101,7 +101,7 @@ local function createGUI()
 
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 100, 0, 100)
-        logo.Position = UDim2.new(0, 20, 0, 20) -- Kembali ke pojok kiri atas
+        logo.Position = UDim2.new(0, 20, 0, 20)
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
@@ -684,78 +684,109 @@ local function setupTrajectoryAndMacro()
     local macroRecording = false
     local macroPlaying = false
     local macroActions = {}
-    local trajectoryParts = {}
+    local trajectoryBeams = {} -- Ganti trajectoryParts jadi trajectoryBeams
     local initialVelocity = 50
     local gravity = 196.2
     local maxPoints = 50
-    local timeStep = 0.1
+    local timeStep = 0.05 -- Lebih kecil untuk garis yang lebih mulus
     local autoPlayOnRespawn = false
     local groundLevel = 0
-    local moveSpeed = 16 -- Kecepatan simulasi gerakan
+    local moveSpeed = 16
 
     local function clearTrajectory()
-        for _, part in ipairs(trajectoryParts) do
-            part:Destroy()
+        for _, beam in ipairs(trajectoryBeams) do
+            beam:Destroy()
         end
-        trajectoryParts = {}
+        trajectoryBeams = {}
+        print("Trajectory cleared")
     end
 
     local function drawTrajectory()
         clearTrajectory()
         if not trajectoryEnabled or not hr or not camera then
             notify("⚠️ Cannot draw trajectory: Character or camera not ready", Color3.fromRGB(255, 100, 100))
+            print("Trajectory failed: Character or camera not ready")
             return
         end
 
-        local startPos = hr.Position + Vector3.new(0, 2, 0)
+        -- Mulai dari depan karakter
+        local startPos = hr.Position + camera.CFrame.LookVector * 2 + Vector3.new(0, 1, 0) -- 2 unit di depan, 1 unit di atas
         local direction = camera.CFrame.LookVector * initialVelocity
         local velocity = direction
         local position = startPos
-        local prevHeight = startPos.Y
+        local points = {startPos} -- Simpan titik-titik untuk Beam
+
+        print("Drawing trajectory: StartPos=" .. tostring(startPos) .. ", Direction=" .. tostring(direction))
 
         for i = 1, maxPoints do
             local t = i * timeStep
             local newPos = position + velocity * timeStep + Vector3.new(0, -0.5 * gravity * timeStep^2, 0)
             velocity = velocity + Vector3.new(0, -gravity * timeStep, 0)
 
-            local height = newPos.Y - groundLevel
-            local color
-            if height < 50 then
-                color = BrickColor.new("Lime green")
-            elseif height < 100 then
-                color = BrickColor.new("Really red")
-            else
-                color = BrickColor.new("Cyan")
-            end
-
-            local point = Instance.new("Part")
-            point.Size = Vector3.new(0.5, 0.5, 0.5)
-            point.Position = newPos
-            point.Anchored = true
-            point.CanCollide = false
-            point.BrickColor = color
-            point.Material = Enum.Material.Neon
-            point.Parent = workspace
-            table.insert(trajectoryParts, point)
-
+            -- Deteksi tabrakan
             local ray = Ray.new(position, (newPos - position).Unit * (newPos - position).Magnitude)
-            local hit, hitPos = workspace:FindPartOnRay(ray, char)
+            local hit, hitPos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
             if hit then
-                local hitPoint = Instance.new("Part")
-                hitPoint.Size = Vector3.new(0.7, 0.7, 0.7)
-                hitPoint.Position = hitPos
-                hitPoint.Anchored = true
-                hitPoint.CanCollide = false
-                hitPoint.BrickColor = BrickColor.new("Bright yellow")
-                hitPoint.Material = Enum.Material.Neon
-                hitPoint.Parent = workspace
-                table.insert(trajectoryParts, hitPoint)
+                table.insert(points, hitPos)
+                print("Trajectory hit at: " .. tostring(hitPos))
                 break
             end
 
+            table.insert(points, newPos)
             position = newPos
-            prevHeight = height
         end
+
+        -- Buat garis menggunakan Beam
+        for i = 1, #points - 1 do
+            local attachment0 = Instance.new("Attachment")
+            attachment0.Position = points[i]
+            attachment0.Parent = workspace.Terrain
+
+            local attachment1 = Instance.new("Attachment")
+            attachment1.Position = points[i + 1]
+            attachment1.Parent = workspace.Terrain
+
+            local beam = Instance.new("Beam")
+            beam.Attachment0 = attachment0
+            beam.Attachment1 = attachment1
+            beam.Width0 = 0.2
+            beam.Width1 = 0.2
+            beam.LightEmission = 1
+            beam.LightInfluence = 0
+            beam.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+            beam.TextureMode = Enum.TextureMode.Stretch
+            beam.TextureSpeed = 0
+
+            -- Warna berdasarkan ketinggian
+            local height = points[i].Y - groundLevel
+            if height < 10 then
+                beam.Color = ColorSequence.new(Color3.fromRGB(0, 255, 0)) -- Hijau untuk rendah
+            elseif height < 50 then
+                beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0)) -- Kuning untuk sedang
+            else
+                beam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0)) -- Merah untuk tinggi
+            end
+
+            beam.Parent = workspace
+            table.insert(trajectoryBeams, beam)
+            table.insert(trajectoryBeams, attachment0)
+            table.insert(trajectoryBeams, attachment1)
+        end
+
+        -- Tanda akhir jalur
+        if #points > 1 then
+            local endPoint = Instance.new("Part")
+            endPoint.Size = Vector3.new(0.5, 0.5, 0.5)
+            endPoint.Position = points[#points]
+            endPoint.Anchored = true
+            endPoint.CanCollide = false
+            endPoint.BrickColor = BrickColor.new("Bright yellow")
+            endPoint.Material = Enum.Material.Neon
+            endPoint.Parent = workspace
+            table.insert(trajectoryBeams, endPoint)
+        end
+
+        print("Trajectory drawn with " .. #points .. " points")
     end
 
     local function toggleTrajectory()
@@ -767,6 +798,7 @@ local function setupTrajectoryAndMacro()
                     drawTrajectory()
                 else
                     notify("⚠️ Trajectory paused: Character or camera not ready", Color3.fromRGB(255, 100, 100))
+                    print("Trajectory paused: Character or camera not ready")
                 end
             end)
         else
@@ -785,7 +817,7 @@ local function setupTrajectoryAndMacro()
         connections.macroRecordLoop = RunService.Heartbeat:Connect(function(deltaTime)
             if not macroRecording or not humanoid or not hr then return end
             table.insert(macroActions, {
-                position = hr.CFrame, -- Simpan CFrame penuh untuk orientasi
+                position = hr.CFrame,
                 moveDirection = humanoid.MoveDirection,
                 jump = humanoid.Jump
             })
@@ -815,13 +847,11 @@ local function setupTrajectoryAndMacro()
             return
         end
 
-        -- Pastikan karakter dalam status Running
         if humanoid:GetState() ~= Enum.HumanoidStateType.Running then
             humanoid:ChangeState(Enum.HumanoidStateType.Running)
             print("Forced Humanoid state to Running")
         end
 
-        -- Aktifkan noclip untuk menghindari kolisi
         if not noclip then
             local toggleNoclip = setupNoclip()
             toggleNoclip()
@@ -832,7 +862,6 @@ local function setupTrajectoryAndMacro()
         notify("▶️ Playing Macro (" .. #macroActions .. " actions)...", Color3.fromRGB(0, 255, 255))
         print("Playing macro with " .. #macroActions .. " actions")
 
-        -- Reset ke posisi awal
         if macroActions[1] and macroActions[1].position then
             local success, errorMsg = pcall(function()
                 hr.CFrame = macroActions[1].position
@@ -849,12 +878,10 @@ local function setupTrajectoryAndMacro()
             print("PlayMacro: No valid start position")
         end
 
-        -- Simulasi gerakan dengan BodyVelocity
         local bodyVel = Instance.new("BodyVelocity")
-        bodyVel.MaxForce = Vector3.new(math.huge, 0, math.huge) -- Hanya gerak horizontal
+        bodyVel.MaxForce = Vector3.new(math.huge, 0, math.huge)
         bodyVel.Parent = hr
 
-        -- Putar aksi secara berurutan
         local actionIndex = 1
         connections.macroPlayLoop = RunService.Heartbeat:Connect(function(deltaTime)
             if not macroPlaying or not humanoid or not hr then
@@ -869,17 +896,12 @@ local function setupTrajectoryAndMacro()
             if actionIndex <= #macroActions then
                 local action = macroActions[actionIndex]
                 local success, errorMsg = pcall(function()
-                    -- Atur posisi dan orientasi
                     hr.CFrame = action.position
-                    
-                    -- Simulasi gerakan dengan BodyVelocity
                     if action.moveDirection.Magnitude > 0 then
                         bodyVel.Velocity = action.moveDirection * moveSpeed
                     else
                         bodyVel.Velocity = Vector3.new(0, 0, 0)
                     end
-                    
-                    -- Terapkan lompatan
                     if action.jump then
                         humanoid.Jump = true
                     end
@@ -891,7 +913,7 @@ local function setupTrajectoryAndMacro()
                     print("Play action error: " .. errorMsg)
                 end
                 actionIndex = actionIndex + 1
-                task.wait(0.05) -- Delay kecil untuk sinkronisasi
+                task.wait(0.05)
             else
                 macroPlaying = false
                 if bodyVel then bodyVel:Destroy() end
