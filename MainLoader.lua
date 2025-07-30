@@ -1,5 +1,5 @@
 -- MainLoader.lua - Android Optimized with Fixed Macro Playback
--- Dibuat oleh Fari Noveri - Full Android Touch Support + All Features
+-- Dibuat oleh Fari Noveri - Full Android Touch Support + Fixed Macro
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -101,7 +101,7 @@ local function createGUI()
 
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 100, 0, 100)
-        logo.Position = UDim2.new(0.5, -50, 0.5, -50) -- Tengah layar untuk debug
+        logo.Position = UDim2.new(0, 20, 0, 20) -- Kembali ke pojok kiri atas
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
@@ -691,6 +691,7 @@ local function setupTrajectoryAndMacro()
     local timeStep = 0.1
     local autoPlayOnRespawn = false
     local groundLevel = 0
+    local moveSpeed = 16 -- Kecepatan simulasi gerakan
 
     local function clearTrajectory()
         for _, part in ipairs(trajectoryParts) do
@@ -784,11 +785,11 @@ local function setupTrajectoryAndMacro()
         connections.macroRecordLoop = RunService.Heartbeat:Connect(function(deltaTime)
             if not macroRecording or not humanoid or not hr then return end
             table.insert(macroActions, {
-                position = hr.Position,
+                position = hr.CFrame, -- Simpan CFrame penuh untuk orientasi
                 moveDirection = humanoid.MoveDirection,
                 jump = humanoid.Jump
             })
-            print("Recorded action: Position=" .. tostring(hr.Position) .. ", MoveDir=" .. tostring(humanoid.MoveDirection) .. ", Jump=" .. tostring(humanoid.Jump))
+            print("Recorded action: Position=" .. tostring(hr.CFrame.Position) .. ", MoveDir=" .. tostring(humanoid.MoveDirection) .. ", Jump=" .. tostring(humanoid.Jump))
         end)
     end
 
@@ -797,6 +798,9 @@ local function setupTrajectoryAndMacro()
         if connections.macroRecordLoop then connections.macroRecordLoop:Disconnect() end
         notify("🎥 Macro Recorded (" .. #macroActions .. " actions)", Color3.fromRGB(0, 255, 0))
         print("Stopped recording macro: " .. #macroActions .. " actions recorded")
+        for i, action in ipairs(macroActions) do
+            print("Action " .. i .. ": Pos=" .. tostring(action.position.Position) .. ", MoveDir=" .. tostring(action.moveDirection) .. ", Jump=" .. tostring(action.jump))
+        end
     end
 
     local function playMacro()
@@ -811,18 +815,31 @@ local function setupTrajectoryAndMacro()
             return
         end
 
+        -- Pastikan karakter dalam status Running
+        if humanoid:GetState() ~= Enum.HumanoidStateType.Running then
+            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            print("Forced Humanoid state to Running")
+        end
+
+        -- Aktifkan noclip untuk menghindari kolisi
+        if not noclip then
+            local toggleNoclip = setupNoclip()
+            toggleNoclip()
+            print("Enabled noclip for macro playback")
+        end
+
         macroPlaying = true
         notify("▶️ Playing Macro (" .. #macroActions .. " actions)...", Color3.fromRGB(0, 255, 255))
         print("Playing macro with " .. #macroActions .. " actions")
 
-        -- Reset to initial position
+        -- Reset ke posisi awal
         if macroActions[1] and macroActions[1].position then
             local success, errorMsg = pcall(function()
-                hr.CFrame = CFrame.new(macroActions[1].position)
+                hr.CFrame = macroActions[1].position
             end)
             if success then
                 notify("📍 Reset to macro start position", Color3.fromRGB(0, 255, 255))
-                print("Reset to start position: " .. tostring(macroActions[1].position))
+                print("Reset to start position: " .. tostring(macroActions[1].position.Position))
             else
                 notify("⚠️ Failed to reset position: " .. errorMsg, Color3.fromRGB(255, 100, 100))
                 print("Reset position error: " .. errorMsg)
@@ -832,11 +849,17 @@ local function setupTrajectoryAndMacro()
             print("PlayMacro: No valid start position")
         end
 
-        -- Play actions sequentially
+        -- Simulasi gerakan dengan BodyVelocity
+        local bodyVel = Instance.new("BodyVelocity")
+        bodyVel.MaxForce = Vector3.new(math.huge, 0, math.huge) -- Hanya gerak horizontal
+        bodyVel.Parent = hr
+
+        -- Putar aksi secara berurutan
         local actionIndex = 1
         connections.macroPlayLoop = RunService.Heartbeat:Connect(function(deltaTime)
             if not macroPlaying or not humanoid or not hr then
                 macroPlaying = false
+                if bodyVel then bodyVel:Destroy() end
                 if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
                 notify("⚠️ Macro stopped: Character not ready", Color3.fromRGB(255, 100, 100))
                 print("Macro stopped: Character not ready")
@@ -846,20 +869,33 @@ local function setupTrajectoryAndMacro()
             if actionIndex <= #macroActions then
                 local action = macroActions[actionIndex]
                 local success, errorMsg = pcall(function()
-                    hr.CFrame = CFrame.new(action.position)
-                    humanoid.MoveDirection = action.moveDirection
-                    humanoid.Jump = action.jump
+                    -- Atur posisi dan orientasi
+                    hr.CFrame = action.position
+                    
+                    -- Simulasi gerakan dengan BodyVelocity
+                    if action.moveDirection.Magnitude > 0 then
+                        bodyVel.Velocity = action.moveDirection * moveSpeed
+                    else
+                        bodyVel.Velocity = Vector3.new(0, 0, 0)
+                    end
+                    
+                    -- Terapkan lompatan
+                    if action.jump then
+                        humanoid.Jump = true
+                    end
                 end)
                 if success then
-                    print("Playing action " .. actionIndex .. ": Position=" .. tostring(action.position) .. ", MoveDir=" .. tostring(action.moveDirection) .. ", Jump=" .. tostring(action.jump))
+                    print("Playing action " .. actionIndex .. ": Position=" .. tostring(action.position.Position) .. ", MoveDir=" .. tostring(action.moveDirection) .. ", Jump=" .. tostring(action.jump))
                 else
                     notify("⚠️ Error playing action " .. actionIndex .. ": " .. errorMsg, Color3.fromRGB(255, 100, 100))
                     print("Play action error: " .. errorMsg)
                 end
                 actionIndex = actionIndex + 1
+                task.wait(0.05) -- Delay kecil untuk sinkronisasi
             else
                 macroPlaying = false
-                connections.macroPlayLoop:Disconnect()
+                if bodyVel then bodyVel:Destroy() end
+                if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
                 notify("⏹️ Macro Finished", Color3.fromRGB(255, 100, 100))
                 print("Macro finished")
             end
@@ -869,6 +905,11 @@ local function setupTrajectoryAndMacro()
     local function stopPlayingMacro()
         macroPlaying = false
         if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
+        for _, part in ipairs(workspace:GetChildren()) do
+            if part:IsA("BodyVelocity") and part.Parent == hr then
+                part:Destroy()
+            end
+        end
         notify("⏹️ Macro Stopped", Color3.fromRGB(255, 100, 100))
         print("Macro stopped manually")
     end
