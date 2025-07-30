@@ -1,5 +1,5 @@
--- MainLoader.lua - Android Optimized with Cleaned Debug, Fixed Macro Stop, Synced Flying, Combat Features
--- Dibuat oleh Fari Noveri - Full Android Touch Support + Straight-Line Trajectory + Combat Tab
+-- MainLoader_Fixed.lua - Optimized for Krnl Android, Fixed GUI
+-- Dibuat oleh Fari Noveri - Full Android Touch Support + Combat Tab
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -46,10 +46,13 @@ local isMobile = UserInputService.TouchEnabled and not UserInputService.Keyboard
 local function notify(message, color)
     color = color or Color3.fromRGB(0, 255, 0)
     local success, errorMsg = pcall(function()
-        if not gui then return end
+        if not gui then
+            warn("Notify failed: GUI not initialized")
+            return
+        end
         local notif = Instance.new("TextLabel")
         notif.Size = UDim2.new(0, 300, 0, 50)
-        notif.Position = UDim2.new(0.5, -150, 0, 100)
+        notif.Position = UDim2.new(0.5, -150, 0, 50)
         notif.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         notif.BackgroundTransparency = 0.3
         notif.TextColor3 = color
@@ -57,6 +60,7 @@ local function notify(message, color)
         notif.Font = Enum.Font.GothamBold
         notif.Text = message
         notif.BorderSizePixel = 0
+        notif.ZIndex = 100
         notif.Parent = gui
         
         local corner = Instance.new("UICorner")
@@ -95,12 +99,25 @@ end
 -- Create main GUI
 local function createGUI()
     local success, errorMsg = pcall(function()
+        if gui then
+            gui:Destroy()
+            gui = nil
+        end
+
         gui = Instance.new("ScreenGui")
-        gui.Name = "SuperToolUI_Mobile"
+        gui.Name = "SuperToolUI_Krnl"
         gui.ResetOnSpawn = false
         gui.IgnoreGuiInset = true
         gui.Enabled = true
-        gui.Parent = player:WaitForChild("PlayerGui", 10)
+        gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        local playerGui = player:WaitForChild("PlayerGui", 20)
+        if not playerGui then
+            warn("PlayerGui not found, trying CoreGui")
+            gui.Parent = game:GetService("CoreGui")
+        else
+            gui.Parent = playerGui
+        end
+        warn("GUI parented to " .. (playerGui and "PlayerGui" or "CoreGui"))
 
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 80, 0, 80)
@@ -108,6 +125,8 @@ local function createGUI()
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
+        logo.Visible = true
+        logo.ZIndex = 100
         logo.Parent = gui
         
         local logoCorner = Instance.new("UICorner")
@@ -115,26 +134,24 @@ local function createGUI()
         logoCorner.Parent = logo
 
         frame = Instance.new("Frame")
-        if isMobile then
-            frame.Size = UDim2.new(0.95, 0, 0.85, 0)
-            frame.Position = UDim2.new(0.025, 0, 0.075, 0)
-        else
-            frame.Size = UDim2.new(0, 900, 0, 550)
-            frame.Position = UDim2.new(0.5, -450, 0.5, -275)
-        end
+        frame.Size = isMobile and UDim2.new(0.95, 0, 0.85, 0) or UDim2.new(0, 900, 0, 550)
+        frame.Position = isMobile and UDim2.new(0.025, 0, 0.075, 0) or UDim2.new(0.5, -450, 0.5, -275)
         frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         frame.BorderSizePixel = 0
-        frame.Visible = false
+        frame.Visible = true
+        frame.ZIndex = 50
         frame.Parent = gui
         
         local frameCorner = Instance.new("UICorner")
         frameCorner.CornerRadius = UDim.new(0, 12)
         frameCorner.Parent = frame
+
+        warn("GUI and Frame created")
     end)
     if not success then
         warn("createGUI error: " .. errorMsg)
-        notify("⚠️ Failed to create GUI", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
+        notify("⚠️ Failed to create GUI: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        task.wait(1)
         createGUI()
     end
 end
@@ -190,183 +207,225 @@ end
 
 -- Tab system
 local function createTabSystem()
-    local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = frame
-    
-    local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 12)
-    titleCorner.Parent = titleBar
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0.7, 0, 1, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "🚀 Super Tool Mobile"
-    title.TextColor3 = Color3.new(1, 1, 1)
-    title.TextScaled = true
-    title.Font = Enum.Font.GothamBold
-    title.Parent = titleBar
-    
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -35, 0, 5)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-    closeBtn.Text = "✕"
-    closeBtn.TextColor3 = Color3.new(1, 1, 1)
-    closeBtn.TextScaled = true
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Parent = titleBar
-    
-    local closeBtnCorner = Instance.new("UICorner")
-    closeBtnCorner.CornerRadius = UDim.new(0, 15)
-    closeBtnCorner.Parent = closeBtn
-    
-    closeBtn.Activated:Connect(function()
-        frame.Visible = false
+    local success, errorMsg = pcall(function()
+        local titleBar = Instance.new("Frame")
+        titleBar.Size = UDim2.new(1, 0, 0, 40)
+        titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        titleBar.BorderSizePixel = 0
+        titleBar.ZIndex = 60
+        titleBar.Parent = frame
+        
+        local titleCorner = Instance.new("UICorner")
+        titleCorner.CornerRadius = UDim.new(0, 12)
+        titleCorner.Parent = titleBar
+        
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(0.7, 0, 1, 0)
+        title.BackgroundTransparency = 1
+        title.Text = "🚀 Super Tool Krnl"
+        title.TextColor3 = Color3.new(1, 1, 1)
+        title.TextScaled = true
+        title.Font = Enum.Font.GothamBold
+        title.ZIndex = 61
+        title.Parent = titleBar
+        
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Size = UDim2.new(0, 30, 0, 30)
+        closeBtn.Position = UDim2.new(1, -35, 0, 5)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        closeBtn.Text = "✕"
+        closeBtn.TextColor3 = Color3.new(1, 1, 1)
+        closeBtn.TextScaled = true
+        closeBtn.Font = Enum.Font.GothamBold
+        closeBtn.BorderSizePixel = 0
+        closeBtn.ZIndex = 61
+        closeBtn.Parent = titleBar
+        
+        local closeBtnCorner = Instance.new("UICorner")
+        closeBtnCorner.CornerRadius = UDim.new(0, 15)
+        closeBtnCorner.Parent = closeBtn
+        
+        closeBtn.Activated:Connect(function()
+            frame.Visible = false
+            notify("🖼️ GUI Closed", Color3.fromRGB(255, 100, 100))
+        end)
+
+        local tabContainer = Instance.new("Frame")
+        tabContainer.Size = UDim2.new(0, 150, 1, -40)
+        tabContainer.Position = UDim2.new(0, 0, 0, 40)
+        tabContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        tabContainer.BorderSizePixel = 0
+        tabContainer.ZIndex = 60
+        tabContainer.Parent = frame
+
+        local tabLayout = Instance.new("UIListLayout")
+        tabLayout.FillDirection = Enum.FillDirection.Vertical
+        tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        tabLayout.Padding = UDim.new(0, 5)
+        tabLayout.Parent = tabContainer
+
+        local contentArea = Instance.new("Frame")
+        contentArea.Size = UDim2.new(1, -150, 1, -40)
+        contentArea.Position = UDim2.new(0, 150, 0, 40)
+        contentArea.BackgroundTransparency = 1
+        contentArea.BorderSizePixel = 0
+        contentArea.ZIndex = 60
+        contentArea.Parent = frame
+
+        warn("Tab system created")
+        return tabContainer, contentArea
     end)
-
-    local tabContainer = Instance.new("Frame")
-    tabContainer.Size = UDim2.new(0, 150, 1, -40)
-    tabContainer.Position = UDim2.new(0, 0, 0, 40)
-    tabContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    tabContainer.BorderSizePixel = 0
-    tabContainer.Parent = frame
-
-    local tabLayout = Instance.new("UIListLayout")
-    tabLayout.FillDirection = Enum.FillDirection.Vertical
-    tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    tabLayout.Padding = UDim.new(0, 5)
-    tabLayout.Parent = tabContainer
-
-    local contentArea = Instance.new("Frame")
-    contentArea.Size = UDim2.new(1, -150, 1, -40)
-    contentArea.Position = UDim2.new(0, 150, 0, 40)
-    contentArea.BackgroundTransparency = 1
-    contentArea.BorderSizePixel = 0
-    contentArea.Parent = frame
-
-    return tabContainer, contentArea
+    if not success then
+        warn("createTabSystem error: " .. errorMsg)
+        notify("⚠️ Failed to create tab system: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        return nil, nil
+    end
 end
 
 -- Create tab
 local function createTab(name, icon, tabContainer, contentArea)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -10, 0, 60)
-    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.Gotham
-    btn.Text = icon .. " " .. name
-    btn.TextScaled = true
-    btn.BorderSizePixel = 0
-    btn.Parent = tabContainer
-    
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 8)
-    btnCorner.Parent = btn
+    local success, errorMsg = pcall(function()
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -10, 0, 60)
+        btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        btn.TextColor3 = Color3.new(1, 1, 1)
+        btn.Font = Enum.Font.Gotham
+        btn.Text = icon .. " " .. name
+        btn.TextScaled = true
+        btn.BorderSizePixel = 0
+        btn.ZIndex = 61
+        btn.Parent = tabContainer
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 8)
+        btnCorner.Parent = btn
 
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.ScrollBarThickness = 8
-    page.BackgroundTransparency = 1
-    page.BorderSizePixel = 0
-    page.Visible = false
-    page.Parent = contentArea
+        local page = Instance.new("ScrollingFrame")
+        page.Size = UDim2.new(1, 0, 1, 0)
+        page.CanvasSize = UDim2.new(0, 0, 0, 0)
+        page.ScrollBarThickness = 8
+        page.BackgroundTransparency = 1
+        page.BorderSizePixel = 0
+        page.Visible = false
+        page.ZIndex = 61
+        page.Parent = contentArea
 
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 8)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = page
-    
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
-    end)
+        local layout = Instance.new("UIListLayout")
+        layout.Padding = UDim.new(0, 8)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Parent = page
+        
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
+        end)
 
-    tabPages[name] = {page = page, button = btn}
+        tabPages[name] = {page = page, button = btn}
 
-    btn.Activated:Connect(function()
-        for tabName, data in pairs(tabPages) do
-            data.page.Visible = (tabName == name)
-            data.button.BackgroundColor3 = (tabName == name) and Color3.fromRGB(50, 150, 255) or Color3.fromRGB(60, 60, 60)
+        btn.Activated:Connect(function()
+            for tabName, data in pairs(tabPages) do
+                data.page.Visible = (tabName == name)
+                data.button.BackgroundColor3 = (tabName == name) and Color3.fromRGB(50, 150, 255) or Color3.fromRGB(60, 60, 60)
+            end
+            currentTab = name
+            notify("📑 Switched to " .. name, Color3.fromRGB(0, 255, 0))
+        end)
+
+        if not currentTab then
+            btn.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+            page.Visible = true
+            currentTab = name
         end
-        currentTab = name
+
+        warn("Tab " .. name .. " created")
+        return page
     end)
-
-    if not currentTab then
-        btn.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
-        page.Visible = true
-        currentTab = name
+    if not success then
+        warn("createTab error: " .. errorMsg)
+        notify("⚠️ Failed to create tab " .. name .. ": " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        return nil
     end
-
-    return page
 end
 
 -- Create button
 local function createButton(text, callback, parent, color)
-    color = color or Color3.fromRGB(60, 60, 60)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 60, 0, 60)
-    btn.BackgroundColor3 = color
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.GothamSemibold
-    btn.Text = text
-    btn.TextScaled = true
-    btn.BorderSizePixel = 0
-    btn.Parent = parent
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = btn
-    
-    btn.Activated:Connect(function()
-        btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        task.wait(0.1)
+    local success, errorMsg = pcall(function()
+        color = color or Color3.fromRGB(60, 60, 60)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 60, 0, 60)
         btn.BackgroundColor3 = color
-        if callback then
-            local success, errorMsg = pcall(callback)
-            if not success then
-                warn("Button callback error: " .. errorMsg)
-                notify("⚠️ Error in button: " .. text, Color3.fromRGB(255, 100, 100))
+        btn.TextColor3 = Color3.new(1, 1, 1)
+        btn.Font = Enum.Font.GothamSemibold
+        btn.Text = text
+        btn.TextScaled = true
+        btn.BorderSizePixel = 0
+        btn.ZIndex = 61
+        btn.Parent = parent
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = btn
+        
+        btn.Activated:Connect(function()
+            btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            task.wait(0.1)
+            btn.BackgroundColor3 = color
+            if callback then
+                local success, errorMsg = pcall(callback)
+                if not success then
+                    warn("Button callback error: " .. errorMsg)
+                    notify("⚠️ Error in button: " .. text, Color3.fromRGB(255, 100, 100))
+                end
             end
-        end
+        end)
+        
+        warn("Button " .. text .. " created")
+        return btn
     end)
-    
-    return btn
+    if not success then
+        warn("createButton error: " .. errorMsg)
+        notify("⚠️ Failed to create button " .. text .. ": " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
 end
 
 -- Create text input
 local function createTextInput(placeholder, parent, callback)
-    local inputFrame = Instance.new("Frame")
-    inputFrame.Size = UDim2.new(1, -20, 0, 60)
-    inputFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    inputFrame.BorderSizePixel = 0
-    inputFrame.Parent = parent
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = inputFrame
-    
-    local textBox = Instance.new("TextBox")
-    textBox.Size = UDim2.new(1, -10, 1, -10)
-    textBox.Position = UDim2.new(0, 5, 0, 5)
-    textBox.BackgroundTransparency = 1
-    textBox.TextColor3 = Color3.new(1, 1, 1)
-    textBox.Font = Enum.Font.Gotham
-    textBox.TextScaled = true
-    textBox.PlaceholderText = placeholder
-    textBox.Text = ""
-    textBox.Parent = inputFrame
-    
-    textBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed and callback then
-            callback(textBox.Text)
-        end
+    local success, errorMsg = pcall(function()
+        local inputFrame = Instance.new("Frame")
+        inputFrame.Size = UDim2.new(1, -20, 0, 60)
+        inputFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        inputFrame.BorderSizePixel = 0
+        inputFrame.ZIndex = 61
+        inputFrame.Parent = parent
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = inputFrame
+        
+        local textBox = Instance.new("TextBox")
+        textBox.Size = UDim2.new(1, -10, 1, -10)
+        textBox.Position = UDim2.new(0, 5, 0, 5)
+        textBox.BackgroundTransparency = 1
+        textBox.TextColor3 = Color3.new(1, 1, 1)
+        textBox.Font = Enum.Font.Gotham
+        textBox.TextScaled = true
+        textBox.PlaceholderText = placeholder
+        textBox.Text = ""
+        textBox.ZIndex = 62
+        textBox.Parent = inputFrame
+        
+        textBox.FocusLost:Connect(function(enterPressed)
+            if enterPressed and callback then
+                callback(textBox.Text)
+            end
+        end)
+        
+        warn("TextInput " .. placeholder .. " created")
+        return inputFrame
     end)
-    
-    return inputFrame
+    if not success then
+        warn("createTextInput error: " .. errorMsg)
+        notify("⚠️ Failed to create text input: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
 end
 
 -- Flying system
@@ -611,6 +670,7 @@ local function setupPlayerSystem()
         playerListFrame.ScrollBarThickness = 8
         playerListFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         playerListFrame.BorderSizePixel = 0
+        playerListFrame.ZIndex = 61
         playerListFrame.Parent = parent
         
         local corner = Instance.new("UICorner")
@@ -626,6 +686,7 @@ local function setupPlayerSystem()
             playerListFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 20)
         end)
         
+        warn("Player list created")
         return playerListFrame
     end
     
@@ -644,6 +705,7 @@ local function setupPlayerSystem()
         subMenu.Position = UDim2.new(0, 5, 1, 5)
         subMenu.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         subMenu.BorderSizePixel = 0
+        subMenu.ZIndex = 61
         subMenu.Parent = parentButton
         
         local corner = Instance.new("UICorner")
@@ -731,6 +793,7 @@ local function setupPlayerSystem()
                 end
             end
         end
+        warn("Player list refreshed")
     end
     
     return createPlayerList, refreshPlayerList
@@ -869,6 +932,7 @@ local function setupCombat()
             fovCircle.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
             fovCircle.BackgroundTransparency = 0.8
             fovCircle.BorderSizePixel = 0
+            fovCircle.ZIndex = 61
             fovCircle.Parent = gui
             
             local corner = Instance.new("UICorner")
@@ -1184,186 +1248,198 @@ end
 -- Main setup
 local function setupUI()
     local success, errorMsg = pcall(function()
+        task.wait(0.5) -- Delay kecil untuk pastikan PlayerGui ready
         createGUI()
         makeDraggable(logo)
         
         logo.Activated:Connect(function()
             frame.Visible = not frame.Visible
-            if frame.Visible then
-                TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = frame.Size}):Play()
-            end
+            notify("🖼️ GUI Toggled " .. (frame.Visible and "ON" or "OFF"), Color3.fromRGB(frame.Visible and 0 or 255, frame.Visible and 255 or 100, frame.Visible and 0 or 100))
         end)
         
         local tabContainer, contentArea = createTabSystem()
+        if not tabContainer or not contentArea then
+            error("Failed to create tab system")
+        end
         
         -- Movement Tab
         local movementTab = createTab("Movement", "🚀", tabContainer, contentArea)
-        local startFly, stopFly, toggleImprovedFlying = setupFlying()
-        local toggleNoclip = setupNoclip()
-        
-        createButton("🚁 Fly", function()
-            if flying then stopFly() else startFly() end
-        end, movementTab, Color3.fromRGB(0, 150, 255))
-        
-        createButton("🛩️ Improve Fly", toggleImprovedFlying, movementTab, Color3.fromRGB(0, 150, 255))
-        
-        createButton("👻 Noclip", toggleNoclip, movementTab, Color3.fromRGB(0, 150, 255))
-        
-        createButton("⚡ Speed +", function()
-            flySpeed = flySpeed + 5
-            notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
-        end, movementTab, Color3.fromRGB(255, 255, 0))
-        
-        createButton("⚡ Speed -", function()
-            flySpeed = math.max(1, flySpeed - 5)
-            notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
-        end, movementTab, Color3.fromRGB(255, 255, 0))
-        
-        createButton("🏃 Sprint", function()
-            if humanoid then
-                humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 50 or 16
-                notify("Speed: " .. humanoid.WalkSpeed, Color3.fromRGB(255, 255, 0))
-            end
-        end, movementTab, Color3.fromRGB(255, 255, 0))
-        
-        createButton("🦘 Jump", function()
-            if humanoid then
-                humanoid.JumpPower = humanoid.JumpPower == 50 and 120 or 50
-                notify("Jump Power: " .. humanoid.JumpPower, Color3.fromRGB(255, 255, 0))
-            end
-        end, movementTab, Color3.fromRGB(255, 255, 0))
-        
-        createButton("🌊 Water Walk", function()
-            local walkOnWater = not workspace.Terrain.ReadVoxels
-            for _, part in pairs(workspace:GetPartsByMaterial(Enum.Material.Water)) do
-                part.CanCollide = walkOnWater
-            end
-            notify("Walk on water: " .. (walkOnWater and "ON" or "OFF"), Color3.fromRGB(0, 150, 255))
-        end, movementTab, Color3.fromRGB(0, 150, 255))
-        
-        createButton("🚀 Rocket", function()
-            if hr then
-                local rocket = Instance.new("BodyVelocity")
-                rocket.MaxForce = Vector3.new(4000, 4000, 4000)
-                rocket.Velocity = Vector3.new(0, 100, 0)
-                rocket.Parent = hr
-                task.wait(0.5)
-                rocket:Destroy()
-                notify("🚀 ROCKET JUMP!", Color3.fromRGB(255, 100, 0))
-            end
-        end, movementTab, Color3.fromRGB(255, 100, 0))
-        
-        createButton("🌪️ Spin", function()
-            if hr then
-                local spin = Instance.new("BodyAngularVelocity")
-                spin.MaxTorque = Vector3.new(0, 4000, 0)
-                spin.AngularVelocity = Vector3.new(0, 50, 0)
-                spin.Parent = hr
-                task.wait(2)
-                spin:Destroy()
-                notify("🌪️ Spin complete!", Color3.fromRGB(255, 255, 0))
-            end
-        end, movementTab, Color3.fromRGB(255, 255, 0))
+        if movementTab then
+            local startFly, stopFly, toggleImprovedFlying = setupFlying()
+            local toggleNoclip = setupNoclip()
+            
+            createButton("🚁 Fly", function()
+                if flying then stopFly() else startFly() end
+            end, movementTab, Color3.fromRGB(0, 150, 255))
+            
+            createButton("🛩️ Improve Fly", toggleImprovedFlying, movementTab, Color3.fromRGB(0, 150, 255))
+            
+            createButton("👻 Noclip", toggleNoclip, movementTab, Color3.fromRGB(0, 150, 255))
+            
+            createButton("⚡ Speed +", function()
+                flySpeed = flySpeed + 5
+                notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
+            end, movementTab, Color3.fromRGB(255, 255, 0))
+            
+            createButton("⚡ Speed -", function()
+                flySpeed = math.max(1, flySpeed - 5)
+                notify("Fly Speed: " .. flySpeed, Color3.fromRGB(255, 255, 0))
+            end, movementTab, Color3.fromRGB(255, 255, 0))
+            
+            createButton("🏃 Sprint", function()
+                if humanoid then
+                    humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 50 or 16
+                    notify("Speed: " .. humanoid.WalkSpeed, Color3.fromRGB(255, 255, 0))
+                end
+            end, movementTab, Color3.fromRGB(255, 255, 0))
+            
+            createButton("🦘 Jump", function()
+                if humanoid then
+                    humanoid.JumpPower = humanoid.JumpPower == 50 and 120 or 50
+                    notify("Jump Power: " .. humanoid.JumpPower, Color3.fromRGB(255, 255, 0))
+                end
+            end, movementTab, Color3.fromRGB(255, 255, 0))
+            
+            createButton("🌊 Water Walk", function()
+                local walkOnWater = not workspace.Terrain.ReadVoxels
+                for _, part in pairs(workspace:GetPartsByMaterial(Enum.Material.Water)) do
+                    part.CanCollide = walkOnWater
+                end
+                notify("Walk on water: " .. (walkOnWater and "ON" or "OFF"), Color3.fromRGB(0, 150, 255))
+            end, movementTab, Color3.fromRGB(0, 150, 255))
+            
+            createButton("🚀 Rocket", function()
+                if hr then
+                    local rocket = Instance.new("BodyVelocity")
+                    rocket.MaxForce = Vector3.new(4000, 4000, 4000)
+                    rocket.Velocity = Vector3.new(0, 100, 0)
+                    rocket.Parent = hr
+                    task.wait(0.5)
+                    rocket:Destroy()
+                    notify("🚀 ROCKET JUMP!", Color3.fromRGB(255, 100, 0))
+                end
+            end, movementTab, Color3.fromRGB(255, 100, 0))
+            
+            createButton("🌪️ Spin", function()
+                if hr then
+                    local spin = Instance.new("BodyAngularVelocity")
+                    spin.MaxTorque = Vector3.new(0, 4000, 0)
+                    spin.AngularVelocity = Vector3.new(0, 50, 0)
+                    spin.Parent = hr
+                    task.wait(2)
+                    spin:Destroy()
+                    notify("🌪️ Spin complete!", Color3.fromRGB(255, 255, 0))
+                end
+            end, movementTab, Color3.fromRGB(255, 255, 0))
+        end
         
         -- Combat Tab
         local combatTab = createTab("Combat", "🎯", tabContainer, contentArea)
-        local toggleAimbot, toggleAimbullet, toggleESP, toggleFOV, setTargetPart, adjustAimbotSpeed, adjustAimbulletSpeed, adjustBulletSpeed, toggleIgnoreTeam = setupCombat()
-        
-        createButton("🎯 Aimbot", toggleAimbot, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("🔫 Aimbullet", toggleAimbullet, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("👁️ ESP", toggleESP, combatTab, Color3.fromRGB(255, 0, 255))
-        createButton("🔲 FOV", toggleFOV, combatTab, Color3.fromRGB(0, 255, 255))
-        createButton("👥 Ignore Team", toggleIgnoreTeam, combatTab, Color3.fromRGB(0, 255, 0))
-        
-        createButton("🎯 Head", function() setTargetPart("Head") end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("🎯 Body", function() setTargetPart("Torso") end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("🎯 Legs", function() setTargetPart("LeftLeg") end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("🎯 Random", function() setTargetPart("Random") end, combatTab, Color3.fromRGB(255, 0, 0))
-        
-        createButton("⚡ Aim +", function() adjustAimbotSpeed(0.1) end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("⚡ Aim -", function() adjustAimbotSpeed(-0.1) end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("🔫 Bullet +", function() adjustAimbulletSpeed(10) end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("🔫 Bullet -", function() adjustAimbulletSpeed(-10) end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("💨 Speed +", function() adjustBulletSpeed(10) end, combatTab, Color3.fromRGB(255, 0, 0))
-        createButton("💨 Speed -", function() adjustBulletSpeed(-10) end, combatTab, Color3.fromRGB(255, 0, 0))
+        if combatTab then
+            local toggleAimbot, toggleAimbullet, toggleESP, toggleFOV, setTargetPart, adjustAimbotSpeed, adjustAimbulletSpeed, adjustBulletSpeed, toggleIgnoreTeam = setupCombat()
+            
+            createButton("🎯 Aimbot", toggleAimbot, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("🔫 Aimbullet", toggleAimbullet, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("👁️ ESP", toggleESP, combatTab, Color3.fromRGB(255, 0, 255))
+            createButton("🔲 FOV", toggleFOV, combatTab, Color3.fromRGB(0, 255, 255))
+            createButton("👥 Ignore Team", toggleIgnoreTeam, combatTab, Color3.fromRGB(0, 255, 0))
+            
+            createButton("🎯 Head", function() setTargetPart("Head") end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("🎯 Body", function() setTargetPart("Torso") end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("🎯 Legs", function() setTargetPart("LeftLeg") end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("🎯 Random", function() setTargetPart("Random") end, combatTab, Color3.fromRGB(255, 0, 0))
+            
+            createButton("⚡ Aim +", function() adjustAimbotSpeed(0.1) end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("⚡ Aim -", function() adjustAimbotSpeed(-0.1) end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("🔫 Bullet +", function() adjustAimbulletSpeed(10) end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("🔫 Bullet -", function() adjustAimbulletSpeed(-10) end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("💨 Speed +", function() adjustBulletSpeed(10) end, combatTab, Color3.fromRGB(255, 0, 0))
+            createButton("💨 Speed -", function() adjustBulletSpeed(-10) end, combatTab, Color3.fromRGB(255, 0, 0))
+        end
         
         -- Player Tab
         local playerTab = createTab("Player", "🎮", tabContainer, contentArea)
-        local createPlayerList, refreshPlayerList = setupPlayerSystem()
-        
-        createButton("🔄 Refresh", refreshPlayerList, playerTab, Color3.fromRGB(0, 150, 255))
-        
-        local playerListFrame = createPlayerList(playerTab)
+        if playerTab then
+            local createPlayerList, refreshPlayerList = setupPlayerSystem()
+            
+            createButton("🔄 Refresh", refreshPlayerList, playerTab, Color3.fromRGB(0, 150, 255))
+            
+            local playerListFrame = createPlayerList(playerTab)
+            refreshPlayerList()
+        end
         
         -- Utility Tab
         local utilityTab = createTab("Utility", "🛠️", tabContainer, contentArea)
-        local toggleAutoHeal = setupAutoHeal()
-        local toggleGodMode = setupGodMode()
-        local toggleNoFallDamage = setupNoFallDamage()
-        local toggleAntiRagdoll = setupAntiRagdoll()
-        local savePosition, loadPosition = setupPositions()
-        local toggleTrajectory, startRecordingMacro, stopRecordingMacro, playMacro, stopPlayingMacro, toggleAutoPlay = setupTrajectoryAndMacro()
+        if utilityTab then
+            local toggleAutoHeal = setupAutoHeal()
+            local toggleGodMode = setupGodMode()
+            local toggleNoFallDamage = setupNoFallDamage()
+            local toggleAntiRagdoll = setupAntiRagdoll()
+            local savePosition, loadPosition = setupPositions()
+            local toggleTrajectory, startRecordingMacro, stopRecordingMacro, playMacro, stopPlayingMacro, toggleAutoPlay = setupTrajectoryAndMacro()
 
-        createButton("💚 Heal", toggleAutoHeal, utilityTab, Color3.fromRGB(0, 255, 0))
-        createButton("⚡ God", toggleGodMode, utilityTab, Color3.fromRGB(255, 215, 0))
-        createButton("🛡️ No Fall", toggleNoFallDamage, utilityTab, Color3.fromRGB(0, 255, 0))
-        createButton("🛡️ Anti Ragdoll", toggleAntiRagdoll, utilityTab, Color3.fromRGB(0, 255, 0))
-        
-        createButton("📍 Save 1", function() savePosition("pos1") end, utilityTab, Color3.fromRGB(0, 255, 0))
-        createButton("📍 Load 1", function() loadPosition("pos1") end, utilityTab, Color3.fromRGB(0, 255, 255))
-        createButton("📍 Save 2", function() savePosition("pos2") end, utilityTab, Color3.fromRGB(0, 255, 0))
-        createButton("📍 Load 2", function() loadPosition("pos2") end, utilityTab, Color3.fromRGB(0, 255, 255))
-        createButton("🏠 Spawn", function()
-            if hr then
-                hr.CFrame = CFrame.new(0, 50, 0)
-                notify("Teleported to spawn", Color3.fromRGB(0, 255, 255))
-            end
-        end, utilityTab, Color3.fromRGB(0, 255, 255))
-        
-        createButton("📏 Trajectory", toggleTrajectory, utilityTab, Color3.fromRGB(255, 0, 0))
-        createButton("🎥 Record", startRecordingMacro, utilityTab, Color3.fromRGB(0, 255, 0))
-        createButton("⏹️ Stop Rec", stopRecordingMacro, utilityTab, Color3.fromRGB(255, 100, 100))
-        createButton("▶️ Play", playMacro, utilityTab, Color3.fromRGB(0, 255, 255))
-        createButton("🚫 Stop Macro", stopPlayingMacro, utilityTab, Color3.fromRGB(255, 100, 100))
-        createButton("🔄 AutoPlay", toggleAutoPlay, utilityTab, Color3.fromRGB(0, 150, 255))
+            createButton("💚 Heal", toggleAutoHeal, utilityTab, Color3.fromRGB(0, 255, 0))
+            createButton("⚡ God", toggleGodMode, utilityTab, Color3.fromRGB(255, 215, 0))
+            createButton("🛡️ No Fall", toggleNoFallDamage, utilityTab, Color3.fromRGB(0, 255, 0))
+            createButton("🛡️ Anti Ragdoll", toggleAntiRagdoll, utilityTab, Color3.fromRGB(0, 255, 0))
+            
+            createButton("📍 Save 1", function() savePosition("pos1") end, utilityTab, Color3.fromRGB(0, 255, 0))
+            createButton("📍 Load 1", function() loadPosition("pos1") end, utilityTab, Color3.fromRGB(0, 255, 255))
+            createButton("📍 Save 2", function() savePosition("pos2") end, utilityTab, Color3.fromRGB(0, 255, 0))
+            createButton("📍 Load 2", function() loadPosition("pos2") end, utilityTab, Color3.fromRGB(0, 255, 255))
+            createButton("🏠 Spawn", function()
+                if hr then
+                    hr.CFrame = CFrame.new(0, 50, 0)
+                    notify("Teleported to spawn", Color3.fromRGB(0, 255, 255))
+                end
+            end, utilityTab, Color3.fromRGB(0, 255, 255))
+            
+            createButton("📏 Trajectory", toggleTrajectory, utilityTab, Color3.fromRGB(255, 0, 0))
+            createButton("🎥 Record", startRecordingMacro, utilityTab, Color3.fromRGB(0, 255, 0))
+            createButton("⏹️ Stop Rec", stopRecordingMacro, utilityTab, Color3.fromRGB(255, 100, 100))
+            createButton("▶️ Play", playMacro, utilityTab, Color3.fromRGB(0, 255, 255))
+            createButton("🚫 Stop Macro", stopPlayingMacro, utilityTab, Color3.fromRGB(255, 100, 100))
+            createButton("🔄 AutoPlay", toggleAutoPlay, utilityTab, Color3.fromRGB(0, 150, 255))
+        end
         
         -- Settings Tab
         local settingsTab = createTab("Settings", "⚙️", tabContainer, contentArea)
-        local toggleHideNick, setCustomNick, toggleRandomNick = setupNickname()
-        local toggleAntiSpectate, toggleAntiReport = setupAntiFeatures()
-        
-        createButton("🔄 Reset", function()
-            if humanoid then
-                humanoid.Health = 0
-                notify("Character reset", Color3.fromRGB(255, 100, 100))
-            end
-        end, settingsTab, Color3.fromRGB(255, 100, 100))
-        
-        createButton("🧹 Clean", function()
-            for _, obj in pairs(workspace:GetChildren()) do
-                if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj.Name ~= "Terrain" then
-                    obj:Destroy()
+        if settingsTab then
+            local toggleHideNick, setCustomNick, toggleRandomNick = setupNickname()
+            local toggleAntiSpectate, toggleAntiReport = setupAntiFeatures()
+            
+            createButton("🔄 Reset", function()
+                if humanoid then
+                    humanoid.Health = 0
+                    notify("Character reset", Color3.fromRGB(255, 100, 100))
                 end
-            end
-            notify("Workspace cleaned", Color3.fromRGB(0, 255, 0))
-        end, settingsTab, Color3.fromRGB(0, 255, 0))
-        
-        createButton("📱 Optimize", function()
-            settings().Rendering.QualityLevel = 1
-            notify("Optimized for mobile", Color3.fromRGB(0, 255, 0))
-        end, settingsTab, Color3.fromRGB(0, 255, 0))
-        
-        createButton("🕵️ Hide Nick", toggleHideNick, settingsTab, Color3.fromRGB(0, 255, 0))
-        createButton("🕵️ Random Nick", toggleRandomNick, settingsTab, Color3.fromRGB(0, 255, 0))
-        
-        createTextInput("Enter Custom Nick", settingsTab, setCustomNick)
-        
-        createButton("🕵️ Anti Spectate", toggleAntiSpectate, settingsTab, Color3.fromRGB(0, 255, 0))
-        createButton("🚫 Anti Report", toggleAntiReport, settingsTab, Color3.fromRGB(0, 255, 0))
+            end, settingsTab, Color3.fromRGB(255, 100, 100))
+            
+            createButton("🧹 Clean", function()
+                for _, obj in pairs(workspace:GetChildren()) do
+                    if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) and obj.Name ~= "Terrain" then
+                        obj:Destroy()
+                    end
+                end
+                notify("Workspace cleaned", Color3.fromRGB(0, 255, 0))
+            end, settingsTab, Color3.fromRGB(0, 255, 0))
+            
+            createButton("📱 Optimize", function()
+                settings().Rendering.QualityLevel = 1
+                notify("Optimized for mobile", Color3.fromRGB(0, 255, 0))
+            end, settingsTab, Color3.fromRGB(0, 255, 0))
+            
+            createButton("🕵️ Hide Nick", toggleHideNick, settingsTab, Color3.fromRGB(0, 255, 0))
+            createButton("🕵️ Random Nick", toggleRandomNick, settingsTab, Color3.fromRGB(0, 255, 0))
+            
+            createTextInput("Enter Custom Nick", settingsTab, setCustomNick)
+            
+            createButton("🕵️ Anti Spectate", toggleAntiSpectate, settingsTab, Color3.fromRGB(0, 255, 0))
+            createButton("🚫 Anti Report", toggleAntiReport, settingsTab, Color3.fromRGB(0, 255, 0))
+        end
         
         -- Initialize
         initChar()
-        refreshPlayerList()
         
         Players.PlayerAdded:Connect(function()
             task.wait(0.5)
@@ -1378,8 +1454,8 @@ local function setupUI()
     end)
     if not success then
         warn("setupUI error: " .. errorMsg)
-        notify("⚠️ Failed to setup UI", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
+        notify("⚠️ Failed to setup UI: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        task.wait(1)
         setupUI()
     end
 end
@@ -1395,6 +1471,7 @@ end
 -- Initialize
 local function init()
     local success, errorMsg = pcall(function()
+        task.wait(0.5) -- Delay untuk pastikan Krnl inject
         setupUI()
         player.CharacterAdded:Connect(function()
             task.wait(1)
@@ -1403,11 +1480,19 @@ local function init()
         if player.Character then
             initChar()
         end
+        if gui and frame then
+            gui.Enabled = true
+            frame.Visible = true
+            warn("GUI and Frame initialized, should be visible")
+            notify("🖼️ Super Tool GUI Loaded", Color3.fromRGB(0, 255, 0))
+        else
+            error("GUI or Frame not initialized")
+        end
     end)
     if not success then
         warn("init error: " .. errorMsg)
-        notify("⚠️ Failed to initialize", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
+        notify("⚠️ Failed to initialize: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        task.wait(1)
         init()
     end
 end
