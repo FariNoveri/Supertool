@@ -1,6 +1,3 @@
--- NoCombatGUI_Krnl.lua - GUI Minimal tanpa Combat untuk Krnl Android
--- Fokus logo dan frame muncul, fitur lain ditunda
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -10,7 +7,6 @@ local camera = workspace.CurrentCamera
 local humanoid, hr, char
 local gui, frame, logo
 
--- Feature states (ditunda sampai GUI muncul)
 local flying, noclip, autoHeal, noFall, godMode = false, false, false, false, false
 local flySpeed = 16
 local savedPositions = {}
@@ -29,57 +25,53 @@ local macroActions = {}
 local macroNoclip = false
 local autoPlayOnRespawn = false
 
--- Mobile detection
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
--- Notification system
 local function notify(message, color)
     local success, errorMsg = pcall(function()
         if not gui then
-            warn("Notify failed: GUI not initialized")
+            print("Notify failed: GUI not initialized")
             return
         end
         local notif = Instance.new("TextLabel")
-        notif.Size = UDim2.new(0, 120, 0, 25)
-        notif.Position = UDim2.new(0.5, -60, 0, 5)
+        notif.Size = UDim2.new(0, 100, 0, 20)
+        notif.Position = UDim2.new(0.5, -50, 0, 5)
         notif.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        notif.BackgroundTransparency = 0.7
+        notif.BackgroundTransparency = 0.8
         notif.TextColor3 = color or Color3.fromRGB(0, 255, 0)
         notif.TextScaled = true
         notif.Font = Enum.Font.Gotham
         notif.Text = message
         notif.BorderSizePixel = 0
-        notif.ZIndex = 3
+        notif.ZIndex = 2
         notif.Parent = gui
         task.wait(2)
         notif:Destroy()
     end)
     if not success then
-        warn("Notify error: " .. tostring(errorMsg))
+        print("Notify error: " .. tostring(errorMsg))
     end
 end
 
--- Initialize character
 local function initChar()
     local success, errorMsg = pcall(function()
-        task.wait(15) -- Delay ekstra panjang
+        task.wait(20)
         char = player.Character or player.CharacterAdded:Wait()
-        humanoid = char:WaitForChild("Humanoid", 40)
-        hr = char:WaitForChild("HumanoidRootPart", 40)
+        humanoid = char:WaitForChild("Humanoid", 50)
+        hr = char:WaitForChild("HumanoidRootPart", 50)
         if not humanoid or not hr then
             error("Failed to find Humanoid or HumanoidRootPart")
         end
-        warn("Character initialized")
+        print("Character initialized")
     end)
     if not success then
-        warn("initChar error: " .. tostring(errorMsg))
-        notify("⚠️ Init character failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(15)
+        print("initChar error: " .. tostring(errorMsg))
+        notify("⚠️ Init char failed, retrying...", Color3.fromRGB(255, 100, 100))
+        task.wait(20)
         initChar()
     end
 end
 
--- Create minimal GUI
 local function createGUI()
     local success, errorMsg = pcall(function()
         if gui then
@@ -88,94 +80,108 @@ local function createGUI()
         end
 
         gui = Instance.new("ScreenGui")
-        gui.Name = "NoCombatGUI_Krnl"
+        gui.Name = "SimpleUILibrary_Krnl"
         gui.ResetOnSpawn = false
         gui.IgnoreGuiInset = true
         gui.Enabled = true
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
         local coreGui = game:GetService("CoreGui")
-        local playerGui = player:WaitForChild("PlayerGui", 40)
-        gui.Parent = coreGui
-        task.wait(3)
-        if playerGui then
-            gui.Parent = playerGui
+        local playerGui = player:WaitForChild("PlayerGui", 50)
+        local parentAttempts = 0
+        local function tryParent()
+            if parentAttempts >= 3 then
+                print("Parenting failed after 3 attempts")
+                notify("⚠️ GUI parenting failed", Color3.fromRGB(255, 100, 100))
+                return
+            end
+            gui.Parent = coreGui
+            task.wait(5)
+            if playerGui then
+                gui.Parent = playerGui
+            end
+            parentAttempts = parentAttempts + 1
+            if not gui.Parent then
+                print("Parenting failed, retrying attempt " .. parentAttempts)
+                tryParent()
+            else
+                print("GUI parented to " .. (gui.Parent == playerGui and "PlayerGui" or "CoreGui"))
+            end
         end
-        warn("GUI parented to " .. (gui.Parent == playerGui and "PlayerGui" or "CoreGui"))
+        tryParent()
 
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 40, 0, 40)
+        logo.Size = UDim2.new(0, 30, 0, 30)
         logo.Position = UDim2.new(0, 5, 0, 5)
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
-        logo.ZIndex = 3
+        logo.ZIndex = 2
         logo.Parent = gui
-        warn("Logo created")
+        print("Logo created")
 
         frame = Instance.new("Frame")
-        frame.Size = isMobile and UDim2.new(0.8, 0, 0.6, 0) or UDim2.new(0, 200, 0, 150)
-        frame.Position = isMobile and UDim2.new(0.1, 0, 0.2, 0) or UDim2.new(0.5, -100, 0.5, -75)
-        frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        frame.Size = isMobile and UDim2.new(0.8, 0, 0.5, 0) or UDim2.new(0, 180, 0, 120)
+        frame.Position = isMobile and UDim2.new(0.1, 0, 0.25, 0) or UDim2.new(0.5, -90, 0.5, -60)
+        frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         frame.BorderSizePixel = 0
         frame.Visible = false
-        frame.ZIndex = 3
+        frame.ZIndex = 2
         frame.Parent = gui
-        warn("Frame created")
+        print("Frame created")
 
         local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, 0, 0, 25)
-        title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        title.Size = UDim2.new(1, 0, 0, 20)
+        title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         title.TextColor3 = Color3.new(1, 1, 1)
-        title.Text = "🚀 Krnl Tool"
+        title.Text = "Krnl UI"
         title.TextScaled = true
         title.Font = Enum.Font.Gotham
-        title.ZIndex = 3
+        title.ZIndex = 2
         title.Parent = frame
-        warn("Title created")
+        print("Title created")
 
         local closeBtn = Instance.new("TextButton")
-        closeBtn.Size = UDim2.new(0, 20, 0, 20)
-        closeBtn.Position = UDim2.new(1, -25, 0, 5)
+        closeBtn.Size = UDim2.new(0, 15, 0, 15)
+        closeBtn.Position = UDim2.new(1, -20, 0, 5)
         closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
         closeBtn.Text = "✕"
         closeBtn.TextColor3 = Color3.new(1, 1, 1)
         closeBtn.TextScaled = true
         closeBtn.Font = Enum.Font.Gotham
         closeBtn.BorderSizePixel = 0
-        closeBtn.ZIndex = 3
+        closeBtn.ZIndex = 2
         closeBtn.Parent = frame
         closeBtn.Activated:Connect(function()
             frame.Visible = false
-            notify("🖼️ GUI Closed")
+            notify("🖼️ UI Closed")
         end)
-        warn("Close button created")
+        print("Close button created")
 
         local testBtn = Instance.new("TextButton")
-        testBtn.Size = UDim2.new(1, -10, 0, 30)
-        testBtn.Position = UDim2.new(0, 5, 0, 30)
-        testBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        testBtn.Size = UDim2.new(1, -10, 0, 25)
+        testBtn.Position = UDim2.new(0, 5, 0, 25)
+        testBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         testBtn.TextColor3 = Color3.new(1, 1, 1)
-        testBtn.Text = "Test GUI"
+        testBtn.Text = "Test UI"
         testBtn.TextScaled = true
         testBtn.Font = Enum.Font.Gotham
         testBtn.BorderSizePixel = 0
-        testBtn.ZIndex = 3
+        testBtn.ZIndex = 2
         testBtn.Parent = frame
         testBtn.Activated:Connect(function()
-            notify("✅ GUI Works!")
+            notify("✅ UI Works!")
         end)
-        warn("Test button created")
+        print("Test button created")
     end)
     if not success then
-        warn("createGUI error: " .. tostring(errorMsg))
-        notify("⚠️ GUI creation failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(15)
+        print("createGUI error: " .. tostring(errorMsg))
+        notify("⚠️ UI creation failed, retrying...", Color3.fromRGB(255, 100, 100))
+        task.wait(20)
         createGUI()
     end
 end
 
--- Touch drag system
 local function makeDraggable(element)
     local dragging = false
     local dragStart = nil
@@ -220,30 +226,23 @@ local function makeDraggable(element)
     end
 end
 
--- Setup UI
 local function setupUI()
     local success, errorMsg = pcall(function()
-        task.wait(15) -- Delay super panjang
+        task.wait(20)
         createGUI()
         makeDraggable(logo)
         
         logo.Activated:Connect(function()
             frame.Visible = not frame.Visible
-            notify("🖼️ GUI " .. (frame.Visible and "ON" or "OFF"))
+            notify("🖼️ UI " .. (frame.Visible and "ON" or "OFF"))
         end)
         
         initChar()
     end)
     if not success then
-        warn("setupUI error: " .. tostring(errorMsg))
+        print("setupUI error: " .. tostring(errorMsg))
         notify("⚠️ UI setup failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(15)
+        task.wait(20)
         setupUI()
     end
 end
-
--- Start UI
-setupUI()
-notify("🚀 GUI Loaded")
-```
-
