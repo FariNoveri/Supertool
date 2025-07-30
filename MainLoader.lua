@@ -1,5 +1,5 @@
--- MainLoader.lua - Android Optimized with Fixed Macro and Trajectory
--- Dibuat oleh Fari Noveri - Full Android Touch Support + Beam-based Trajectory
+-- MainLoader.lua - Android Optimized with Fixed Macro Stop, Synced Flying, and Improved Player Interaction
+-- Dibuat oleh Fari Noveri - Full Android Touch Support + Straight-Line Trajectory + Fixed Macro Stop + Synced Flying + Improved Player UI
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -365,61 +365,72 @@ local function setupFlying()
         bodyVel.Parent = hr
         
         bodyGyro = Instance.new("BodyAngularVelocity")
-        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bodyGyro.MaxTorque = Vector3.new(0, math.huge, 0) -- Hanya rotasi di sumbu Y (yaw)
         bodyGyro.AngularVelocity = Vector3.new(0, 0, 0)
         bodyGyro.Parent = hr
         
         flying = true
-        notify("🚁 Flying Mode ON - Use joystick/camera to fly!", Color3.fromRGB(0, 255, 0))
+        notify("🚁 Flying Mode ON - Synced with joystick/camera!", Color3.fromRGB(0, 255, 0))
         
         connections.flyLoop = RunService.Heartbeat:Connect(function()
-            if not flying or not hr or not bodyVel or not humanoid or not camera then return end
+            if not flying or not hr or not bodyVel or not humanoid or not camera then 
+                print("Fly loop stopped: flying=", flying, "hr=", hr, "bodyVel=", bodyVel, "humanoid=", humanoid, "camera=", camera)
+                return 
+            end
             
             local moveVector = Vector3.new(0, 0, 0)
             local cam = camera.CFrame
-            local forward = cam.LookVector
-            local right = cam.RightVector
+            local forward = cam.LookVector.Unit
+            local right = cam.RightVector.Unit
+            local up = Vector3.new(0, 1, 0) -- Sumbu Y global untuk atas/bawah
             
             if improvedFlying then
                 local moveDir = humanoid.MoveDirection
                 if moveDir.Magnitude > 0 then
-                    moveVector = forward * moveDir.Z * flySpeed + right * moveDir.X * flySpeed
+                    moveVector = forward * -moveDir.Z * flySpeed + right * moveDir.X * flySpeed
+                    print("Improved fly: MoveDir=", moveDir, "MoveVector=", moveVector)
                 end
             else
                 if isMobile then
-                    local moveVec = humanoid.MoveDirection
-                    if moveVec.Magnitude > 0 then
-                        moveVector = (forward * moveVec.Z + right * moveVec.X).Unit * flySpeed
-                        moveVector = moveVector + Vector3.new(0, flySpeed * 0.3, 0)
-                    else
-                        moveVector = Vector3.new(0, flySpeed * 0.2, 0)
+                    local moveDir = humanoid.MoveDirection
+                    if moveDir.Magnitude > 0 then
+                        moveVector = forward * -moveDir.Z * flySpeed + right * moveDir.X * flySpeed
+                        -- Tambah kontrol atas/bawah untuk mobile
+                        if moveDir.Y > 0.5 then
+                            moveVector = moveVector + up * flySpeed
+                        elseif moveDir.Y < -0.5 then
+                            moveVector = moveVector - up * flySpeed
+                        end
+                        print("Mobile fly: MoveDir=", moveDir, "MoveVector=", moveVector)
                     end
                 else
-                    local up = cam.UpVector
                     if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                        moveVector = moveVector + forward
+                        moveVector = moveVector + forward * flySpeed
                     end
                     if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                        moveVector = moveVector - forward
+                        moveVector = moveVector - forward * flySpeed
                     end
                     if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                        moveVector = moveVector - right
+                        moveVector = moveVector - right * flySpeed
                     end
                     if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                        moveVector = moveVector + right
+                        moveVector = moveVector + right * flySpeed
                     end
                     if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                        moveVector = moveVector + up
+                        moveVector = moveVector + up * flySpeed
                     end
                     if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                        moveVector = moveVector - up
+                        moveVector = moveVector - up * flySpeed
                     end
-                    moveVector = moveVector * flySpeed
+                    print("PC fly: MoveVector=", moveVector)
                 end
             end
             
             bodyVel.Velocity = moveVector
-            bodyGyro.CFrame = cam
+            -- Selaraskan hanya rotasi Y (yaw) dengan kamera
+            local camYaw = cam.Rotation * CFrame.new(0, 0, 0) -- Ambil rotasi Y saja
+            bodyGyro.CFrame = CFrame.new(Vector3.new(0, 0, 0)) * CFrame.Angles(0, -math.atan2(cam.LookVector.X, cam.LookVector.Z), 0)
+            print("Camera yaw applied: CFrame=", bodyGyro.CFrame)
         end)
     end
     
@@ -429,11 +440,13 @@ local function setupFlying()
         if bodyGyro then bodyGyro:Destroy() end
         if connections.flyLoop then connections.flyLoop:Disconnect() end
         notify("🚁 Flying Mode OFF", Color3.fromRGB(255, 100, 100))
+        print("Flying stopped")
     end
     
     local function toggleImprovedFlying()
         improvedFlying = not improvedFlying
         notify("🛩️ Improved Flying: " .. (improvedFlying and "ON" or "OFF"), Color3.fromRGB(0, 255, improvedFlying and 0 or 100))
+        print("Improved flying toggled:", improvedFlying)
     end
     
     return startFly, stopFly, toggleImprovedFlying
@@ -579,6 +592,7 @@ end
 local function setupPlayerSystem()
     local playerListFrame
     local selectedPlayer = nil
+    local currentSubMenu = nil
     
     local function createPlayerList(parent)
         playerListFrame = Instance.new("ScrollingFrame")
@@ -608,66 +622,104 @@ local function setupPlayerSystem()
         return playerListFrame
     end
     
+    local function closeSubMenu()
+        if currentSubMenu then
+            currentSubMenu:Destroy()
+            currentSubMenu = nil
+            print("Sub-menu closed")
+        end
+    end
+    
+    local function createSubMenu(parentButton, targetPlayer)
+        closeSubMenu() -- Tutup sub-menu sebelumnya jika ada
+        
+        local subMenu = Instance.new("Frame")
+        subMenu.Size = UDim2.new(1, -10, 0, 120) -- Tinggi cukup untuk 3 tombol
+        subMenu.Position = UDim2.new(0, 5, 1, 5) -- Tepat di bawah tombol pemain
+        subMenu.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        subMenu.BorderSizePixel = 0
+        subMenu.Parent = parentButton
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = subMenu
+        
+        local layout = Instance.new("UIListLayout")
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 4)
+        layout.Parent = subMenu
+        
+        currentSubMenu = subMenu
+        
+        -- Tombol opsi
+        createButton("🔄 Teleport to " .. targetPlayer.Name, function()
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and hr then
+                hr.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+                notify("Teleported to " .. targetPlayer.Name, Color3.fromRGB(0, 255, 255))
+                print("Teleported to player: " .. targetPlayer.Name)
+            else
+                notify("⚠️ Cannot teleport: Target not ready", Color3.fromRGB(255, 100, 100))
+                print("Teleport failed: Target HRP not found")
+            end
+            closeSubMenu()
+        end, subMenu, Color3.fromRGB(0, 150, 255))
+        
+        createButton("🎯 Follow " .. targetPlayer.Name, function()
+            followTarget = targetPlayer
+            notify("Following " .. targetPlayer.Name, Color3.fromRGB(255, 165, 0))
+            print("Started following: " .. targetPlayer.Name)
+            if connections.followLoop then connections.followLoop:Disconnect() end
+            connections.followLoop = RunService.Heartbeat:Connect(function()
+                if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") and hr then
+                    hr.CFrame = followTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 5)
+                end
+            end)
+            closeSubMenu()
+        end, subMenu, Color3.fromRGB(255, 165, 0))
+        
+        createButton("🚫 Stop Follow", function()
+            followTarget = nil
+            if connections.followLoop then connections.followLoop:Disconnect() end
+            notify("Stopped following", Color3.fromRGB(255, 100, 100))
+            print("Stopped following")
+            closeSubMenu()
+        end, subMenu, Color3.fromRGB(255, 100, 100))
+        
+        createButton("❌ Cancel", function()
+            notify("Cancelled action for " .. targetPlayer.Name, Color3.fromRGB(255, 100, 100))
+            print("Cancelled action for: " .. targetPlayer.Name)
+            closeSubMenu()
+        end, subMenu, Color3.fromRGB(100, 100, 100))
+        
+        notify("📋 Options opened for " .. targetPlayer.Name, Color3.fromRGB(0, 255, 0))
+        print("Sub-menu created for: " .. targetPlayer.Name)
+    end
+    
     local function refreshPlayerList()
         if not playerListFrame then
             notify("⚠️ Player list frame not initialized", Color3.fromRGB(255, 100, 100))
+            print("Player list frame not initialized")
             return
         end
         
         for _, child in ipairs(playerListFrame:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
+            if child:IsA("TextButton") or child:IsA("Frame") then child:Destroy() end
         end
+        closeSubMenu() -- Pastikan sub-menu ditutup saat refresh
         
         local players = Players:GetPlayers()
         if #players <= 1 then
             createButton("⚠️ No other players found", function() end, playerListFrame, Color3.fromRGB(255, 100, 100))
             notify("⚠️ No other players found", Color3.fromRGB(255, 100, 100))
+            print("No other players found")
         else
             for _, p in ipairs(players) do
                 if p ~= player then
-                    createButton("🎮 " .. p.Name, function()
+                    local playerBtn = createButton("🎮 " .. p.Name, function()
                         selectedPlayer = p
-                        for _, child in ipairs(playerListFrame:GetChildren()) do
-                            if child:IsA("TextButton") and (child.Text:find("🔄") or child.Text:find("🧲") or child.Text:find("🎯") or child.Text:find("🚫")) then
-                                child:Destroy()
-                            end
-                        end
-                        
-                        createButton("🔄 Teleport to " .. p.Name, function()
-                            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
-                                hr.CFrame = p.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
-                                notify("Teleported to " .. p.Name, Color3.fromRGB(0, 255, 255))
-                            else
-                                notify("⚠️ Cannot teleport: Target not ready", Color3.fromRGB(255, 100, 100))
-                            end
-                        end, playerListFrame, Color3.fromRGB(0, 150, 255))
-                        
-                        createButton("🧲 Teleport " .. p.Name .. " to Me", function()
-                            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and hr then
-                                p.Character.HumanoidRootPart.CFrame = hr.CFrame + Vector3.new(0, 0, -5)
-                                notify("Teleported " .. p.Name .. " to you", Color3.fromRGB(255, 0, 255))
-                            else
-                                notify("⚠️ Cannot teleport: Target not ready", Color3.fromRGB(255, 100, 100))
-                            end
-                        end, playerListFrame, Color3.fromRGB(255, 0, 255))
-                        
-                        createButton("🎯 Follow " .. p.Name, function()
-                            followTarget = p
-                            notify("Following " .. p.Name, Color3.fromRGB(255, 165, 0))
-                            if connections.followLoop then connections.followLoop:Disconnect() end
-                            connections.followLoop = RunService.Heartbeat:Connect(function()
-                                if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") and hr then
-                                    hr.CFrame = followTarget.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 5)
-                                end
-                            end)
-                        end, playerListFrame, Color3.fromRGB(255, 165, 0))
-                        
-                        createButton("🚫 Stop Follow", function()
-                            followTarget = nil
-                            if connections.followLoop then connections.followLoop:Disconnect() end
-                            notify("Stopped following", Color3.fromRGB(255, 100, 100))
-                        end, playerListFrame, Color3.fromRGB(255, 100, 100))
+                        createSubMenu(playerBtn, p)
                     end, playerListFrame)
+                    print("Created button for player: " .. p.Name)
                 end
             end
             notify("🎮 Player list refreshed (" .. (#players - 1) .. " players)", Color3.fromRGB(0, 255, 0))
@@ -684,14 +736,11 @@ local function setupTrajectoryAndMacro()
     local macroRecording = false
     local macroPlaying = false
     local macroActions = {}
-    local trajectoryBeams = {} -- Ganti trajectoryParts jadi trajectoryBeams
-    local initialVelocity = 50
-    local gravity = 196.2
-    local maxPoints = 50
-    local timeStep = 0.05 -- Lebih kecil untuk garis yang lebih mulus
+    local trajectoryBeams = {}
+    local maxDistance = 50 -- Panjang maksimum garis lurus
     local autoPlayOnRespawn = false
-    local groundLevel = 0
     local moveSpeed = 16
+    local macroNoclip = false -- Flag untuk noclip otomatis saat macro
 
     local function clearTrajectory()
         for _, beam in ipairs(trajectoryBeams) do
@@ -711,82 +760,66 @@ local function setupTrajectoryAndMacro()
 
         -- Mulai dari depan karakter
         local startPos = hr.Position + camera.CFrame.LookVector * 2 + Vector3.new(0, 1, 0) -- 2 unit di depan, 1 unit di atas
-        local direction = camera.CFrame.LookVector * initialVelocity
-        local velocity = direction
-        local position = startPos
-        local points = {startPos} -- Simpan titik-titik untuk Beam
+        local direction = camera.CFrame.LookVector
+        local endPos = startPos + direction * maxDistance
 
-        print("Drawing trajectory: StartPos=" .. tostring(startPos) .. ", Direction=" .. tostring(direction))
+        print("Drawing trajectory: StartPos=" .. tostring(startPos) .. ", EndPos=" .. tostring(endPos) .. ", Direction=" .. tostring(direction))
 
-        for i = 1, maxPoints do
-            local t = i * timeStep
-            local newPos = position + velocity * timeStep + Vector3.new(0, -0.5 * gravity * timeStep^2, 0)
-            velocity = velocity + Vector3.new(0, -gravity * timeStep, 0)
-
-            -- Deteksi tabrakan
-            local ray = Ray.new(position, (newPos - position).Unit * (newPos - position).Magnitude)
-            local hit, hitPos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
-            if hit then
-                table.insert(points, hitPos)
-                print("Trajectory hit at: " .. tostring(hitPos))
-                break
-            end
-
-            table.insert(points, newPos)
-            position = newPos
+        -- Deteksi tabrakan
+        local ray = Ray.new(startPos, direction * maxDistance)
+        local hit, hitPos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
+        if hit then
+            endPos = hitPos
+            print("Trajectory hit at: " .. tostring(hitPos))
         end
 
         -- Buat garis menggunakan Beam
-        for i = 1, #points - 1 do
-            local attachment0 = Instance.new("Attachment")
-            attachment0.Position = points[i]
-            attachment0.Parent = workspace.Terrain
+        local attachment0 = Instance.new("Attachment")
+        attachment0.Position = startPos
+        attachment0.Parent = workspace.Terrain
 
-            local attachment1 = Instance.new("Attachment")
-            attachment1.Position = points[i + 1]
-            attachment1.Parent = workspace.Terrain
+        local attachment1 = Instance.new("Attachment")
+        attachment1.Position = endPos
+        attachment1.Parent = workspace.Terrain
 
-            local beam = Instance.new("Beam")
-            beam.Attachment0 = attachment0
-            beam.Attachment1 = attachment1
-            beam.Width0 = 0.2
-            beam.Width1 = 0.2
-            beam.LightEmission = 1
-            beam.LightInfluence = 0
-            beam.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-            beam.TextureMode = Enum.TextureMode.Stretch
-            beam.TextureSpeed = 0
+        local beam = Instance.new("Beam")
+        beam.Attachment0 = attachment0
+        beam.Attachment1 = attachment1
+        beam.Width0 = 0.2
+        beam.Width1 = 0.2
+        beam.LightEmission = 1
+        beam.LightInfluence = 0
+        beam.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+        beam.TextureMode = Enum.TextureMode.Stretch
+        beam.TextureSpeed = 0
 
-            -- Warna berdasarkan ketinggian
-            local height = points[i].Y - groundLevel
-            if height < 10 then
-                beam.Color = ColorSequence.new(Color3.fromRGB(0, 255, 0)) -- Hijau untuk rendah
-            elseif height < 50 then
-                beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0)) -- Kuning untuk sedang
-            else
-                beam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0)) -- Merah untuk tinggi
-            end
-
-            beam.Parent = workspace
-            table.insert(trajectoryBeams, beam)
-            table.insert(trajectoryBeams, attachment0)
-            table.insert(trajectoryBeams, attachment1)
+        -- Warna berdasarkan jarak
+        local distance = (endPos - startPos).Magnitude
+        if distance < 20 then
+            beam.Color = ColorSequence.new(Color3.fromRGB(0, 255, 0)) -- Hijau untuk dekat
+        elseif distance < 40 then
+            beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0)) -- Kuning untuk sedang
+        else
+            beam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0)) -- Merah untuk jauh
         end
+
+        beam.Parent = workspace
+        table.insert(trajectoryBeams, beam)
+        table.insert(trajectoryBeams, attachment0)
+        table.insert(trajectoryBeams, attachment1)
 
         -- Tanda akhir jalur
-        if #points > 1 then
-            local endPoint = Instance.new("Part")
-            endPoint.Size = Vector3.new(0.5, 0.5, 0.5)
-            endPoint.Position = points[#points]
-            endPoint.Anchored = true
-            endPoint.CanCollide = false
-            endPoint.BrickColor = BrickColor.new("Bright yellow")
-            endPoint.Material = Enum.Material.Neon
-            endPoint.Parent = workspace
-            table.insert(trajectoryBeams, endPoint)
-        end
+        local endPoint = Instance.new("Part")
+        endPoint.Size = Vector3.new(0.5, 0.5, 0.5)
+        endPoint.Position = endPos
+        endPoint.Anchored = true
+        endPoint.CanCollide = false
+        endPoint.BrickColor = BrickColor.new("Bright yellow")
+        endPoint.Material = Enum.Material.Neon
+        endPoint.Parent = workspace
+        table.insert(trajectoryBeams, endPoint)
 
-        print("Trajectory drawn with " .. #points .. " points")
+        print("Trajectory drawn: Distance=" .. distance)
     end
 
     local function toggleTrajectory()
@@ -847,7 +880,7 @@ local function setupTrajectoryAndMacro()
             return
         end
 
-        if humanoid:GetState() ~= Enum.HumanoidStateType.Running then
+        if humanoid:GetState() != Enum.HumanoidStateType.Running then
             humanoid:ChangeState(Enum.HumanoidStateType.Running)
             print("Forced Humanoid state to Running")
         end
@@ -855,6 +888,7 @@ local function setupTrajectoryAndMacro()
         if not noclip then
             local toggleNoclip = setupNoclip()
             toggleNoclip()
+            macroNoclip = true -- Tandai bahwa noclip diaktifkan oleh macro
             print("Enabled noclip for macro playback")
         end
 
@@ -918,6 +952,14 @@ local function setupTrajectoryAndMacro()
                 macroPlaying = false
                 if bodyVel then bodyVel:Destroy() end
                 if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
+                if macroNoclip then
+                    local toggleNoclip = setupNoclip()
+                    toggleNoclip()
+                    macroNoclip = false
+                end
+                if humanoid then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                end
                 notify("⏹️ Macro Finished", Color3.fromRGB(255, 100, 100))
                 print("Macro finished")
             end
@@ -926,14 +968,30 @@ local function setupTrajectoryAndMacro()
 
     local function stopPlayingMacro()
         macroPlaying = false
-        if connections.macroPlayLoop then connections.macroPlayLoop:Disconnect() end
-        for _, part in ipairs(workspace:GetChildren()) do
-            if part:IsA("BodyVelocity") and part.Parent == hr then
-                part:Destroy()
+        if connections.macroPlayLoop then
+            connections.macroPlayLoop:Disconnect()
+            connections.macroPlayLoop = nil
+        end
+        if hr then
+            for _, obj in pairs(hr:GetChildren()) do
+                if obj:IsA("BodyVelocity") then
+                    obj:Destroy()
+                    print("Removed BodyVelocity from HumanoidRootPart")
+                end
             end
         end
-        notify("⏹️ Macro Stopped", Color3.fromRGB(255, 100, 100))
-        print("Macro stopped manually")
+        if macroNoclip then
+            local toggleNoclip = setupNoclip()
+            toggleNoclip()
+            macroNoclip = false
+            print("Disabled macro-induced noclip")
+        end
+        if humanoid then
+            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            print("Reset Humanoid state to Running")
+        end
+        notify("⏹️ Macro Stopped, Character Control Restored", Color3.fromRGB(255, 100, 100))
+        print("Macro stopped manually, character control restored")
     end
 
     local function toggleAutoPlay()
