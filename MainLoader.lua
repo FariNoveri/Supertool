@@ -1,5 +1,5 @@
--- MainLoader.lua - Android Optimized Complete Version with Fixed Player, Trajectory, and Macro
--- Dibuat oleh Fari Noveri - Full Android Touch Support + All Features
+-- MainLoader.lua - Android Optimized with Robust GUI Initialization
+-- Dibuat oleh Fari Noveri - Full Android Touch Support + Fixed Features
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -27,30 +27,14 @@ local currentTab = nil
 -- Mobile detection
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
--- Initialize character
-local function initChar()
-    local success, errorMsg = pcall(function()
-        char = player.Character or player.CharacterAdded:Wait()
-        humanoid = char:WaitForChild("Humanoid", 5)
-        hr = char:WaitForChild("HumanoidRootPart", 5)
-        if not humanoid or not hr then
-            error("Failed to find Humanoid or HumanoidRootPart")
-        end
-    end)
-    if not success then
-        warn("initChar error: " .. errorMsg)
-        notify("⚠️ Failed to initialize character, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(1)
-        initChar() -- Retry if failed
-    else
-        notify("👤 Character initialized", Color3.fromRGB(0, 255, 0))
-    end
-end
-
 -- Notification system
 local function notify(message, color)
     color = color or Color3.fromRGB(0, 255, 0)
     local success, errorMsg = pcall(function()
+        if not gui then
+            print("Notify: GUI not available, fallback to print - " .. message)
+            return
+        end
         local notif = Instance.new("TextLabel")
         notif.Size = UDim2.new(0, 300, 0, 50)
         notif.Position = UDim2.new(0.5, -150, 0, 100)
@@ -78,28 +62,56 @@ local function notify(message, color)
     end
 end
 
+-- Initialize character
+local function initChar()
+    local success, errorMsg = pcall(function()
+        char = player.Character or player.CharacterAdded:Wait()
+        humanoid = char:WaitForChild("Humanoid", 10)
+        hr = char:WaitForChild("HumanoidRootPart", 10)
+        if not humanoid or not hr then
+            error("Failed to find Humanoid or HumanoidRootPart")
+        end
+    end)
+    if not success then
+        warn("initChar error: " .. errorMsg)
+        notify("⚠️ Failed to initialize character, retrying...", Color3.fromRGB(255, 100, 100))
+        task.wait(2)
+        initChar()
+    else
+        notify("👤 Character initialized", Color3.fromRGB(0, 255, 0))
+        print("Character initialized: Humanoid=" .. tostring(humanoid) .. ", HRP=" .. tostring(hr))
+    end
+end
+
 -- Create main GUI
 local function createGUI()
     local success, errorMsg = pcall(function()
+        print("Creating GUI...")
         gui = Instance.new("ScreenGui")
         gui.Name = "SuperToolUI_Mobile"
         gui.ResetOnSpawn = false
         gui.IgnoreGuiInset = true
         gui.Enabled = true
-        gui.Parent = player:WaitForChild("PlayerGui", 5)
+        local playerGui = player:WaitForChild("PlayerGui", 10)
+        if not playerGui then
+            error("PlayerGui not found")
+        end
+        gui.Parent = playerGui
+        print("ScreenGui created and parented to PlayerGui")
 
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 70, 0, 70)
-        logo.Position = UDim2.new(0, 20, 0, 20)
+        logo.Size = UDim2.new(0, 100, 0, 100) -- Ukuran lebih besar
+        logo.Position = UDim2.new(0.5, -50, 0.5, -50) -- Tengah layar untuk debug
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
-        logo.ImageTransparency = 0.2
+        logo.ImageTransparency = 0
         logo.Visible = true
         logo.Parent = gui
+        print("Logo created: Position=" .. tostring(logo.Position))
         
         local logoCorner = Instance.new("UICorner")
-        logoCorner.CornerRadius = UDim.new(0, 35)
+        logoCorner.CornerRadius = UDim.new(0, 50)
         logoCorner.Parent = logo
 
         frame = Instance.new("Frame")
@@ -114,6 +126,7 @@ local function createGUI()
         frame.BorderSizePixel = 0
         frame.Visible = false
         frame.Parent = gui
+        print("Frame created")
         
         local frameCorner = Instance.new("UICorner")
         frameCorner.CornerRadius = UDim.new(0, 12)
@@ -122,10 +135,11 @@ local function createGUI()
     if not success then
         warn("createGUI error: " .. errorMsg)
         notify("⚠️ Failed to create GUI, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(1)
+        task.wait(2)
         createGUI()
     else
         notify("🖼️ GUI Initialized", Color3.fromRGB(0, 255, 0))
+        print("GUI fully initialized")
     end
 end
 
@@ -335,7 +349,7 @@ local function createButton(text, callback, parent, color)
     return btn
 end
 
--- Improved Flying system (Analog + Freecam-like)
+-- Improved Flying system
 local function setupFlying()
     local bodyVel, bodyGyro
     
@@ -561,7 +575,7 @@ local function setupPositions()
     return savePosition, loadPosition
 end
 
--- Player interaction system (with teleport enhancements)
+-- Player interaction system
 local function setupPlayerSystem()
     local playerListFrame
     local selectedPlayer = nil
@@ -590,6 +604,7 @@ local function setupPlayerSystem()
         end)
         
         notify("🎮 Player list frame created", Color3.fromRGB(0, 255, 0))
+        print("Player list frame created")
         return playerListFrame
     end
     
@@ -651,18 +666,19 @@ local function setupPlayerSystem()
                             followTarget = nil
                             if connections.followLoop then connections.followLoop:Disconnect() end
                             notify("Stopped following", Color3.fromRGB(255, 100, 100))
-                        end, pesan dariRGB(255, 100, 100))
+                        end, playerListFrame, Color3.fromRGB(255, 100, 100))
                     end, playerListFrame)
                 end
             end
             notify("🎮 Player list refreshed (" .. (#players - 1) .. " players)", Color3.fromRGB(0, 255, 0))
+            print("Player list refreshed: " .. (#players - 1) .. " players")
         end
     end
     
     return createPlayerList, refreshPlayerList
 end
 
--- Sistem Visualisasi Lintasan dengan Pewarnaan dan Autoplay (Macro)
+-- Trajectory and Macro system
 local function setupTrajectoryAndMacro()
     local trajectoryEnabled = false
     local macroRecording = false
@@ -712,7 +728,7 @@ local function setupTrajectoryAndMacro()
             end
 
             local point = Instance.new("Part")
-            point.Size = Vector3.new(0.5, 0.5, 0.5) -- Ukuran lebih besar
+            point.Size = Vector3.new(0.5, 0.5, 0.5)
             point.Position = newPos
             point.Anchored = true
             point.CanCollide = false
@@ -789,7 +805,6 @@ local function setupTrajectoryAndMacro()
         macroPlaying = true
         notify("▶️ Playing Macro...", Color3.fromRGB(0, 255, 255))
 
-        -- Reset ke posisi awal
         if hr and macroActions[1] and macroActions[1].position then
             hr.CFrame = CFrame.new(macroActions[1].position)
             notify("📍 Reset to macro start position", Color3.fromRGB(0, 255, 255))
@@ -830,7 +845,6 @@ local function setupTrajectoryAndMacro()
     player.CharacterAdded:Connect(function()
         task.wait(1)
         initChar()
-        notify("👤 Character loaded", Color3.fromRGB(0, 255, 0))
         if autoPlayOnRespawn and #macroActions > 0 then
             playMacro()
         end
@@ -851,6 +865,7 @@ local function setupUI()
                 TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = frame.Size}):Play()
             end
             notify("🖼️ GUI Toggled: " .. (frame.Visible and "ON" or "OFF"), Color3.fromRGB(0, 255, 0))
+            print("GUI Toggled: " .. (frame.Visible and "ON" or "OFF"))
         end)
         
         local tabContainer, contentArea = createTabSystem()
@@ -1027,11 +1042,12 @@ local function setupUI()
         end)
         
         notify("🚀 Super Tool Mobile Loaded!", Color3.fromRGB(0, 255, 0))
+        print("Script fully loaded")
     end)
     if not success then
         warn("setupUI error: " .. errorMsg)
         notify("⚠️ Failed to setup UI, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(1)
+        task.wait(2)
         setupUI()
     end
 end
@@ -1047,6 +1063,7 @@ end
 -- Initialize with error handling
 local function init()
     local success, errorMsg = pcall(function()
+        print("Starting initialization...")
         setupUI()
     end)
     if not success then
