@@ -81,7 +81,6 @@ local function initChar()
 		end
 		print("Character initialized")
 		
-		-- Reapply active features
 		if flying then toggleFly() toggleFly() end
 		if noclip then toggleNoclip() toggleNoclip() end
 		if speedEnabled then toggleSpeed() toggleSpeed() end
@@ -367,8 +366,12 @@ end
 
 local function loadPosition(slot)
 	if savedPositions[slot] and hr and isValidPosition(savedPositions[slot].Position) then
-		hr.CFrame = savedPositions[slot]
-		notify("📍 Position " .. slot .. " Loaded")
+		local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear)
+		local tween = TweenService:Create(hr, tweenInfo, {CFrame = savedPositions[slot]})
+		tween:Play()
+		tween.Completed:Connect(function()
+			notify("📍 Position " .. slot .. " Loaded")
+		end)
 	else
 		notify("⚠️ No saved position or invalid position", Color3.fromRGB(255, 100, 100))
 	end
@@ -378,8 +381,13 @@ local function teleportToPlayer(target)
 	if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hr then
 		local targetPos = target.Character.HumanoidRootPart.Position
 		if isValidPosition(targetPos) then
-			hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
-			notify("👤 Teleported to " .. target.Name)
+			local targetCFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+			local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear)
+			local tween = TweenService:Create(hr, tweenInfo, {CFrame = targetCFrame})
+			tween:Play()
+			tween.Completed:Connect(function()
+				notify("👤 Teleported to " .. target.Name)
+			end)
 		else
 			notify("⚠️ Invalid target position", Color3.fromRGB(255, 100, 100))
 		end
@@ -392,8 +400,13 @@ local function teleportToSpawn()
 	if workspace:FindFirstChild("SpawnLocation") and hr then
 		local spawnPos = workspace.SpawnLocation.Position + Vector3.new(0, 3, 0)
 		if isValidPosition(spawnPos) then
-			hr.CFrame = CFrame.new(spawnPos)
-			notify("🏠 Teleported to Spawn")
+			local spawnCFrame = CFrame.new(spawnPos)
+			local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear)
+			local tween = TweenService:Create(hr, tweenInfo, {CFrame = spawnCFrame})
+			tween:Play()
+			tween.Completed:Connect(function()
+				notify("🏠 Teleported to Spawn")
+			end)
 		else
 			notify("⚠️ Invalid spawn position", Color3.fromRGB(255, 100, 100))
 		end
@@ -456,10 +469,19 @@ local function pullPlayerToMe(target)
 		local myPos = hr.Position
 		if isValidPosition(myPos) then
 			local targetHR = target.Character.HumanoidRootPart
-			-- Attempt to persist teleport over multiple frames
+			-- Temporarily enable noclip for target to avoid collisions
+			local wasCollidable = {}
+			for _, part in pairs(target.Character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					wasCollidable[part] = part.CanCollide
+					part.CanCollide = false
+				end
+			end
+			-- Persist teleport over 1 second
+			local targetCFrame = CFrame.new(myPos + Vector3.new(3, 0, 3))
 			connections.pull = RunService.RenderStepped:Connect(function()
 				if target.Character and targetHR and isValidPosition(myPos) then
-					targetHR.CFrame = CFrame.new(myPos + Vector3.new(3, 0, 3))
+					targetHR.CFrame = targetCFrame
 				else
 					if connections.pull then
 						connections.pull:Disconnect()
@@ -468,10 +490,16 @@ local function pullPlayerToMe(target)
 				end
 			end)
 			task.spawn(function()
-				task.wait(0.5) -- Persist for 0.5 seconds
+				task.wait(1) -- Persist for 1 second
 				if connections.pull then
 					connections.pull:Disconnect()
 					connections.pull = nil
+				end
+				-- Restore collision
+				for _, part in pairs(target.Character:GetDescendants()) do
+					if part:IsA("BasePart") and wasCollidable[part] ~= nil then
+						part.CanCollide = wasCollidable[part]
+					end
 				end
 			end)
 			notify("👥 Pulled " .. target.Name .. " to you")
@@ -489,10 +517,17 @@ local function pullPlayerToOther(puller, target)
 		local pullerPos = puller.Character.HumanoidRootPart.Position
 		if isValidPosition(pullerPos) then
 			local targetHR = target.Character.HumanoidRootPart
-			-- Attempt to persist teleport over multiple frames
+			local wasCollidable = {}
+			for _, part in pairs(target.Character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					wasCollidable[part] = part.CanCollide
+					part.CanCollide = false
+				end
+			end
+			local targetCFrame = CFrame.new(pullerPos + Vector3.new(3, 0, 3))
 			connections.pull = RunService.RenderStepped:Connect(function()
 				if target.Character and targetHR and puller.Character and isValidPosition(pullerPos) then
-					targetHR.CFrame = CFrame.new(pullerPos + Vector3.new(3, 0, 3))
+					targetHR.CFrame = targetCFrame
 				else
 					if connections.pull then
 						connections.pull:Disconnect()
@@ -501,10 +536,15 @@ local function pullPlayerToOther(puller, target)
 				end
 			end)
 			task.spawn(function()
-				task.wait(0.5) -- Persist for 0.5 seconds
+				task.wait(1)
 				if connections.pull then
 					connections.pull:Disconnect()
 					connections.pull = nil
+				end
+				for _, part in pairs(target.Character:GetDescendants()) do
+					if part:IsA("BasePart") and wasCollidable[part] ~= nil then
+						part.CanCollide = wasCollidable[part]
+					end
 				end
 			end)
 			notify("👥 Pulled " .. target.Name .. " to " .. puller.Name)
