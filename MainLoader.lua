@@ -12,11 +12,12 @@ local selectedPlayer = nil
 local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
 local defaultFramePos = UDim2.new(0.5, -150, 0.5, -200)
 local originalHumanoidDescription = nil
+local originalCharacterAppearance = nil
 
 local flying, freecam, noclip, godMode, antiThirst, antiHunger = false, false, false, false, false, false
 local flySpeed = 50
 local freecamSpeed = 50
-local rotationSensitivity = 0.1 -- Radian per pixel for camera rotation
+local rotationSensitivity = 0.1
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -107,12 +108,23 @@ local function saveOriginalAvatar()
 		end)
 		if success and desc then
 			originalHumanoidDescription = desc
-			print("Original avatar saved")
-			return
+			print("Original avatar description saved")
+			break
 		end
 		task.wait(1)
 	end
-	notify("⚠️ Failed to save avatar after retries", Color3.fromRGB(255, 100, 100))
+	if not success then
+		notify("⚠️ Failed to save avatar description, using fallback", Color3.fromRGB(255, 100, 100))
+	end
+	if char then
+		originalCharacterAppearance = {}
+		for _, part in pairs(char:GetDescendants()) do
+			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
+				originalCharacterAppearance[part.Name] = part:Clone()
+			end
+		end
+		print("Original character appearance saved")
+	end
 end
 
 local function findStat(statName)
@@ -131,14 +143,19 @@ end
 
 local function initChar()
 	local success, errorMsg = pcall(function()
-		char = player.Character or player.CharacterAdded:Wait()
-		humanoid = char:WaitForChild("Humanoid", 10)
-		hr = char:WaitForChild("HumanoidRootPart", 10)
+		while not player.Character do
+			notify("⏳ Waiting for character to spawn...", Color3.fromRGB(255, 255, 0))
+			player.CharacterAdded:Wait()
+			task.wait(1)
+		end
+		char = player.Character
+		humanoid = char:WaitForChild("Humanoid", 20)
+		hr = char:WaitForChild("HumanoidRootPart", 20)
 		if not humanoid or not hr then
-			error("Failed to find Humanoid or HumanoidRootPart")
+			error("Failed to find Humanoid or HumanoidRootPart after 20s")
 		end
 		saveOriginalAvatar()
-		print("Character initialized")
+		print("Character initialized: Humanoid=" .. tostring(humanoid) .. ", HRP=" .. tostring(hr))
 		ensureCharacterVisible()
 		
 		if flying then toggleFly() toggleFly() end
@@ -160,7 +177,7 @@ local function initChar()
 	end)
 	if not success then
 		print("initChar error: " .. tostring(errorMsg))
-		notify("⚠️ Character init failed, retrying...", Color3.fromRGB(255, 100, 100))
+		notify("⚠️ Character init failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
 		task.wait(5)
 		initChar()
 	end
@@ -301,14 +318,12 @@ local function toggleFreecam()
 				if not camera or not freecamCFrame then
 					return
 				end
-				-- Handle rotation
 				if deltaRotation.Magnitude > 0 then
 					local yaw = -deltaRotation.X
 					local pitch = -deltaRotation.Y
 					freecamCFrame = freecamCFrame * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
 					print("Freecam Rotation: Yaw=" .. yaw .. ", Pitch=" .. pitch)
 				end
-				-- Handle movement
 				local forward = freecamCFrame.LookVector
 				local right = freecamCFrame.RightVector
 				local up = Vector3.new(0, 1, 0)
@@ -893,18 +908,36 @@ local function setCustomNick(nick)
 end
 
 local function setAvatar(target)
-	if not target or not target:IsA("Player") then
-		notify("⚠️ No valid player selected", Color3.fromRGB(255, 100, 100))
+	if not target or not target:IsA("Player") or not target.Character or not target.Character:FindFirstChild("Humanoid") then
+		notify("⚠️ No valid player selected or target character not loaded", Color3.fromRGB(255, 100, 100))
 		return
 	end
 	local success, errorMsg = pcall(function()
+		local targetHumanoid = target.Character:FindFirstChild("Humanoid")
+		if not targetHumanoid then
+			error("Target humanoid not found")
+		end
 		local desc = Players:GetHumanoidDescriptionFromUserId(target.UserId)
 		if humanoid and desc then
 			humanoid:ApplyDescription(desc)
 			notify("🎭 Avatar set to " .. target.Name)
+			return
 		else
-			notify("⚠️ Failed to get avatar description", Color3.fromRGB(255, 100, 100))
+			notify("⚠️ API restricted, trying fallback...", Color3.fromRGB(255, 100, 100))
 		end
+		-- Fallback: Clone character appearance
+		for _, part in pairs(char:GetDescendants()) do
+			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
+				part:Destroy()
+			end
+		end
+		for _, part in pairs(target.Character:GetDescendants()) do
+			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
+				local clone = part:Clone()
+				clone.Parent = char
+			end
+		end
+		notify("🎭 Avatar set to " .. target.Name .. " (fallback)")
 	end)
 	if not success then
 		notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
@@ -913,15 +946,35 @@ end
 
 local function resetAvatar()
 	local success, errorMsg = pcall(function()
-		if humanoid and originalHumanoidDescription then
+		if not humanoid then
+			error("Humanoid not found")
+		end
+		if originalHumanoidDescription then
 			humanoid:ApplyDescription(originalHumanoidDescription)
 			notify("🎭 Avatar Reset")
+			return
+		elseif originalCharacterAppearance then
+			for _, part in pairs(char:GetDescendants()) do
+				if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
+					part:Destroy()
+				end
+			end
+			for _, clone in pairs(originalCharacterAppearance) do
+				local newClone = clone:Clone()
+				newClone.Parent = char
+			end
+			notify("🎭 Avatar Reset (fallback)")
+			return
 		else
-			notify("⚠️ Original avatar not saved", Color3.fromRGB(255, 100, 100))
+			notify("⚠️ No original avatar saved, respawning...", Color3.fromRGB(255, 100, 100))
+			humanoid.Health = 0
 		end
 	end)
 	if not success then
-		notify("⚠️ Failed to reset avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+		notify("⚠️ Failed to reset avatar: " .. tostring(errorMsg) .. ", respawning...", Color3.fromRGB(255, 100, 100))
+		if humanoid then
+			humanoid.Health = 0
+		end
 	end
 end
 
@@ -1138,7 +1191,7 @@ local function createGUI()
 		gui.IgnoreGuiInset = true
 		gui.Enabled = true
 		gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		gui.Parent = player:WaitForChild("PlayerGui", 10)
+		gui.Parent = player:WaitForChild("PlayerGui", 20)
 		print("GUI parented to PlayerGui")
 
 		logo = Instance.new("ImageButton")
@@ -1372,7 +1425,6 @@ local function createGUI()
 			updatePlayerList(playerSelect)
 		end)
 
-		-- Show Movement tab by default
 		categories["Movement"].Visible = true
 	end)
 	if not success then
