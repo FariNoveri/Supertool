@@ -1089,6 +1089,14 @@ local function setAvatar(target)
         if not humanoid or not char or not hr then
             error("Your Humanoid, Character, or HumanoidRootPart not found")
         end
+        -- Check rig compatibility
+        local targetHumanoid = target.Character:FindFirstChildOfClass("Humanoid")
+        if targetHumanoid.RigType ~= humanoid.RigType then
+            notify("⚠️ Rig type mismatch (Yours: " .. tostring(humanoid.RigType) .. ", Target: " .. tostring(targetHumanoid.RigType) .. ")", Color3.fromRGB(255, 100, 100))
+            -- Optionally, skip or handle rig conversion
+            -- return -- Uncomment to block if rig types differ
+        end
+        
         -- Save current state
         local originalPos = hr.CFrame
         local originalHealth = humanoid.Health
@@ -1101,7 +1109,7 @@ local function setAvatar(target)
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
         
-        -- Only modify clothing and accessories, preserve all BaseParts
+        -- Only remove non-rig-affecting visual elements
         for _, part in pairs(char:GetChildren()) do
             if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") or 
                part:IsA("CharacterMesh") or part:IsA("SurfaceAppearance") then
@@ -1112,12 +1120,12 @@ local function setAvatar(target)
             char.BodyColors:Destroy()
         end
         
-        -- Copy clothing, accessories, and BodyColors from target
+        -- Copy only clothing, accessories, and BodyColors
         for _, part in pairs(target.Character:GetChildren()) do
             if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") then
                 local clone = part:Clone()
                 clone.Parent = char
-                -- Copy Motor6D for accessories only if they exist
+                -- Only copy Motor6D for accessories
                 if part:IsA("Accessory") then
                     for _, motor in pairs(target.Character:GetDescendants()) do
                         if motor:IsA("Motor6D") and motor.Part1 == part then
@@ -1125,6 +1133,7 @@ local function setAvatar(target)
                             newMotor.Parent = char
                             newMotor.Part0 = char:FindFirstChild(motor.Part0.Name) or hr
                             newMotor.Part1 = clone
+                            print("Copied Motor6D for accessory: " .. part.Name)
                         end
                     end
                 end
@@ -1135,10 +1144,12 @@ local function setAvatar(target)
         if target.Character:FindFirstChild("BodyColors") then
             local bodyColors = target.Character.BodyColors:Clone()
             bodyColors.Parent = char
+            print("Copied BodyColors")
         end
         
         -- Ensure HumanoidRootPart position is unchanged
         hr.CFrame = originalPos
+        print("Position preserved: " .. tostring(originalPos))
         
         -- Restore health and state
         humanoid.MaxHealth = originalMaxHealth
@@ -1147,23 +1158,18 @@ local function setAvatar(target)
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
         humanoid:ChangeState(originalState)
         
-        -- Skip R6 conversion to avoid rig disruption
-        -- If R6 is required, handle it manually via a separate function
-        -- if originalCharacterAppearance and originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 and humanoid.RigType ~= Enum.HumanoidRigType.R6 then
-        --     convertToR6(char)
-        -- end
-        
         -- Clean up adornments and ensure visibility
         cleanAdornments(char)
         ensureCharacterVisible()
         
-        -- Monitor health and state to prevent death/ragdoll
+        -- Monitor health and state for longer to catch game overrides
         local healthCheckConnection
         healthCheckConnection = humanoid.HealthChanged:Connect(function(health)
             if health <= 0 then
                 humanoid.Health = originalHealth
                 humanoid:ChangeState(Enum.HumanoidStateType.Running)
                 notify("🛡️ Prevented death after avatar change", Color3.fromRGB(0, 255, 0))
+                print("Health drop detected, restored to: " .. originalHealth)
             end
         end)
         local stateCheckConnection
@@ -1171,23 +1177,25 @@ local function setAvatar(target)
             if newState == Enum.HumanoidStateType.Ragdoll or newState == Enum.HumanoidStateType.Dead then
                 humanoid:ChangeState(Enum.HumanoidStateType.Running)
                 notify("🛡️ Prevented ragdoll/death state", Color3.fromRGB(0, 255, 0))
+                print("Invalid state detected: " .. tostring(newState) .. ", forced to Running")
             end
         end)
         task.spawn(function()
-            task.wait(3) -- Monitor for 3 seconds
+            task.wait(5) -- Extended monitoring for 5 seconds
             if healthCheckConnection then
                 healthCheckConnection:Disconnect()
             end
             if stateCheckConnection then
                 stateCheckConnection:Disconnect()
             end
+            print("Health and state monitoring ended")
         end)
         
-        -- Reapply avatar on respawn if needed
+        -- Reapply avatar on respawn
         local targetName = target.Name
         local respawnConnection
         respawnConnection = player.CharacterAdded:Connect(function(newChar)
-            task.wait(1) -- Wait for character to fully load
+            task.wait(2) -- Wait for character to fully load
             char = newChar
             humanoid = char:WaitForChild("Humanoid", 10)
             hr = char:WaitForChild("HumanoidRootPart", 10)
@@ -1196,15 +1204,18 @@ local function setAvatar(target)
                 if newTarget then
                     setAvatar(newTarget) -- Reapply avatar
                     notify("🎭 Reapplied avatar after respawn", Color3.fromRGB(0, 255, 0))
+                    print("Reapplied avatar for " .. targetName .. " after respawn")
                 end
                 respawnConnection:Disconnect()
             end
         end)
         
         notify("🎭 Avatar set to " .. target.Name .. " (client-side, no death, no teleport)", Color3.fromRGB(0, 255, 0))
+        print("Avatar change completed for " .. target.Name)
     end)
     if not success then
         notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        print("setAvatar error: " .. tostring(errorMsg))
         -- Restore health and state on failure
         if humanoid then
             humanoid.MaxHealth = 100
@@ -1251,6 +1262,7 @@ local function resetAvatar()
                 if clone.Name ~= "HumanoidRootPart" and not clone:IsA("Humanoid") and clone.Name ~= "Head" then
                     local newClone = clone:Clone()
                     newClone.Parent = char
+                    print("Restored: " .. clone.Name)
                 end
             end
             
@@ -1258,6 +1270,7 @@ local function resetAvatar()
             if originalCharacterAppearance["BodyColors"] then
                 local bodyColors = originalCharacterAppearance["BodyColors"]:Clone()
                 bodyColors.Parent = char
+                print("Restored BodyColors")
             end
             
             -- Restore position, health, and state
@@ -1267,11 +1280,6 @@ local function resetAvatar()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
             humanoid:ChangeState(originalState)
-            
-            -- Skip R6 conversion
-            -- if originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 and humanoid.RigType ~= Enum.HumanoidRigType.R6 then
-            --     convertToR6(char)
-            -- end
             
             -- Clean up adornments and ensure visibility
             cleanAdornments(char)
@@ -1284,6 +1292,7 @@ local function resetAvatar()
                     humanoid.Health = originalHealth
                     humanoid:ChangeState(Enum.HumanoidStateType.Running)
                     notify("🛡️ Prevented death after avatar reset", Color3.fromRGB(0, 255, 0))
+                    print("Health drop detected after reset, restored to: " .. originalHealth)
                 end
             end)
             local stateCheckConnection
@@ -1291,25 +1300,29 @@ local function resetAvatar()
                 if newState == Enum.HumanoidStateType.Ragdoll or newState == Enum.HumanoidStateType.Dead then
                     humanoid:ChangeState(Enum.HumanoidStateType.Running)
                     notify("🛡️ Prevented ragdoll/death state after reset", Color3.fromRGB(0, 255, 0))
+                    print("Invalid state detected after reset: " .. tostring(newState) .. ", forced to Running")
                 end
             end)
             task.spawn(function()
-                task.wait(3) -- Monitor for 3 seconds
+                task.wait(5) -- Extended monitoring for 5 seconds
                 if healthCheckConnection then
                     healthCheckConnection:Disconnect()
                 end
                 if stateCheckConnection then
                     stateCheckConnection:Disconnect()
                 end
+                print("Health and state monitoring ended for reset")
             end)
             
             notify("🎭 Avatar Reset (client-side, no death, no teleport)", Color3.fromRGB(0, 255, 0))
+            print("Avatar reset completed")
         else
             notify("⚠️ No original avatar saved, cannot reset", Color3.fromRGB(255, 100, 100))
         end
     end)
     if not success then
         notify("⚠️ Failed to reset avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        print("resetAvatar error: " .. tostring(errorMsg))
         if humanoid then
             humanoid.MaxHealth = 100
             humanoid.Health = 100
