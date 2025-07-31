@@ -13,7 +13,7 @@ local defaultLogoPos = UDim2.new(1, -60, 0, 10)
 local defaultFramePos = UDim2.new(1, -610, 0.5, -200)
 local originalHumanoidDescription = nil
 
-local flying, freecam, noclip, autoHeal, noFall, godMode = false, false, false, false, false, false
+local flying, freecam, noclip, godMode, antiThirst, antiHunger = false, false, false, false, false, false
 local flySpeed = 50
 local freecamSpeed = 50
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
@@ -23,7 +23,7 @@ local spinSpeed = 20
 local savedPositions = { [1] = nil, [2] = nil }
 local followTarget = nil
 local connections = {}
-local antiRagdoll, antiSpectate, antiReport = false, false, false
+local antiSpectate, antiReport = false, false
 local nickHidden, randomNick = false, false
 local customNick = ""
 local trajectoryEnabled = false
@@ -32,7 +32,6 @@ local macroActions = {}
 local macroNoclip = false
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 local freecamCFrame = nil
-local freecamVelocity = Vector3.new(0, 0, 0)
 local mouseDelta = Vector2.new(0, 0)
 
 local function notify(message, color)
@@ -107,6 +106,20 @@ local function saveOriginalAvatar()
 	end
 end
 
+local function findStat(statName)
+	local locations = { player, char, player.PlayerGui }
+	for _, loc in pairs(locations) do
+		if loc then
+			for _, obj in pairs(loc:GetDescendants()) do
+				if (obj:IsA("NumberValue") or obj:IsA("IntValue")) and obj.Name:lower():find(statName:lower()) then
+					return obj
+				end
+			end
+		end
+	end
+	return nil
+end
+
 local function initChar()
 	local success, errorMsg = pcall(function()
 		char = player.Character or player.CharacterAdded:Wait()
@@ -126,14 +139,9 @@ local function initChar()
 		if jumpEnabled then toggleJump() toggleJump() end
 		if waterWalk then toggleWaterWalk() toggleWaterWalk() end
 		if spin then toggleSpin() toggleSpin() end
-		if autoHeal then toggleAutoHeal() toggleAutoHeal() end
 		if godMode then toggleGodMode() toggleGodMode() end
-		if noFall then toggleNoFall() toggleNoFall() end
-		if antiRagdoll then toggleAntiRagdoll() toggleAntiRagdoll() end
-		if followTarget then toggleFollowPlayer(followTarget) toggleFollowPlayer(followTarget) end
-		if nickHidden then toggleHideNick() toggleHideNick() end
-		if randomNick then toggleRandomNick() toggleRandomNick() end
-		if customNick ~= "" then setCustomNick(customNick) end
+		if antiThirst then toggleAntiThirst() toggleAntiThirst() end
+		if antiHunger then toggleAntiHunger() toggleAntiHunger() end
 		if antiSpectate then toggleAntiSpectate() toggleAntiSpectate() end
 		if antiReport then toggleAntiReport() toggleAntiReport() end
 		if trajectoryEnabled then toggleTrajectory() toggleTrajectory() end
@@ -223,81 +231,82 @@ end
 
 local function toggleFreecam()
 	freecam = not freecam
-	if freecam then
-		if flying then
-			toggleFly()
-			notify("🛫 Fly disabled to enable Freecam", Color3.fromRGB(255, 100, 100))
+	local success, errorMsg = pcall(function()
+		if freecam then
+			if flying then
+				toggleFly()
+				notify("🛫 Fly disabled to enable Freecam", Color3.fromRGB(255, 100, 100))
+			end
+			freecamCFrame = camera.CFrame
+			mouseDelta = Vector2.new(0, 0)
+			camera.CameraType = Enum.CameraType.Scriptable
+			connections.freecam = RunService.RenderStepped:Connect(function(dt)
+				if not camera or not freecamCFrame then
+					return
+				end
+				local moveDir = Vector3.new(0, 0, 0)
+				local forward = freecamCFrame.LookVector
+				local right = freecamCFrame.RightVector
+				local up = freecamCFrame.UpVector
+				
+				if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+					moveDir = moveDir + forward
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+					moveDir = moveDir - forward
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+					moveDir = moveDir + right
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+					moveDir = moveDir - right
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+					moveDir = moveDir + up
+				end
+				if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+					moveDir = moveDir - up
+				end
+				
+				if moveDir.Magnitude > 0 then
+					moveDir = moveDir.Unit * freecamSpeed * dt
+					freecamCFrame = freecamCFrame + moveDir
+				end
+				
+				camera.CFrame = freecamCFrame
+			end)
+			connections.mouse = UserInputService.InputChanged:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+					mouseDelta = input.Delta
+					local yaw = -mouseDelta.X * 0.002
+					local pitch = -mouseDelta.Y * 0.002
+					freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+				end
+			end)
+			notify("📷 Freecam Enabled")
+		else
+			if connections.freecam then
+				connections.freecam:Disconnect()
+				connections.freecam = nil
+			end
+			if connections.mouse then
+				connections.mouse:Disconnect()
+				connections.mouse = nil
+			end
+			if camera and humanoid then
+				camera.CameraType = Enum.CameraType.Custom
+				camera.CameraSubject = humanoid
+				if hr then
+					camera.CFrame = CFrame.new(hr.Position + Vector3.new(0, 5, 10), hr.Position)
+				end
+			end
+			freecamCFrame = nil
+			mouseDelta = Vector2.new(0, 0)
+			notify("📷 Freecam Disabled")
 		end
-		freecamCFrame = camera.CFrame
-		freecamVelocity = Vector3.new(0, 0, 0)
-		mouseDelta = Vector2.new(0, 0)
-		camera.CameraType = Enum.CameraType.Scriptable
-		connections.freecam = RunService.RenderStepped:Connect(function(dt)
-			if not camera then
-				return
-			end
-			local moveDir = Vector3.new(0, 0, 0)
-			local forward = freecamCFrame.LookVector
-			local right = freecamCFrame.RightVector
-			local up = freecamCFrame.UpVector
-			
-			if UserInputService:IsKeyDown(Enum.KeyCode.W) or (isMobile and UserInputService:GetFocusedTextBox() == nil and UserInputService.TouchEnabled) then
-				moveDir = moveDir + forward
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-				moveDir = moveDir - forward
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-				moveDir = moveDir + right
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-				moveDir = moveDir - right
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-				moveDir = moveDir + up
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-				moveDir = moveDir - up
-			end
-			
-			if moveDir.Magnitude > 0 then
-				freecamVelocity = moveDir.Unit * freecamSpeed
-			else
-				freecamVelocity = Vector3.new(0, 0, 0)
-			end
-			
-			freecamCFrame = freecamCFrame + freecamVelocity * dt
-			camera.CFrame = freecamCFrame
-		end)
-		connections.mouse = UserInputService.InputChanged:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-				mouseDelta = input.Delta
-				local yaw = -mouseDelta.X * 0.002
-				local pitch = -mouseDelta.Y * 0.002
-				freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
-			end
-		end)
-		notify("📷 Freecam Enabled")
-	else
-		if connections.freecam then
-			connections.freecam:Disconnect()
-			connections.freecam = nil
-		end
-		if connections.mouse then
-			connections.mouse:Disconnect()
-			connections.mouse = nil
-		end
-		if camera and humanoid then
-			camera.CameraType = Enum.CameraType.Custom
-			camera.CameraSubject = humanoid
-			if hr then
-				camera.CFrame = CFrame.new(hr.Position + Vector3.new(0, 5, 10), hr.Position)
-			end
-		end
-		freecamCFrame = nil
-		freecamVelocity = Vector3.new(0, 0, 0)
-		mouseDelta = Vector2.new(0, 0)
-		notify("📷 Freecam Disabled")
+	end)
+	if not success then
+		notify("⚠️ Freecam error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -475,74 +484,128 @@ local function toggleSpin()
 	end
 end
 
-local function toggleAutoHeal()
-	autoHeal = not autoHeal
-	if autoHeal then
-		connections.autoHeal = RunService.RenderStepped:Connect(function()
-			if humanoid and humanoid.Health < humanoid.MaxHealth then
-				humanoid.Health = humanoid.MaxHealth
-			end
-		end)
-		notify("❤️ Auto Heal Enabled")
-	else
-		if connections.autoHeal then
-			connections.autoHeal:Disconnect()
-			connections.autoHeal = nil
-		end
-		notify("❤️ Auto Heal Disabled")
-	end
-end
-
 local function toggleGodMode()
 	godMode = not godMode
-	if godMode then
-		if humanoid then
-			humanoid.MaxHealth = math.huge
-			humanoid.Health = math.huge
-			notify("🛡️ God Mode Enabled")
-		end
-	else
-		if humanoid then
-			humanoid.MaxHealth = 100
-			humanoid.Health = 100
+	local success, errorMsg = pcall(function()
+		if godMode then
+			if humanoid then
+				humanoid.MaxHealth = math.huge
+				humanoid.Health = math.huge
+				connections.godModeHealth = RunService.RenderStepped:Connect(function()
+					if humanoid then
+						humanoid.Health = math.huge
+					end
+				end)
+				connections.godModeState = humanoid.StateChanged:Connect(function(_, new)
+					if new == Enum.HumanoidStateType.FallingDown or new == Enum.HumanoidStateType.Ragdoll then
+						humanoid:ChangeState(Enum.HumanoidStateType.Running)
+					end
+				end)
+				connections.godModeDamage = humanoid.HealthChanged:Connect(function(health)
+					if health < math.huge then
+						humanoid.Health = math.huge
+					end
+				end)
+				notify("🛡️ God Mode Enabled (Health, No Fall, Anti Ragdoll)")
+			else
+				notify("⚠️ Humanoid not found", Color3.fromRGB(255, 100, 100))
+				godMode = false
+			end
+		else
+			if connections.godModeHealth then
+				connections.godModeHealth:Disconnect()
+				connections.godModeHealth = nil
+			end
+			if connections.godModeState then
+				connections.godModeState:Disconnect()
+				connections.godModeState = nil
+			end
+			if connections.godModeDamage then
+				connections.godModeDamage:Disconnect()
+				connections.godModeDamage = nil
+			end
+			if humanoid then
+				humanoid.MaxHealth = 100
+				humanoid.Health = 100
+			end
 			notify("🛡️ God Mode Disabled")
 		end
+	end)
+	if not success then
+		godMode = false
+		notify("⚠️ God Mode error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
-local function toggleNoFall()
-	noFall = not noFall
-	if noFall then
-		connections.noFall = humanoid.StateChanged:Connect(function(_, new)
-			if new == Enum.HumanoidStateType.FallingDown then
-				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+local function toggleAntiThirst()
+	antiThirst = not antiThirst
+	local success, errorMsg = pcall(function()
+		if antiThirst then
+			local thirstStat = findStat("Thirst")
+			if thirstStat then
+				local maxValue = thirstStat.Value >= 100 and thirstStat.Value or 100
+				connections.antiThirst = RunService.RenderStepped:Connect(function()
+					if thirstStat and thirstStat.Parent then
+						thirstStat.Value = maxValue
+					else
+						antiThirst = false
+						connections.antiThirst:Disconnect()
+						connections.antiThirst = nil
+						notify("⚠️ Thirst stat lost", Color3.fromRGB(255, 100, 100))
+					end
+				end)
+				notify("💧 Anti Thirst Enabled")
+			else
+				antiThirst = false
+				notify("⚠️ Thirst stat not found", Color3.fromRGB(255, 100, 100))
 			end
-		end)
-		notify("🪂 No Fall Damage Enabled")
-	else
-		if connections.noFall then
-			connections.noFall:Disconnect()
-			connections.noFall = nil
+		else
+			if connections.antiThirst then
+				connections.antiThirst:Disconnect()
+				connections.antiThirst = nil
+			end
+			notify("💧 Anti Thirst Disabled")
 		end
-		notify("🪂 No Fall Damage Disabled")
+	end)
+	if not success then
+		antiThirst = false
+		notify("⚠️ Anti Thirst error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
-local function toggleAntiRagdoll()
-	antiRagdoll = not antiRagdoll
-	if antiRagdoll then
-		connections.antiRagdoll = humanoid.StateChanged:Connect(function(_, new)
-			if new == Enum.HumanoidStateType.Ragdoll then
-				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+local function toggleAntiHunger()
+	antiHunger = not antiHunger
+	local success, errorMsg = pcall(function()
+		if antiHunger then
+			local hungerStat = findStat("Hunger")
+			if hungerStat then
+				local maxValue = hungerStat.Value >= 100 and hungerStat.Value or 100
+				connections.antiHunger = RunService.RenderStepped:Connect(function()
+					if hungerStat and hungerStat.Parent then
+						hungerStat.Value = maxValue
+					else
+						antiHunger = false
+						connections.antiHunger:Disconnect()
+						connections.antiHunger = nil
+						notify("⚠️ Hunger stat lost", Color3.fromRGB(255, 100, 100))
+					end
+				end)
+				notify("🍽️ Anti Hunger Enabled")
+			else
+				antiHunger = false
+				notify("⚠️ Hunger stat not found", Color3.fromRGB(255, 100, 100))
 			end
-		end)
-		notify("🚫 Anti Ragdoll Enabled")
-	else
-		if connections.antiRagdoll then
-			connections.antiRagdoll:Disconnect()
-			connections.antiRagdoll = nil
+		else
+			if connections.antiHunger then
+				connections.antiHunger:Disconnect()
+				connections.antiHunger = nil
+			end
+			notify("🍽️ Anti Hunger Disabled")
 		end
-		notify("🚫 Anti Ragdoll Disabled")
+	end)
+	if not success then
+		antiHunger = false
+		notify("⚠️ Anti Hunger error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -1355,10 +1418,9 @@ local function createGUI()
 		createButton(movement, "Toggle Spin", toggleSpin)
 
 		local utility = createCategory("Utility")
-		createButton(utility, "Toggle Auto Heal", toggleAutoHeal)
 		createButton(utility, "Toggle God Mode", toggleGodMode)
-		createButton(utility, "Toggle No Fall Damage", toggleNoFall)
-		createButton(utility, "Toggle Anti Ragdoll", toggleAntiRagdoll)
+		createButton(utility, "Toggle Anti Thirst", toggleAntiThirst)
+		createButton(utility, "Toggle Anti Hunger", toggleAntiHunger)
 		createButton(utility, "Save Position 1", function() savePosition(1) end)
 		createButton(utility, "Save Position 2", function() savePosition(2) end)
 		createButton(utility, "Load Position 1", function() loadPosition(1) end)
