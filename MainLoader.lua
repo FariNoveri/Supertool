@@ -11,13 +11,11 @@ local gui, frame, logo
 local selectedPlayer = nil
 local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
 local defaultFramePos = UDim2.new(0.5, -150, 0.5, -200)
-local originalHumanoidDescription = nil
 local originalCharacterAppearance = nil
-
 local flying, freecam, noclip, godMode, antiThirst, antiHunger = false, false, false, false, false, false
 local flySpeed = 50
-local freecamSpeed = 50
-local rotationSensitivity = 0.02
+local freecamSpeed = 30
+local rotationSensitivity = 0.015
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -39,6 +37,15 @@ local rotateStartPos = nil
 local moveDirection = Vector3.new(0, 0, 0)
 local deltaRotation = Vector2.new(0, 0)
 local touchDeadzone = 20
+
+-- Detect and destroy previous script instance
+local function cleanupOldInstance()
+	local oldGui = player.PlayerGui:FindFirstChild("SimpleUILibrary_Krnl")
+	if oldGui then
+		oldGui:Destroy()
+		notify("🛠️ Old script instance terminated", Color3.fromRGB(255, 255, 0))
+	end
+end
 
 local function notify(message, color)
 	local success, errorMsg = pcall(function()
@@ -101,22 +108,6 @@ local function resetCharacterState()
 end
 
 local function saveOriginalAvatar()
-	local retries = 3
-	local success, desc = false, nil
-	for i = 1, retries do
-		success, desc = pcall(function()
-			return Players:GetHumanoidDescriptionFromUserId(player.UserId)
-		end)
-		if success and desc then
-			originalHumanoidDescription = desc
-			print("Original avatar description saved")
-			break
-		end
-		task.wait(1)
-	end
-	if not success then
-		notify("⚠️ Failed to save avatar description, using fallback", Color3.fromRGB(255, 100, 100))
-	end
 	if char then
 		originalCharacterAppearance = {}
 		for _, part in pairs(char:GetDescendants()) do
@@ -216,15 +207,15 @@ local function setupTouchInput()
 			end
 			local screenSize = camera.ViewportSize
 			local x = math.clamp(delta.X / (screenSize.X * 0.3), -0.8, 0.8)
-			local y = math.clamp(-delta.Y / (screenSize.Y * 0.3), -0.8, 0.8)
-			moveDirection = Vector3.new(x, y, 0)
+			local z = math.clamp(-delta.Y / (screenSize.Y * 0.3), -0.8, 0.8)
+			moveDirection = Vector3.new(x, 0, z)
 		elseif input == rotateTouchInput then
 			local delta = input.Position - rotateStartPos
 			if delta.Magnitude < touchDeadzone then
 				deltaRotation = Vector2.new(0, 0)
 				return
 			end
-			deltaRotation = Vector2.new(math.clamp(delta.X * rotationSensitivity, -0.1, 0.1), 0)
+			deltaRotation = Vector2.new(math.clamp(delta.X * rotationSensitivity, -0.05, 0.05), 0)
 			rotateStartPos = input.Position
 		end
 	end)
@@ -269,14 +260,18 @@ local function toggleFly()
 				end
 				local forward = camera.CFrame.LookVector
 				local right = camera.CFrame.RightVector
-				local up = Vector3.new(0, 1, 0)
-				local moveDir = moveDirection.X * right + moveDirection.Y * forward
+				local moveDir = moveDirection.X * right + moveDirection.Z * forward
 				if moveDir.Magnitude > 0 then
 					moveDir = moveDir.Unit * flySpeed
 				else
 					moveDir = Vector3.new(0, 0, 0)
 				end
+				if deltaRotation.Magnitude > 0 then
+					local yaw = -deltaRotation.X
+					camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.Angles(0, yaw, 0)
+				end
 				bv.Velocity = moveDir
+				hr.CFrame = CFrame.new(hr.Position) * camera.CFrame.Rotation
 				print("Fly: moveDir=" .. tostring(moveDir) .. ", Velocity=" .. tostring(bv.Velocity) .. ", Pos=" .. tostring(hr.Position))
 			end)
 			notify("🛫 Fly Enabled")
@@ -347,8 +342,7 @@ local function toggleFreecam()
 				end
 				local forward = freecamCFrame.LookVector
 				local right = freecamCFrame.RightVector
-				local up = Vector3.new(0, 1, 0)
-				local moveDir = moveDirection.X * right + moveDirection.Y * forward
+				local moveDir = moveDirection.X * right + moveDirection.Z * forward
 				if moveDir.Magnitude > 0 then
 					moveDir = moveDir * freecamSpeed
 					freecamCFrame = CFrame.new(freecamCFrame.Position + moveDir) * freecamCFrame.Rotation
@@ -860,12 +854,21 @@ local function resetUIPosition()
 	end
 end
 
+local function findTextLabel(billboard)
+	for _, child in pairs(billboard:GetChildren()) do
+		if child:IsA("TextLabel") then
+			return child
+		end
+	end
+	return nil
+end
+
 local function toggleHideNick()
 	nickHidden = not nickHidden
 	local success, errorMsg = pcall(function()
 		if char and char:FindFirstChild("Head") and humanoid then
 			local head = char.Head
-			local billboard = head:FindFirstChildOfClass("BillboardGui")
+			local billboard = head:FindFirstChild("Nametag") or head:FindFirstChildOfClass("BillboardGui")
 			if billboard then
 				billboard.Enabled = not nickHidden
 			end
@@ -879,7 +882,7 @@ local function toggleHideNick()
 				humanoid = char:WaitForChild("Humanoid", 10)
 				local head = char:WaitForChild("Head", 10)
 				if head and humanoid then
-					local billboard = head:FindFirstChildOfClass("BillboardGui")
+					local billboard = head:FindFirstChild("Nametag") or head:FindFirstChildOfClass("BillboardGui")
 					if billboard then
 						billboard.Enabled = false
 					end
@@ -914,9 +917,14 @@ local function toggleRandomNick()
 			customNick = randomName
 			if char and char:FindFirstChild("Head") then
 				local head = char.Head
-				local billboard = head:FindFirstChildOfClass("BillboardGui")
-				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
-					billboard.TextLabel.Text = nickHidden and "" or randomName
+				local billboard = head:FindFirstChild("Nametag") or head:FindFirstChildOfClass("BillboardGui")
+				if billboard then
+					local textLabel = findTextLabel(billboard)
+					if textLabel then
+						textLabel.Text = nickHidden and "" or randomName
+					else
+						print("No TextLabel found in BillboardGui")
+					end
 				end
 			end
 			if humanoid then
@@ -927,9 +935,14 @@ local function toggleRandomNick()
 			customNick = ""
 			if char and char:FindFirstChild("Head") then
 				local head = char.Head
-				local billboard = head:FindFirstChildOfClass("BillboardGui")
-				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
-					billboard.TextLabel.Text = nickHidden and "" or player.Name
+				local billboard = head:FindFirstChild("Nametag") or head:FindFirstChildOfClass("BillboardGui")
+				if billboard then
+					local textLabel = findTextLabel(billboard)
+					if textLabel then
+						textLabel.Text = nickHidden and "" or player.Name
+					else
+						print("No TextLabel found in BillboardGui")
+					end
 				end
 			end
 			if humanoid then
@@ -954,9 +967,14 @@ local function setCustomNick(nick)
 			customNick = nick
 			if char and char:FindFirstChild("Head") then
 				local head = char.Head
-				local billboard = head:FindFirstChildOfClass("BillboardGui")
-				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
-					billboard.TextLabel.Text = nickHidden and "" or nick
+				local billboard = head:FindFirstChild("Nametag") or head:FindFirstChildOfClass("BillboardGui")
+				if billboard then
+					local textLabel = findTextLabel(billboard)
+					if textLabel then
+						textLabel.Text = nickHidden and "" or nick
+					else
+						print("No TextLabel found in BillboardGui")
+					end
 				end
 			end
 			if humanoid then
@@ -981,18 +999,10 @@ local function setAvatar(target)
 		return
 	end
 	local success, errorMsg = pcall(function()
-		local targetHumanoid = target.Character:FindFirstChild("Humanoid")
-		if not targetHumanoid then
-			error("Target humanoid not found")
+		if not humanoid then
+			error("Humanoid not found")
 		end
-		local desc = Players:GetHumanoidDescriptionFromUserId(target.UserId)
-		if humanoid and desc then
-			humanoid:ApplyDescription(desc)
-			notify("🎭 Avatar set to " .. target.Name)
-			return
-		else
-			notify("⚠️ API restricted, trying fallback...", Color3.fromRGB(255, 100, 100))
-		end
+		-- Client-side avatar change by copying accessories and clothing
 		for _, part in pairs(char:GetDescendants()) do
 			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
 				part:Destroy()
@@ -1004,7 +1014,7 @@ local function setAvatar(target)
 				clone.Parent = char
 			end
 		end
-		notify("🎭 Avatar set to " .. target.Name .. " (fallback)")
+		notify("🎭 Avatar set to " .. target.Name .. " (client-side)")
 	end)
 	if not success then
 		notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
@@ -1016,11 +1026,7 @@ local function resetAvatar()
 		if not humanoid then
 			error("Humanoid not found")
 		end
-		if originalHumanoidDescription then
-			humanoid:ApplyDescription(originalHumanoidDescription)
-			notify("🎭 Avatar Reset")
-			return
-		elseif originalCharacterAppearance then
+		if originalCharacterAppearance then
 			for _, part in pairs(char:GetDescendants()) do
 				if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
 					part:Destroy()
@@ -1030,18 +1036,13 @@ local function resetAvatar()
 				local newClone = clone:Clone()
 				newClone.Parent = char
 			end
-			notify("🎭 Avatar Reset (fallback)")
-			return
+			notify("🎭 Avatar Reset (client-side)")
 		else
-			notify("⚠️ No original avatar saved, respawning...", Color3.fromRGB(255, 100, 100))
-			humanoid.Health = 0
+			notify("⚠️ No original avatar saved, cannot reset", Color3.fromRGB(255, 100, 100))
 		end
 	end)
 	if not success then
-		notify("⚠️ Failed to reset avatar: " .. tostring(errorMsg) .. ", respawning...", Color3.fromRGB(255, 100, 100))
-		if humanoid then
-			humanoid.Health = 0
-		end
+		notify("⚠️ Failed to reset avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -1199,7 +1200,7 @@ local function stopPlayMacro()
 	if macroPlaying then
 		macroPlaying = false
 		if connections.macroPlay then
-			connections.macroPlay:Disconnect()
+			connections.macroPlay:Destroy()
 			connections.macroPlay = nil
 		end
 		if connections.macroNoclip then
@@ -1532,6 +1533,7 @@ end
 
 local function setupUI()
 	local success, errorMsg = pcall(function()
+		cleanupOldInstance() -- Clean up any previous script instance
 		createGUI()
 		makeDraggable(logo)
 		makeDraggable(frame)
