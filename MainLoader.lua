@@ -34,19 +34,21 @@ local function notify(message, color)
             return
         end
         local notif = Instance.new("TextLabel")
-        notif.Size = UDim2.new(0, 100, 0, 20)
-        notif.Position = UDim2.new(0.5, -50, 0, 5)
+        notif.Size = UDim2.new(0, 200, 0, 30) -- Increased size for better visibility
+        notif.Position = UDim2.new(0.5, -100, 0, 10)
         notif.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        notif.BackgroundTransparency = 0.8
+        notif.BackgroundTransparency = 0.5
         notif.TextColor3 = color or Color3.fromRGB(0, 255, 0)
         notif.TextScaled = true
         notif.Font = Enum.Font.Gotham
         notif.Text = message
         notif.BorderSizePixel = 0
-        notif.ZIndex = 2
+        notif.ZIndex = 10 -- Higher ZIndex to ensure visibility
         notif.Parent = gui
-        task.wait(2)
-        notif:Destroy()
+        task.spawn(function()
+            task.wait(3)
+            notif:Destroy()
+        end)
     end)
     if not success then
         print("Notify error: " .. tostring(errorMsg))
@@ -55,10 +57,9 @@ end
 
 local function initChar()
     local success, errorMsg = pcall(function()
-        task.wait(20)
         char = player.Character or player.CharacterAdded:Wait()
-        humanoid = char:WaitForChild("Humanoid", 50)
-        hr = char:WaitForChild("HumanoidRootPart", 50)
+        humanoid = char:WaitForChild("Humanoid", 10)
+        hr = char:WaitForChild("HumanoidRootPart", 10)
         if not humanoid or not hr then
             error("Failed to find Humanoid or HumanoidRootPart")
         end
@@ -66,8 +67,8 @@ local function initChar()
     end)
     if not success then
         print("initChar error: " .. tostring(errorMsg))
-        notify("⚠️ Init char failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(20)
+        notify("⚠️ Character init failed, retrying...", Color3.fromRGB(255, 100, 100))
+        task.wait(5) -- Reduced retry delay
         initChar()
     end
 end
@@ -86,71 +87,56 @@ local function createGUI()
         gui.Enabled = true
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-        local coreGui = game:GetService("CoreGui")
-        local playerGui = player:WaitForChild("PlayerGui", 50)
-        local parentAttempts = 0
-        local function tryParent()
-            if parentAttempts >= 3 then
-                print("Parenting failed after 3 attempts")
-                notify("⚠️ GUI parenting failed", Color3.fromRGB(255, 100, 100))
-                return
-            end
-            gui.Parent = coreGui
-            task.wait(5)
-            if playerGui then
-                gui.Parent = playerGui
-            end
-            parentAttempts = parentAttempts + 1
-            if not gui.Parent then
-                print("Parenting failed, retrying attempt " .. parentAttempts)
-                tryParent()
-            else
-                print("GUI parented to " .. (gui.Parent == playerGui and "PlayerGui" or "CoreGui"))
-            end
+        -- Parent directly to PlayerGui to avoid CoreGui restrictions
+        local playerGui = player:WaitForChild("PlayerGui", 10)
+        if not playerGui then
+            error("PlayerGui not found")
         end
-        tryParent()
+        gui.Parent = playerGui
+        print("GUI parented to PlayerGui")
 
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 30, 0, 30)
-        logo.Position = UDim2.new(0, 5, 0, 5)
+        logo.Size = UDim2.new(0, 40, 0, 40) -- Slightly larger for visibility
+        logo.Position = UDim2.new(0, 10, 0, 10)
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
-        logo.ZIndex = 2
+        logo.ZIndex = 10
         logo.Parent = gui
         print("Logo created")
 
         frame = Instance.new("Frame")
-        frame.Size = isMobile and UDim2.new(0.8, 0, 0.5, 0) or UDim2.new(0, 180, 0, 120)
-        frame.Position = isMobile and UDim2.new(0.1, 0, 0.25, 0) or UDim2.new(0.5, -90, 0.5, -60)
+        frame.Size = isMobile and UDim2.new(0.9, 0, 0.6, 0) or UDim2.new(0, 300, 0, 200)
+        frame.Position = UDim2.new(0.5, -150, 0.5, -100)
         frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        frame.BackgroundTransparency = 0.1
         frame.BorderSizePixel = 0
         frame.Visible = false
-        frame.ZIndex = 2
+        frame.ZIndex = 10
         frame.Parent = gui
         print("Frame created")
 
         local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, 0, 0, 20)
+        title.Size = UDim2.new(1, 0, 0, 30)
         title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         title.TextColor3 = Color3.new(1, 1, 1)
         title.Text = "Krnl UI"
         title.TextScaled = true
         title.Font = Enum.Font.Gotham
-        title.ZIndex = 2
+        title.ZIndex = 10
         title.Parent = frame
         print("Title created")
 
         local closeBtn = Instance.new("TextButton")
-        closeBtn.Size = UDim2.new(0, 15, 0, 15)
-        closeBtn.Position = UDim2.new(1, -20, 0, 5)
+        closeBtn.Size = UDim2.new(0, 20, 0, 20)
+        closeBtn.Position = UDim2.new(1, -25, 0, 5)
         closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
         closeBtn.Text = "✕"
         closeBtn.TextColor3 = Color3.new(1, 1, 1)
         closeBtn.TextScaled = true
         closeBtn.Font = Enum.Font.Gotham
         closeBtn.BorderSizePixel = 0
-        closeBtn.ZIndex = 2
+        closeBtn.ZIndex = 10
         closeBtn.Parent = frame
         closeBtn.Activated:Connect(function()
             frame.Visible = false
@@ -159,15 +145,15 @@ local function createGUI()
         print("Close button created")
 
         local testBtn = Instance.new("TextButton")
-        testBtn.Size = UDim2.new(1, -10, 0, 25)
-        testBtn.Position = UDim2.new(0, 5, 0, 25)
+        testBtn.Size = UDim2.new(1, -10, 0, 30)
+        testBtn.Position = UDim2.new(0, 5, 0, 40)
         testBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         testBtn.TextColor3 = Color3.new(1, 1, 1)
         testBtn.Text = "Test UI"
         testBtn.TextScaled = true
         testBtn.Font = Enum.Font.Gotham
         testBtn.BorderSizePixel = 0
-        testBtn.ZIndex = 2
+        testBtn.ZIndex = 10
         testBtn.Parent = frame
         testBtn.Activated:Connect(function()
             notify("✅ UI Works!")
@@ -177,7 +163,7 @@ local function createGUI()
     if not success then
         print("createGUI error: " .. tostring(errorMsg))
         notify("⚠️ UI creation failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(20)
+        task.wait(5) -- Reduced retry delay
         createGUI()
     end
 end
@@ -188,16 +174,24 @@ local function makeDraggable(element)
     local startPos = nil
     
     if isMobile then
-        element.TouchPan:Connect(function(totalTranslation, _, state)
-            if state == Enum.UserInputState.Begin then
+        element.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
+                dragStart = input.Position
                 startPos = element.Position
-            elseif state == Enum.UserInputState.Change and dragging then
+            end
+        end)
+        element.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch and dragging then
+                local delta = input.Position - dragStart
                 element.Position = UDim2.new(
-                    startPos.X.Scale, startPos.X.Offset + totalTranslation.X,
-                    startPos.Y.Scale, startPos.Y.Offset + totalTranslation.Y
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
                 )
-            elseif state == Enum.UserInputState.End then
+            end
+        end)
+        element.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
                 dragging = false
             end
         end)
@@ -228,9 +222,9 @@ end
 
 local function setupUI()
     local success, errorMsg = pcall(function()
-        task.wait(20)
         createGUI()
         makeDraggable(logo)
+        makeDraggable(frame) -- Make the main frame draggable too
         
         logo.Activated:Connect(function()
             frame.Visible = not frame.Visible
@@ -242,7 +236,10 @@ local function setupUI()
     if not success then
         print("setupUI error: " .. tostring(errorMsg))
         notify("⚠️ UI setup failed, retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(20)
+        task.wait(5) -- Reduced retry delay
         setupUI()
     end
 end
+
+-- Start the UI setup
+setupUI()
