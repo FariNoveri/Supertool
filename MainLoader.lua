@@ -8,6 +8,7 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local humanoid, hr, char
 local gui, frame, logo
+local selectedPlayer = nil -- For player selection
 
 local flying, noclip, autoHeal, noFall, godMode = false, false, false, false, false
 local flySpeed = 50
@@ -62,6 +63,10 @@ local function clearConnections()
 			connections[key] = nil
 		end
 	end
+end
+
+local function isValidPosition(pos)
+	return pos and not (pos.Y < -1000 or pos.Y > 10000 or math.abs(pos.X) > 10000 or math.abs(pos.Z) > 10000)
 end
 
 local function initChar()
@@ -351,7 +356,7 @@ end
 
 local function savePosition(slot)
 	if hr then
-		savedPositions[slot] = hr.Position
+		savedPositions[slot] = hr.CFrame
 		notify("💾 Position " .. slot .. " Saved")
 	else
 		notify("⚠️ No HumanoidRootPart found", Color3.fromRGB(255, 100, 100))
@@ -359,40 +364,43 @@ local function savePosition(slot)
 end
 
 local function loadPosition(slot)
-	if savedPositions[slot] and hr then
-		hr.Position = savedPositions[slot]
+	if savedPositions[slot] and hr and isValidPosition(savedPositions[slot].Position) then
+		hr.CFrame = savedPositions[slot]
 		notify("📍 Position " .. slot .. " Loaded")
 	else
-		notify("⚠️ No saved position or HumanoidRootPart", Color3.fromRGB(255, 100, 100))
+		notify("⚠️ No saved position or invalid position", Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function teleportToPlayer(target)
+	if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hr then
+		local targetPos = target.Character.HumanoidRootPart.Position
+		if isValidPosition(targetPos) then
+			hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+			notify("👤 Teleported to " .. target.Name)
+		else
+			notify("⚠️ Invalid target position", Color3.fromRGB(255, 100, 100))
+		end
+	else
+		notify("⚠️ No valid player selected", Color3.fromRGB(255, 100, 100))
 	end
 end
 
 local function teleportToSpawn()
 	if workspace:FindFirstChild("SpawnLocation") and hr then
-		hr.Position = workspace.SpawnLocation.Position + Vector3.new(0, 3, 0)
-		notify("🏠 Teleported to Spawn")
+		local spawnPos = workspace.SpawnLocation.Position + Vector3.new(0, 3, 0)
+		if isValidPosition(spawnPos) then
+			hr.CFrame = CFrame.new(spawnPos)
+			notify("🏠 Teleported to Spawn")
+		else
+			notify("⚠️ Invalid spawn position", Color3.fromRGB(255, 100, 100))
+		end
 	else
 		notify("⚠️ Spawn not found", Color3.fromRGB(255, 100, 100))
 	end
 end
 
-local function teleportToPlayer()
-	local targetPlayer = nil
-	for _, p in pairs(Players:GetPlayers()) do
-		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-			targetPlayer = p
-			break
-		end
-	end
-	if targetPlayer and hr then
-		hr.Position = targetPlayer.Character.HumanoidRootPart.Position
-		notify("👤 Teleported to " .. targetPlayer.Name)
-	else
-		notify("⚠️ No player found", Color3.fromRGB(255, 100, 100))
-	end
-end
-
-local function toggleFollowPlayer()
+local function toggleFollowPlayer(target)
 	if followTarget then
 		followTarget = nil
 		if connections.follow then
@@ -401,18 +409,19 @@ local function toggleFollowPlayer()
 		end
 		notify("🚶 Stopped Following")
 	else
-		local targetPlayer = nil
-		for _, p in pairs(Players:GetPlayers()) do
-			if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-				targetPlayer = p
-				break
-			end
-		end
-		if targetPlayer and hr then
-			followTarget = targetPlayer
+		if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hr then
+			followTarget = target
 			connections.follow = RunService.RenderStepped:Connect(function()
 				if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") then
-					hr.Position = followTarget.Character.HumanoidRootPart.Position + Vector3.new(3, 0, 3)
+					local targetPos = followTarget.Character.HumanoidRootPart.Position
+					if isValidPosition(targetPos) then
+						hr.CFrame = CFrame.new(targetPos + Vector3.new(3, 0, 3))
+					else
+						followTarget = nil
+						connections.follow:Disconnect()
+						connections.follow = nil
+						notify("⚠️ Invalid target position", Color3.fromRGB(255, 100, 100))
+					end
 				else
 					followTarget = nil
 					connections.follow:Disconnect()
@@ -420,10 +429,39 @@ local function toggleFollowPlayer()
 					notify("⚠️ Target lost", Color3.fromRGB(255, 100, 100))
 				end
 			end)
-			notify("🚶 Following " .. targetPlayer.Name)
+			notify("🚶 Following " .. target.Name)
 		else
-			notify("⚠️ No player found", Color3.fromRGB(255, 100, 100))
+			notify("⚠️ No valid player selected", Color3.fromRGB(255, 100, 100))
 		end
+	end
+end
+
+local function pullPlayerToMe(target)
+	if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hr then
+		local myPos = hr.Position
+		if isValidPosition(myPos) then
+			target.Character.HumanoidRootPart.CFrame = CFrame.new(myPos + Vector3.new(3, 0, 3))
+			notify("👥 Pulled " .. target.Name .. " to you")
+		else
+			notify("⚠️ Invalid position", Color3.fromRGB(255, 100, 100))
+		end
+	else
+		notify("⚠️ No valid player selected", Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function pullPlayerToOther(puller, target)
+	if puller and puller.Character and puller.Character:FindFirstChild("HumanoidRootPart") and
+	   target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+		local pullerPos = puller.Character.HumanoidRootPart.Position
+		if isValidPosition(pullerPos) then
+			target.Character.HumanoidRootPart.CFrame = CFrame.new(pullerPos + Vector3.new(3, 0, 3))
+			notify("👥 Pulled " .. target.Name .. " to " .. puller.Name)
+		else
+			notify("⚠️ Invalid puller position", Color3.fromRGB(255, 100, 100))
+		end
+	else
+		notify("⚠️ Invalid players selected", Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -760,6 +798,40 @@ local function createGUI()
 			return box
 		end
 
+		local function updatePlayerList(parent)
+			-- Clear existing player buttons
+			for _, child in pairs(parent:GetChildren()) do
+				if child.Name:match("^Player_") then
+					child:Destroy()
+				end
+			end
+			-- Add buttons for each player
+			local yOffset = 35
+			for _, p in pairs(Players:GetPlayers()) do
+				if p ~= player then
+					local btn = Instance.new("TextButton")
+					btn.Name = "Player_" .. p.Name
+					btn.Size = UDim2.new(1, -10, 0, 30)
+					btn.Position = UDim2.new(0, 5, 0, yOffset)
+					btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+					btn.TextColor3 = selectedPlayer == p and Color3.fromRGB(0, 255, 0) or Color3.new(1, 1, 1)
+					btn.Text = p.Name
+					btn.TextScaled = true
+					btn.Font = Enum.Font.Gotham
+					btn.BorderSizePixel = 0
+					btn.ZIndex = 10
+					btn.Parent = parent
+					btn.Activated:Connect(function()
+						selectedPlayer = p
+						updatePlayerList(parent)
+						notify("👤 Selected " .. p.Name)
+					end)
+					yOffset = yOffset + 35
+				end
+			end
+			parent.CanvasSize = UDim2.new(0, 0, 0, yOffset)
+		end
+
 		local movement = createCategory("Movement")
 		createButton(movement, "Toggle Fly", toggleFly)
 		createButton(movement, "Toggle Noclip", toggleNoclip)
@@ -779,8 +851,27 @@ local function createGUI()
 		createButton(utility, "Save Position 2", function() savePosition(2) end)
 		createButton(utility, "Load Position 2", function() loadPosition(2) end)
 		createButton(utility, "Teleport to Spawn", teleportToSpawn)
-		createButton(utility, "Teleport to Player", teleportToPlayer)
-		createButton(utility, "Toggle Follow Player", toggleFollowPlayer)
+		createButton(utility, "Teleport to Player", function() teleportToPlayer(selectedPlayer) end)
+		createButton(utility, "Toggle Follow Player", function() toggleFollowPlayer(selectedPlayer) end)
+		createButton(utility, "Pull Player to Me", function() pullPlayerToMe(selectedPlayer) end)
+		createButton(utility, "Pull Player to Other", function()
+			if selectedPlayer then
+				local otherPlayer = nil
+				for _, p in pairs(Players:GetPlayers()) do
+					if p ~= player and p ~= selectedPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+						otherPlayer = p
+						break
+					end
+				end
+				if otherPlayer then
+					pullPlayerToOther(otherPlayer, selectedPlayer)
+				else
+					notify("⚠️ No other player found", Color3.fromRGB(255, 100, 100))
+				end
+			else
+				notify("⚠️ No player selected", Color3.fromRGB(255, 100, 100))
+			end
+		end)
 
 		local misc = createCategory("Misc")
 		createButton(misc, "Toggle Hide Nick", toggleHideNick)
@@ -795,6 +886,17 @@ local function createGUI()
 		createButton(misc, "Reset Character", resetCharacter)
 		createButton(misc, "Clean Workspace", cleanWorkspace)
 		createButton(misc, "Optimize Game", optimizeGame)
+
+		-- Player selection category
+		local playerSelect = createCategory("Player Select")
+		updatePlayerList(playerSelect)
+		Players.PlayerAdded:Connect(function() updatePlayerList(playerSelect) end)
+		Players.PlayerRemoving:Connect(function(p)
+			if selectedPlayer == p then
+				selectedPlayer = nil
+			end
+			updatePlayerList(playerSelect)
+		end)
 	end)
 	if not success then
 		print("createGUI error: " .. tostring(errorMsg))
