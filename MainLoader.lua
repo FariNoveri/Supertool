@@ -17,7 +17,7 @@ local originalCharacterAppearance = nil
 local flying, freecam, noclip, godMode, antiThirst, antiHunger = false, false, false, false, false, false
 local flySpeed = 50
 local freecamSpeed = 50
-local rotationSensitivity = 0.02 -- Dikurangin untuk rotasi lebih kaku
+local rotationSensitivity = 0.02
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -38,7 +38,7 @@ local moveStartPos = nil
 local rotateStartPos = nil
 local moveDirection = Vector3.new(0, 0, 0)
 local deltaRotation = Vector2.new(0, 0)
-local touchDeadzone = 20 -- Deadzone untuk touch input (pixel)
+local touchDeadzone = 20
 
 local function notify(message, color)
 	local success, errorMsg = pcall(function()
@@ -210,21 +210,21 @@ local function setupTouchInput()
 	connections.moveTouchMoved = UserInputService.TouchMoved:Connect(function(input)
 		if input == moveTouchInput and not UserInputService:GetFocusedTextBox() then
 			local delta = input.Position - moveStartPos
-			if delta.Magnitude < touchDeadzone then -- Deadzone untuk translasi
+			if delta.Magnitude < touchDeadzone then
 				moveDirection = Vector3.new(0, 0, 0)
 				return
 			end
 			local screenSize = camera.ViewportSize
-			local x = math.clamp(delta.X / (screenSize.X * 0.3), -0.8, 0.8) -- Clamp ketat
+			local x = math.clamp(delta.X / (screenSize.X * 0.3), -0.8, 0.8)
 			local y = math.clamp(-delta.Y / (screenSize.Y * 0.3), -0.8, 0.8)
 			moveDirection = Vector3.new(x, y, 0)
 		elseif input == rotateTouchInput then
 			local delta = input.Position - rotateStartPos
-			if delta.Magnitude < touchDeadzone then -- Deadzone untuk rotasi
+			if delta.Magnitude < touchDeadzone then
 				deltaRotation = Vector2.new(0, 0)
 				return
 			end
-			deltaRotation = Vector2.new(math.clamp(delta.X * rotationSensitivity, -0.1, 0.1), 0) -- Yaw only, clamped
+			deltaRotation = Vector2.new(math.clamp(delta.X * rotationSensitivity, -0.1, 0.1), 0)
 			rotateStartPos = input.Position
 		end
 	end)
@@ -342,7 +342,7 @@ local function toggleFreecam()
 				end
 				if deltaRotation.Magnitude > 0 then
 					local yaw = -deltaRotation.X
-					freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0) -- Yaw only, no interpolation
+					freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0)
 					print("Freecam Yaw: " .. yaw)
 				end
 				local forward = freecamCFrame.LookVector
@@ -350,7 +350,7 @@ local function toggleFreecam()
 				local up = Vector3.new(0, 1, 0)
 				local moveDir = moveDirection.X * right + moveDirection.Y * forward
 				if moveDir.Magnitude > 0 then
-					moveDir = moveDir * freecamSpeed -- Fixed step, no dt smoothing
+					moveDir = moveDir * freecamSpeed
 					freecamCFrame = CFrame.new(freecamCFrame.Position + moveDir) * freecamCFrame.Rotation
 				end
 				camera.CFrame = freecamCFrame
@@ -863,45 +863,38 @@ end
 local function toggleHideNick()
 	nickHidden = not nickHidden
 	local success, errorMsg = pcall(function()
-		for _, p in pairs(Players:GetPlayers()) do
-			local pChar = p.Character
-			if pChar and pChar:FindFirstChild("Head") then
-				local head = pChar.Head
-				local billboard = head:FindFirstChildOfClass("BillboardGui")
-				local pHumanoid = pChar:FindFirstChild("Humanoid")
-				if billboard then
-					billboard.Enabled = not nickHidden
-				end
-				if pHumanoid then
-					pHumanoid.NameDisplayDistance = nickHidden and 0 or 100
-					pHumanoid.DisplayDistanceType = nickHidden and Enum.HumanoidDisplayDistanceType.None or Enum.HumanoidDisplayDistanceType.Viewer
-				end
+		if char and char:FindFirstChild("Head") and humanoid then
+			local head = char.Head
+			local billboard = head:FindFirstChildOfClass("BillboardGui")
+			if billboard then
+				billboard.Enabled = not nickHidden
 			end
+			humanoid.NameDisplayDistance = nickHidden and 0 or 100
+			humanoid.DisplayDistanceType = nickHidden and Enum.HumanoidDisplayDistanceType.None or Enum.HumanoidDisplayDistanceType.Viewer
 		end
 		if nickHidden then
-			connections.hideNickNew = Players.PlayerAdded:Connect(function(newPlayer)
-				task.wait(1) -- Wait for character to load
-				local pChar = newPlayer.Character
-				if pChar and pChar:FindFirstChild("Head") then
-					local head = pChar.Head
+			connections.hideNickNew = player.CharacterAdded:Connect(function(newChar)
+				task.wait(1)
+				char = newChar
+				humanoid = char:WaitForChild("Humanoid", 10)
+				local head = char:WaitForChild("Head", 10)
+				if head and humanoid then
 					local billboard = head:FindFirstChildOfClass("BillboardGui")
-					local pHumanoid = pChar:FindFirstChild("Humanoid")
 					if billboard then
 						billboard.Enabled = false
 					end
-					if pHumanoid then
-						pHumanoid.NameDisplayDistance = 0
-						pHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-					end
+					humanoid.NameDisplayDistance = 0
+					humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 				end
 			end)
+			notify("🙈 Your Nick Hidden from Others")
 		else
 			if connections.hideNickNew then
 				connections.hideNickNew:Disconnect()
 				connections.hideNickNew = nil
 			end
+			notify("🙉 Your Nick Visible to Others")
 		end
-		notify(nickHidden and "🙈 All Nicks Hidden" or "🙉 All Nicks Visible")
 	end)
 	if not success then
 		nickHidden = false
@@ -909,7 +902,7 @@ local function toggleHideNick()
 			connections.hideNickNew:Disconnect()
 			connections.hideNickNew = nil
 		end
-		notify("⚠️ Failed to toggle nick visibility: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+		notify("⚠️ Failed to toggle your nick visibility: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -923,11 +916,11 @@ local function toggleRandomNick()
 				local head = char.Head
 				local billboard = head:FindFirstChildOfClass("BillboardGui")
 				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
-					billboard.TextLabel.Text = randomName
+					billboard.TextLabel.Text = nickHidden and "" or randomName
 				end
 			end
 			if humanoid then
-				humanoid.DisplayName = randomName
+				humanoid.DisplayName = nickHidden and "" or randomName
 			end
 			notify("🎲 Random Nick: " .. randomName)
 		else
@@ -936,11 +929,11 @@ local function toggleRandomNick()
 				local head = char.Head
 				local billboard = head:FindFirstChildOfClass("BillboardGui")
 				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
-					billboard.TextLabel.Text = player.Name
+					billboard.TextLabel.Text = nickHidden and "" or player.Name
 				end
 			end
 			if humanoid then
-				humanoid.DisplayName = player.Name
+				humanoid.DisplayName = nickHidden and "" or player.Name
 			end
 			notify("🎲 Nick Reset")
 		end
@@ -963,11 +956,11 @@ local function setCustomNick(nick)
 				local head = char.Head
 				local billboard = head:FindFirstChildOfClass("BillboardGui")
 				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
-					billboard.TextLabel.Text = nick
+					billboard.TextLabel.Text = nickHidden and "" or nick
 				end
 			end
 			if humanoid then
-				humanoid.DisplayName = nick
+				humanoid.DisplayName = nickHidden and "" or nick
 			end
 			if randomNick then
 				randomNick = false
@@ -1000,7 +993,6 @@ local function setAvatar(target)
 		else
 			notify("⚠️ API restricted, trying fallback...", Color3.fromRGB(255, 100, 100))
 		end
-		-- Fallback: Clone character appearance
 		for _, part in pairs(char:GetDescendants()) do
 			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
 				part:Destroy()
@@ -1482,7 +1474,7 @@ local function createGUI()
 
 		local misc = createCategory("Misc")
 		createTabButton("Misc", misc)
-		createButton(misc, "Toggle Hide Nick", toggleHideNick)
+		createButton(misc, "Toggle Hide My Nick", toggleHideNick)
 		createButton(misc, "Toggle Random Nick", toggleRandomNick)
 		createTextBox(misc, "Enter Custom Nick", setCustomNick)
 		createButton(misc, "Set Avatar", function() setAvatar(selectedPlayer) end)
