@@ -10,12 +10,13 @@ local humanoid, hr, char
 local gui, frame, logo
 local selectedPlayer = nil
 local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
-local defaultFramePos = UDim2.new(0.05, 0, 0.15, 0)
+local defaultFramePos = UDim2.new(0.5, -150, 0.5, -200)
 local originalHumanoidDescription = nil
 
 local flying, freecam, noclip, godMode, antiThirst, antiHunger = false, false, false, false, false, false
 local flySpeed = 50
 local freecamSpeed = 50
+local rotationSensitivity = 0.1 -- Radian per pixel for camera rotation
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -30,9 +31,12 @@ local macroActions = {}
 local isMobile = UserInputService.TouchEnabled
 local freecamCFrame = nil
 local hrCFrame = nil
-local touchInput = nil
-local touchStartPos = nil
+local moveTouchInput = nil
+local rotateTouchInput = nil
+local moveStartPos = nil
+local rotateStartPos = nil
 local moveDirection = Vector3.new(0, 0, 0)
+local deltaRotation = Vector2.new(0, 0)
 
 local function notify(message, color)
 	local success, errorMsg = pcall(function()
@@ -163,36 +167,52 @@ local function initChar()
 end
 
 local function setupTouchInput()
-	if connections.touchBegan then
-		connections.touchBegan:Disconnect()
-	end
-	if connections.touchMoved then
-		connections.touchMoved:Disconnect()
-	end
-	if connections.touchEnded then
-		connections.touchEnded:Disconnect()
-	end
-	connections.touchBegan = UserInputService.TouchStarted:Connect(function(input)
+	if connections.moveTouchBegan then connections.moveTouchBegan:Disconnect() end
+	if connections.moveTouchMoved then connections.moveTouchMoved:Disconnect() end
+	if connections.moveTouchEnded then connections.moveTouchEnded:Disconnect() end
+	if connections.rotateTouchBegan then connections.rotateTouchBegan:Disconnect() end
+	if connections.rotateTouchMoved then connections.rotateTouchMoved:Disconnect() end
+	if connections.rotateTouchEnded then connections.rotateTouchEnded:Disconnect() end
+
+	local touchCount = 0
+	connections.moveTouchBegan = UserInputService.TouchStarted:Connect(function(input)
 		if not UserInputService:GetFocusedTextBox() then
-			touchInput = input
-			touchStartPos = input.Position
-			moveDirection = Vector3.new(0, 0, 0)
+			touchCount = touchCount + 1
+			if touchCount == 1 then
+				moveTouchInput = input
+				moveStartPos = input.Position
+				moveDirection = Vector3.new(0, 0, 0)
+			elseif touchCount == 2 then
+				rotateTouchInput = input
+				rotateStartPos = input.Position
+				deltaRotation = Vector2.new(0, 0)
+			end
 		end
 	end)
-	connections.touchMoved = UserInputService.TouchMoved:Connect(function(input)
-		if input == touchInput and not UserInputService:GetFocusedTextBox() then
-			local delta = input.Position - touchStartPos
+	connections.moveTouchMoved = UserInputService.TouchMoved:Connect(function(input)
+		if input == moveTouchInput and not UserInputService:GetFocusedTextBox() then
+			local delta = input.Position - moveStartPos
 			local screenSize = camera.ViewportSize
 			local x = math.clamp(delta.X / (screenSize.X * 0.3), -1, 1)
 			local y = math.clamp(-delta.Y / (screenSize.Y * 0.3), -1, 1)
 			moveDirection = Vector3.new(x, y, 0)
+		elseif input == rotateTouchInput then
+			local delta = input.Position - rotateStartPos
+			deltaRotation = Vector2.new(delta.X * rotationSensitivity, delta.Y * rotationSensitivity)
+			rotateStartPos = input.Position
 		end
 	end)
-	connections.touchEnded = UserInputService.TouchEnded:Connect(function(input)
-		if input == touchInput then
-			touchInput = nil
-			touchStartPos = nil
+	connections.moveTouchEnded = UserInputService.TouchEnded:Connect(function(input)
+		if input == moveTouchInput then
+			moveTouchInput = nil
+			moveStartPos = nil
 			moveDirection = Vector3.new(0, 0, 0)
+			touchCount = touchCount - 1
+		elseif input == rotateTouchInput then
+			rotateTouchInput = nil
+			rotateStartPos = nil
+			deltaRotation = Vector2.new(0, 0)
+			touchCount = touchCount - 1
 		end
 	end)
 end
@@ -281,6 +301,14 @@ local function toggleFreecam()
 				if not camera or not freecamCFrame then
 					return
 				end
+				-- Handle rotation
+				if deltaRotation.Magnitude > 0 then
+					local yaw = -deltaRotation.X
+					local pitch = -deltaRotation.Y
+					freecamCFrame = freecamCFrame * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+					print("Freecam Rotation: Yaw=" .. yaw .. ", Pitch=" .. pitch)
+				end
+				-- Handle movement
 				local forward = freecamCFrame.LookVector
 				local right = freecamCFrame.RightVector
 				local up = Vector3.new(0, 1, 0)
@@ -290,9 +318,9 @@ local function toggleFreecam()
 					freecamCFrame = freecamCFrame + moveDir
 				end
 				camera.CFrame = freecamCFrame
-				print("Freecam: CameraType=" .. tostring(camera.CameraType) .. ", CameraPos=" .. tostring(freecamCFrame.Position) .. ", CharPos=" .. tostring(hr and hr.CFrame.Position or "nil"))
+				print("Freecam: CameraType=" .. tostring(camera.CameraType) .. ", Pos=" .. tostring(freecamCFrame.Position) .. ", CharPos=" .. tostring(hr and hr.CFrame.Position or "nil"))
 			end)
-			notify("📷 Freecam Enabled")
+			notify("📷 Freecam Enabled (Swipe to rotate)")
 		else
 			if connections.freecam then
 				connections.freecam:Disconnect()
@@ -1124,7 +1152,7 @@ local function createGUI()
 		print("Logo created")
 
 		frame = Instance.new("Frame")
-		frame.Size = UDim2.new(0.9, 0, 0.7, 0)
+		frame.Size = UDim2.new(0.5, 0, 0.6, 0)
 		frame.Position = defaultFramePos
 		frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 		frame.BackgroundTransparency = 0.1
@@ -1132,7 +1160,7 @@ local function createGUI()
 		frame.Visible = false
 		frame.ZIndex = 10
 		local uil = Instance.new("UIListLayout")
-		uil.FillDirection = Enum.FillDirection.Horizontal
+		uil.FillDirection = Enum.FillDirection.Vertical
 		uil.Padding = UDim.new(0, 10)
 		uil.Parent = frame
 		frame.Parent = gui
@@ -1166,10 +1194,22 @@ local function createGUI()
 		end)
 		print("Close button created")
 
+		local tabFrame = Instance.new("Frame")
+		tabFrame.Size = UDim2.new(1, 0, 0, 40)
+		tabFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		tabFrame.BackgroundTransparency = 0.2
+		tabFrame.ZIndex = 10
+		local tabList = Instance.new("UIListLayout")
+		tabList.FillDirection = Enum.FillDirection.Horizontal
+		tabList.Padding = UDim.new(0, 5)
+		tabList.Parent = tabFrame
+		tabFrame.Parent = frame
+
+		local categories = {}
 		local function createCategory(name)
 			local catFrame = Instance.new("ScrollingFrame")
-			catFrame.Size = UDim2.new(0, 200, 1, -55)
-			catFrame.Position = UDim2.new(0, 0, 0, 55)
+			catFrame.Size = UDim2.new(1, 0, 1, -95)
+			catFrame.Position = UDim2.new(0, 0, 0, 95)
 			catFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 			catFrame.BackgroundTransparency = 0.2
 			catFrame.BorderSizePixel = 0
@@ -1177,24 +1217,37 @@ local function createGUI()
 			catFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 			catFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 			catFrame.ScrollBarThickness = 8
+			catFrame.Visible = false
 			catFrame.Parent = frame
-			local catTitle = Instance.new("TextLabel")
-			catTitle.Size = UDim2.new(1, 0, 0, 40)
-			catTitle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-			catTitle.TextColor3 = Color3.new(1, 1, 1)
-			catTitle.Text = name
-			catTitle.TextScaled = true
-			catTitle.Font = Enum.Font.Gotham
-			catTitle.ZIndex = 10
-			catTitle.Parent = catFrame
 			local catList = Instance.new("UIListLayout")
 			catList.Padding = UDim.new(0, 10)
 			catList.Parent = catFrame
 			local catPadding = Instance.new("UIPadding")
 			catPadding.PaddingLeft = UDim.new(0, 10)
-			catPadding.PaddingTop = UDim.new(0, 45)
+			catPadding.PaddingTop = UDim.new(0, 10)
 			catPadding.Parent = catFrame
+			categories[name] = catFrame
 			return catFrame
+		end
+
+		local function createTabButton(name, catFrame)
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(0.25, -5, 0, 40)
+			btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+			btn.TextColor3 = Color3.new(1, 1, 1)
+			btn.Text = name
+			btn.TextScaled = true
+			btn.Font = Enum.Font.Gotham
+			btn.BorderSizePixel = 0
+			btn.ZIndex = 10
+			btn.Parent = tabFrame
+			btn.Activated:Connect(function()
+				for _, cat in pairs(categories) do
+					cat.Visible = false
+				end
+				catFrame.Visible = true
+				notify("📑 Switched to " .. name)
+			end)
 		end
 
 		local function createButton(parent, text, callback)
@@ -1237,7 +1290,7 @@ local function createGUI()
 					child:Destroy()
 				end
 			end
-			local yOffset = 45
+			local yOffset = 10
 			for _, p in pairs(Players:GetPlayers()) do
 				if p ~= player then
 					local btn = Instance.new("TextButton")
@@ -1264,6 +1317,7 @@ local function createGUI()
 		end
 
 		local movement = createCategory("Movement")
+		createTabButton("Movement", movement)
 		createButton(movement, "Toggle Fly", toggleFly)
 		createButton(movement, "Toggle Freecam", toggleFreecam)
 		createButton(movement, "Return to Character", returnToCharacter)
@@ -1277,6 +1331,7 @@ local function createGUI()
 		createButton(movement, "Toggle Spin", toggleSpin)
 
 		local utility = createCategory("Utility")
+		createTabButton("Utility", utility)
 		createButton(utility, "Toggle God Mode", toggleGodMode)
 		createButton(utility, "Toggle Anti Thirst", toggleAntiThirst)
 		createButton(utility, "Toggle Anti Hunger", toggleAntiHunger)
@@ -1298,6 +1353,7 @@ local function createGUI()
 		createButton(utility, "Toggle Record on Respawn", toggleRecordOnRespawn)
 
 		local misc = createCategory("Misc")
+		createTabButton("Misc", misc)
 		createButton(misc, "Toggle Hide Nick", toggleHideNick)
 		createButton(misc, "Toggle Random Nick", toggleRandomNick)
 		createTextBox(misc, "Enter Custom Nick", setCustomNick)
@@ -1306,6 +1362,7 @@ local function createGUI()
 		createButton(misc, "Reset Character", resetCharacter)
 
 		local playerSelect = createCategory("Player Select")
+		createTabButton("Player Select", playerSelect)
 		updatePlayerList(playerSelect)
 		Players.PlayerAdded:Connect(function() updatePlayerList(playerSelect) end)
 		Players.PlayerRemoving:Connect(function(p)
@@ -1314,6 +1371,9 @@ local function createGUI()
 			end
 			updatePlayerList(playerSelect)
 		end)
+
+		-- Show Movement tab by default
+		categories["Movement"].Visible = true
 	end)
 	if not success then
 		print("createGUI error: " .. tostring(errorMsg))
