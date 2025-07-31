@@ -99,11 +99,25 @@ local function ensureCharacterVisible()
 	end
 end
 
+local function cleanAdornments(character)
+	local success, errorMsg = pcall(function()
+		for _, obj in pairs(character:GetDescendants()) do
+			if obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment") or obj:IsA("SurfaceGui") then
+				obj:Destroy()
+			end
+		end
+	end)
+	if not success then
+		print("cleanAdornments error: " .. tostring(errorMsg))
+	end
+end
+
 local function resetCharacterState()
 	if hr and humanoid then
 		hr.Velocity = Vector3.new(0, 0, 0)
 		humanoid:ChangeState(Enum.HumanoidStateType.Running)
 		ensureCharacterVisible()
+		cleanAdornments(char)
 	end
 end
 
@@ -155,6 +169,7 @@ local function initChar()
 			error("Failed to find Humanoid or HumanoidRootPart after 20s")
 		end
 		saveOriginalAvatar()
+		cleanAdornments(char)
 		print("Character initialized: Humanoid=" .. tostring(humanoid) .. ", HRP=" .. tostring(hr))
 		ensureCharacterVisible()
 		
@@ -672,7 +687,7 @@ local function toggleAntiHunger()
 				local maxValue = hungerStat.Value >= 100 and hungerStat.Value or 100
 				connections.antiHunger = RunService.RenderStepped:Connect(function()
 					if hungerStat and hungerStat.Parent then
-						humanoid.Value = maxValue
+						hungerStat.Value = maxValue
 					else
 						antiHunger = false
 						connections.antiHunger:Disconnect()
@@ -1056,6 +1071,7 @@ local function convertToR6(character)
 		end
 		-- Force RigType to R6
 		hum.RigType = Enum.HumanoidRigType.R6
+		cleanAdornments(character)
 		print("Converted character to R6")
 	end)
 	if not success then
@@ -1069,8 +1085,8 @@ local function setAvatar(target)
 		return
 	end
 	local success, errorMsg = pcall(function()
-		if not humanoid or not char then
-			error("Your Humanoid or Character not found")
+		if not humanoid or not char or not hr then
+			error("Your Humanoid, Character, or HumanoidRootPart not found")
 		end
 		-- Save current position
 		local originalPos = hr.CFrame
@@ -1079,16 +1095,20 @@ local function setAvatar(target)
 			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
 			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
 			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-				part:Destroy()
+				if part ~= hr then -- Don't destroy HumanoidRootPart
+					part:Destroy()
+				end
 			end
 		end
-		-- Copy all visual elements from target
+		-- Copy visual elements from target, excluding HumanoidRootPart
 		for _, part in pairs(target.Character:GetDescendants()) do
 			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
 			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
 			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-				local clone = part:Clone()
-				clone.Parent = char
+				if part.Name ~= "HumanoidRootPart" then
+					local clone = part:Clone()
+					clone.Parent = char
+				end
 			end
 		end
 		-- Copy BodyColors
@@ -1100,10 +1120,12 @@ local function setAvatar(target)
 		if originalCharacterAppearance and originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 then
 			convertToR6(char)
 		end
+		-- Clean up adornments (white boxes)
+		cleanAdornments(char)
 		-- Restore position
 		hr.CFrame = originalPos
 		ensureCharacterVisible()
-		notify("🎭 Avatar set to " .. target.Name .. " (client-side, forced R6)")
+		notify("🎭 Avatar set to " .. target.Name .. " (client-side, no teleport, no boxes)")
 	end)
 	if not success then
 		notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
@@ -1114,8 +1136,8 @@ end
 
 local function resetAvatar()
 	local success, errorMsg = pcall(function()
-		if not humanoid or not char then
-			error("Humanoid or Character not found")
+		if not humanoid or not char or not hr then
+			error("Humanoid, Character, or HumanoidRootPart not found")
 		end
 		if originalCharacterAppearance then
 			local originalPos = hr.CFrame
@@ -1124,22 +1146,28 @@ local function resetAvatar()
 				if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
 				   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
 				   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-					part:Destroy()
+					if part ~= hr then -- Don't destroy HumanoidRootPart
+						part:Destroy()
+					end
 				end
 			end
 			-- Restore original elements
 			for _, clone in pairs(originalCharacterAppearance) do
-				local newClone = clone:Clone()
-				newClone.Parent = char
+				if clone.Name ~= "HumanoidRootPart" then
+					local newClone = clone:Clone()
+					newClone.Parent = char
+				end
 			end
 			-- Force R6 if original was R6
 			if originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 then
 				convertToR6(char)
 			end
+			-- Clean up adornments (white boxes)
+			cleanAdornments(char)
 			-- Restore position
 			hr.CFrame = originalPos
 			ensureCharacterVisible()
-			notify("🎭 Avatar Reset (client-side, restored R6)")
+			notify("🎭 Avatar Reset (client-side, no boxes)")
 		else
 			notify("⚠️ No original avatar saved, cannot reset", Color3.fromRGB(255, 100, 100))
 		end
@@ -1303,7 +1331,7 @@ local function stopPlayMacro()
 	if macroPlaying then
 		macroPlaying = false
 		if connections.macroPlay then
-			connections.macroPlay:Destroy()
+			connections.macroPlay:Disconnect()
 			connections.macroPlay = nil
 		end
 		if connections.macroNoclip then
