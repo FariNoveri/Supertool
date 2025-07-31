@@ -17,7 +17,7 @@ local originalCharacterAppearance = nil
 local flying, freecam, noclip, godMode, antiThirst, antiHunger = false, false, false, false, false, false
 local flySpeed = 50
 local freecamSpeed = 50
-local rotationSensitivity = 0.1
+local rotationSensitivity = 0.02 -- Dikurangin untuk rotasi lebih kaku
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -38,6 +38,7 @@ local moveStartPos = nil
 local rotateStartPos = nil
 local moveDirection = Vector3.new(0, 0, 0)
 local deltaRotation = Vector2.new(0, 0)
+local touchDeadzone = 20 -- Deadzone untuk touch input (pixel)
 
 local function notify(message, color)
 	local success, errorMsg = pcall(function()
@@ -209,13 +210,21 @@ local function setupTouchInput()
 	connections.moveTouchMoved = UserInputService.TouchMoved:Connect(function(input)
 		if input == moveTouchInput and not UserInputService:GetFocusedTextBox() then
 			local delta = input.Position - moveStartPos
+			if delta.Magnitude < touchDeadzone then -- Deadzone untuk translasi
+				moveDirection = Vector3.new(0, 0, 0)
+				return
+			end
 			local screenSize = camera.ViewportSize
-			local x = math.clamp(delta.X / (screenSize.X * 0.3), -1, 1)
-			local y = math.clamp(-delta.Y / (screenSize.Y * 0.3), -1, 1)
+			local x = math.clamp(delta.X / (screenSize.X * 0.3), -0.8, 0.8) -- Clamp ketat
+			local y = math.clamp(-delta.Y / (screenSize.Y * 0.3), -0.8, 0.8)
 			moveDirection = Vector3.new(x, y, 0)
 		elseif input == rotateTouchInput then
 			local delta = input.Position - rotateStartPos
-			deltaRotation = Vector2.new(delta.X * rotationSensitivity, delta.Y * rotationSensitivity)
+			if delta.Magnitude < touchDeadzone then -- Deadzone untuk rotasi
+				deltaRotation = Vector2.new(0, 0)
+				return
+			end
+			deltaRotation = Vector2.new(math.clamp(delta.X * rotationSensitivity, -0.1, 0.1), 0) -- Yaw only, clamped
 			rotateStartPos = input.Position
 		end
 	end)
@@ -236,51 +245,64 @@ end
 
 local function toggleFly()
 	flying = not flying
-	if flying then
-		if freecam then
-			toggleFreecam()
-			notify("📷 Freecam disabled to enable Fly", Color3.fromRGB(255, 100, 100))
-		end
-		local bv = Instance.new("BodyVelocity")
-		bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-		bv.Velocity = Vector3.new(0, 0, 0)
-		bv.Parent = hr
-		local bg = Instance.new("BodyGyro")
-		bg.MaxTorque = Vector3.new(0, math.huge, 0)
-		bg.P = 10000
-		bg.Parent = hr
-		connections.fly = RunService.RenderStepped:Connect(function()
+	local success, errorMsg = pcall(function()
+		if flying then
+			if freecam then
+				toggleFreecam()
+				notify("📷 Freecam disabled to enable Fly", Color3.fromRGB(255, 100, 100))
+			end
 			if not hr or not humanoid or not camera then
-				return
+				flying = false
+				error("Character or camera not loaded")
 			end
-			local forward = camera.CFrame.LookVector
-			local right = camera.CFrame.RightVector
-			local up = Vector3.new(0, 1, 0)
-			local moveDir = moveDirection.X * right + moveDirection.Y * forward
-			if moveDir.Magnitude > 0 then
-				moveDir = moveDir.Unit * flySpeed
+			local bv = Instance.new("BodyVelocity")
+			bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+			bv.Velocity = Vector3.new(0, 0, 0)
+			bv.Parent = hr
+			connections.fly = RunService.RenderStepped:Connect(function()
+				if not hr or not humanoid or not camera then
+					flying = false
+					connections.fly:Disconnect()
+					connections.fly = nil
+					notify("⚠️ Fly failed: Character or camera lost", Color3.fromRGB(255, 100, 100))
+					return
+				end
+				local forward = camera.CFrame.LookVector
+				local right = camera.CFrame.RightVector
+				local up = Vector3.new(0, 1, 0)
+				local moveDir = moveDirection.X * right + moveDirection.Y * forward
+				if moveDir.Magnitude > 0 then
+					moveDir = moveDir.Unit * flySpeed
+				else
+					moveDir = Vector3.new(0, 0, 0)
+				end
+				bv.Velocity = moveDir
+				print("Fly: moveDir=" .. tostring(moveDir) .. ", Velocity=" .. tostring(bv.Velocity) .. ", Pos=" .. tostring(hr.Position))
+			end)
+			notify("🛫 Fly Enabled")
+		else
+			if connections.fly then
+				connections.fly:Disconnect()
+				connections.fly = nil
 			end
-			bv.Velocity = moveDir
-			local flatLook = Vector3.new(forward.X, 0, forward.Z).Unit
-			if flatLook.Magnitude > 0 then
-				bg.CFrame = CFrame.new(Vector3.new(0, 0, 0), flatLook)
+			if hr and hr:FindFirstChildOfClass("BodyVelocity") then
+				hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
 			end
-		end)
-		notify("🛫 Fly Enabled")
-	else
+			notify("🛬 Fly Disabled")
+		end
+	end)
+	if not success then
+		flying = false
 		if connections.fly then
 			connections.fly:Disconnect()
 			connections.fly = nil
 		end
-		if hr then
-			if hr:FindFirstChildOfClass("BodyVelocity") then
-				hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
-			end
-			if hr:FindFirstChildOfClass("BodyGyro") then
-				hr:FindFirstChildOfClass("BodyGyro"):Destroy()
-			end
+		if hr and hr:FindFirstChildOfClass("BodyVelocity") then
+			hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
 		end
-		notify("🛬 Fly Disabled")
+		notify("⚠️ Fly error: " .. tostring(errorMsg) .. ", re-enabling...", Color3.fromRGB(255, 100, 100))
+		task.wait(1)
+		toggleFly()
 	end
 end
 
@@ -314,28 +336,27 @@ local function toggleFreecam()
 					notify("⚠️ Character lost, Freecam disabled", Color3.fromRGB(255, 100, 100))
 				end
 			end)
-			connections.freecam = RunService.RenderStepped:Connect(function(dt)
+			connections.freecam = RunService.RenderStepped:Connect(function()
 				if not camera or not freecamCFrame then
 					return
 				end
 				if deltaRotation.Magnitude > 0 then
 					local yaw = -deltaRotation.X
-					local pitch = -deltaRotation.Y
-					freecamCFrame = freecamCFrame * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
-					print("Freecam Rotation: Yaw=" .. yaw .. ", Pitch=" .. pitch)
+					freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0) -- Yaw only, no interpolation
+					print("Freecam Yaw: " .. yaw)
 				end
 				local forward = freecamCFrame.LookVector
 				local right = freecamCFrame.RightVector
 				local up = Vector3.new(0, 1, 0)
 				local moveDir = moveDirection.X * right + moveDirection.Y * forward
 				if moveDir.Magnitude > 0 then
-					moveDir = moveDir.Unit * freecamSpeed * dt
-					freecamCFrame = freecamCFrame + moveDir
+					moveDir = moveDir * freecamSpeed -- Fixed step, no dt smoothing
+					freecamCFrame = CFrame.new(freecamCFrame.Position + moveDir) * freecamCFrame.Rotation
 				end
 				camera.CFrame = freecamCFrame
 				print("Freecam: CameraType=" .. tostring(camera.CameraType) .. ", Pos=" .. tostring(freecamCFrame.Position) .. ", CharPos=" .. tostring(hr and hr.CFrame.Position or "nil"))
 			end)
-			notify("📷 Freecam Enabled (Swipe to rotate)")
+			notify("📷 Freecam Enabled (Stiff, horizontal only)")
 		else
 			if connections.freecam then
 				connections.freecam:Disconnect()
@@ -842,24 +863,52 @@ end
 local function toggleHideNick()
 	nickHidden = not nickHidden
 	local success, errorMsg = pcall(function()
-		if char and char:FindFirstChild("Head") then
-			local head = char.Head
-			local billboard = head:FindFirstChildOfClass("BillboardGui")
-			if billboard then
-				billboard.Enabled = not nickHidden
+		for _, p in pairs(Players:GetPlayers()) do
+			local pChar = p.Character
+			if pChar and pChar:FindFirstChild("Head") then
+				local head = pChar.Head
+				local billboard = head:FindFirstChildOfClass("BillboardGui")
+				local pHumanoid = pChar:FindFirstChild("Humanoid")
+				if billboard then
+					billboard.Enabled = not nickHidden
+				end
+				if pHumanoid then
+					pHumanoid.NameDisplayDistance = nickHidden and 0 or 100
+					pHumanoid.DisplayDistanceType = nickHidden and Enum.HumanoidDisplayDistanceType.None or Enum.HumanoidDisplayDistanceType.Viewer
+				end
 			end
-			if humanoid then
-				humanoid.NameDisplayDistance = nickHidden and 0 or 100
-				humanoid.DisplayDistanceType = nickHidden and Enum.HumanoidDisplayDistanceType.None or Enum.HumanoidDisplayDistanceType.Viewer
-			end
-			notify(nickHidden and "🙈 Nick Hidden" or "🙉 Nick Visible")
-		else
-			nickHidden = false
-			notify("⚠️ Head or BillboardGui not found", Color3.fromRGB(255, 100, 100))
 		end
+		if nickHidden then
+			connections.hideNickNew = Players.PlayerAdded:Connect(function(newPlayer)
+				task.wait(1) -- Wait for character to load
+				local pChar = newPlayer.Character
+				if pChar and pChar:FindFirstChild("Head") then
+					local head = pChar.Head
+					local billboard = head:FindFirstChildOfClass("BillboardGui")
+					local pHumanoid = pChar:FindFirstChild("Humanoid")
+					if billboard then
+						billboard.Enabled = false
+					end
+					if pHumanoid then
+						pHumanoid.NameDisplayDistance = 0
+						pHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+					end
+				end
+			end)
+		else
+			if connections.hideNickNew then
+				connections.hideNickNew:Disconnect()
+				connections.hideNickNew = nil
+			end
+		end
+		notify(nickHidden and "🙈 All Nicks Hidden" or "🙉 All Nicks Visible")
 	end)
 	if not success then
 		nickHidden = false
+		if connections.hideNickNew then
+			connections.hideNickNew:Disconnect()
+			connections.hideNickNew = nil
+		end
 		notify("⚠️ Failed to toggle nick visibility: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
@@ -869,11 +918,27 @@ local function toggleRandomNick()
 	local success, errorMsg = pcall(function()
 		if randomNick then
 			local randomName = "User" .. math.random(1000, 9999)
+			customNick = randomName
+			if char and char:FindFirstChild("Head") then
+				local head = char.Head
+				local billboard = head:FindFirstChildOfClass("BillboardGui")
+				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
+					billboard.TextLabel.Text = randomName
+				end
+			end
 			if humanoid then
 				humanoid.DisplayName = randomName
 			end
 			notify("🎲 Random Nick: " .. randomName)
 		else
+			customNick = ""
+			if char and char:FindFirstChild("Head") then
+				local head = char.Head
+				local billboard = head:FindFirstChildOfClass("BillboardGui")
+				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
+					billboard.TextLabel.Text = player.Name
+				end
+			end
 			if humanoid then
 				humanoid.DisplayName = player.Name
 			end
@@ -894,8 +959,18 @@ local function setCustomNick(nick)
 	local success, errorMsg = pcall(function()
 		if #nick <= 32 then
 			customNick = nick
+			if char and char:FindFirstChild("Head") then
+				local head = char.Head
+				local billboard = head:FindFirstChildOfClass("BillboardGui")
+				if billboard and billboard:FindFirstChildOfClass("TextLabel") then
+					billboard.TextLabel.Text = nick
+				end
+			end
 			if humanoid then
 				humanoid.DisplayName = nick
+			end
+			if randomNick then
+				randomNick = false
 			end
 			notify("✏️ Custom Nick: " .. nick)
 		else
