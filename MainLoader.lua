@@ -8,7 +8,9 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local humanoid, hr, char
 local gui, frame, logo
-local selectedPlayer = nil -- For player selection
+local selectedPlayer = nil
+local defaultLogoPos = UDim2.new(1, -60, 0, 10)
+local defaultFramePos = UDim2.new(1, -610, 0.5, -200)
 
 local flying, noclip, autoHeal, noFall, godMode = false, false, false, false, false
 local flySpeed = 50
@@ -90,7 +92,7 @@ local function initChar()
 		if godMode then toggleGodMode() toggleGodMode() end
 		if noFall then toggleNoFall() toggleNoFall() end
 		if antiRagdoll then toggleAntiRagdoll() toggleAntiRagdoll() end
-		if followTarget then toggleFollowPlayer() toggleFollowPlayer() end
+		if followTarget then toggleFollowPlayer(followTarget) toggleFollowPlayer(followTarget) end
 		if nickHidden then toggleHideNick() toggleHideNick() end
 		if randomNick then toggleRandomNick() toggleRandomNick() end
 		if customNick ~= "" then setCustomNick(customNick) end
@@ -408,31 +410,44 @@ local function toggleFollowPlayer(target)
 			connections.follow = nil
 		end
 		notify("🚶 Stopped Following")
-	else
-		if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hr then
-			followTarget = target
-			connections.follow = RunService.RenderStepped:Connect(function()
-				if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") then
-					local targetPos = followTarget.Character.HumanoidRootPart.Position
-					if isValidPosition(targetPos) then
-						hr.CFrame = CFrame.new(targetPos + Vector3.new(3, 0, 3))
-					else
-						followTarget = nil
-						connections.follow:Disconnect()
-						connections.follow = nil
-						notify("⚠️ Invalid target position", Color3.fromRGB(255, 100, 100))
-					end
+		return
+	end
+	if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hr then
+		followTarget = target
+		connections.follow = RunService.RenderStepped:Connect(function()
+			if followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") then
+				local targetPos = followTarget.Character.HumanoidRootPart.Position
+				if isValidPosition(targetPos) then
+					hr.CFrame = CFrame.new(targetPos + Vector3.new(3, 0, 3))
 				else
 					followTarget = nil
 					connections.follow:Disconnect()
 					connections.follow = nil
-					notify("⚠️ Target lost", Color3.fromRGB(255, 100, 100))
+					notify("⚠️ Invalid target position", Color3.fromRGB(255, 100, 100))
 				end
-			end)
-			notify("🚶 Following " .. target.Name)
-		else
-			notify("⚠️ No valid player selected", Color3.fromRGB(255, 100, 100))
+			else
+				followTarget = nil
+				connections.follow:Disconnect()
+				connections.follow = nil
+				notify("⚠️ Target lost", Color3.fromRGB(255, 100, 100))
+			end
+		end)
+		notify("🚶 Following " .. target.Name)
+	else
+		notify("⚠️ No valid player selected", Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function cancelFollowPlayer()
+	if followTarget then
+		followTarget = nil
+		if connections.follow then
+			connections.follow:Disconnect()
+			connections.follow = nil
 		end
+		notify("🚶 Follow Canceled")
+	else
+		notify("⚠️ Not following anyone", Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -440,7 +455,25 @@ local function pullPlayerToMe(target)
 	if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hr then
 		local myPos = hr.Position
 		if isValidPosition(myPos) then
-			target.Character.HumanoidRootPart.CFrame = CFrame.new(myPos + Vector3.new(3, 0, 3))
+			local targetHR = target.Character.HumanoidRootPart
+			-- Attempt to persist teleport over multiple frames
+			connections.pull = RunService.RenderStepped:Connect(function()
+				if target.Character and targetHR and isValidPosition(myPos) then
+					targetHR.CFrame = CFrame.new(myPos + Vector3.new(3, 0, 3))
+				else
+					if connections.pull then
+						connections.pull:Disconnect()
+						connections.pull = nil
+					end
+				end
+			end)
+			task.spawn(function()
+				task.wait(0.5) -- Persist for 0.5 seconds
+				if connections.pull then
+					connections.pull:Disconnect()
+					connections.pull = nil
+				end
+			end)
 			notify("👥 Pulled " .. target.Name .. " to you")
 		else
 			notify("⚠️ Invalid position", Color3.fromRGB(255, 100, 100))
@@ -455,13 +488,41 @@ local function pullPlayerToOther(puller, target)
 	   target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
 		local pullerPos = puller.Character.HumanoidRootPart.Position
 		if isValidPosition(pullerPos) then
-			target.Character.HumanoidRootPart.CFrame = CFrame.new(pullerPos + Vector3.new(3, 0, 3))
+			local targetHR = target.Character.HumanoidRootPart
+			-- Attempt to persist teleport over multiple frames
+			connections.pull = RunService.RenderStepped:Connect(function()
+				if target.Character and targetHR and puller.Character and isValidPosition(pullerPos) then
+					targetHR.CFrame = CFrame.new(pullerPos + Vector3.new(3, 0, 3))
+				else
+					if connections.pull then
+						connections.pull:Disconnect()
+						connections.pull = nil
+					end
+				end
+			end)
+			task.spawn(function()
+				task.wait(0.5) -- Persist for 0.5 seconds
+				if connections.pull then
+					connections.pull:Disconnect()
+					connections.pull = nil
+				end
+			end)
 			notify("👥 Pulled " .. target.Name .. " to " .. puller.Name)
 		else
 			notify("⚠️ Invalid puller position", Color3.fromRGB(255, 100, 100))
 		end
 	else
 		notify("⚠️ Invalid players selected", Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function resetUIPosition()
+	if logo and frame then
+		logo.Position = defaultLogoPos
+		frame.Position = defaultFramePos
+		notify("🖼️ UI Position Reset")
+	else
+		notify("⚠️ UI not initialized", Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -682,7 +743,7 @@ local function createGUI()
 
 		logo = Instance.new("ImageButton")
 		logo.Size = UDim2.new(0, 50, 0, 50)
-		logo.Position = UDim2.new(1, -60, 0, 10)
+		logo.Position = defaultLogoPos
 		logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
 		logo.BorderSizePixel = 0
 		logo.Image = "rbxassetid://3570695787"
@@ -692,7 +753,7 @@ local function createGUI()
 
 		frame = Instance.new("Frame")
 		frame.Size = isMobile and UDim2.new(0.8, 0, 0.6, 0) or UDim2.new(0, 600, 0, 400)
-		frame.Position = UDim2.new(1, -610, 0.5, -200)
+		frame.Position = defaultFramePos
 		frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 		frame.BackgroundTransparency = 0.1
 		frame.BorderSizePixel = 0
@@ -799,13 +860,11 @@ local function createGUI()
 		end
 
 		local function updatePlayerList(parent)
-			-- Clear existing player buttons
 			for _, child in pairs(parent:GetChildren()) do
 				if child.Name:match("^Player_") then
 					child:Destroy()
 				end
 			end
-			-- Add buttons for each player
 			local yOffset = 35
 			for _, p in pairs(Players:GetPlayers()) do
 				if p ~= player then
@@ -853,6 +912,7 @@ local function createGUI()
 		createButton(utility, "Teleport to Spawn", teleportToSpawn)
 		createButton(utility, "Teleport to Player", function() teleportToPlayer(selectedPlayer) end)
 		createButton(utility, "Toggle Follow Player", function() toggleFollowPlayer(selectedPlayer) end)
+		createButton(utility, "Cancel Follow Player", cancelFollowPlayer)
 		createButton(utility, "Pull Player to Me", function() pullPlayerToMe(selectedPlayer) end)
 		createButton(utility, "Pull Player to Other", function()
 			if selectedPlayer then
@@ -872,6 +932,7 @@ local function createGUI()
 				notify("⚠️ No player selected", Color3.fromRGB(255, 100, 100))
 			end
 		end)
+		createButton(utility, "Reset UI Position", resetUIPosition)
 
 		local misc = createCategory("Misc")
 		createButton(misc, "Toggle Hide Nick", toggleHideNick)
@@ -887,7 +948,6 @@ local function createGUI()
 		createButton(misc, "Clean Workspace", cleanWorkspace)
 		createButton(misc, "Optimize Game", optimizeGame)
 
-		-- Player selection category
 		local playerSelect = createCategory("Player Select")
 		updatePlayerList(playerSelect)
 		Players.PlayerAdded:Connect(function() updatePlayerList(playerSelect) end)
@@ -945,7 +1005,6 @@ local function setupUI()
 		end)
 		initChar()
 		
-		-- Handle character respawn
 		player.CharacterAdded:Connect(function()
 			clearConnections()
 			initChar()
