@@ -1093,8 +1093,8 @@ local function setAvatar(target)
         local targetHumanoid = target.Character:FindFirstChildOfClass("Humanoid")
         if targetHumanoid.RigType ~= humanoid.RigType then
             notify("⚠️ Rig type mismatch (Yours: " .. tostring(humanoid.RigType) .. ", Target: " .. tostring(targetHumanoid.RigType) .. ")", Color3.fromRGB(255, 100, 100))
-            -- Optionally, skip or handle rig conversion
-            -- return -- Uncomment to block if rig types differ
+            -- Optionally, skip if rig types differ
+            -- return
         end
         
         -- Save current state
@@ -1109,32 +1109,50 @@ local function setAvatar(target)
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
         
-        -- Only remove non-rig-affecting visual elements
+        -- Log target character's components
+        print("Target character components for " .. target.Name .. ":")
+        for _, part in pairs(target.Character:GetChildren()) do
+            print(" - " .. part.Name .. " (" .. part.ClassName .. ")")
+        end
+        
+        -- Clear non-rig-affecting visual elements
         for _, part in pairs(char:GetChildren()) do
             if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") or 
                part:IsA("CharacterMesh") or part:IsA("SurfaceAppearance") then
+                print("Removing: " .. part.Name .. " (" .. part.ClassName .. ")")
                 part:Destroy()
             end
         end
         if char:FindFirstChild("BodyColors") then
+            print("Removing BodyColors")
             char.BodyColors:Destroy()
         end
         
-        -- Copy only clothing, accessories, and BodyColors
+        -- Copy clothing, accessories, and BodyColors
+        local copiedElements = { Shirt = false, Pants = false, Accessories = 0, BodyColors = false }
         for _, part in pairs(target.Character:GetChildren()) do
-            if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") then
+            if part:IsA("Shirt") then
                 local clone = part:Clone()
                 clone.Parent = char
-                -- Only copy Motor6D for accessories
-                if part:IsA("Accessory") then
-                    for _, motor in pairs(target.Character:GetDescendants()) do
-                        if motor:IsA("Motor6D") and motor.Part1 == part then
-                            local newMotor = motor:Clone()
-                            newMotor.Parent = char
-                            newMotor.Part0 = char:FindFirstChild(motor.Part0.Name) or hr
-                            newMotor.Part1 = clone
-                            print("Copied Motor6D for accessory: " .. part.Name)
-                        end
+                copiedElements.Shirt = true
+                print("Copied Shirt: " .. part.Name)
+            elseif part:IsA("Pants") then
+                local clone = part:Clone()
+                clone.Parent = char
+                copiedElements.Pants = true
+                print("Copied Pants: " .. part.Name)
+            elseif part:IsA("Accessory") then
+                local clone = part:Clone()
+                clone.Parent = char
+                copiedElements.Accessories = copiedElements.Accessories + 1
+                -- Copy Motor6D for accessories
+                for _, motor in pairs(target.Character:GetDescendants()) do
+                    if motor:IsA("Motor6D") and motor.Part1 == part then
+                        local newMotor = motor:Clone()
+                        newMotor.Parent = char
+                        newMotor.Part0 = char:FindFirstChild(motor.Part0.Name) or hr
+                        newMotor.Part1 = clone
+                        print("Copied Motor6D for accessory: " .. part.Name)
                     end
                 end
             end
@@ -1144,8 +1162,15 @@ local function setAvatar(target)
         if target.Character:FindFirstChild("BodyColors") then
             local bodyColors = target.Character.BodyColors:Clone()
             bodyColors.Parent = char
+            copiedElements.BodyColors = true
             print("Copied BodyColors")
+        else
+            print("No BodyColors found on target")
         end
+        
+        -- Log what was copied
+        print("Copied elements: Shirt=" .. tostring(copiedElements.Shirt) .. ", Pants=" .. tostring(copiedElements.Pants) .. 
+              ", Accessories=" .. tostring(copiedElements.Accessories) .. ", BodyColors=" .. tostring(copiedElements.BodyColors))
         
         -- Ensure HumanoidRootPart position is unchanged
         hr.CFrame = originalPos
@@ -1162,7 +1187,7 @@ local function setAvatar(target)
         cleanAdornments(char)
         ensureCharacterVisible()
         
-        -- Monitor health and state for longer to catch game overrides
+        -- Monitor health and state
         local healthCheckConnection
         healthCheckConnection = humanoid.HealthChanged:Connect(function(health)
             if health <= 0 then
@@ -1181,7 +1206,7 @@ local function setAvatar(target)
             end
         end)
         task.spawn(function()
-            task.wait(5) -- Extended monitoring for 5 seconds
+            task.wait(5) -- Monitor for 5 seconds
             if healthCheckConnection then
                 healthCheckConnection:Disconnect()
             end
@@ -1191,7 +1216,7 @@ local function setAvatar(target)
             print("Health and state monitoring ended")
         end)
         
-        -- Reapply avatar on respawn
+        -- Reapply avatar on respawn or game override
         local targetName = target.Name
         local respawnConnection
         respawnConnection = player.CharacterAdded:Connect(function(newChar)
@@ -1210,7 +1235,11 @@ local function setAvatar(target)
             end
         end)
         
-        notify("🎭 Avatar set to " .. target.Name .. " (client-side, no death, no teleport)", Color3.fromRGB(0, 255, 0))
+        -- Notify success and what was copied
+        local notifyMsg = "🎭 Avatar set to " .. target.Name .. " (client-side, no death, no teleport)\n" ..
+                          "Copied: Shirt=" .. tostring(copiedElements.Shirt) .. ", Pants=" .. tostring(copiedElements.Pants) .. 
+                          ", Accessories=" .. tostring(copiedElements.Accessories) .. ", BodyColors=" .. tostring(copiedElements.BodyColors)
+        notify(notifyMsg, Color3.fromRGB(0, 255, 0))
         print("Avatar change completed for " .. target.Name)
     end)
     if not success then
@@ -1250,19 +1279,29 @@ local function resetAvatar()
             for _, part in pairs(char:GetChildren()) do
                 if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") or 
                    part:IsA("CharacterMesh") or part:IsA("SurfaceAppearance") then
+                    print("Removing for reset: " .. part.Name .. " (" .. part.ClassName .. ")")
                     part:Destroy()
                 end
             end
             if char:FindFirstChild("BodyColors") then
+                print("Removing BodyColors for reset")
                 char.BodyColors:Destroy()
             end
             
             -- Restore original elements
+            local restoredElements = { Shirt = false, Pants = false, Accessories = 0, BodyColors = false }
             for _, clone in pairs(originalCharacterAppearance) do
                 if clone.Name ~= "HumanoidRootPart" and not clone:IsA("Humanoid") and clone.Name ~= "Head" then
                     local newClone = clone:Clone()
                     newClone.Parent = char
-                    print("Restored: " .. clone.Name)
+                    if clone:IsA("Shirt") then
+                        restoredElements.Shirt = true
+                    elseif clone:IsA("Pants") then
+                        restoredElements.Pants = true
+                    elseif clone:IsA("Accessory") then
+                        restoredElements.Accessories = restoredElements.Accessories + 1
+                    end
+                    print("Restored: " .. clone.Name .. " (" .. clone.ClassName .. ")")
                 end
             end
             
@@ -1270,6 +1309,7 @@ local function resetAvatar()
             if originalCharacterAppearance["BodyColors"] then
                 local bodyColors = originalCharacterAppearance["BodyColors"]:Clone()
                 bodyColors.Parent = char
+                restoredElements.BodyColors = true
                 print("Restored BodyColors")
             end
             
@@ -1304,7 +1344,7 @@ local function resetAvatar()
                 end
             end)
             task.spawn(function()
-                task.wait(5) -- Extended monitoring for 5 seconds
+                task.wait(5) -- Monitor for 5 seconds
                 if healthCheckConnection then
                     healthCheckConnection:Disconnect()
                 end
@@ -1314,7 +1354,11 @@ local function resetAvatar()
                 print("Health and state monitoring ended for reset")
             end)
             
-            notify("🎭 Avatar Reset (client-side, no death, no teleport)", Color3.fromRGB(0, 255, 0))
+            -- Notify what was restored
+            local notifyMsg = "🎭 Avatar Reset (client-side, no death, no teleport)\n" ..
+                              "Restored: Shirt=" .. tostring(restoredElements.Shirt) .. ", Pants=" .. tostring(restoredElements.Pants) .. 
+                              ", Accessories=" .. tostring(restoredElements.Accessories) .. ", BodyColors=" .. tostring(restoredElements.BodyColors)
+            notify(notifyMsg, Color3.fromRGB(0, 255, 0))
             print("Avatar reset completed")
         else
             notify("⚠️ No original avatar saved, cannot reset", Color3.fromRGB(255, 100, 100))
