@@ -7,7 +7,7 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local humanoid, hr, char
-local gui, frame, logo
+local gui, frame, logo, joystickFrame
 local selectedPlayer = nil
 local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
 local defaultFramePos = UDim2.new(0.5, -150, 0.5, -200)
@@ -30,13 +30,10 @@ local macroActions = {}
 local isMobile = UserInputService.TouchEnabled
 local freecamCFrame = nil
 local hrCFrame = nil
-local moveTouchInput = nil
-local rotateTouchInput = nil
-local moveStartPos = nil
-local rotateStartPos = nil
+local joystickTouch = nil
+local joystickCenter = nil
+local joystickRadius = 50
 local moveDirection = Vector3.new(0, 0, 0)
-local deltaRotation = Vector2.new(0, 0)
-local touchDeadzone = 20
 
 -- Detect and destroy previous script instance
 local function cleanupOldInstance()
@@ -47,10 +44,11 @@ local function cleanupOldInstance()
 	end
 end
 
+-- Modified notify function to handle nil gui
 local function notify(message, color)
 	local success, errorMsg = pcall(function()
 		if not gui then
-			print("Notify failed: GUI not initialized")
+			print("Notify: " .. message) -- Fallback to console if gui is nil
 			return
 		end
 		local notif = Instance.new("TextLabel")
@@ -116,6 +114,7 @@ local function resetCharacterState()
 	if hr and humanoid then
 		hr.Velocity = Vector3.new(0, 0, 0)
 		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+		humanoid.Health = humanoid.MaxHealth -- Reset health
 		ensureCharacterVisible()
 		cleanAdornments(char)
 	end
@@ -198,61 +197,63 @@ local function initChar()
 	end
 end
 
-local function setupTouchInput()
-	if connections.moveTouchBegan then connections.moveTouchBegan:Disconnect() end
-	if connections.moveTouchMoved then connections.moveTouchMoved:Disconnect() end
-	if connections.moveTouchEnded then connections.moveTouchEnded:Disconnect() end
-	if connections.rotateTouchBegan then connections.rotateTouchBegan:Disconnect() end
-	if connections.rotateTouchMoved then connections.rotateTouchMoved:Disconnect() end
-	if connections.rotateTouchEnded then connections.rotateTouchEnded:Disconnect() end
+local function createJoystick()
+	if joystickFrame then
+		joystickFrame:Destroy()
+	end
+	joystickFrame = Instance.new("Frame")
+	joystickFrame.Size = UDim2.new(0, 100, 0, 100)
+	joystickFrame.Position = UDim2.new(0.1, 0, 0.7, 0)
+	joystickFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+	joystickFrame.BackgroundTransparency = 0.5
+	joystickFrame.BorderSizePixel = 0
+	joystickFrame.ZIndex = 15
+	joystickFrame.Visible = false
+	joystickFrame.Parent = gui
 
-	local touchCount = 0
-	connections.moveTouchBegan = UserInputService.TouchStarted:Connect(function(input)
-		if not UserInputService:GetFocusedTextBox() then
-			touchCount = touchCount + 1
-			if touchCount == 1 then
-				moveTouchInput = input
-				moveStartPos = input.Position
-				moveDirection = Vector3.new(0, 0, 0)
-			elseif touchCount == 2 then
-				rotateTouchInput = input
-				rotateStartPos = input.Position
-				deltaRotation = Vector2.new(0, 0)
+	local joystickKnob = Instance.new("Frame")
+	joystickKnob.Size = UDim2.new(0, 40, 0, 40)
+	joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+	joystickKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	joystickKnob.BackgroundTransparency = 0.2
+	joystickKnob.BorderSizePixel = 0
+	joystickKnob.ZIndex = 16
+	joystickKnob.Parent = joystickFrame
+
+	local function updateJoystick(input)
+		local center = Vector2.new(joystickFrame.AbsolutePosition.X + joystickFrame.AbsoluteSize.X / 2, joystickFrame.AbsolutePosition.Y + joystickFrame.AbsoluteSize.Y / 2)
+		local delta = Vector2.new(input.Position.X, input.Position.Y) - center
+		local magnitude = delta.Magnitude
+		local maxRadius = joystickRadius
+		if magnitude > maxRadius then
+			delta = delta.Unit * maxRadius
+		end
+		joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
+		moveDirection = Vector3.new(delta.X / maxRadius, 0, -delta.Y / maxRadius)
+	end
+
+	connections.joystickBegan = UserInputService.TouchStarted:Connect(function(input)
+		if not UserInputService:GetFocusedTextBox() and (flying or freecam) then
+			local touchPos = Vector2.new(input.Position.X, input.Position.Y)
+			local joystickPos = Vector2.new(joystickFrame.AbsolutePosition.X + joystickFrame.AbsoluteSize.X / 2, joystickFrame.AbsolutePosition.Y + joystickFrame.AbsoluteSize.Y / 2)
+			if (touchPos - joystickPos).Magnitude <= joystickRadius * 2 then
+				joystickTouch = input
+				updateJoystick(input)
 			end
 		end
 	end)
-	connections.moveTouchMoved = UserInputService.TouchMoved:Connect(function(input)
-		if input == moveTouchInput and not UserInputService:GetFocusedTextBox() then
-			local delta = input.Position - moveStartPos
-			if delta.Magnitude < touchDeadzone then
-				moveDirection = Vector3.new(0, 0, 0)
-				return
-			end
-			local screenSize = camera.ViewportSize
-			local x = math.clamp(delta.X / (screenSize.X * 0.3), -0.8, 0.8)
-			local z = math.clamp(-delta.Y / (screenSize.Y * 0.3), -0.8, 0.8)
-			moveDirection = Vector3.new(x, 0, z)
-		elseif input == rotateTouchInput then
-			local delta = input.Position - rotateStartPos
-			if delta.Magnitude < touchDeadzone then
-				deltaRotation = Vector2.new(0, 0)
-				return
-			end
-			deltaRotation = Vector2.new(math.clamp(delta.X * rotationSensitivity, -0.05, 0.05), 0)
-			rotateStartPos = input.Position
+
+	connections.joystickMoved = UserInputService.TouchMoved:Connect(function(input)
+		if input == joystickTouch then
+			updateJoystick(input)
 		end
 	end)
-	connections.moveTouchEnded = UserInputService.TouchEnded:Connect(function(input)
-		if input == moveTouchInput then
-			moveTouchInput = nil
-			moveStartPos = nil
+
+	connections.joystickEnded = UserInputService.TouchEnded:Connect(function(input)
+		if input == joystickTouch then
+			joystickTouch = nil
+			joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
 			moveDirection = Vector3.new(0, 0, 0)
-			touchCount = touchCount - 1
-		elseif input == rotateTouchInput then
-			rotateTouchInput = nil
-			rotateStartPos = nil
-			deltaRotation = Vector2.new(0, 0)
-			touchCount = touchCount - 1
 		end
 	end)
 end
@@ -269,6 +270,7 @@ local function toggleFly()
 				flying = false
 				error("Character or camera not loaded")
 			end
+			joystickFrame.Visible = true
 			local bv = Instance.new("BodyVelocity")
 			bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 			bv.Velocity = Vector3.new(0, 0, 0)
@@ -278,6 +280,7 @@ local function toggleFly()
 					flying = false
 					connections.fly:Disconnect()
 					connections.fly = nil
+					joystickFrame.Visible = false
 					notify("⚠️ Fly failed: Character or camera lost", Color3.fromRGB(255, 100, 100))
 					return
 				end
@@ -289,15 +292,11 @@ local function toggleFly()
 				else
 					moveDir = Vector3.new(0, 0, 0)
 				end
-				if deltaRotation.Magnitude > 0 then
-					local yaw = -deltaRotation.X
-					camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.Angles(0, yaw, 0)
-				end
 				bv.Velocity = moveDir
 				hr.CFrame = CFrame.new(hr.Position) * camera.CFrame.Rotation
 				print("Fly: moveDir=" .. tostring(moveDir) .. ", Velocity=" .. tostring(bv.Velocity) .. ", Pos=" .. tostring(hr.Position))
 			end)
-			notify("🛫 Fly Enabled")
+			notify("🛫 Fly Enabled (Joystick)")
 		else
 			if connections.fly then
 				connections.fly:Disconnect()
@@ -306,6 +305,7 @@ local function toggleFly()
 			if hr and hr:FindFirstChildOfClass("BodyVelocity") then
 				hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
 			end
+			joystickFrame.Visible = false
 			notify("🛬 Fly Disabled")
 		end
 	end)
@@ -318,6 +318,7 @@ local function toggleFly()
 		if hr and hr:FindFirstChildOfClass("BodyVelocity") then
 			hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
 		end
+		joystickFrame.Visible = false
 		notify("⚠️ Fly error: " .. tostring(errorMsg) .. ", re-enabling...", Color3.fromRGB(255, 100, 100))
 		task.wait(1)
 		toggleFly()
@@ -336,6 +337,7 @@ local function toggleFreecam()
 				freecam = false
 				error("Character or camera not loaded")
 			end
+			joystickFrame.Visible = true
 			hrCFrame = hr.CFrame
 			freecamCFrame = camera.CFrame
 			camera.CameraType = Enum.CameraType.Scriptable
@@ -351,17 +353,13 @@ local function toggleFreecam()
 					freecam = false
 					connections.freecamLock:Disconnect()
 					connections.freecamLock = nil
+					joystickFrame.Visible = false
 					notify("⚠️ Character lost, Freecam disabled", Color3.fromRGB(255, 100, 100))
 				end
 			end)
 			connections.freecam = RunService.RenderStepped:Connect(function()
 				if not camera or not freecamCFrame then
 					return
-				end
-				if deltaRotation.Magnitude > 0 then
-					local yaw = -deltaRotation.X
-					freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0)
-					print("Freecam Yaw: " .. yaw)
 				end
 				local forward = freecamCFrame.LookVector
 				local right = freecamCFrame.RightVector
@@ -373,7 +371,7 @@ local function toggleFreecam()
 				camera.CFrame = freecamCFrame
 				print("Freecam: CameraType=" .. tostring(camera.CameraType) .. ", Pos=" .. tostring(freecamCFrame.Position) .. ", CharPos=" .. tostring(hr and hr.CFrame.Position or "nil"))
 			end)
-			notify("📷 Freecam Enabled (Stiff, horizontal only)")
+			notify("📷 Freecam Enabled (Joystick)")
 		else
 			if connections.freecam then
 				connections.freecam:Disconnect()
@@ -395,6 +393,7 @@ local function toggleFreecam()
 			end
 			freecamCFrame = nil
 			hrCFrame = nil
+			joystickFrame.Visible = false
 			notify("📷 Freecam Disabled")
 		end
 	end)
@@ -411,6 +410,7 @@ local function toggleFreecam()
 		if hr and hr:FindFirstChildOfClass("BodyVelocity") then
 			hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
 		end
+		joystickFrame.Visible = false
 		notify("⚠️ Freecam error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
@@ -1080,7 +1080,7 @@ local function convertToR6(character)
 end
 
 local function setAvatar(target)
-	if not target or not target:IsA("Player") or not target.Character or not target.Character:FindFirstChild("Humanoid") then
+	if not target or not target:IsA("Player") or not target.Character or not target.Character:FindFirstChild("Humanoid") or not target.Character:FindFirstChild("HumanoidRootPart") then
 		notify("⚠️ No valid player selected or target character not loaded", Color3.fromRGB(255, 100, 100))
 		return
 	end
@@ -1088,24 +1088,26 @@ local function setAvatar(target)
 		if not humanoid or not char or not hr then
 			error("Your Humanoid, Character, or HumanoidRootPart not found")
 		end
-		-- Save current position
+		-- Save current position and health
 		local originalPos = hr.CFrame
-		-- Clear current visual elements
+		local originalHealth = humanoid.Health
+		local originalMaxHealth = humanoid.MaxHealth
+		-- Clear current visual elements, except critical components
 		for _, part in pairs(char:GetDescendants()) do
 			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
 			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
 			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-				if part ~= hr then -- Don't destroy HumanoidRootPart
+				if part ~= hr and part ~= humanoid then -- Protect HumanoidRootPart and Humanoid
 					part:Destroy()
 				end
 			end
 		end
-		-- Copy visual elements from target, excluding HumanoidRootPart
+		-- Copy visual elements from target, excluding critical components
 		for _, part in pairs(target.Character:GetDescendants()) do
 			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
 			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
 			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-				if part.Name ~= "HumanoidRootPart" then
+				if part.Name ~= "HumanoidRootPart" and not part:IsA("Humanoid") then
 					local clone = part:Clone()
 					clone.Parent = char
 				end
@@ -1122,10 +1124,12 @@ local function setAvatar(target)
 		end
 		-- Clean up adornments (white boxes)
 		cleanAdornments(char)
-		-- Restore position
+		-- Restore position and health
 		hr.CFrame = originalPos
+		humanoid.MaxHealth = originalMaxHealth
+		humanoid.Health = originalHealth
 		ensureCharacterVisible()
-		notify("🎭 Avatar set to " .. target.Name .. " (client-side, no teleport, no boxes)")
+		notify("🎭 Avatar set to " .. target.Name .. " (client-side, no death, no teleport, no boxes)")
 	end)
 	if not success then
 		notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
@@ -1141,19 +1145,21 @@ local function resetAvatar()
 		end
 		if originalCharacterAppearance then
 			local originalPos = hr.CFrame
-			-- Clear current visual elements
+			local originalHealth = humanoid.Health
+			local originalMaxHealth = humanoid.MaxHealth
+			-- Clear current visual elements, except critical components
 			for _, part in pairs(char:GetDescendants()) do
 				if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
 				   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
 				   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-					if part ~= hr then -- Don't destroy HumanoidRootPart
+					if part ~= hr and part ~= humanoid then -- Protect HumanoidRootPart and Humanoid
 						part:Destroy()
 					end
 				end
 			end
 			-- Restore original elements
 			for _, clone in pairs(originalCharacterAppearance) do
-				if clone.Name ~= "HumanoidRootPart" then
+				if clone.Name ~= "HumanoidRootPart" and not clone:IsA("Humanoid") then
 					local newClone = clone:Clone()
 					newClone.Parent = char
 				end
@@ -1164,10 +1170,12 @@ local function resetAvatar()
 			end
 			-- Clean up adornments (white boxes)
 			cleanAdornments(char)
-			-- Restore position
+			-- Restore position and health
 			hr.CFrame = originalPos
+			humanoid.MaxHealth = originalMaxHealth
+			humanoid.Health = originalHealth
 			ensureCharacterVisible()
-			notify("🎭 Avatar Reset (client-side, no boxes)")
+			notify("🎭 Avatar Reset (client-side, no death, no boxes)")
 		else
 			notify("⚠️ No original avatar saved, cannot reset", Color3.fromRGB(255, 100, 100))
 		end
@@ -1665,16 +1673,15 @@ end
 local function setupUI()
 	local success, errorMsg = pcall(function()
 		cleanupOldInstance()
-		createGUI()
+		createGUI() -- Create GUI first to ensure notify works
+		createJoystick()
 		makeDraggable(logo)
 		makeDraggable(frame)
 		logo.Activated:Connect(function()
 			frame.Visible = not frame.Visible
 			notify("🖼️ UI " .. (frame.Visible and "ON" or "OFF"))
 		end)
-		initChar()
-		setupTouchInput()
-		
+		initChar() -- Call initChar after GUI is created
 		player.CharacterAdded:Connect(function()
 			clearConnections()
 			if freecam then
@@ -1682,7 +1689,6 @@ local function setupUI()
 				notify("📷 Freecam disabled due to respawn")
 			end
 			initChar()
-			setupTouchInput()
 		end)
 	end)
 	if not success then
