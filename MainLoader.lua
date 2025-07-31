@@ -1088,28 +1088,39 @@ local function setAvatar(target)
 		if not humanoid or not char or not hr then
 			error("Your Humanoid, Character, or HumanoidRootPart not found")
 		end
-		-- Save current position and health
+		-- Save current state
 		local originalPos = hr.CFrame
 		local originalHealth = humanoid.Health
 		local originalMaxHealth = humanoid.MaxHealth
-		-- Clear current visual elements, except critical components
-		for _, part in pairs(char:GetDescendants()) do
-			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
-			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
-			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-				if part ~= hr and part ~= humanoid then -- Protect HumanoidRootPart and Humanoid
-					part:Destroy()
-				end
+		-- Temporarily prevent death
+		humanoid.MaxHealth = math.huge
+		humanoid.Health = math.huge
+		-- Clear only visual elements (clothing, accessories, non-critical parts)
+		for _, part in pairs(char:GetChildren()) do
+			if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") or 
+			   (part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "Head") then
+				part:Destroy()
 			end
 		end
-		-- Copy visual elements from target, excluding critical components
-		for _, part in pairs(target.Character:GetDescendants()) do
-			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
-			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
-			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-				if part.Name ~= "HumanoidRootPart" and not part:IsA("Humanoid") then
-					local clone = part:Clone()
-					clone.Parent = char
+		if char:FindFirstChild("BodyColors") then
+			char.BodyColors:Destroy()
+		end
+		-- Copy visual elements from target
+		for _, part in pairs(target.Character:GetChildren()) do
+			if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") then
+				local clone = part:Clone()
+				clone.Parent = char
+			elseif part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+				local clone = part:Clone()
+				clone.Parent = char
+				-- Ensure welds or motor6Ds are copied for accessories or parts
+				for _, motor in pairs(target.Character:GetDescendants()) do
+					if motor:IsA("Motor6D") and motor.Part1 == part then
+						local newMotor = motor:Clone()
+						newMotor.Parent = char
+						newMotor.Part0 = char:FindFirstChild(motor.Part0.Name) or hr
+						newMotor.Part1 = clone
+					end
 				end
 			end
 		end
@@ -1118,18 +1129,19 @@ local function setAvatar(target)
 			local bodyColors = target.Character.BodyColors:Clone()
 			bodyColors.Parent = char
 		end
-		-- Force R6 if your original character is R6
-		if originalCharacterAppearance and originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 then
-			convertToR6(char)
-		end
-		-- Clean up adornments (white boxes)
-		cleanAdornments(char)
-		-- Restore position and health
+		-- Ensure HumanoidRootPart position is unchanged
 		hr.CFrame = originalPos
+		-- Restore health
 		humanoid.MaxHealth = originalMaxHealth
 		humanoid.Health = originalHealth
+		-- Skip R6 conversion unless explicitly needed
+		if originalCharacterAppearance and originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 and humanoid.RigType ~= Enum.HumanoidRigType.R6 then
+			convertToR6(char)
+		end
+		-- Clean up adornments and ensure visibility
+		cleanAdornments(char)
 		ensureCharacterVisible()
-		notify("🎭 Avatar set to " .. target.Name .. " (client-side, no death, no teleport, no boxes)")
+		notify("🎭 Avatar set to " .. target.Name .. " (client-side, no death, no teleport)")
 	end)
 	if not success then
 		notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
@@ -1147,15 +1159,18 @@ local function resetAvatar()
 			local originalPos = hr.CFrame
 			local originalHealth = humanoid.Health
 			local originalMaxHealth = humanoid.MaxHealth
-			-- Clear current visual elements, except critical components
-			for _, part in pairs(char:GetDescendants()) do
-				if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
-				   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
-				   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
-					if part ~= hr and part ~= humanoid then -- Protect HumanoidRootPart and Humanoid
-						part:Destroy()
-					end
+			-- Temporarily prevent death
+			humanoid.MaxHealth = math.huge
+			humanoid.Health = math.huge
+			-- Clear current visual elements
+			for _, part in pairs(char:GetChildren()) do
+				if part:IsA("Shirt") or part:IsA("Pants") or part:IsA("Accessory") or 
+				   (part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "Head") then
+					part:Destroy()
 				end
+			end
+			if char:FindFirstChild("BodyColors") then
+				char.BodyColors:Destroy()
 			end
 			-- Restore original elements
 			for _, clone in pairs(originalCharacterAppearance) do
@@ -1164,18 +1179,23 @@ local function resetAvatar()
 					newClone.Parent = char
 				end
 			end
+			-- Restore BodyColors
+			if originalCharacterAppearance["BodyColors"] then
+				local bodyColors = originalCharacterAppearance["BodyColors"]:Clone()
+				bodyColors.Parent = char
+			end
 			-- Force R6 if original was R6
 			if originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 then
 				convertToR6(char)
 			end
-			-- Clean up adornments (white boxes)
-			cleanAdornments(char)
 			-- Restore position and health
 			hr.CFrame = originalPos
 			humanoid.MaxHealth = originalMaxHealth
 			humanoid.Health = originalHealth
+			-- Clean up adornments and ensure visibility
+			cleanAdornments(char)
 			ensureCharacterVisible()
-			notify("🎭 Avatar Reset (client-side, no death, no boxes)")
+			notify("🎭 Avatar Reset (client-side, no death, no teleport)")
 		else
 			notify("⚠️ No original avatar saved, cannot reset", Color3.fromRGB(255, 100, 100))
 		end
