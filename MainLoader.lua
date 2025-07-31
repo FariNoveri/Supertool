@@ -25,7 +25,7 @@ local antiRagdoll, antiSpectate, antiReport = false, false, false
 local nickHidden, randomNick = false, false
 local customNick = ""
 local trajectoryEnabled = false
-local macroRecording, macroPlaying, autoPlayOnRespawn = false, false, false
+local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
 local macroActions = {}
 local macroNoclip = false
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
@@ -101,6 +101,7 @@ local function initChar()
 		if macroRecording then toggleRecordMacro() toggleRecordMacro() end
 		if macroPlaying then togglePlayMacro() togglePlayMacro() end
 		if autoPlayOnRespawn then toggleAutoPlayMacro() toggleAutoPlayMacro() end
+		if recordOnRespawn then toggleRecordOnRespawn() toggleRecordOnRespawn() end
 	end)
 	if not success then
 		print("initChar error: " .. tostring(errorMsg))
@@ -469,7 +470,6 @@ local function pullPlayerToMe(target)
 		local myPos = hr.Position
 		if isValidPosition(myPos) then
 			local targetHR = target.Character.HumanoidRootPart
-			-- Temporarily enable noclip for target to avoid collisions
 			local wasCollidable = {}
 			for _, part in pairs(target.Character:GetDescendants()) do
 				if part:IsA("BasePart") then
@@ -477,7 +477,6 @@ local function pullPlayerToMe(target)
 					part.CanCollide = false
 				end
 			end
-			-- Persist teleport over 1 second
 			local targetCFrame = CFrame.new(myPos + Vector3.new(3, 0, 3))
 			connections.pull = RunService.RenderStepped:Connect(function()
 				if target.Character and targetHR and isValidPosition(myPos) then
@@ -490,12 +489,11 @@ local function pullPlayerToMe(target)
 				end
 			end)
 			task.spawn(function()
-				task.wait(1) -- Persist for 1 second
+				task.wait(1)
 				if connections.pull then
 					connections.pull:Disconnect()
 					connections.pull = nil
 				end
-				-- Restore collision
 				for _, part in pairs(target.Character:GetDescendants()) do
 					if part:IsA("BasePart") and wasCollidable[part] ~= nil then
 						part.CanCollide = wasCollidable[part]
@@ -658,6 +656,47 @@ local function toggleTrajectory()
 	end
 end
 
+local function startMacroRecording()
+	if macroRecording then
+		return -- Already recording
+	end
+	macroRecording = true
+	macroActions = {}
+	local startTime = tick()
+	connections.macroRecord = RunService.RenderStepped:Connect(function()
+		if hr and humanoid then
+			table.insert(macroActions, {
+				time = tick() - startTime,
+				position = hr.Position,
+				velocity = hr.Velocity,
+				rotation = hr.CFrame - hr.CFrame.Position,
+				state = humanoid:GetState()
+			})
+		end
+	end)
+	connections.macroInput = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if macroRecording and not gameProcessed then
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				table.insert(macroActions, {
+					time = tick() - startTime,
+					inputType = "Keyboard",
+					key = input.KeyCode,
+					state = "Began"
+				})
+			end
+		end
+	end)
+	connections.macroState = humanoid.StateChanged:Connect(function(oldState, newState)
+		if macroRecording then
+			table.insert(macroActions, {
+				time = tick() - startTime,
+				stateChange = newState
+			})
+		end
+	end)
+	notify("⏺️ Macro Recording Started")
+end
+
 local function toggleRecordMacro()
 	if macroRecording then
 		macroRecording = false
@@ -665,21 +704,56 @@ local function toggleRecordMacro()
 			connections.macroRecord:Disconnect()
 			connections.macroRecord = nil
 		end
+		if connections.macroInput then
+			connections.macroInput:Disconnect()
+			connections.macroInput = nil
+		end
+		if connections.macroState then
+			connections.macroState:Disconnect()
+			connections.macroState = nil
+		end
 		notify("⏹️ Macro Recording Stopped")
 	else
-		macroRecording = true
-		macroActions = {}
-		local startTime = tick()
-		connections.macroRecord = RunService.RenderStepped:Connect(function()
-			if hr then
-				table.insert(macroActions, {
-					time = tick() - startTime,
-					position = hr.Position,
-					velocity = hr.Velocity
-				})
+		startMacroRecording()
+	end
+end
+
+local function stopRecordMacro()
+	if macroRecording then
+		macroRecording = false
+		if connections.macroRecord then
+			connections.macroRecord:Disconnect()
+			connections.macroRecord = nil
+		end
+		if connections.macroInput then
+			connections.macroInput:Disconnect()
+			connections.macroInput = nil
+		end
+		if connections.macroState then
+			connections.macroState:Disconnect()
+			connections.macroState = nil
+		end
+		notify("⏹️ Macro Recording Stopped")
+	else
+		notify("⚠️ Not recording a macro", Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function toggleRecordOnRespawn()
+	recordOnRespawn = not recordOnRespawn
+	if recordOnRespawn then
+		connections.recordOnRespawn = player.CharacterAdded:Connect(function()
+			if not macroRecording then
+				startMacroRecording()
 			end
 		end)
-		notify("⏺️ Macro Recording Started")
+		notify("🔄 Record on Respawn Enabled")
+	else
+		if connections.recordOnRespawn then
+			connections.recordOnRespawn:Disconnect()
+			connections.recordOnRespawn = nil
+		end
+		notify("🔄 Record on Respawn Disabled")
 	end
 end
 
@@ -709,14 +783,41 @@ local function togglePlayMacro()
 			end
 			local action = macroActions[index]
 			if tick() - startTime >= action.time then
-				if hr then
-					hr.Position = action.position
-					hr.Velocity = action.velocity
+				if hr and humanoid then
+					if action.position and action.velocity then
+						hr.Position = action.position
+						hr.Velocity = action.velocity
+						if action.rotation then
+							hr.CFrame = CFrame.new(action.position) * action.rotation
+						end
+						if action.state then
+							humanoid:ChangeState(action.state)
+						end
+					elseif action.inputType == "Keyboard" and action.state == "Began" then
+						if action.key == Enum.KeyCode.Space then
+							humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+						end
+					elseif action.stateChange then
+						humanoid:ChangeState(action.stateChange)
+					end
 				end
 				index = index + 1
 			end
 		end)
 		notify("▶️ Macro Playback Started")
+	end
+end
+
+local function stopPlayMacro()
+	if macroPlaying then
+		macroPlaying = false
+		if connections.macroPlay then
+			connections.macroPlay:Disconnect()
+			connections.macroPlay = nil
+		end
+		notify("⏹️ Macro Playback Stopped")
+	else
+		notify("⚠️ Not playing a macro", Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -973,6 +1074,12 @@ local function createGUI()
 			end
 		end)
 		createButton(utility, "Reset UI Position", resetUIPosition)
+		createButton(utility, "Toggle Record Macro", toggleRecordMacro)
+		createButton(utility, "Stop Record Macro", stopRecordMacro)
+		createButton(utility, "Toggle Play Macro", togglePlayMacro)
+		createButton(utility, "Stop Play Macro", stopPlayMacro)
+		createButton(utility, "Toggle Auto Play Macro", toggleAutoPlayMacro)
+		createButton(utility, "Toggle Record on Respawn", toggleRecordOnRespawn)
 
 		local misc = createCategory("Misc")
 		createButton(misc, "Toggle Hide Nick", toggleHideNick)
@@ -981,9 +1088,6 @@ local function createGUI()
 		createButton(misc, "Toggle Anti Spectate", toggleAntiSpectate)
 		createButton(misc, "Toggle Anti Report", toggleAntiReport)
 		createButton(misc, "Toggle Trajectory", toggleTrajectory)
-		createButton(misc, "Toggle Record Macro", toggleRecordMacro)
-		createButton(misc, "Toggle Play Macro", togglePlayMacro)
-		createButton(misc, "Toggle Auto Play Macro", toggleAutoPlayMacro)
 		createButton(misc, "Reset Character", resetCharacter)
 		createButton(misc, "Clean Workspace", cleanWorkspace)
 		createButton(misc, "Optimize Game", optimizeGame)
