@@ -585,7 +585,7 @@ local function createGUI()
 
 		logo = Instance.new("ImageButton")
 		logo.Size = UDim2.new(0, 50, 0, 50)
-		logo.Position = UDim2.new(0, 10, 0, 10)
+		logo.Position = UDim2.new(1, -60, 0, 10) -- Right side
 		logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
 		logo.BorderSizePixel = 0
 		logo.Image = "rbxassetid://3570695787"
@@ -594,14 +594,15 @@ local function createGUI()
 		print("Logo created")
 
 		frame = Instance.new("Frame")
-		frame.Size = isMobile and UDim2.new(0.9, 0, 0.8, 0) or UDim2.new(0, 400, 0, 600)
-		frame.Position = UDim2.new(0.5, -200, 0.5, -300)
+		frame.Size = isMobile and UDim2.new(0.8, 0, 0.6, 0) or UDim2.new(0, 600, 0, 400)
+		frame.Position = UDim2.new(1, -610, 0.5, -200) -- Right side, centered vertically
 		frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 		frame.BackgroundTransparency = 0.1
 		frame.BorderSizePixel = 0
 		frame.Visible = false
 		frame.ZIndex = 10
 		local uil = Instance.new("UIListLayout")
+		uil.FillDirection = Enum.FillDirection.Horizontal
 		uil.Padding = UDim.new(0, 5)
 		uil.Parent = frame
 		frame.Parent = gui
@@ -636,12 +637,17 @@ local function createGUI()
 		print("Close button created")
 
 		local function createCategory(name)
-			local catFrame = Instance.new("Frame")
-			catFrame.Size = UDim2.new(1, 0, 0, 200)
+			local catFrame = Instance.new("ScrollingFrame")
+			catFrame.Size = UDim2.new(0, 190, 1, -45) -- Narrower for horizontal layout
+			catFrame.Position = UDim2.new(0, 0, 0, 45)
 			catFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 			catFrame.BackgroundTransparency = 0.2
 			catFrame.BorderSizePixel = 0
 			catFrame.ZIndex = 10
+			catFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Auto-resize
+			catFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			catFrame.ScrollBarThickness = 6
+			catFrame.Parent = frame
 			local catTitle = Instance.new("TextLabel")
 			catTitle.Size = UDim2.new(1, 0, 0, 30)
 			catTitle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -658,7 +664,6 @@ local function createGUI()
 			catPadding.PaddingLeft = UDim.new(0, 5)
 			catPadding.PaddingTop = UDim.new(0, 35)
 			catPadding.Parent = catFrame
-			catFrame.Parent = frame
 			return catFrame
 		end
 
