@@ -71,6 +71,25 @@ local function isValidPosition(pos)
 	return pos and not (pos.Y < -1000 or pos.Y > 10000 or math.abs(pos.X) > 10000 or math.abs(pos.Z) > 10000)
 end
 
+local function ensureCharacterVisible()
+	if char then
+		for _, part in pairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.Transparency = 0
+				part.LocalTransparencyModifier = 0
+			end
+		end
+	end
+end
+
+local function resetCharacterState()
+	if hr and humanoid then
+		hr.Velocity = Vector3.new(0, 0, 0)
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+		ensureCharacterVisible()
+	end
+end
+
 local function initChar()
 	local success, errorMsg = pcall(function()
 		char = player.Character or player.CharacterAdded:Wait()
@@ -80,6 +99,7 @@ local function initChar()
 			error("Failed to find Humanoid or HumanoidRootPart")
 		end
 		print("Character initialized")
+		ensureCharacterVisible()
 		
 		if flying then toggleFly() toggleFly() end
 		if noclip then toggleNoclip() toggleNoclip() end
@@ -658,7 +678,7 @@ end
 
 local function startMacroRecording()
 	if macroRecording then
-		return -- Already recording
+		return
 	end
 	macroRecording = true
 	macroActions = {}
@@ -764,35 +784,76 @@ local function togglePlayMacro()
 			connections.macroPlay:Disconnect()
 			connections.macroPlay = nil
 		end
+		if connections.macroNoclip then
+			connections.macroNoclip:Disconnect()
+			connections.macroNoclip = nil
+		end
+		if char then
+			for _, part in pairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = true
+				end
+			end
+		end
+		resetCharacterState()
 		notify("⏹️ Macro Playback Stopped")
 	else
 		if #macroActions == 0 then
 			notify("⚠️ No macro recorded", Color3.fromRGB(255, 100, 100))
 			return
 		end
+		if not hr or not humanoid or not char then
+			notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
+			return
+		end
 		macroPlaying = true
+		ensureCharacterVisible()
+		-- Enable noclip during playback
+		connections.macroNoclip = RunService.Stepped:Connect(function()
+			if char then
+				for _, part in pairs(char:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = false
+					end
+				end
+			end
+		end)
 		local startTime = tick()
 		local index = 1
+		local lastCFrame = hr.CFrame
 		connections.macroPlay = RunService.RenderStepped:Connect(function()
 			if index > #macroActions then
 				macroPlaying = false
 				connections.macroPlay:Disconnect()
 				connections.macroPlay = nil
+				if connections.macroNoclip then
+					connections.macroNoclip:Disconnect()
+					connections.macroNoclip = nil
+				end
+				if char then
+					for _, part in pairs(char:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CanCollide = true
+						end
+					end
+				end
+				resetCharacterState()
 				notify("⏹️ Macro Playback Finished")
 				return
 			end
 			local action = macroActions[index]
 			if tick() - startTime >= action.time then
-				if hr and humanoid then
-					if action.position and action.velocity then
-						hr.Position = action.position
+				if hr and humanoid and char then
+					if action.position and action.velocity and action.rotation then
+						local targetCFrame = CFrame.new(action.position) * action.rotation
+						local tweenInfo = TweenInfo.new(0.05, Enum.EasingStyle.Linear)
+						local tween = TweenService:Create(hr, tweenInfo, {CFrame = targetCFrame})
+						tween:Play()
 						hr.Velocity = action.velocity
-						if action.rotation then
-							hr.CFrame = CFrame.new(action.position) * action.rotation
-						end
 						if action.state then
 							humanoid:ChangeState(action.state)
 						end
+						ensureCharacterVisible()
 					elseif action.inputType == "Keyboard" and action.state == "Began" then
 						if action.key == Enum.KeyCode.Space then
 							humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
@@ -815,6 +876,18 @@ local function stopPlayMacro()
 			connections.macroPlay:Disconnect()
 			connections.macroPlay = nil
 		end
+		if connections.macroNoclip then
+			connections.macroNoclip:Disconnect()
+			connections.macroNoclip = nil
+		end
+		if char then
+			for _, part in pairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = true
+				end
+			end
+		end
+		resetCharacterState()
 		notify("⏹️ Macro Playback Stopped")
 	else
 		notify("⚠️ Not playing a macro", Color3.fromRGB(255, 100, 100))
