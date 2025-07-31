@@ -9,8 +9,8 @@ local camera = workspace.CurrentCamera
 local humanoid, hr, char
 local gui, frame, logo
 local selectedPlayer = nil
-local defaultLogoPos = UDim2.new(1, -60, 0, 10)
-local defaultFramePos = UDim2.new(1, -610, 0.5, -200)
+local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
+local defaultFramePos = UDim2.new(0.05, 0, 0.15, 0)
 local originalHumanoidDescription = nil
 
 local flying, freecam, noclip, godMode, antiThirst, antiHunger = false, false, false, false, false, false
@@ -23,16 +23,16 @@ local spinSpeed = 20
 local savedPositions = { [1] = nil, [2] = nil }
 local followTarget = nil
 local connections = {}
-local antiSpectate, antiReport = false, false
 local nickHidden, randomNick = false, false
 local customNick = ""
-local trajectoryEnabled = false
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
 local macroActions = {}
-local macroNoclip = false
-local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local isMobile = UserInputService.TouchEnabled
 local freecamCFrame = nil
-local mouseDelta = Vector2.new(0, 0)
+local hrCFrame = nil
+local touchInput = nil
+local touchStartPos = nil
+local moveDirection = Vector3.new(0, 0, 0)
 
 local function notify(message, color)
 	local success, errorMsg = pcall(function()
@@ -41,8 +41,8 @@ local function notify(message, color)
 			return
 		end
 		local notif = Instance.new("TextLabel")
-		notif.Size = UDim2.new(0, 200, 0, 30)
-		notif.Position = UDim2.new(0.5, -100, 0, 10)
+		notif.Size = UDim2.new(0, 250, 0, 40)
+		notif.Position = UDim2.new(0.5, -125, 0.1, 0)
 		notif.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 		notif.BackgroundTransparency = 0.5
 		notif.TextColor3 = color or Color3.fromRGB(0, 255, 0)
@@ -95,15 +95,20 @@ local function resetCharacterState()
 end
 
 local function saveOriginalAvatar()
-	local success, desc = pcall(function()
-		return humanoid:GetDescription()
-	end)
-	if success and desc then
-		originalHumanoidDescription = desc
-		print("Original avatar saved")
-	else
-		notify("⚠️ Failed to save original avatar", Color3.fromRGB(255, 100, 100))
+	local retries = 3
+	local success, desc = false, nil
+	for i = 1, retries do
+		success, desc = pcall(function()
+			return Players:GetHumanoidDescriptionFromUserId(player.UserId)
+		end)
+		if success and desc then
+			originalHumanoidDescription = desc
+			print("Original avatar saved")
+			return
+		end
+		task.wait(1)
 	end
+	notify("⚠️ Failed to save avatar after retries", Color3.fromRGB(255, 100, 100))
 end
 
 local function findStat(statName)
@@ -142,9 +147,8 @@ local function initChar()
 		if godMode then toggleGodMode() toggleGodMode() end
 		if antiThirst then toggleAntiThirst() toggleAntiThirst() end
 		if antiHunger then toggleAntiHunger() toggleAntiHunger() end
-		if antiSpectate then toggleAntiSpectate() toggleAntiSpectate() end
-		if antiReport then toggleAntiReport() toggleAntiReport() end
-		if trajectoryEnabled then toggleTrajectory() toggleTrajectory() end
+		if nickHidden then toggleHideNick() toggleHideNick() end
+		if randomNick then toggleRandomNick() toggleRandomNick() end
 		if macroRecording then toggleRecordMacro() toggleRecordMacro() end
 		if macroPlaying then togglePlayMacro() togglePlayMacro() end
 		if autoPlayOnRespawn then toggleAutoPlayMacro() toggleAutoPlayMacro() end
@@ -156,6 +160,41 @@ local function initChar()
 		task.wait(5)
 		initChar()
 	end
+end
+
+local function setupTouchInput()
+	if connections.touchBegan then
+		connections.touchBegan:Disconnect()
+	end
+	if connections.touchMoved then
+		connections.touchMoved:Disconnect()
+	end
+	if connections.touchEnded then
+		connections.touchEnded:Disconnect()
+	end
+	connections.touchBegan = UserInputService.TouchStarted:Connect(function(input)
+		if not UserInputService:GetFocusedTextBox() then
+			touchInput = input
+			touchStartPos = input.Position
+			moveDirection = Vector3.new(0, 0, 0)
+		end
+	end)
+	connections.touchMoved = UserInputService.TouchMoved:Connect(function(input)
+		if input == touchInput and not UserInputService:GetFocusedTextBox() then
+			local delta = input.Position - touchStartPos
+			local screenSize = camera.ViewportSize
+			local x = math.clamp(delta.X / (screenSize.X * 0.3), -1, 1)
+			local y = math.clamp(-delta.Y / (screenSize.Y * 0.3), -1, 1)
+			moveDirection = Vector3.new(x, y, 0)
+		end
+	end)
+	connections.touchEnded = UserInputService.TouchEnded:Connect(function(input)
+		if input == touchInput then
+			touchInput = nil
+			touchStartPos = nil
+			moveDirection = Vector3.new(0, 0, 0)
+		end
+	end)
 end
 
 local function toggleFly()
@@ -177,35 +216,14 @@ local function toggleFly()
 			if not hr or not humanoid or not camera then
 				return
 			end
-			local moveDir = Vector3.new(0, 0, 0)
 			local forward = camera.CFrame.LookVector
 			local right = camera.CFrame.RightVector
-			local up = camera.CFrame.UpVector
-			
-			if UserInputService:IsKeyDown(Enum.KeyCode.W) or (isMobile and UserInputService:GetFocusedTextBox() == nil and UserInputService.TouchEnabled) then
-				moveDir = moveDir + forward
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-				moveDir = moveDir - forward
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-				moveDir = moveDir + right
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-				moveDir = moveDir - right
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-				moveDir = moveDir + up
-			end
-			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-				moveDir = moveDir - up
-			end
-			
+			local up = Vector3.new(0, 1, 0)
+			local moveDir = moveDirection.X * right + moveDirection.Y * forward
 			if moveDir.Magnitude > 0 then
 				moveDir = moveDir.Unit * flySpeed
 			end
 			bv.Velocity = moveDir
-			
 			local flatLook = Vector3.new(forward.X, 0, forward.Z).Unit
 			if flatLook.Magnitude > 0 then
 				bg.CFrame = CFrame.new(Vector3.new(0, 0, 0), flatLook)
@@ -237,51 +255,42 @@ local function toggleFreecam()
 				toggleFly()
 				notify("🛫 Fly disabled to enable Freecam", Color3.fromRGB(255, 100, 100))
 			end
+			if not hr or not humanoid or not camera then
+				freecam = false
+				error("Character or camera not loaded")
+			end
+			hrCFrame = hr.CFrame
 			freecamCFrame = camera.CFrame
-			mouseDelta = Vector2.new(0, 0)
 			camera.CameraType = Enum.CameraType.Scriptable
+			camera.CameraSubject = nil
+			local bv = Instance.new("BodyVelocity")
+			bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+			bv.Velocity = Vector3.new(0, 0, 0)
+			bv.Parent = hr
+			connections.freecamLock = RunService.Stepped:Connect(function()
+				if hr and hrCFrame then
+					hr.CFrame = hrCFrame
+				else
+					freecam = false
+					connections.freecamLock:Disconnect()
+					connections.freecamLock = nil
+					notify("⚠️ Character lost, Freecam disabled", Color3.fromRGB(255, 100, 100))
+				end
+			end)
 			connections.freecam = RunService.RenderStepped:Connect(function(dt)
 				if not camera or not freecamCFrame then
 					return
 				end
-				local moveDir = Vector3.new(0, 0, 0)
 				local forward = freecamCFrame.LookVector
 				local right = freecamCFrame.RightVector
-				local up = freecamCFrame.UpVector
-				
-				if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-					moveDir = moveDir + forward
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-					moveDir = moveDir - forward
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-					moveDir = moveDir + right
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-					moveDir = moveDir - right
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-					moveDir = moveDir + up
-				end
-				if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-					moveDir = moveDir - up
-				end
-				
+				local up = Vector3.new(0, 1, 0)
+				local moveDir = moveDirection.X * right + moveDirection.Y * forward
 				if moveDir.Magnitude > 0 then
 					moveDir = moveDir.Unit * freecamSpeed * dt
 					freecamCFrame = freecamCFrame + moveDir
 				end
-				
 				camera.CFrame = freecamCFrame
-			end)
-			connections.mouse = UserInputService.InputChanged:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-					mouseDelta = input.Delta
-					local yaw = -mouseDelta.X * 0.002
-					local pitch = -mouseDelta.Y * 0.002
-					freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
-				end
+				print("Freecam: CameraType=" .. tostring(camera.CameraType) .. ", CameraPos=" .. tostring(freecamCFrame.Position) .. ", CharPos=" .. tostring(hr and hr.CFrame.Position or "nil"))
 			end)
 			notify("📷 Freecam Enabled")
 		else
@@ -289,30 +298,45 @@ local function toggleFreecam()
 				connections.freecam:Disconnect()
 				connections.freecam = nil
 			end
-			if connections.mouse then
-				connections.mouse:Disconnect()
-				connections.mouse = nil
+			if connections.freecamLock then
+				connections.freecamLock:Disconnect()
+				connections.freecamLock = nil
+			end
+			if hr and hr:FindFirstChildOfClass("BodyVelocity") then
+				hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
 			end
 			if camera and humanoid then
 				camera.CameraType = Enum.CameraType.Custom
 				camera.CameraSubject = humanoid
 				if hr then
-					camera.CFrame = CFrame.new(hr.Position + Vector3.new(0, 5, 10), hr.Position)
+					camera.CFrame = CFrame.new(hr.CFrame.Position + Vector3.new(0, 5, 10), hr.CFrame.Position)
 				end
 			end
 			freecamCFrame = nil
-			mouseDelta = Vector2.new(0, 0)
+			hrCFrame = nil
 			notify("📷 Freecam Disabled")
 		end
 	end)
 	if not success then
+		freecam = false
+		if connections.freecam then
+			connections.freecam:Disconnect()
+			connections.freecam = nil
+		end
+		if connections.freecamLock then
+			connections.freecamLock:Disconnect()
+			connections.freecamLock = nil
+		end
+		if hr and hr:FindFirstChildOfClass("BodyVelocity") then
+			hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
+		end
 		notify("⚠️ Freecam error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
 local function returnToCharacter()
 	if freecam and hr and humanoid then
-		freecamCFrame = CFrame.new(hr.Position + Vector3.new(0, 5, 10), hr.Position)
+		freecamCFrame = CFrame.new(hr.CFrame.Position + Vector3.new(0, 5, 10), hr.CFrame.Position)
 		camera.CFrame = freecamCFrame
 		notify("📷 Returned to Character")
 	else
@@ -331,9 +355,9 @@ end
 
 local function teleportCharacterToCamera()
 	if freecam and hr and isValidPosition(freecamCFrame.Position) then
-		local targetCFrame = CFrame.new(freecamCFrame.Position + Vector3.new(0, 3, 0))
+		hrCFrame = CFrame.new(freecamCFrame.Position + Vector3.new(0, 3, 0))
 		local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear)
-		local tween = TweenService:Create(hr, tweenInfo, {CFrame = targetCFrame})
+		local tween = TweenService:Create(hr, tweenInfo, {CFrame = hrCFrame})
 		tween:Play()
 		tween.Completed:Connect(function()
 			notify("👤 Character Teleported to Camera")
@@ -762,51 +786,6 @@ local function pullPlayerToMe(target)
 	end
 end
 
-local function pullPlayerToOther(puller, target)
-	if puller and puller.Character and puller.Character:FindFirstChild("HumanoidRootPart") and
-	   target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-		local pullerPos = puller.Character.HumanoidRootPart.Position
-		if isValidPosition(pullerPos) then
-			local targetHR = target.Character.HumanoidRootPart
-			local wasCollidable = {}
-			for _, part in pairs(target.Character:GetDescendants()) do
-				if part:IsA("BasePart") then
-					wasCollidable[part] = part.CanCollide
-					part.CanCollide = false
-				end
-			end
-			local targetCFrame = CFrame.new(pullerPos + Vector3.new(3, 0, 3))
-			connections.pull = RunService.RenderStepped:Connect(function()
-				if target.Character and targetHR and puller.Character and isValidPosition(pullerPos) then
-					targetHR.CFrame = targetCFrame
-				else
-					if connections.pull then
-						connections.pull:Disconnect()
-						connections.pull = nil
-					end
-				end
-			end)
-			task.spawn(function()
-				task.wait(1)
-				if connections.pull then
-					connections.pull:Disconnect()
-					connections.pull = nil
-				end
-				for _, part in pairs(target.Character:GetDescendants()) do
-					if part:IsA("BasePart") and wasCollidable[part] ~= nil then
-						part.CanCollide = wasCollidable[part]
-					end
-				end
-			end)
-			notify("👥 Pulled " .. target.Name .. " to " .. puller.Name)
-		else
-			notify("⚠️ Invalid puller position", Color3.fromRGB(255, 100, 100))
-		end
-	else
-		notify("⚠️ Invalid players selected", Color3.fromRGB(255, 100, 100))
-	end
-end
-
 local function resetUIPosition()
 	if logo and frame then
 		logo.Position = defaultLogoPos
@@ -828,13 +807,16 @@ local function toggleHideNick()
 			end
 			if humanoid then
 				humanoid.NameDisplayDistance = nickHidden and 0 or 100
+				humanoid.DisplayDistanceType = nickHidden and Enum.HumanoidDisplayDistanceType.None or Enum.HumanoidDisplayDistanceType.Viewer
 			end
 			notify(nickHidden and "🙈 Nick Hidden" or "🙉 Nick Visible")
 		else
+			nickHidden = false
 			notify("⚠️ Head or BillboardGui not found", Color3.fromRGB(255, 100, 100))
 		end
 	end)
 	if not success then
+		nickHidden = false
 		notify("⚠️ Failed to toggle nick visibility: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
@@ -844,13 +826,11 @@ local function toggleRandomNick()
 	local success, errorMsg = pcall(function()
 		if randomNick then
 			local randomName = "User" .. math.random(1000, 9999)
-			player.DisplayName = randomName
 			if humanoid then
 				humanoid.DisplayName = randomName
 			end
 			notify("🎲 Random Nick: " .. randomName)
 		else
-			player.DisplayName = player.Name
 			if humanoid then
 				humanoid.DisplayName = player.Name
 			end
@@ -858,6 +838,7 @@ local function toggleRandomNick()
 		end
 	end)
 	if not success then
+		randomNick = false
 		notify("⚠️ Failed to set random nick: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
@@ -870,7 +851,6 @@ local function setCustomNick(nick)
 	local success, errorMsg = pcall(function()
 		if #nick <= 32 then
 			customNick = nick
-			player.DisplayName = nick
 			if humanoid then
 				humanoid.DisplayName = nick
 			end
@@ -917,65 +897,6 @@ local function resetAvatar()
 	end
 end
 
-local function toggleAntiSpectate()
-	antiSpectate = not antiSpectate
-	if antiSpectate then
-		connections.antiSpectate = RunService.RenderStepped:Connect(function()
-			for _, p in pairs(Players:GetPlayers()) do
-				if p ~= player and p.CurrentCamera then
-					p.CurrentCamera.CameraSubject = nil
-				end
-			end
-		end)
-		notify("👁️ Anti Spectate Enabled")
-	else
-		if connections.antiSpectate then
-			connections.antiSpectate:Disconnect()
-			connections.antiSpectate = nil
-		end
-		notify("👁️ Anti Spectate Disabled")
-	end
-end
-
-local function toggleAntiReport()
-	antiReport = not antiReport
-	notify(antiReport and "🚫 Anti Report Enabled" or "🚫 Anti Report Disabled")
-end
-
-local function toggleTrajectory()
-	trajectoryEnabled = not trajectoryEnabled
-	if trajectoryEnabled then
-		local line = Instance.new("Part")
-		line.Anchored = true
-		line.CanCollide = false
-		line.Transparency = 0.5
-		line.BrickColor = BrickColor.new("Bright red")
-		line.Parent = workspace
-		connections.trajectory = RunService.RenderStepped:Connect(function()
-			if hr and humanoid and humanoid.MoveDirection.Magnitude > 0 then
-				local start = hr.Position
-				local endPos = start + humanoid.MoveDirection * 10
-				line.Size = Vector3.new(0.2, 0.2, (endPos - start).Magnitude)
-				line.CFrame = CFrame.new(start, endPos) * CFrame.new(0, 0, -(endPos - start).Magnitude / 2)
-			else
-				line.Size = Vector3.new(0, 0, 0)
-			end
-		end)
-		notify("📏 Trajectory Enabled")
-	else
-		if connections.trajectory then
-			connections.trajectory:Disconnect()
-			connections.trajectory = nil
-		end
-		for _, part in pairs(workspace:GetChildren()) do
-			if part:IsA("Part") and part.BrickColor == BrickColor.new("Bright red") then
-				part:Destroy()
-			end
-		end
-		notify("📏 Trajectory Disabled")
-	end
-end
-
 local function startMacroRecording()
 	if macroRecording then
 		return
@@ -994,26 +915,6 @@ local function startMacroRecording()
 			})
 		end
 	end)
-	connections.macroInput = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if macroRecording and not gameProcessed then
-			if input.UserInputType == Enum.UserInputType.Keyboard then
-				table.insert(macroActions, {
-					time = tick() - startTime,
-					inputType = "Keyboard",
-					key = input.KeyCode,
-					state = "Began"
-				})
-			end
-		end
-	end)
-	connections.macroState = humanoid.StateChanged:Connect(function(oldState, newState)
-		if macroRecording then
-			table.insert(macroActions, {
-				time = tick() - startTime,
-				stateChange = newState
-			})
-		end
-	end)
 	notify("⏺️ Macro Recording Started")
 end
 
@@ -1023,14 +924,6 @@ local function toggleRecordMacro()
 		if connections.macroRecord then
 			connections.macroRecord:Disconnect()
 			connections.macroRecord = nil
-		end
-		if connections.macroInput then
-			connections.macroInput:Disconnect()
-			connections.macroInput = nil
-		end
-		if connections.macroState then
-			connections.macroState:Disconnect()
-			connections.macroState = nil
 		end
 		notify("⏹️ Macro Recording Stopped")
 	else
@@ -1044,14 +937,6 @@ local function stopRecordMacro()
 		if connections.macroRecord then
 			connections.macroRecord:Disconnect()
 			connections.macroRecord = nil
-		end
-		if connections.macroInput then
-			connections.macroInput:Disconnect()
-			connections.macroInput = nil
-		end
-		if connections.macroState then
-			connections.macroState:Disconnect()
-			connections.macroState = nil
 		end
 		notify("⏹️ Macro Recording Stopped")
 	else
@@ -1153,12 +1038,6 @@ local function togglePlayMacro()
 							humanoid:ChangeState(action.state)
 						end
 						ensureCharacterVisible()
-					elseif action.inputType == "Keyboard" and action.state == "Began" then
-						if action.key == Enum.KeyCode.Space then
-							humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-						end
-					elseif action.stateChange then
-						humanoid:ChangeState(action.stateChange)
 					end
 				end
 				index = index + 1
@@ -1218,26 +1097,6 @@ local function resetCharacter()
 	end
 end
 
-local function cleanWorkspace()
-	for _, obj in pairs(workspace:GetChildren()) do
-		if not obj:IsA("Terrain") and not obj:IsA("Camera") and not Players:GetPlayerFromCharacter(obj) then
-			obj:Destroy()
-		end
-	end
-	notify("🧹 Workspace Cleaned")
-end
-
-local function optimizeGame()
-	game.Lighting.Brightness = 1
-	game.Lighting.GlobalShadows = false
-	for _, obj in pairs(workspace:GetDescendants()) do
-		if obj:IsA("BasePart") then
-			obj.Material = Enum.Material.SmoothPlastic
-		end
-	end
-	notify("⚙️ Game Optimized")
-end
-
 local function createGUI()
 	local success, errorMsg = pcall(function()
 		if gui then
@@ -1255,7 +1114,7 @@ local function createGUI()
 		print("GUI parented to PlayerGui")
 
 		logo = Instance.new("ImageButton")
-		logo.Size = UDim2.new(0, 50, 0, 50)
+		logo.Size = UDim2.new(0, 60, 0, 60)
 		logo.Position = defaultLogoPos
 		logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
 		logo.BorderSizePixel = 0
@@ -1265,7 +1124,7 @@ local function createGUI()
 		print("Logo created")
 
 		frame = Instance.new("Frame")
-		frame.Size = isMobile and UDim2.new(0.8, 0, 0.6, 0) or UDim2.new(0, 600, 0, 400)
+		frame.Size = UDim2.new(0.9, 0, 0.7, 0)
 		frame.Position = defaultFramePos
 		frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 		frame.BackgroundTransparency = 0.1
@@ -1274,16 +1133,16 @@ local function createGUI()
 		frame.ZIndex = 10
 		local uil = Instance.new("UIListLayout")
 		uil.FillDirection = Enum.FillDirection.Horizontal
-		uil.Padding = UDim.new(0, 5)
+		uil.Padding = UDim.new(0, 10)
 		uil.Parent = frame
 		frame.Parent = gui
 		print("Frame created")
 
 		local title = Instance.new("TextLabel")
-		title.Size = UDim2.new(1, 0, 0, 40)
+		title.Size = UDim2.new(1, 0, 0, 50)
 		title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 		title.TextColor3 = Color3.new(1, 1, 1)
-		title.Text = "Krnl UI"
+		title.Text = "Krnl UI (Mobile)"
 		title.TextScaled = true
 		title.Font = Enum.Font.Gotham
 		title.ZIndex = 10
@@ -1291,8 +1150,8 @@ local function createGUI()
 		print("Title created")
 
 		local closeBtn = Instance.new("TextButton")
-		closeBtn.Size = UDim2.new(0, 30, 0, 30)
-		closeBtn.Position = UDim2.new(1, -35, 0, 5)
+		closeBtn.Size = UDim2.new(0, 40, 0, 40)
+		closeBtn.Position = UDim2.new(1, -45, 0, 5)
 		closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
 		closeBtn.Text = "✕"
 		closeBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -1309,18 +1168,18 @@ local function createGUI()
 
 		local function createCategory(name)
 			local catFrame = Instance.new("ScrollingFrame")
-			catFrame.Size = UDim2.new(0, 190, 1, -45)
-			catFrame.Position = UDim2.new(0, 0, 0, 45)
+			catFrame.Size = UDim2.new(0, 200, 1, -55)
+			catFrame.Position = UDim2.new(0, 0, 0, 55)
 			catFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 			catFrame.BackgroundTransparency = 0.2
 			catFrame.BorderSizePixel = 0
 			catFrame.ZIndex = 10
 			catFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 			catFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-			catFrame.ScrollBarThickness = 6
+			catFrame.ScrollBarThickness = 8
 			catFrame.Parent = frame
 			local catTitle = Instance.new("TextLabel")
-			catTitle.Size = UDim2.new(1, 0, 0, 30)
+			catTitle.Size = UDim2.new(1, 0, 0, 40)
 			catTitle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 			catTitle.TextColor3 = Color3.new(1, 1, 1)
 			catTitle.Text = name
@@ -1329,18 +1188,18 @@ local function createGUI()
 			catTitle.ZIndex = 10
 			catTitle.Parent = catFrame
 			local catList = Instance.new("UIListLayout")
-			catList.Padding = UDim.new(0, 5)
+			catList.Padding = UDim.new(0, 10)
 			catList.Parent = catFrame
 			local catPadding = Instance.new("UIPadding")
-			catPadding.PaddingLeft = UDim.new(0, 5)
-			catPadding.PaddingTop = UDim.new(0, 35)
+			catPadding.PaddingLeft = UDim.new(0, 10)
+			catPadding.PaddingTop = UDim.new(0, 45)
 			catPadding.Parent = catFrame
 			return catFrame
 		end
 
 		local function createButton(parent, text, callback)
 			local btn = Instance.new("TextButton")
-			btn.Size = UDim2.new(1, -10, 0, 30)
+			btn.Size = UDim2.new(1, -10, 0, 50)
 			btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 			btn.TextColor3 = Color3.new(1, 1, 1)
 			btn.Text = text
@@ -1355,7 +1214,7 @@ local function createGUI()
 
 		local function createTextBox(parent, placeholder, callback)
 			local box = Instance.new("TextBox")
-			box.Size = UDim2.new(1, -10, 0, 30)
+			box.Size = UDim2.new(1, -10, 0, 50)
 			box.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 			box.TextColor3 = Color3.new(1, 1, 1)
 			box.PlaceholderText = placeholder
@@ -1378,12 +1237,12 @@ local function createGUI()
 					child:Destroy()
 				end
 			end
-			local yOffset = 35
+			local yOffset = 45
 			for _, p in pairs(Players:GetPlayers()) do
 				if p ~= player then
 					local btn = Instance.new("TextButton")
 					btn.Name = "Player_" .. p.Name
-					btn.Size = UDim2.new(1, -10, 0, 30)
+					btn.Size = UDim2.new(1, -10, 0, 50)
 					btn.Position = UDim2.new(0, 5, 0, yOffset)
 					btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 					btn.TextColor3 = selectedPlayer == p and Color3.fromRGB(0, 255, 0) or Color3.new(1, 1, 1)
@@ -1398,7 +1257,7 @@ local function createGUI()
 						updatePlayerList(parent)
 						notify("👤 Selected " .. p.Name)
 					end)
-					yOffset = yOffset + 35
+					yOffset = yOffset + 55
 				end
 			end
 			parent.CanvasSize = UDim2.new(0, 0, 0, yOffset)
@@ -1430,24 +1289,6 @@ local function createGUI()
 		createButton(utility, "Toggle Follow Player", function() toggleFollowPlayer(selectedPlayer) end)
 		createButton(utility, "Cancel Follow Player", cancelFollowPlayer)
 		createButton(utility, "Pull Player to Me", function() pullPlayerToMe(selectedPlayer) end)
-		createButton(utility, "Pull Player to Other", function()
-			if selectedPlayer then
-				local otherPlayer = nil
-				for _, p in pairs(Players:GetPlayers()) do
-					if p ~= player and p ~= selectedPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-						otherPlayer = p
-						break
-					end
-				end
-				if otherPlayer then
-					pullPlayerToOther(otherPlayer, selectedPlayer)
-				else
-					notify("⚠️ No other player found", Color3.fromRGB(255, 100, 100))
-				end
-			else
-				notify("⚠️ No player selected", Color3.fromRGB(255, 100, 100))
-			end
-		end)
 		createButton(utility, "Reset UI Position", resetUIPosition)
 		createButton(utility, "Toggle Record Macro", toggleRecordMacro)
 		createButton(utility, "Stop Record Macro", stopRecordMacro)
@@ -1462,12 +1303,7 @@ local function createGUI()
 		createTextBox(misc, "Enter Custom Nick", setCustomNick)
 		createButton(misc, "Set Avatar", function() setAvatar(selectedPlayer) end)
 		createButton(misc, "Reset Avatar", resetAvatar)
-		createButton(misc, "Toggle Anti Spectate", toggleAntiSpectate)
-		createButton(misc, "Toggle Anti Report", toggleAntiReport)
-		createButton(misc, "Toggle Trajectory", toggleTrajectory)
 		createButton(misc, "Reset Character", resetCharacter)
-		createButton(misc, "Clean Workspace", cleanWorkspace)
-		createButton(misc, "Optimize Game", optimizeGame)
 
 		local playerSelect = createCategory("Player Select")
 		updatePlayerList(playerSelect)
@@ -1493,14 +1329,14 @@ local function makeDraggable(element)
 	local startPos = nil
 
 	element.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			dragStart = input.Position
 			startPos = element.Position
 		end
 	end)
 	element.InputChanged:Connect(function(input)
-		if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragging then
+		if input.UserInputType == Enum.UserInputType.Touch and dragging then
 			local delta = input.Position - dragStart
 			element.Position = UDim2.new(
 				startPos.X.Scale, startPos.X.Offset + delta.X,
@@ -1509,7 +1345,7 @@ local function makeDraggable(element)
 		end
 	end)
 	element.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
 		end
 	end)
@@ -1525,6 +1361,7 @@ local function setupUI()
 			notify("🖼️ UI " .. (frame.Visible and "ON" or "OFF"))
 		end)
 		initChar()
+		setupTouchInput()
 		
 		player.CharacterAdded:Connect(function()
 			clearConnections()
@@ -1533,6 +1370,7 @@ local function setupUI()
 				notify("📷 Freecam disabled due to respawn")
 			end
 			initChar()
+			setupTouchInput()
 		end)
 	end)
 	if not success then
