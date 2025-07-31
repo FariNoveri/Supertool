@@ -55,6 +55,15 @@ local function notify(message, color)
 	end
 end
 
+local function clearConnections()
+	for key, connection in pairs(connections) do
+		if connection then
+			connection:Disconnect()
+			connections[key] = nil
+		end
+	end
+end
+
 local function initChar()
 	local success, errorMsg = pcall(function()
 		char = player.Character or player.CharacterAdded:Wait()
@@ -64,6 +73,28 @@ local function initChar()
 			error("Failed to find Humanoid or HumanoidRootPart")
 		end
 		print("Character initialized")
+		
+		-- Reapply active features
+		if flying then toggleFly() toggleFly() end
+		if noclip then toggleNoclip() toggleNoclip() end
+		if speedEnabled then toggleSpeed() toggleSpeed() end
+		if jumpEnabled then toggleJump() toggleJump() end
+		if waterWalk then toggleWaterWalk() toggleWaterWalk() end
+		if spin then toggleSpin() toggleSpin() end
+		if autoHeal then toggleAutoHeal() toggleAutoHeal() end
+		if godMode then toggleGodMode() toggleGodMode() end
+		if noFall then toggleNoFall() toggleNoFall() end
+		if antiRagdoll then toggleAntiRagdoll() toggleAntiRagdoll() end
+		if followTarget then toggleFollowPlayer() toggleFollowPlayer() end
+		if nickHidden then toggleHideNick() toggleHideNick() end
+		if randomNick then toggleRandomNick() toggleRandomNick() end
+		if customNick ~= "" then setCustomNick(customNick) end
+		if antiSpectate then toggleAntiSpectate() toggleAntiSpectate() end
+		if antiReport then toggleAntiReport() toggleAntiReport() end
+		if trajectoryEnabled then toggleTrajectory() toggleTrajectory() end
+		if macroRecording then toggleRecordMacro() toggleRecordMacro() end
+		if macroPlaying then togglePlayMacro() togglePlayMacro() end
+		if autoPlayOnRespawn then toggleAutoPlayMacro() toggleAutoPlayMacro() end
 	end)
 	if not success then
 		print("initChar error: " .. tostring(errorMsg))
@@ -81,7 +112,7 @@ local function toggleFly()
 		bv.Velocity = Vector3.new(0, 0, 0)
 		bv.Parent = hr
 		connections.fly = RunService.RenderStepped:Connect(function()
-			if humanoid.MoveDirection.Magnitude > 0 then
+			if humanoid and humanoid.MoveDirection.Magnitude > 0 then
 				bv.Velocity = humanoid.MoveDirection * flySpeed
 			else
 				bv.Velocity = Vector3.new(0, 0, 0)
@@ -99,7 +130,7 @@ local function toggleFly()
 			connections.fly:Disconnect()
 			connections.fly = nil
 		end
-		if hr:FindFirstChildOfClass("BodyVelocity") then
+		if hr and hr:FindFirstChildOfClass("BodyVelocity") then
 			hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
 		end
 		notify("🛬 Fly Disabled")
@@ -110,9 +141,11 @@ local function toggleNoclip()
 	noclip = not noclip
 	if noclip then
 		connections.noclip = RunService.Stepped:Connect(function()
-			for _, part in pairs(char:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.CanCollide = false
+			if char then
+				for _, part in pairs(char:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = false
+					end
 				end
 			end
 		end)
@@ -122,9 +155,11 @@ local function toggleNoclip()
 			connections.noclip:Disconnect()
 			connections.noclip = nil
 		end
-		for _, part in pairs(char:GetDescendants()) do
-			if part:IsA("BasePart") then
-				part.CanCollide = true
+		if char then
+			for _, part in pairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = true
+				end
 			end
 		end
 		notify("🚶 Noclip Disabled")
@@ -134,22 +169,30 @@ end
 local function toggleSpeed()
 	speedEnabled = not speedEnabled
 	if speedEnabled then
-		humanoid.WalkSpeed = moveSpeed
-		notify("🏃 Speed Enabled")
+		if humanoid then
+			humanoid.WalkSpeed = moveSpeed
+			notify("🏃 Speed Enabled")
+		end
 	else
-		humanoid.WalkSpeed = 16
-		notify("🏃 Speed Disabled")
+		if humanoid then
+			humanoid.WalkSpeed = 16
+			notify("🏃 Speed Disabled")
+		end
 	end
 end
 
 local function toggleJump()
 	jumpEnabled = not jumpEnabled
 	if jumpEnabled then
-		humanoid.JumpPower = jumpPower
-		notify("🦘 Jump Enabled")
+		if humanoid then
+			humanoid.JumpPower = jumpPower
+			notify("🦘 Jump Enabled")
+		end
 	else
-		humanoid.JumpPower = 50
-		notify("🦘 Jump Disabled")
+		if humanoid then
+			humanoid.JumpPower = 50
+			notify("🦘 Jump Disabled")
+		end
 	end
 end
 
@@ -185,19 +228,23 @@ end
 local function toggleRocket()
 	rocket = not rocket
 	if rocket then
-		local bp = Instance.new("BodyPosition")
-		bp.MaxForce = Vector3.new(0, math.huge, 0)
-		bp.Position = hr.Position + Vector3.new(0, 100, 0)
-		bp.Parent = hr
-		task.spawn(function()
-			task.wait(2)
-			bp:Destroy()
-			rocket = false
-			notify("🚀 Rocket Finished")
-		end)
-		notify("🚀 Rocket Launched")
+		if hr then
+			local bp = Instance.new("BodyPosition")
+			bp.MaxForce = Vector3.new(0, math.huge, 0)
+			bp.Position = hr.Position + Vector3.new(0, 100, 0)
+			bp.Parent = hr
+			task.spawn(function()
+				task.wait(2)
+				if bp then
+					bp:Destroy()
+				end
+				rocket = false
+				notify("🚀 Rocket Finished")
+			end)
+			notify("🚀 Rocket Launched")
+		end
 	else
-		if hr:FindFirstChildOfClass("BodyPosition") then
+		if hr and hr:FindFirstChildOfClass("BodyPosition") then
 			hr:FindFirstChildOfClass("BodyPosition"):Destroy()
 		end
 		notify("🚀 Rocket Stopped")
@@ -207,20 +254,24 @@ end
 local function toggleSpin()
 	spin = not spin
 	if spin then
-		local bg = Instance.new("BodyGyro")
-		bg.MaxTorque = Vector3.new(0, math.huge, 0)
-		bg.CFrame = hr.CFrame
-		bg.Parent = hr
-		connections.spin = RunService.RenderStepped:Connect(function()
-			bg.CFrame = bg.CFrame * CFrame.Angles(0, math.rad(spinSpeed), 0)
-		end)
-		notify("🌀 Spin Enabled")
+		if hr then
+			local bg = Instance.new("BodyGyro")
+			bg.MaxTorque = Vector3.new(0, math.huge, 0)
+			bg.CFrame = hr.CFrame
+			bg.Parent = hr
+			connections.spin = RunService.RenderStepped:Connect(function()
+				if bg then
+					bg.CFrame = bg.CFrame * CFrame.Angles(0, math.rad(spinSpeed), 0)
+				end
+			end)
+			notify("🌀 Spin Enabled")
+		end
 	else
 		if connections.spin then
 			connections.spin:Disconnect()
 			connections.spin = nil
 		end
-		if hr:FindFirstChildOfClass("BodyGyro") then
+		if hr and hr:FindFirstChildOfClass("BodyGyro") then
 			hr:FindFirstChildOfClass("BodyGyro"):Destroy()
 		end
 		notify("🌀 Spin Disabled")
@@ -231,7 +282,7 @@ local function toggleAutoHeal()
 	autoHeal = not autoHeal
 	if autoHeal then
 		connections.autoHeal = RunService.RenderStepped:Connect(function()
-			if humanoid.Health < humanoid.MaxHealth then
+			if humanoid and humanoid.Health < humanoid.MaxHealth then
 				humanoid.Health = humanoid.MaxHealth
 			end
 		end)
@@ -248,13 +299,17 @@ end
 local function toggleGodMode()
 	godMode = not godMode
 	if godMode then
-		humanoid.MaxHealth = math.huge
-		humanoid.Health = math.huge
-		notify("🛡️ God Mode Enabled")
+		if humanoid then
+			humanoid.MaxHealth = math.huge
+			humanoid.Health = math.huge
+			notify("🛡️ God Mode Enabled")
+		end
 	else
-		humanoid.MaxHealth = 100
-		humanoid.Health = 100
-		notify("🛡️ God Mode Disabled")
+		if humanoid then
+			humanoid.MaxHealth = 100
+			humanoid.Health = 100
+			notify("🛡️ God Mode Disabled")
+		end
 	end
 end
 
@@ -375,12 +430,12 @@ end
 local function toggleHideNick()
 	nickHidden = not nickHidden
 	if nickHidden then
-		if char:FindFirstChild("Head") and char.Head:FindFirstChild("BillboardGui") then
+		if char and char:FindFirstChild("Head") and char.Head:FindFirstChild("BillboardGui") then
 			char.Head.BillboardGui.Enabled = false
 		end
 		notify("🙈 Nick Hidden")
 	else
-		if char:FindFirstChild("Head") and char.Head:FindFirstChild("BillboardGui") then
+		if char and char:FindFirstChild("Head") and char.Head:FindFirstChild("BillboardGui") then
 			char.Head.BillboardGui.Enabled = true
 		end
 		notify("🙉 Nick Visible")
@@ -440,7 +495,7 @@ local function toggleTrajectory()
 		line.BrickColor = BrickColor.new("Bright red")
 		line.Parent = workspace
 		connections.trajectory = RunService.RenderStepped:Connect(function()
-			if hr and humanoid.MoveDirection.Magnitude > 0 then
+			if hr and humanoid and humanoid.MoveDirection.Magnitude > 0 then
 				local start = hr.Position
 				local endPos = start + humanoid.MoveDirection * 10
 				line.Size = Vector3.new(0.2, 0.2, (endPos - start).Magnitude)
@@ -467,6 +522,10 @@ end
 local function toggleRecordMacro()
 	if macroRecording then
 		macroRecording = false
+		if connections.macroRecord then
+			connections.macroRecord:Disconnect()
+			connections.macroRecord = nil
+		end
 		notify("⏹️ Macro Recording Stopped")
 	else
 		macroRecording = true
@@ -585,7 +644,7 @@ local function createGUI()
 
 		logo = Instance.new("ImageButton")
 		logo.Size = UDim2.new(0, 50, 0, 50)
-		logo.Position = UDim2.new(1, -60, 0, 10) -- Right side
+		logo.Position = UDim2.new(1, -60, 0, 10)
 		logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
 		logo.BorderSizePixel = 0
 		logo.Image = "rbxassetid://3570695787"
@@ -595,7 +654,7 @@ local function createGUI()
 
 		frame = Instance.new("Frame")
 		frame.Size = isMobile and UDim2.new(0.8, 0, 0.6, 0) or UDim2.new(0, 600, 0, 400)
-		frame.Position = UDim2.new(1, -610, 0.5, -200) -- Right side, centered vertically
+		frame.Position = UDim2.new(1, -610, 0.5, -200)
 		frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 		frame.BackgroundTransparency = 0.1
 		frame.BorderSizePixel = 0
@@ -638,13 +697,13 @@ local function createGUI()
 
 		local function createCategory(name)
 			local catFrame = Instance.new("ScrollingFrame")
-			catFrame.Size = UDim2.new(0, 190, 1, -45) -- Narrower for horizontal layout
+			catFrame.Size = UDim2.new(0, 190, 1, -45)
 			catFrame.Position = UDim2.new(0, 0, 0, 45)
 			catFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 			catFrame.BackgroundTransparency = 0.2
 			catFrame.BorderSizePixel = 0
 			catFrame.ZIndex = 10
-			catFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Auto-resize
+			catFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 			catFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 			catFrame.ScrollBarThickness = 6
 			catFrame.Parent = frame
@@ -783,6 +842,12 @@ local function setupUI()
 			notify("🖼️ UI " .. (frame.Visible and "ON" or "OFF"))
 		end)
 		initChar()
+		
+		-- Handle character respawn
+		player.CharacterAdded:Connect(function()
+			clearConnections()
+			initChar()
+		end)
 	end)
 	if not success then
 		print("setupUI error: " .. tostring(errorMsg))
