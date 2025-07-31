@@ -111,11 +111,19 @@ local function saveOriginalAvatar()
 	if char then
 		originalCharacterAppearance = {}
 		for _, part in pairs(char:GetDescendants()) do
-			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
-				originalCharacterAppearance[part.Name] = part:Clone()
+			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
+			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
+			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
+				originalCharacterAppearance[part.Name .. "_" .. HttpService:GenerateGUID(false)] = part:Clone()
 			end
 		end
-		print("Original character appearance saved")
+		if char:FindFirstChild("BodyColors") then
+			originalCharacterAppearance["BodyColors"] = char.BodyColors:Clone()
+		end
+		if humanoid then
+			originalCharacterAppearance["RigType"] = humanoid.RigType
+		end
+		print("Original character appearance saved (R6/R15: " .. tostring(humanoid.RigType) .. ")")
 	end
 end
 
@@ -664,7 +672,7 @@ local function toggleAntiHunger()
 				local maxValue = hungerStat.Value >= 100 and hungerStat.Value or 100
 				connections.antiHunger = RunService.RenderStepped:Connect(function()
 					if hungerStat and hungerStat.Parent then
-						hungerStat.Value = maxValue
+						humanoid.Value = maxValue
 					else
 						antiHunger = false
 						connections.antiHunger:Disconnect()
@@ -993,50 +1001,145 @@ local function setCustomNick(nick)
 	end
 end
 
+local function convertToR6(character)
+	local success, errorMsg = pcall(function()
+		local hum = character:FindFirstChildOfClass("Humanoid")
+		if not hum then
+			error("No Humanoid found")
+		end
+		if hum.RigType == Enum.HumanoidRigType.R6 then
+			return -- Already R6
+		end
+		-- Remove R15-specific parts
+		local r15Parts = {"UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand",
+		                  "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+		                  "RightUpperLeg", "RightLowerLeg", "RightFoot"}
+		for _, partName in pairs(r15Parts) do
+			local part = character:FindFirstChild(partName)
+			if part then
+				part:Destroy()
+			end
+		end
+		-- Create R6 Torso
+		local torso = Instance.new("Part")
+		torso.Name = "Torso"
+		torso.Size = Vector3.new(2, 2, 1)
+		torso.Position = character.HumanoidRootPart.Position
+		torso.Parent = character
+		-- Create R6 limbs
+		local limbs = {
+			{ name = "Left Arm", size = Vector3.new(1, 2, 1) },
+			{ name = "Right Arm", size = Vector3.new(1, 2, 1) },
+			{ name = "Left Leg", size = Vector3.new(1, 2, 1) },
+			{ name = "Right Leg", size = Vector3.new(1, 2, 1) }
+		}
+		for _, limb in pairs(limbs) do
+			local part = Instance.new("Part")
+			part.Name = limb.name
+			part.Size = limb.size
+			part.Position = character.HumanoidRootPart.Position
+			part.Parent = character
+		end
+		-- Rebuild welds (simplified for client-side)
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if root then
+			for _, part in pairs(character:GetChildren()) do
+				if part:IsA("BasePart") and part ~= root then
+					local weld = Instance.new("Weld")
+					weld.Part0 = root
+					weld.Part1 = part
+					weld.C0 = CFrame.new(0, 0, 0)
+					weld.C1 = CFrame.new(0, 0, 0)
+					weld.Parent = root
+				end
+			end
+		end
+		-- Force RigType to R6
+		hum.RigType = Enum.HumanoidRigType.R6
+		print("Converted character to R6")
+	end)
+	if not success then
+		print("convertToR6 error: " .. tostring(errorMsg))
+	end
+end
+
 local function setAvatar(target)
 	if not target or not target:IsA("Player") or not target.Character or not target.Character:FindFirstChild("Humanoid") then
 		notify("⚠️ No valid player selected or target character not loaded", Color3.fromRGB(255, 100, 100))
 		return
 	end
 	local success, errorMsg = pcall(function()
-		if not humanoid then
-			error("Humanoid not found")
+		if not humanoid or not char then
+			error("Your Humanoid or Character not found")
 		end
-		-- Client-side avatar change by copying accessories and clothing
+		-- Save current position
+		local originalPos = hr.CFrame
+		-- Clear current visual elements
 		for _, part in pairs(char:GetDescendants()) do
-			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
+			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
+			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
+			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
 				part:Destroy()
 			end
 		end
+		-- Copy all visual elements from target
 		for _, part in pairs(target.Character:GetDescendants()) do
-			if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
+			if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
+			   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
+			   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
 				local clone = part:Clone()
 				clone.Parent = char
 			end
 		end
-		notify("🎭 Avatar set to " .. target.Name .. " (client-side)")
+		-- Copy BodyColors
+		if target.Character:FindFirstChild("BodyColors") then
+			local bodyColors = target.Character.BodyColors:Clone()
+			bodyColors.Parent = char
+		end
+		-- Force R6 if your original character is R6
+		if originalCharacterAppearance and originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 then
+			convertToR6(char)
+		end
+		-- Restore position
+		hr.CFrame = originalPos
+		ensureCharacterVisible()
+		notify("🎭 Avatar set to " .. target.Name .. " (client-side, forced R6)")
 	end)
 	if not success then
 		notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+		-- Fallback to original avatar
+		resetAvatar()
 	end
 end
 
 local function resetAvatar()
 	local success, errorMsg = pcall(function()
-		if not humanoid then
-			error("Humanoid not found")
+		if not humanoid or not char then
+			error("Humanoid or Character not found")
 		end
 		if originalCharacterAppearance then
+			local originalPos = hr.CFrame
+			-- Clear current visual elements
 			for _, part in pairs(char:GetDescendants()) do
-				if part:IsA("Accessory") or part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") then
+				if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Accessory") or 
+				   part:IsA("Shirt") or part:IsA("Pants") or part:IsA("CharacterMesh") or 
+				   part:IsA("Weld") or part:IsA("Attachment") or part:IsA("SurfaceAppearance") then
 					part:Destroy()
 				end
 			end
+			-- Restore original elements
 			for _, clone in pairs(originalCharacterAppearance) do
 				local newClone = clone:Clone()
 				newClone.Parent = char
 			end
-			notify("🎭 Avatar Reset (client-side)")
+			-- Force R6 if original was R6
+			if originalCharacterAppearance["RigType"] == Enum.HumanoidRigType.R6 then
+				convertToR6(char)
+			end
+			-- Restore position
+			hr.CFrame = originalPos
+			ensureCharacterVisible()
+			notify("🎭 Avatar Reset (client-side, restored R6)")
 		else
 			notify("⚠️ No original avatar saved, cannot reset", Color3.fromRGB(255, 100, 100))
 		end
@@ -1533,7 +1636,7 @@ end
 
 local function setupUI()
 	local success, errorMsg = pcall(function()
-		cleanupOldInstance() -- Clean up any previous script instance
+		cleanupOldInstance()
 		createGUI()
 		makeDraggable(logo)
 		makeDraggable(frame)
