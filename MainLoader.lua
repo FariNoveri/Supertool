@@ -11,9 +11,11 @@ local gui, frame, logo
 local selectedPlayer = nil
 local defaultLogoPos = UDim2.new(1, -60, 0, 10)
 local defaultFramePos = UDim2.new(1, -610, 0.5, -200)
+local originalHumanoidDescription = nil
 
-local flying, noclip, autoHeal, noFall, godMode = false, false, false, false, false
+local flying, freecam, noclip, autoHeal, noFall, godMode = false, false, false, false, false, false
 local flySpeed = 50
+local freecamSpeed = 50
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -29,6 +31,9 @@ local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, 
 local macroActions = {}
 local macroNoclip = false
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local freecamCFrame = nil
+local freecamVelocity = Vector3.new(0, 0, 0)
+local mouseDelta = Vector2.new(0, 0)
 
 local function notify(message, color)
 	local success, errorMsg = pcall(function()
@@ -90,6 +95,18 @@ local function resetCharacterState()
 	end
 end
 
+local function saveOriginalAvatar()
+	local success, desc = pcall(function()
+		return humanoid:GetDescription()
+	end)
+	if success and desc then
+		originalHumanoidDescription = desc
+		print("Original avatar saved")
+	else
+		notify("⚠️ Failed to save original avatar", Color3.fromRGB(255, 100, 100))
+	end
+end
+
 local function initChar()
 	local success, errorMsg = pcall(function()
 		char = player.Character or player.CharacterAdded:Wait()
@@ -98,10 +115,12 @@ local function initChar()
 		if not humanoid or not hr then
 			error("Failed to find Humanoid or HumanoidRootPart")
 		end
+		saveOriginalAvatar()
 		print("Character initialized")
 		ensureCharacterVisible()
 		
 		if flying then toggleFly() toggleFly() end
+		if freecam then toggleFreecam() toggleFreecam() end
 		if noclip then toggleNoclip() toggleNoclip() end
 		if speedEnabled then toggleSpeed() toggleSpeed() end
 		if jumpEnabled then toggleJump() toggleJump() end
@@ -134,21 +153,54 @@ end
 local function toggleFly()
 	flying = not flying
 	if flying then
+		if freecam then
+			toggleFreecam()
+			notify("📷 Freecam disabled to enable Fly", Color3.fromRGB(255, 100, 100))
+		end
 		local bv = Instance.new("BodyVelocity")
 		bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 		bv.Velocity = Vector3.new(0, 0, 0)
 		bv.Parent = hr
+		local bg = Instance.new("BodyGyro")
+		bg.MaxTorque = Vector3.new(0, math.huge, 0)
+		bg.P = 10000
+		bg.Parent = hr
 		connections.fly = RunService.RenderStepped:Connect(function()
-			if humanoid and humanoid.MoveDirection.Magnitude > 0 then
-				bv.Velocity = humanoid.MoveDirection * flySpeed
-			else
-				bv.Velocity = Vector3.new(0, 0, 0)
+			if not hr or not humanoid or not camera then
+				return
+			end
+			local moveDir = Vector3.new(0, 0, 0)
+			local forward = camera.CFrame.LookVector
+			local right = camera.CFrame.RightVector
+			local up = camera.CFrame.UpVector
+			
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) or (isMobile and UserInputService:GetFocusedTextBox() == nil and UserInputService.TouchEnabled) then
+				moveDir = moveDir + forward
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+				moveDir = moveDir - forward
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+				moveDir = moveDir + right
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+				moveDir = moveDir - right
 			end
 			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-				bv.Velocity = bv.Velocity + Vector3.new(0, flySpeed, 0)
+				moveDir = moveDir + up
 			end
 			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-				bv.Velocity = bv.Velocity - Vector3.new(0, flySpeed, 0)
+				moveDir = moveDir - up
+			end
+			
+			if moveDir.Magnitude > 0 then
+				moveDir = moveDir.Unit * flySpeed
+			end
+			bv.Velocity = moveDir
+			
+			local flatLook = Vector3.new(forward.X, 0, forward.Z).Unit
+			if flatLook.Magnitude > 0 then
+				bg.CFrame = CFrame.new(Vector3.new(0, 0, 0), flatLook)
 			end
 		end)
 		notify("🛫 Fly Enabled")
@@ -157,10 +209,128 @@ local function toggleFly()
 			connections.fly:Disconnect()
 			connections.fly = nil
 		end
-		if hr and hr:FindFirstChildOfClass("BodyVelocity") then
-			hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
+		if hr then
+			if hr:FindFirstChildOfClass("BodyVelocity") then
+				hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
+			end
+			if hr:FindFirstChildOfClass("BodyGyro") then
+				hr:FindFirstChildOfClass("BodyGyro"):Destroy()
+			end
 		end
 		notify("🛬 Fly Disabled")
+	end
+end
+
+local function toggleFreecam()
+	freecam = not freecam
+	if freecam then
+		if flying then
+			toggleFly()
+			notify("🛫 Fly disabled to enable Freecam", Color3.fromRGB(255, 100, 100))
+		end
+		freecamCFrame = camera.CFrame
+		freecamVelocity = Vector3.new(0, 0, 0)
+		mouseDelta = Vector2.new(0, 0)
+		camera.CameraType = Enum.CameraType.Scriptable
+		connections.freecam = RunService.RenderStepped:Connect(function(dt)
+			if not camera then
+				return
+			end
+			local moveDir = Vector3.new(0, 0, 0)
+			local forward = freecamCFrame.LookVector
+			local right = freecamCFrame.RightVector
+			local up = freecamCFrame.UpVector
+			
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) or (isMobile and UserInputService:GetFocusedTextBox() == nil and UserInputService.TouchEnabled) then
+				moveDir = moveDir + forward
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+				moveDir = moveDir - forward
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+				moveDir = moveDir + right
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+				moveDir = moveDir - right
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+				moveDir = moveDir + up
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+				moveDir = moveDir - up
+			end
+			
+			if moveDir.Magnitude > 0 then
+				freecamVelocity = moveDir.Unit * freecamSpeed
+			else
+				freecamVelocity = Vector3.new(0, 0, 0)
+			end
+			
+			freecamCFrame = freecamCFrame + freecamVelocity * dt
+			camera.CFrame = freecamCFrame
+		end)
+		connections.mouse = UserInputService.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+				mouseDelta = input.Delta
+				local yaw = -mouseDelta.X * 0.002
+				local pitch = -mouseDelta.Y * 0.002
+				freecamCFrame = CFrame.new(freecamCFrame.Position) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+			end
+		end)
+		notify("📷 Freecam Enabled")
+	else
+		if connections.freecam then
+			connections.freecam:Disconnect()
+			connections.freecam = nil
+		end
+		if connections.mouse then
+			connections.mouse:Disconnect()
+			connections.mouse = nil
+		end
+		if camera and humanoid then
+			camera.CameraType = Enum.CameraType.Custom
+			camera.CameraSubject = humanoid
+			if hr then
+				camera.CFrame = CFrame.new(hr.Position + Vector3.new(0, 5, 10), hr.Position)
+			end
+		end
+		freecamCFrame = nil
+		freecamVelocity = Vector3.new(0, 0, 0)
+		mouseDelta = Vector2.new(0, 0)
+		notify("📷 Freecam Disabled")
+	end
+end
+
+local function returnToCharacter()
+	if freecam and hr and humanoid then
+		freecamCFrame = CFrame.new(hr.Position + Vector3.new(0, 5, 10), hr.Position)
+		camera.CFrame = freecamCFrame
+		notify("📷 Returned to Character")
+	else
+		notify("⚠️ Freecam not enabled or character not loaded", Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function cancelFreecam()
+	if freecam then
+		toggleFreecam()
+		notify("📷 Freecam Canceled")
+	else
+		notify("⚠️ Freecam not enabled", Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function teleportCharacterToCamera()
+	if freecam and hr and isValidPosition(freecamCFrame.Position) then
+		local targetCFrame = CFrame.new(freecamCFrame.Position + Vector3.new(0, 3, 0))
+		local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear)
+		local tween = TweenService:Create(hr, tweenInfo, {CFrame = targetCFrame})
+		tween:Play()
+		tween.Completed:Connect(function()
+			notify("👤 Character Teleported to Camera")
+		end)
+	else
+		notify("⚠️ Freecam not enabled or invalid position", Color3.fromRGB(255, 100, 100))
 	end
 end
 
@@ -586,35 +756,102 @@ end
 
 local function toggleHideNick()
 	nickHidden = not nickHidden
-	if nickHidden then
-		if char and char:FindFirstChild("Head") and char.Head:FindFirstChild("BillboardGui") then
-			char.Head.BillboardGui.Enabled = false
+	local success, errorMsg = pcall(function()
+		if char and char:FindFirstChild("Head") then
+			local head = char.Head
+			local billboard = head:FindFirstChildOfClass("BillboardGui")
+			if billboard then
+				billboard.Enabled = not nickHidden
+			end
+			if humanoid then
+				humanoid.NameDisplayDistance = nickHidden and 0 or 100
+			end
+			notify(nickHidden and "🙈 Nick Hidden" or "🙉 Nick Visible")
+		else
+			notify("⚠️ Head or BillboardGui not found", Color3.fromRGB(255, 100, 100))
 		end
-		notify("🙈 Nick Hidden")
-	else
-		if char and char:FindFirstChild("Head") and char.Head:FindFirstChild("BillboardGui") then
-			char.Head.BillboardGui.Enabled = true
-		end
-		notify("🙉 Nick Visible")
+	end)
+	if not success then
+		notify("⚠️ Failed to toggle nick visibility: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
 local function toggleRandomNick()
 	randomNick = not randomNick
-	if randomNick then
-		local randomName = "User" .. math.random(1000, 9999)
-		player.DisplayName = randomName
-		notify("🎲 Random Nick: " .. randomName)
-	else
-		player.DisplayName = player.Name
-		notify("🎲 Nick Reset")
+	local success, errorMsg = pcall(function()
+		if randomNick then
+			local randomName = "User" .. math.random(1000, 9999)
+			player.DisplayName = randomName
+			if humanoid then
+				humanoid.DisplayName = randomName
+			end
+			notify("🎲 Random Nick: " .. randomName)
+		else
+			player.DisplayName = player.Name
+			if humanoid then
+				humanoid.DisplayName = player.Name
+			end
+			notify("🎲 Nick Reset")
+		end
+	end)
+	if not success then
+		notify("⚠️ Failed to set random nick: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
 	end
 end
 
 local function setCustomNick(nick)
-	customNick = nick
-	player.DisplayName = nick
-	notify("✏️ Custom Nick: " .. nick)
+	if nick == "" then
+		notify("⚠️ Nick cannot be empty", Color3.fromRGB(255, 100, 100))
+		return
+	end
+	local success, errorMsg = pcall(function()
+		if #nick <= 32 then
+			customNick = nick
+			player.DisplayName = nick
+			if humanoid then
+				humanoid.DisplayName = nick
+			end
+			notify("✏️ Custom Nick: " .. nick)
+		else
+			notify("⚠️ Nick too long (max 32 chars)", Color3.fromRGB(255, 100, 100))
+		end
+	end)
+	if not success then
+		notify("⚠️ Failed to set custom nick: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function setAvatar(target)
+	if not target or not target:IsA("Player") then
+		notify("⚠️ No valid player selected", Color3.fromRGB(255, 100, 100))
+		return
+	end
+	local success, errorMsg = pcall(function()
+		local desc = Players:GetHumanoidDescriptionFromUserId(target.UserId)
+		if humanoid and desc then
+			humanoid:ApplyDescription(desc)
+			notify("🎭 Avatar set to " .. target.Name)
+		else
+			notify("⚠️ Failed to get avatar description", Color3.fromRGB(255, 100, 100))
+		end
+	end)
+	if not success then
+		notify("⚠️ Failed to set avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+	end
+end
+
+local function resetAvatar()
+	local success, errorMsg = pcall(function()
+		if humanoid and originalHumanoidDescription then
+			humanoid:ApplyDescription(originalHumanoidDescription)
+			notify("🎭 Avatar Reset")
+		else
+			notify("⚠️ Original avatar not saved", Color3.fromRGB(255, 100, 100))
+		end
+	end)
+	if not success then
+		notify("⚠️ Failed to reset avatar: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+	end
 end
 
 local function toggleAntiSpectate()
@@ -808,7 +1045,6 @@ local function togglePlayMacro()
 		end
 		macroPlaying = true
 		ensureCharacterVisible()
-		-- Enable noclip during playback
 		connections.macroNoclip = RunService.Stepped:Connect(function()
 			if char then
 				for _, part in pairs(char:GetDescendants()) do
@@ -1107,6 +1343,10 @@ local function createGUI()
 
 		local movement = createCategory("Movement")
 		createButton(movement, "Toggle Fly", toggleFly)
+		createButton(movement, "Toggle Freecam", toggleFreecam)
+		createButton(movement, "Return to Character", returnToCharacter)
+		createButton(movement, "Cancel Freecam", cancelFreecam)
+		createButton(movement, "Teleport Char to Cam", teleportCharacterToCamera)
 		createButton(movement, "Toggle Noclip", toggleNoclip)
 		createButton(movement, "Toggle Speed", toggleSpeed)
 		createButton(movement, "Toggle Jump", toggleJump)
@@ -1120,8 +1360,8 @@ local function createGUI()
 		createButton(utility, "Toggle No Fall Damage", toggleNoFall)
 		createButton(utility, "Toggle Anti Ragdoll", toggleAntiRagdoll)
 		createButton(utility, "Save Position 1", function() savePosition(1) end)
-		createButton(utility, "Load Position 1", function() loadPosition(1) end)
 		createButton(utility, "Save Position 2", function() savePosition(2) end)
+		createButton(utility, "Load Position 1", function() loadPosition(1) end)
 		createButton(utility, "Load Position 2", function() loadPosition(2) end)
 		createButton(utility, "Teleport to Spawn", teleportToSpawn)
 		createButton(utility, "Teleport to Player", function() teleportToPlayer(selectedPlayer) end)
@@ -1158,6 +1398,8 @@ local function createGUI()
 		createButton(misc, "Toggle Hide Nick", toggleHideNick)
 		createButton(misc, "Toggle Random Nick", toggleRandomNick)
 		createTextBox(misc, "Enter Custom Nick", setCustomNick)
+		createButton(misc, "Set Avatar", function() setAvatar(selectedPlayer) end)
+		createButton(misc, "Reset Avatar", resetAvatar)
 		createButton(misc, "Toggle Anti Spectate", toggleAntiSpectate)
 		createButton(misc, "Toggle Anti Report", toggleAntiReport)
 		createButton(misc, "Toggle Trajectory", toggleTrajectory)
@@ -1224,6 +1466,10 @@ local function setupUI()
 		
 		player.CharacterAdded:Connect(function()
 			clearConnections()
+			if freecam then
+				toggleFreecam()
+				notify("📷 Freecam disabled due to respawn")
+			end
 			initChar()
 		end)
 	end)
