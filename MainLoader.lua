@@ -1,3 +1,4 @@
+local Roact = require(game:GetService("ReplicatedStorage"):WaitForChild("Roact"))
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -7,7 +8,6 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local humanoid, hr, char
-local gui, frame, logo, joystickFrame, cameraControlFrame
 local selectedPlayer = nil
 local flying, freecam, noclip, godMode = false, false, false, false
 local flySpeed = 40
@@ -17,7 +17,8 @@ local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, 
 local moveSpeed = 50
 local jumpPower = 100
 local spinSpeed = 20
-local savedPositions = { [1] = nil, [2] = nil }
+local savedPositions = {} -- {slot = {name = "string", cframe = CFrame}}
+local maxSlots = 10
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
 local macroActions = {}
 local macroSuccessfulEndTime = nil
@@ -32,18 +33,47 @@ local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
 local customNick = "PemainKeren"
-local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
-local defaultFramePos = UDim2.new(0.5, -175, 0.5, -250)
 
 local connections = {}
+
+-- File I/O for persistent storage
+local function saveTeleportSlots()
+    local success, errorMsg = pcall(function()
+        local data = {}
+        for slot, info in pairs(savedPositions) do
+            data[tostring(slot)] = {name = info.name, cframe = {info.cframe:GetComponents()}}
+        end
+        writefile("krnl/teleport_slots.json", HttpService:JSONEncode(data))
+    end)
+    if not success then
+        notify("⚠️ Failed to save teleport slots: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
+local function loadTeleportSlots()
+    local success, result = pcall(function()
+        if isfile("krnl/teleport_slots.json") then
+            local data = HttpService:JSONDecode(readfile("krnl/teleport_slots.json"))
+            savedPositions = {}
+            for slot, info in pairs(data) do
+                slot = tonumber(slot)
+                if slot and info.name and info.cframe and #info.cframe == 12 then
+                    savedPositions[slot] = {
+                        name = info.name,
+                        cframe = CFrame.new(table.unpack(info.cframe))
+                    }
+                end
+            end
+        end
+    end)
+    if not success then
+        notify("⚠️ Failed to load teleport slots: " .. tostring(result), Color3.fromRGB(255, 100, 100))
+    end
+end
 
 -- Notify function
 local function notify(message, color)
     local success, errorMsg = pcall(function()
-        if not gui then
-            print("Notify: " .. message)
-            return
-        end
         local notif = Instance.new("TextLabel")
         notif.Size = UDim2.new(0, 300, 0, 50)
         notif.Position = UDim2.new(0.5, -150, 0.1, 0)
@@ -58,7 +88,7 @@ local function notify(message, color)
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, 8)
         corner.Parent = notif
-        notif.Parent = gui
+        notif.Parent = player:WaitForChild("PlayerGui")
         task.spawn(function()
             task.wait(3)
             notif:Destroy()
@@ -165,10 +195,7 @@ end
 
 -- Create joystick and camera control
 local function createJoystick()
-    if joystickFrame then
-        joystickFrame:Destroy()
-    end
-    joystickFrame = Instance.new("Frame")
+    local joystickFrame = Instance.new("Frame")
     joystickFrame.Size = UDim2.new(0, 120, 0, 120)
     joystickFrame.Position = UDim2.new(0.1, 0, 0.65, 0)
     joystickFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
@@ -179,7 +206,7 @@ local function createJoystick()
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 60)
     corner.Parent = joystickFrame
-    joystickFrame.Parent = gui
+    joystickFrame.Parent = player:WaitForChild("PlayerGui")
 
     local joystickKnob = Instance.new("Frame")
     joystickKnob.Size = UDim2.new(0, 40, 0, 40)
@@ -193,7 +220,7 @@ local function createJoystick()
     knobCorner.Parent = joystickKnob
     joystickKnob.Parent = joystickFrame
 
-    cameraControlFrame = Instance.new("Frame")
+    local cameraControlFrame = Instance.new("Frame")
     cameraControlFrame.Size = UDim2.new(0, 120, 0, 120)
     cameraControlFrame.Position = UDim2.new(0.8, -120, 0.65, 0)
     cameraControlFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
@@ -204,7 +231,7 @@ local function createJoystick()
     local camCorner = Instance.new("UICorner")
     camCorner.CornerRadius = UDim.new(0, 60)
     camCorner.Parent = cameraControlFrame
-    cameraControlFrame.Parent = gui
+    cameraControlFrame.Parent = player:WaitForChild("PlayerGui")
 
     local cameraKnob = Instance.new("Frame")
     cameraKnob.Size = UDim2.new(0, 40, 0, 40)
@@ -286,6 +313,8 @@ local function createJoystick()
             cameraDelta = Vector2.new(0, 0)
         end
     end)
+
+    return joystickFrame, cameraControlFrame
 end
 
 -- Fly toggle
@@ -301,6 +330,7 @@ local function toggleFly()
                 flying = false
                 error("Character or camera not loaded")
             end
+            local joystickFrame, cameraControlFrame = createJoystick()
             joystickFrame.Visible = isMobile
             cameraControlFrame.Visible = isMobile
             local bv = Instance.new("BodyVelocity")
@@ -397,6 +427,7 @@ local function toggleFly()
             if hr and hr:FindFirstChildOfClass("BodyVelocity") then
                 hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
             end
+            local joystickFrame, cameraControlFrame = createJoystick()
             joystickFrame.Visible = false
             cameraControlFrame.Visible = false
             moveDirection = Vector3.new(0, 0, 0)
@@ -417,6 +448,7 @@ local function toggleFly()
         if hr and hr:FindFirstChildOfClass("BodyVelocity") then
             hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
         end
+        local joystickFrame, cameraControlFrame = createJoystick()
         joystickFrame.Visible = false
         cameraControlFrame.Visible = false
         moveDirection = Vector3.new(0, 0, 0)
@@ -438,6 +470,7 @@ local function toggleFreecam()
                 freecam = false
                 error("Character or camera not loaded")
             end
+            local joystickFrame, cameraControlFrame = createJoystick()
             joystickFrame.Visible = isMobile
             cameraControlFrame.Visible = isMobile
             hrCFrame = hr.CFrame
@@ -565,6 +598,7 @@ local function toggleFreecam()
             end
             freecamCFrame = nil
             hrCFrame = nil
+            local joystickFrame, cameraControlFrame = createJoystick()
             joystickFrame.Visible = false
             cameraControlFrame.Visible = false
             moveDirection = Vector3.new(0, 0, 0)
@@ -589,6 +623,7 @@ local function toggleFreecam()
         if hr and hr:FindFirstChildOfClass("BodyVelocity") then
             hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
         end
+        local joystickFrame, cameraControlFrame = createJoystick()
         joystickFrame.Visible = false
         cameraControlFrame.Visible = false
         moveDirection = Vector3.new(0, 0, 0)
@@ -980,11 +1015,20 @@ local function teleportToSpawn()
     end
 end
 
-local function savePosition(slot)
+local function savePosition()
     local success, errorMsg = pcall(function()
         if hr then
-            savedPositions[slot] = hr.CFrame
-            notify("💾 Position " .. slot .. " Saved")
+            local slot = 1
+            while savedPositions[slot] and slot <= maxSlots do
+                slot = slot + 1
+            end
+            if slot > maxSlots then
+                notify("⚠️ Maximum " .. maxSlots .. " slots reached", Color3.fromRGB(255, 100, 100))
+                return
+            end
+            savedPositions[slot] = {name = "Slot " .. slot, cframe = hr.CFrame}
+            saveTeleportSlots()
+            notify("💾 Position Saved to Slot " .. slot)
         else
             notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
         end
@@ -996,15 +1040,31 @@ end
 
 local function loadPosition(slot)
     local success, errorMsg = pcall(function()
-        if hr and savedPositions[slot] and isValidPosition(savedPositions[slot].Position) then
-            hr.CFrame = savedPositions[slot]
-            notify("📍 Teleported to Position " .. slot)
+        if hr and savedPositions[slot] and isValidPosition(savedPositions[slot].cframe.Position) then
+            hr.CFrame = savedPositions[slot].cframe
+            notify("📍 Teleported to " .. savedPositions[slot].name)
         else
             notify("⚠️ No position saved in slot " .. slot .. " or invalid position", Color3.fromRGB(255, 100, 100))
         end
     end)
     if not success then
         notify("⚠️ Load Position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
+local function renamePosition(slot, newName)
+    local success, errorMsg = pcall(function()
+        if savedPositions[slot] then
+            newName = newName:sub(1, 20) -- Limit name length
+            savedPositions[slot].name = newName
+            saveTeleportSlots()
+            notify("✏️ Renamed Slot " .. slot .. " to " .. newName)
+        else
+            notify("⚠️ No position saved in slot " .. slot, Color3.fromRGB(255, 100, 100))
+        end
+    end)
+    if not success then
+        notify("⚠️ Rename Position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
@@ -1129,417 +1189,436 @@ local function toggleRecordOnRespawn()
     notify(recordOnRespawn and "🔄 Record Macro on Respawn Enabled" or "🔄 Record Macro on Respawn Disabled")
 end
 
--- Create GUI with categories
-local function createGUI()
-    local success, errorMsg = pcall(function()
-        if gui then
-            gui:Destroy()
-            gui = nil
-        end
+-- Roact Components
+local Button = Roact.Component:extend("Button")
+function Button:init()
+    self:setState({
+        isPressed = false,
+        holdStart = nil
+    })
+end
 
-        gui = Instance.new("ScreenGui")
-        gui.Name = "SimpleUILibrary_Krnl"
-        gui.ResetOnSpawn = false
-        gui.IgnoreGuiInset = true
-        gui.Enabled = true
-        gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        gui.Parent = player:WaitForChild("PlayerGui", 20)
-
-        local scale = Instance.new("UIScale")
-        scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
-        scale.Parent = gui
-
-        logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 50, 0, 50)
-        logo.Position = defaultLogoPos
-        logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
-        logo.BackgroundTransparency = 0.3
-        logo.BorderSizePixel = 0
-        logo.Image = "rbxassetid://3570695787"
-        logo.ZIndex = 20
-        local logoCorner = Instance.new("UICorner")
-        logoCorner.CornerRadius = UDim.new(0, 8)
-        logoCorner.Parent = logo
-        logo.Parent = gui
-
-        frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 350, 0, 500)
-        frame.Position = defaultFramePos
-        frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        frame.BackgroundTransparency = 0.1
-        frame.BorderSizePixel = 0
-        frame.Visible = false
-        frame.ZIndex = 10
-        frame.ClipsDescendants = true
-        local frameCorner = Instance.new("UICorner")
-        frameCorner.CornerRadius = UDim.new(0, 12)
-        frameCorner.Parent = frame
-        frame.Parent = gui
-
-        local uil = Instance.new("UIListLayout")
-        uil.FillDirection = Enum.FillDirection.Vertical
-        uil.Padding = UDim.new(0, 10)
-        uil.Parent = frame
-
-        local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, 0, 0, 40)
-        title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        title.BackgroundTransparency = 0.5
-        title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        title.TextScaled = true
-        title.Font = Enum.Font.GothamBold
-        title.Text = "Krnl UI"
-        title.ZIndex = 11
-        local titleCorner = Instance.new("UICorner")
-        titleCorner.CornerRadius = UDim.new(0, 8)
-        titleCorner.Parent = title
-        title.Parent = frame
-
-        local scrollFrame = Instance.new("ScrollingFrame")
-        scrollFrame.Size = UDim2.new(1, -10, 1, -50)
-        scrollFrame.Position = UDim2.new(0, 5, 0, 45)
-        scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 6
-        scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-        scrollFrame.ZIndex = 11
-        scrollFrame.ClipsDescendants = true
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-        scrollFrame.Parent = frame
-
-        local scrollUIL = Instance.new("UIListLayout")
-        scrollUIL.FillDirection = Enum.FillDirection.Vertical
-        scrollUIL.Padding = UDim.new(0, 8)
-        scrollUIL.Parent = scrollFrame
-
-        local scrollPadding = Instance.new("UIPadding")
-        scrollPadding.PaddingTop = UDim.new(0, 5)
-        scrollPadding.PaddingBottom = UDim.new(0, 20)
-        scrollPadding.Parent = scrollFrame
-
-        local function createButton(text, callback, toggleState)
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(0.95, 0, 0, 40)
-            button.Position = UDim2.new(0.025, 0, 0, 0)
-            button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-            button.BackgroundTransparency = 0.3
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextScaled = true
-            button.Font = Enum.Font.Gotham
-            button.Text = text
-            button.ZIndex = 12
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
-            buttonCorner.Parent = button
-            button.MouseButton1Click:Connect(function()
-                local success, err = pcall(callback)
-                if not success then
-                    notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
-                end
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-            end)
-            return button
-        end
-
-        local function createDropdown(text, items, callback)
-            local dropdown = Instance.new("TextButton")
-            dropdown.Size = UDim2.new(0.95, 0, 0, 40)
-            dropdown.Position = UDim2.new(0.025, 0, 0, 0)
-            dropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            dropdown.BackgroundTransparency = 0.3
-            dropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-            dropdown.TextScaled = true
-            dropdown.Font = Enum.Font.Gotham
-            dropdown.Text = text
-            dropdown.ZIndex = 12
-            local dropdownCorner = Instance.new("UICorner")
-            dropdownCorner.CornerRadius = UDim.new(0, 8)
-            dropdownCorner.Parent = dropdown
-
-            local dropdownFrame = Instance.new("Frame")
-            dropdownFrame.Size = UDim2.new(0.95, 0, 0, 0)
-            dropdownFrame.Position = UDim2.new(0.025, 0, 0, 45)
-            dropdownFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-            dropdownFrame.BackgroundTransparency = 0.1
-            dropdownFrame.BorderSizePixel = 0
-            dropdownFrame.Visible = false
-            dropdownFrame.ZIndex = 13
-            dropdownFrame.ClipsDescendants = true
-            local dropdownFrameCorner = Instance.new("UICorner")
-            dropdownFrameCorner.CornerRadius = UDim.new(0, 8)
-            dropdownFrameCorner.Parent = dropdownFrame
-
-            local dropdownUIL = Instance.new("UIListLayout")
-            dropdownUIL.FillDirection = Enum.FillDirection.Vertical
-            dropdownUIL.Padding = UDim.new(0, 5)
-            dropdownUIL.Parent = dropdownFrame
-
-            for _, item in pairs(items) do
-                local itemButton = Instance.new("TextButton")
-                itemButton.Size = UDim2.new(1, 0, 0, 35)
-                itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-                itemButton.BackgroundTransparency = 0.3
-                itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                itemButton.TextScaled = true
-                itemButton.Font = Enum.Font.Gotham
-                itemButton.Text = item
-                itemButton.ZIndex = 14
-                local itemCorner = Instance.new("UICorner")
-                itemCorner.CornerRadius = UDim.new(0, 8)
-                itemCorner.Parent = itemButton
-                itemButton.Parent = dropdownFrame
-                itemButton.MouseButton1Click:Connect(function()
-                    callback(item)
-                    dropdownFrame.Visible = false
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-                end)
-            end
-
-            dropdown.MouseButton1Click:Connect(function()
-                dropdownFrame.Visible = not dropdownFrame.Visible
-                dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(0.95, 0, 0, #items * 40) or UDim2.new(0.95, 0, 0, 0)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-            end)
-
-            return dropdown, dropdownFrame
-        end
-
-        local function createCategory(titleText, buttons, parent)
-            local categoryFrame = Instance.new("Frame")
-            categoryFrame.Size = UDim2.new(0.95, 0, 0, 40)
-            categoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            categoryFrame.BackgroundTransparency = 0.2
-            categoryFrame.BorderSizePixel = 0
-            categoryFrame.ZIndex = 11
-            local categoryCorner = Instance.new("UICorner")
-            categoryCorner.CornerRadius = UDim.new(0, 8)
-            categoryCorner.Parent = categoryFrame
-            categoryFrame.Parent = parent
-
-            local categoryTitle = Instance.new("TextButton")
-            categoryTitle.Size = UDim2.new(1, 0, 0, 40)
-            categoryTitle.BackgroundTransparency = 1
-            categoryTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-            categoryTitle.TextScaled = true
-            categoryTitle.Font = Enum.Font.GothamBold
-            categoryTitle.Text = titleText .. " ▼"
-            categoryTitle.ZIndex = 12
-            categoryTitle.Parent = categoryFrame
-
-            local buttonFrame = Instance.new("Frame")
-            buttonFrame.Size = UDim2.new(0.95, 0, 0, 0)
-            buttonFrame.Position = UDim2.new(0.025, 0, 0, 45)
-            buttonFrame.BackgroundTransparency = 1
-            buttonFrame.ZIndex = 12
-            buttonFrame.ClipsDescendants = true
-            buttonFrame.Visible = true
-            buttonFrame.Parent = categoryFrame
-
-            local buttonUIL = Instance.new("UIListLayout")
-            buttonUIL.FillDirection = Enum.FillDirection.Vertical
-            buttonUIL.Padding = UDim.new(0, 8)
-            buttonUIL.Parent = buttonFrame
-
-            local buttonPadding = Instance.new("UIPadding")
-            buttonPadding.PaddingTop = UDim.new(0, 5)
-            buttonPadding.PaddingBottom = UDim.new(0, 5)
-            buttonPadding.Parent = buttonFrame
-
-            for _, button in pairs(buttons) do
-                button.Parent = buttonFrame
-            end
-
-            local function updateCategory()
-                buttonFrame.Size = buttonFrame.Visible and UDim2.new(0.95, 0, 0, buttonUIL.AbsoluteContentSize.Y + 10) or UDim2.new(0.95, 0, 0, 0)
-                categoryTitle.Text = titleText .. (buttonFrame.Visible and " ▼" or " ►")
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-            end
-
-            categoryTitle.MouseButton1Click:Connect(function()
-                buttonFrame.Visible = not buttonFrame.Visible
-                updateCategory()
-            end)
-
-            buttonUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCategory)
-            updateCategory()
-
-            return categoryFrame
-        end
-
-        local categories = {
-            {
-                name = "Movement",
-                buttons = {
-                    createButton("Toggle Fly", toggleFly, function() return flying end),
-                    createButton("Toggle Noclip", toggleNoclip, function() return noclip end),
-                    createButton("Toggle Speed", toggleSpeed, function() return speedEnabled end),
-                    createButton("Toggle Jump", toggleJump, function() return jumpEnabled end),
-                    createButton("Toggle Water Walk", toggleWaterWalk, function() return waterWalk end),
-                    createButton("Toggle Rocket", toggleRocket, function() return rocket end),
-                    createButton("Toggle Spin", toggleSpin, function() return spin end),
-                    createButton("Toggle God Mode", toggleGodMode, function() return godMode end)
-                }
-            },
-            {
-                name = "Visual",
-                buttons = {
-                    createButton("Toggle Freecam", toggleFreecam, function() return freecam end),
-                    createButton("Return to Character", returnToCharacter, function() return false end),
-                    createButton("Cancel Freecam", cancelFreecam, function() return false end),
-                    createButton("Teleport Character to Camera", teleportCharacterToCamera, function() return false end),
-                    createButton("Toggle Hide Nickname", toggleHideNick, function() return nickHidden end),
-                    createButton("Toggle Random Nickname", toggleRandomNick, function() return randomNick end),
-                    createButton("Set Custom Nickname", setCustomNick, function() return false end)
-                }
-            },
-            {
-                name = "Teleport",
-                buttons = {
-                    createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
-                    createButton("Save Position 1", function() savePosition(1) end, function() return false end),
-                    createButton("Save Position 2", function() savePosition(2) end, function() return false end),
-                    createButton("Load Position 1", function() loadPosition(1) end, function() return false end),
-                    createButton("Load Position 2", function() loadPosition(2) end, function() return false end)
-                }
-            },
-            {
-                name = "Macro",
-                buttons = {
-                    createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end),
-                    createButton("Mark Successful Run", markSuccessfulRun, function() return false end),
-                    createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end),
-                    createButton("Toggle Auto Play Macro on Respawn", toggleAutoPlayOnRespawn, function() return autoPlayOnRespawn end),
-                    createButton("Toggle Record Macro on Respawn", toggleRecordOnRespawn, function() return recordOnRespawn end)
-                }
-            }
-        }
-
-        local playerDropdown, playerDropdownFrame = createDropdown("Select Player", {}, function(name)
-            selectedPlayer = Players:FindFirstChild(name)
-            notify("👤 Selected Player: " .. name)
-        end)
-        table.insert(categories[3].buttons, 1, playerDropdown)
-        table.insert(categories[3].buttons, 2, createButton("Teleport to Player", teleportToPlayer, function() return false end))
-        table.insert(categories[3].buttons, 3, playerDropdownFrame)
-
-        for _, category in pairs(categories) do
-            createCategory(category.name, category.buttons, scrollFrame)
-        end
-
-        scrollUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-        end)
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-
-        logo.MouseButton1Click:Connect(function()
-            frame.Visible = not frame.Visible
-            notify(frame.Visible and "🖼️ GUI Opened" or "🖼️ GUI Closed")
-        end)
-
-        local dragging, dragInput, dragStart, startPos
-        local function updateDrag(input)
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-        frame.InputBegan:Connect(function(input)
+function Button:render()
+    local props = self.props
+    local isToggled = props.toggleState and props.toggleState() or false
+    return Roact.createElement("TextButton", {
+        Size = UDim2.new(0.95, 0, 0, 40),
+        Position = UDim2.new(0.025, 0, 0, 0),
+        BackgroundColor3 = isToggled and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50),
+        BackgroundTransparency = 0.3,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextScaled = true,
+        Font = Enum.Font.Gotham,
+        Text = props.text,
+        ZIndex = 12,
+        [Roact.Event.InputBegan] = function(rbx, input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                dragStart = input.Position
-                startPos = frame.Position
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        dragging = false
+                self:setState({ holdStart = tick() })
+            end
+        end,
+        [Roact.Event.InputEnded] = function(rbx, input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                if self.state.holdStart and tick() - self.state.holdStart >= 2 and props.slot then
+                    props.onRename(props.slot, props.isSave)
+                else
+                    local success, err = pcall(props.onClick)
+                    if not success then
+                        notify("⚠️ Error in " .. props.text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
                     end
-                end)
+                end
+                self:setState({ holdStart = nil })
             end
-        end)
-        frame.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                dragInput = input
-            end
-        end)
-        UserInputService.InputChanged:Connect(function()
-            if dragInput and dragging then
-                updateDrag(dragInput)
-            end
-        end)
+        end
+    }, {
+        Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+    })
+end
 
-        local function updatePlayerDropdown()
-            local playerNames = {}
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= player then
-                    table.insert(playerNames, p.Name)
+local Dropdown = Roact.Component:extend("Dropdown")
+function Dropdown:init()
+    self:setState({
+        isOpen = false
+    })
+end
+
+function Dropdown:render()
+    local props = self.props
+    local items = props.items
+    return Roact.createElement("Frame", {
+        Size = UDim2.new(0.95, 0, 0, self.state.isOpen and (#items * 40 + 40) or 40),
+        Position = UDim2.new(0.025, 0, 0, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 12
+    }, {
+        Button = Roact.createElement("TextButton", {
+            Size = UDim2.new(1, 0, 0, 40),
+            BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+            BackgroundTransparency = 0.3,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextScaled = true,
+            Font = Enum.Font.Gotham,
+            Text = props.text,
+            ZIndex = 12,
+            [Roact.Event.MouseButton1Click] = function()
+                self:setState({ isOpen = not self.state.isOpen })
+                props.onToggle(self.state.isOpen)
+            end
+        }, {
+            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+        }),
+        ItemFrame = self.state.isOpen and Roact.createElement("Frame", {
+            Size = UDim2.new(0.95, 0, 0, #items * 40),
+            Position = UDim2.new(0.025, 0, 0, 45),
+            BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+            BackgroundTransparency = 0.1,
+            BorderSizePixel = 0,
+            ZIndex = 13,
+            ClipsDescendants = true
+        }, {
+            UIL = Roact.createElement("UIListLayout", {
+                FillDirection = Enum.FillDirection.Vertical,
+                Padding = UDim.new(0, 5)
+            }),
+            Items = Roact.createFragment(table.map(items, function(item, index)
+                return Roact.createElement("TextButton", {
+                    Size = UDim2.new(1, 0, 0, 35),
+                    BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+                    BackgroundTransparency = 0.3,
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    Font = Enum.Font.Gotham,
+                    Text = item,
+                    ZIndex = 14,
+                    [Roact.Event.MouseButton1Click] = function()
+                        props.onSelect(item)
+                        self:setState({ isOpen = false })
+                        props.onToggle(false)
+                    end
+                }, {
+                    Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+                })
+            end))
+        })
+    })
+end
+
+local Category = Roact.Component:extend("Category")
+function Category:init()
+    self:setState({
+        isOpen = true
+    })
+end
+
+function Category:render()
+    local props = self.props
+    return Roact.createElement("Frame", {
+        Size = UDim2.new(0.95, 0, 0, self.state.isOpen and (40 + #props.buttons * 48) or 40),
+        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+        ZIndex = 11
+    }, {
+        Title = Roact.createElement("TextButton", {
+            Size = UDim2.new(1, 0, 0, 40),
+            BackgroundTransparency = 1,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextScaled = true,
+            Font = Enum.Font.GothamBold,
+            Text = props.title .. (self.state.isOpen and " ▼" or " ►"),
+            ZIndex = 12,
+            [Roact.Event.MouseButton1Click] = function()
+                self:setState({ isOpen = not self.state.isOpen })
+                props.onToggle(self.state.isOpen)
+            end
+        }, {
+            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+        }),
+        ButtonFrame = self.state.isOpen and Roact.createElement("Frame", {
+            Size = UDim2.new(0.95, 0, 0, #props.buttons * 48),
+            Position = UDim2.new(0.025, 0, 0, 45),
+            BackgroundTransparency = 1,
+            ZIndex = 12,
+            ClipsDescendants = true
+        }, {
+            UIL = Roact.createElement("UIListLayout", {
+                FillDirection = Enum.FillDirection.Vertical,
+                Padding = UDim.new(0, 8)
+            }),
+            Padding = Roact.createElement("UIPadding", {
+                PaddingTop = UDim.new(0, 5),
+                PaddingBottom = UDim.new(0, 5)
+            }),
+            Buttons = Roact.createFragment(props.buttons)
+        })
+    })
+end
+
+local MainUI = Roact.Component:extend("MainUI")
+function MainUI:init()
+    self:setState({
+        isVisible = false,
+        players = {},
+        selectedSlot = nil,
+        renameText = "",
+        canvasSize = 0
+    })
+    self.scrollFrameRef = Roact.createRef()
+end
+
+function MainUI:didMount()
+    local function updatePlayers()
+        local playerNames = {}
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player then
+                table.insert(playerNames, p.Name)
+            end
+        end
+        self:setState({ players = playerNames })
+    end
+    updatePlayers()
+    connections.playerAdded = Players.PlayerAdded:Connect(updatePlayers)
+    connections.playerRemoving = Players.PlayerRemoving:Connect(updatePlayers)
+end
+
+function MainUI:willUnmount()
+    if connections.playerAdded then
+        connections.playerAdded:Disconnect()
+        connections.playerAdded = nil
+    end
+    if connections.playerRemoving then
+        connections.playerRemoving:Disconnect()
+        connections.playerRemoving = nil
+    end
+end
+
+function MainUI:render()
+    local function updateCanvasSize(isOpen)
+        local scrollFrame = self.scrollFrameRef.current
+        if scrollFrame then
+            local uil = scrollFrame:FindFirstChildOfClass("UIListLayout")
+            if uil then
+                self:setState({ canvasSize = uil.AbsoluteContentSize.Y + 30 })
+            end
+        end
+    end
+
+    local buttons = {
+        Movement = {
+            Roact.createElement(Button, { text = "Toggle Fly", onClick = toggleFly, toggleState = function() return flying end }),
+            Roact.createElement(Button, { text = "Toggle Noclip", onClick = toggleNoclip, toggleState = function() return noclip end }),
+            Roact.createElement(Button, { text = "Toggle Speed", onClick = toggleSpeed, toggleState = function() return speedEnabled end }),
+            Roact.createElement(Button, { text = "Toggle Jump", onClick = toggleJump, toggleState = function() return jumpEnabled end }),
+            Roact.createElement(Button, { text = "Toggle Water Walk", onClick = toggleWaterWalk, toggleState = function() return waterWalk end }),
+            Roact.createElement(Button, { text = "Toggle Rocket", onClick = toggleRocket, toggleState = function() return rocket end }),
+            Roact.createElement(Button, { text = "Toggle Spin", onClick = toggleSpin, toggleState = function() return spin end }),
+            Roact.createElement(Button, { text = "Toggle God Mode", onClick = toggleGodMode, toggleState = function() return godMode end })
+        },
+        Visual = {
+            Roact.createElement(Button, { text = "Toggle Freecam", onClick = toggleFreecam, toggleState = function() return freecam end }),
+            Roact.createElement(Button, { text = "Return to Character", onClick = returnToCharacter, toggleState = function() return false end }),
+            Roact.createElement(Button, { text = "Cancel Freecam", onClick = cancelFreecam, toggleState = function() return false end }),
+            Roact.createElement(Button, { text = "Teleport Character to Camera", onClick = teleportCharacterToCamera, toggleState = function() return false end }),
+            Roact.createElement(Button, { text = "Toggle Hide Nickname", onClick = toggleHideNick, toggleState = function() return nickHidden end }),
+            Roact.createElement(Button, { text = "Toggle Random Nickname", onClick = toggleRandomNick, toggleState = function() return randomNick end }),
+            Roact.createElement(Button, { text = "Set Custom Nickname", onClick = setCustomNick, toggleState = function() return false end })
+        },
+        Teleport = {
+            Roact.createElement(Dropdown, {
+                text = "Select Player",
+                items = self.state.players,
+                onSelect = function(name)
+                    selectedPlayer = Players:FindFirstChild(name)
+                    notify("👤 Selected Player: " .. name)
+                end,
+                onToggle = updateCanvasSize
+            }),
+            Roact.createElement(Button, { text = "Teleport to Player", onClick = teleportToPlayer, toggleState = function() return false end }),
+            Roact.createElement(Button, { text = "Save Position", onClick = savePosition, toggleState = function() return false end }),
+            Roact.createElement(Button, { text = "Teleport to Spawn", onClick = teleportToSpawn, toggleState = function() return false end })
+        },
+        Macro = {
+            Roact.createElement(Button, { text = "Toggle Record Macro", onClick = toggleRecordMacro, toggleState = function() return macroRecording end }),
+            Roact.createElement(Button, { text = "Mark Successful Run", onClick = markSuccessfulRun, toggleState = function() return false end }),
+            Roact.createElement(Button, { text = "Toggle Play Macro", onClick = togglePlayMacro, toggleState = function() return macroPlaying end }),
+            Roact.createElement(Button, { text = "Toggle Auto Play Macro on Respawn", onClick = toggleAutoPlayOnRespawn, toggleState = function() return autoPlayOnRespawn end }),
+            Roact.createElement(Button, { text = "Toggle Record Macro on Respawn", onClick = toggleRecordOnRespawn, toggleState = function() return recordOnRespawn end })
+        }
+    }
+
+    for slot = 1, maxSlots do
+        if savedPositions[slot] then
+            table.insert(buttons.Teleport, Roact.createElement(Button, {
+                text = "Save " .. savedPositions[slot].name,
+                onClick = savePosition,
+                toggleState = function() return false end,
+                slot = slot,
+                isSave = true,
+                onRename = function(slot, isSave)
+                    self:setState({ selectedSlot = slot, renameText = savedPositions[slot].name })
+                end
+            }))
+            table.insert(buttons.Teleport, Roact.createElement(Button, {
+                text = "Load " .. savedPositions[slot].name,
+                onClick = function() loadPosition(slot) end,
+                toggleState = function() return false end,
+                slot = slot,
+                isSave = false,
+                onRename = function(slot, isSave)
+                    self:setState({ selectedSlot = slot, renameText = savedPositions[slot].name })
+                end
+            }))
+        end
+    end
+
+    return Roact.createElement("ScreenGui", {
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    }, {
+        Scale = Roact.createElement("UIScale", {
+            Scale = math.min(1, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
+        }),
+        Logo = Roact.createElement("ImageButton", {
+            Size = UDim2.new(0, 50, 0, 50),
+            Position = UDim2.new(0.95, -50, 0.05, 10),
+            BackgroundColor3 = Color3.fromRGB(50, 150, 255),
+            BackgroundTransparency = 0.3,
+            BorderSizePixel = 0,
+            Image = "rbxassetid://3570695787",
+            ZIndex = 20,
+            [Roact.Event.MouseButton1Click] = function()
+                self:setState({ isVisible = not self.state.isVisible })
+                notify(self.state.isVisible and "🖼️ GUI Closed" or "🖼️ GUI Opened")
+            end
+        }, {
+            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+        }),
+        Frame = self.state.isVisible and Roact.createElement("Frame", {
+            Size = UDim2.new(0, 350, 0, 500),
+            Position = UDim2.new(0.5, -175, 0.5, -250),
+            BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+            BackgroundTransparency = 0.1,
+            BorderSizePixel = 0,
+            ZIndex = 10,
+            ClipsDescendants = true,
+            [Roact.Event.InputBegan] = function(rbx, input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    self:setState({ dragging = true, dragStart = input.Position, startPos = rbx.Position })
+                end
+            end,
+            [Roact.Event.InputEnded] = function(rbx, input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    self:setState({ dragging = false })
+                end
+            end,
+            [Roact.Event.InputChanged] = function(rbx, input)
+                if self.state.dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                    local delta = input.Position - self.state.dragStart
+                    rbx.Position = UDim2.new(self.state.startPos.X.Scale, self.state.startPos.X.Offset + delta.X, self.state.startPos.Y.Scale, self.state.startPos.Y.Offset + delta.Y)
                 end
             end
-            playerDropdownFrame:ClearAllChildren()
-            local dropdownUIL = Instance.new("UIListLayout")
-            dropdownUIL.FillDirection = Enum.FillDirection.Vertical
-            dropdownUIL.Padding = UDim.new(0, 5)
-            dropdownUIL.Parent = playerDropdownFrame
-            for _, item in pairs(playerNames) do
-                local itemButton = Instance.new("TextButton")
-                itemButton.Size = UDim2.new(1, 0, 0, 35)
-                itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-                itemButton.BackgroundTransparency = 0.3
-                itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                itemButton.TextScaled = true
-                itemButton.Font = Enum.Font.Gotham
-                itemButton.Text = item
-                itemButton.ZIndex = 14
-                local itemCorner = Instance.new("UICorner")
-                itemCorner.CornerRadius = UDim.new(0, 8)
-                itemCorner.Parent = itemButton
-                itemButton.Parent = playerDropdownFrame
-                itemButton.MouseButton1Click:Connect(function()
-                    selectedPlayer = Players:FindFirstChild(item)
-                    notify("👤 Selected Player: " .. item)
-                    playerDropdownFrame.Visible = false
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-                end)
-            end
-            playerDropdown.MouseButton1Click:Connect(function()
-                playerDropdownFrame.Visible = not playerDropdownFrame.Visible
-                playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(0.95, 0, 0, #playerNames * 40) or UDim2.new(0.95, 0, 0, 0)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-            end)
-        end
-
-        Players.PlayerAdded:Connect(updatePlayerDropdown)
-        Players.PlayerRemoving:Connect(updatePlayerDropdown)
-        updatePlayerDropdown()
-    end)
-    if not success then
-        notify("⚠️ GUI creation failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
-        createGUI()
-    end
+        }, {
+            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 12) }),
+            Title = Roact.createElement("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 40),
+                BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+                BackgroundTransparency = 0.5,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                TextScaled = true,
+                Font = Enum.Font.GothamBold,
+                Text = "Krnl UI",
+                ZIndex = 11
+            }, {
+                Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+            }),
+            ScrollFrame = Roact.createElement("ScrollingFrame", {
+                Size = UDim2.new(1, -10, 1, -50),
+                Position = UDim2.new(0, 5, 0, 45),
+                BackgroundTransparency = 1,
+                ScrollBarThickness = 6,
+                ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100),
+                ZIndex = 11,
+                ClipsDescendants = true,
+                CanvasSize = UDim2.new(0, 0, 0, self.state.canvasSize),
+                Ref = self.scrollFrameRef
+            }, {
+                UIL = Roact.createElement("UIListLayout", {
+                    FillDirection = Enum.FillDirection.Vertical,
+                    Padding = UDim.new(0, 8)
+                }),
+                Padding = Roact.createElement("UIPadding", {
+                    PaddingTop = UDim.new(0, 5),
+                    PaddingBottom = UDim.new(0, 20)
+                }),
+                Categories = Roact.createFragment({
+                    Movement = Roact.createElement(Category, { title = "Movement", buttons = buttons.Movement, onToggle = updateCanvasSize }),
+                    Visual = Roact.createElement(Category, { title = "Visual", buttons = buttons.Visual, onToggle = updateCanvasSize }),
+                    Teleport = Roact.createElement(Category, { title = "Teleport", buttons = buttons.Teleport, onToggle = updateCanvasSize }),
+                    Macro = Roact.createElement(Category, { title = "Macro", buttons = buttons.Macro, onToggle = updateCanvasSize })
+                })
+            }),
+            RenameInput = self.state.selectedSlot and Roact.createElement("Frame", {
+                Size = UDim2.new(0.95, 0, 0, 50),
+                Position = UDim2.new(0.025, 0, 0, 0),
+                BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+                BackgroundTransparency = 0.2,
+                ZIndex = 15
+            }, {
+                Input = Roact.createElement("TextBox", {
+                    Size = UDim2.new(0.8, -10, 0, 40),
+                    Position = UDim2.new(0, 5, 0, 5),
+                    BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    Font = Enum.Font.Gotham,
+                    Text = self.state.renameText,
+                    ZIndex = 16,
+                    [Roact.Change.Text] = function(rbx)
+                        self:setState({ renameText = rbx.Text })
+                    end,
+                    [Roact.Event.FocusLost] = function(rbx, enterPressed)
+                        if enterPressed and self.state.renameText ~= "" then
+                            renamePosition(self.state.selectedSlot, self.state.renameText)
+                            self:setState({ selectedSlot = nil, renameText = "" })
+                        end
+                    end
+                }, {
+                    Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+                }),
+                Confirm = Roact.createElement("TextButton", {
+                    Size = UDim2.new(0.2, -10, 0, 40),
+                    Position = UDim2.new(0.8, 5, 0, 5),
+                    BackgroundColor3 = Color3.fromRGB(0, 150, 0),
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextScaled = true,
+                    Font = Enum.Font.Gotham,
+                    Text = "OK",
+                    ZIndex = 16,
+                    [Roact.Event.MouseButton1Click] = function()
+                        if self.state.renameText ~= "" then
+                            renamePosition(self.state.selectedSlot, self.state.renameText)
+                            self:setState({ selectedSlot = nil, renameText = "" })
+                        end
+                    end
+                }, {
+                    Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
+                })
+            })
+        })
+    })
 end
 
--- Cleanup old instance
-local function cleanupOldInstance()
-    local oldGui = player.PlayerGui:FindFirstChild("SimpleUILibrary_Krnl")
-    if oldGui then
-        oldGui:Destroy()
-        notify("🛠️ Old script instance terminated", Color3.fromRGB(255, 255, 0))
-    end
-end
+-- Initialize
+loadTeleportSlots()
+initChar()
+local handle = Roact.mount(Roact.createElement(MainUI), player:WaitForChild("PlayerGui"), "KrnlUI")
+player.CharacterAdded:Connect(function()
+    clearConnections()
+    initChar()
+end)
 
--- Main initialization
-local function main()
-    local success, errorMsg = pcall(function()
-        cleanupOldInstance()
-        task.wait(1.5)
-        createGUI()
-        createJoystick()
-        initChar()
-        player.CharacterAdded:Connect(initChar)
-        notify("✅ Script Loaded Successfully")
-    end)
-    if not success then
-        notify("⚠️ Script failed to load: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
-        main()
-    end
-end
-
-main()
+-- Cleanup
+game:BindToClose(function()
+    Roact.unmount(handle)
+    clearConnections()
+end)
