@@ -12,7 +12,7 @@ local selectedPlayer = nil
 local flying, freecam, noclip, godMode = false, false, false, false
 local flySpeed = 50
 local freecamSpeed = 30
-local cameraRotationSensitivity = 0.01
+local cameraRotationSensitivity = 0.005 -- Dikurangi untuk rotasi lebih halus
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -32,7 +32,8 @@ local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
 local customNick = "PemainKeren"
 local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
-local defaultFramePos = UDim2.new(0.5, -150, 0.5, -200)
+local defaultFramePos = UDim2.new(0.5, -200, 0.5, -300)
+
 local connections = {}
 
 -- Notify function
@@ -43,8 +44,8 @@ local function notify(message, color)
             return
         end
         local notif = Instance.new("TextLabel")
-        notif.Size = UDim2.new(0, 250, 0, 40)
-        notif.Position = UDim2.new(0.5, -125, 0.1, 0)
+        notif.Size = UDim2.new(0, 300, 0, 50)
+        notif.Position = UDim2.new(0.5, -150, 0.1, 0)
         notif.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         notif.BackgroundTransparency = 0.5
         notif.TextColor3 = color or Color3.fromRGB(0, 255, 0)
@@ -52,7 +53,7 @@ local function notify(message, color)
         notif.Font = Enum.Font.Gotham
         notif.Text = message
         notif.BorderSizePixel = 0
-        notif.ZIndex = 15
+        notif.ZIndex = 20
         notif.Parent = gui
         task.spawn(function()
             task.wait(3)
@@ -164,8 +165,8 @@ local function createJoystick()
         joystickFrame:Destroy()
     end
     joystickFrame = Instance.new("Frame")
-    joystickFrame.Size = UDim2.new(0, 100, 0, 100)
-    joystickFrame.Position = UDim2.new(0.1, 0, 0.7, 0)
+    joystickFrame.Size = UDim2.new(0, 120, 0, 120)
+    joystickFrame.Position = UDim2.new(0.1, 0, 0.65, 0)
     joystickFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     joystickFrame.BackgroundTransparency = 0.5
     joystickFrame.BorderSizePixel = 0
@@ -183,8 +184,8 @@ local function createJoystick()
     joystickKnob.Parent = joystickFrame
 
     cameraControlFrame = Instance.new("Frame")
-    cameraControlFrame.Size = UDim2.new(0, 100, 0, 100)
-    cameraControlFrame.Position = UDim2.new(0.8, -100, 0.7, 0)
+    cameraControlFrame.Size = UDim2.new(0, 120, 0, 120)
+    cameraControlFrame.Position = UDim2.new(0.8, -120, 0.65, 0)
     cameraControlFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     cameraControlFrame.BackgroundTransparency = 0.5
     cameraControlFrame.BorderSizePixel = 0
@@ -222,7 +223,7 @@ local function createJoystick()
             delta = delta.Unit * maxRadius
         end
         cameraKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
-        cameraDelta = Vector2.new(delta.X / maxRadius, -delta.Y / maxRadius)
+        cameraDelta = Vector2.new(-delta.X / maxRadius, delta.Y / maxRadius) -- Dibalik untuk rotasi tangan kanan
     end
 
     connections.joystickBegan = UserInputService.TouchStarted:Connect(function(input)
@@ -282,7 +283,7 @@ local function toggleFly()
             bv.Parent = hr
             connections.flyMouse = UserInputService.InputChanged:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    cameraDelta = Vector2.new(input.Delta.X, input.Delta.Y)
+                    cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y) -- Dibalik untuk rotasi tangan kanan
                 end
             end)
             connections.fly = RunService.RenderStepped:Connect(function()
@@ -318,7 +319,7 @@ local function toggleFly()
                 end
                 bv.Velocity = moveDir
                 hr.CFrame = CFrame.new(hr.Position) * camera.CFrame.Rotation
-                local rotation = CFrame.Angles(0, -cameraDelta.X * cameraRotationSensitivity, 0) * CFrame.Angles(-cameraDelta.Y * cameraRotationSensitivity, 0, 0)
+                local rotation = CFrame.Angles(0, cameraDelta.X * cameraRotationSensitivity, 0) * CFrame.Angles(cameraDelta.Y * cameraRotationSensitivity, 0, 0)
                 camera.CFrame = CFrame.new(camera.CFrame.Position) * (camera.CFrame.Rotation * rotation)
                 if not isMobile then
                     cameraDelta = Vector2.new(0, 0)
@@ -398,11 +399,25 @@ local function toggleFreecam()
             end)
             connections.freecamMouse = UserInputService.InputChanged:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    cameraDelta = Vector2.new(input.Delta.X, input.Delta.Y)
+                    cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y) -- Dibalik untuk rotasi tangan kanan
                 end
             end)
             connections.freecam = RunService.RenderStepped:Connect(function()
                 if not camera or not freecamCFrame then
+                    freecam = false
+                    connections.freecam:Disconnect()
+                    connections.freecam = nil
+                    if connections.freecamLock then
+                        connections.freecamLock:Disconnect()
+                        connections.freecamLock = nil
+                    end
+                    if connections.freecamMouse then
+                        connections.freecamMouse:Disconnect()
+                        connections.freecamMouse = nil
+                    end
+                    joystickFrame.Visible = false
+                    cameraControlFrame.Visible = false
+                    notify("⚠️ Freecam failed: Camera or CFrame lost", Color3.fromRGB(255, 100, 100))
                     return
                 end
                 local forward = freecamCFrame.LookVector
@@ -423,7 +438,12 @@ local function toggleFreecam()
                     moveDir = moveDir * freecamSpeed
                     freecamCFrame = CFrame.new(freecamCFrame.Position + moveDir) * freecamCFrame.Rotation
                 end
-                local rotation = CFrame.Angles(0, -cameraDelta.X * cameraRotationSensitivity, 0) * CFrame.Angles(-cameraDelta.Y * cameraRotationSensitivity, 0, 0)
+                local yaw = cameraDelta.X * cameraRotationSensitivity
+                local pitch = cameraDelta.Y * cameraRotationSensitivity
+                -- Clamp pitch untuk mencegah muter-muter berlebihan
+                local currentPitch = math.asin(freecamCFrame.LookVector.Y)
+                pitch = math.clamp(currentPitch + pitch, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
+                local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
                 freecamCFrame = CFrame.new(freecamCFrame.Position) * (freecamCFrame.Rotation * rotation)
                 if not isMobile then
                     cameraDelta = Vector2.new(0, 0)
@@ -1017,25 +1037,25 @@ local function createGUI()
         local scale = Instance.new("UIScale")
         scale.Parent = gui
         local screenSize = camera.ViewportSize
-        scale.Scale = math.min(1, math.min(screenSize.X / 1920, screenSize.Y / 1080))
+        scale.Scale = math.min(1, math.min(screenSize.X / 1280, screenSize.Y / 720)) -- Skala lebih besar untuk Android
 
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 60, 0, 60)
+        logo.Size = UDim2.new(0, 70, 0, 70)
         logo.Position = defaultLogoPos
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
-        logo.ZIndex = 10
+        logo.ZIndex = 20
         logo.Parent = gui
 
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 300, 0, 400)
+        frame.Size = UDim2.new(0, 400, 0, 600) -- Diperbesar agar nggak kecel
         frame.Position = defaultFramePos
         frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         frame.BackgroundTransparency = 0.1
         frame.BorderSizePixel = 0
         frame.Visible = false
-        frame.ZIndex = 11
+        frame.ZIndex = 10
         frame.ClipsDescendants = true
         frame.Parent = gui
 
@@ -1052,26 +1072,26 @@ local function createGUI()
         title.TextScaled = true
         title.Font = Enum.Font.GothamBold
         title.Text = "Krnl UI"
-        title.ZIndex = 12
+        title.ZIndex = 11
         title.Parent = frame
 
         local scrollFrame = Instance.new("ScrollingFrame")
         scrollFrame.Size = UDim2.new(1, 0, 1, -60)
         scrollFrame.Position = UDim2.new(0, 0, 0, 60)
         scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 5
-        scrollFrame.ZIndex = 12
+        scrollFrame.ScrollBarThickness = 8
+        scrollFrame.ZIndex = 11
         scrollFrame.ClipsDescendants = true
         scrollFrame.Parent = frame
 
         local scrollUIL = Instance.new("UIListLayout")
         scrollUIL.FillDirection = Enum.FillDirection.Vertical
-        scrollUIL.Padding = UDim.new(0, 5)
+        scrollUIL.Padding = UDim.new(0, 8)
         scrollUIL.Parent = scrollFrame
 
         local function createButton(text, callback, toggleState)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(0.9, 0, 0, 40)
+            button.Size = UDim2.new(0.9, 0, 0, 50) -- Tombol lebih besar
             button.Position = UDim2.new(0.05, 0, 0, 0)
             button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
             button.BackgroundTransparency = 0.3
@@ -1079,11 +1099,11 @@ local function createGUI()
             button.TextScaled = true
             button.Font = Enum.Font.Gotham
             button.Text = text
-            button.ZIndex = 13
+            button.ZIndex = 12
             button.Parent = scrollFrame
             local function updateButton()
                 button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20) -- Tambah padding
             end
             button.MouseButton1Click:Connect(function()
                 local success, err = pcall(callback)
@@ -1098,7 +1118,7 @@ local function createGUI()
 
         local function createDropdown(text, items, callback)
             local dropdown = Instance.new("TextButton")
-            dropdown.Size = UDim2.new(0.9, 0, 0, 40)
+            dropdown.Size = UDim2.new(0.9, 0, 0, 50)
             dropdown.Position = UDim2.new(0.05, 0, 0, 0)
             dropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
             dropdown.BackgroundTransparency = 0.3
@@ -1106,17 +1126,17 @@ local function createGUI()
             dropdown.TextScaled = true
             dropdown.Font = Enum.Font.Gotham
             dropdown.Text = text
-            dropdown.ZIndex = 13
+            dropdown.ZIndex = 12
             dropdown.Parent = scrollFrame
 
             local dropdownFrame = Instance.new("Frame")
             dropdownFrame.Size = UDim2.new(0.9, 0, 0, 0)
-            dropdownFrame.Position = UDim2.new(0.05, 0, 0, 45)
+            dropdownFrame.Position = UDim2.new(0.05, 0, 0, 55)
             dropdownFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
             dropdownFrame.BackgroundTransparency = 0.1
             dropdownFrame.BorderSizePixel = 0
             dropdownFrame.Visible = false
-            dropdownFrame.ZIndex = 14
+            dropdownFrame.ZIndex = 13
             dropdownFrame.ClipsDescendants = true
             dropdownFrame.Parent = scrollFrame
 
@@ -1127,30 +1147,35 @@ local function createGUI()
 
             for _, item in pairs(items) do
                 local itemButton = Instance.new("TextButton")
-                itemButton.Size = UDim2.new(1, 0, 0, 30)
+                itemButton.Size = UDim2.new(1, 0, 0, 40)
                 itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
                 itemButton.BackgroundTransparency = 0.3
                 itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 itemButton.TextScaled = true
                 itemButton.Font = Enum.Font.Gotham
                 itemButton.Text = item
-                itemButton.ZIndex = 15
+                itemButton.ZIndex = 14
                 itemButton.Parent = dropdownFrame
                 itemButton.MouseButton1Click:Connect(function()
                     callback(item)
                     dropdownFrame.Visible = false
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y)
+                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
                 end)
             end
 
             dropdown.MouseButton1Click:Connect(function()
                 dropdownFrame.Visible = not dropdownFrame.Visible
-                dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(0.9, 0, 0, #items * 35) or UDim2.new(0.9, 0, 0, 0)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y)
+                dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(0.9, 0, 0, #items * 45) or UDim2.new(0.9, 0, 0, 0)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
             end)
 
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y)
+            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
         end
+
+        -- Update CanvasSize saat konten berubah
+        scrollUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+        end)
 
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
@@ -1221,8 +1246,6 @@ local function createGUI()
             selectedPlayer = Players:FindFirstChild(name)
             notify("👤 Selected Player: " .. name)
         end)
-
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y)
     end)
     if not success then
         notify("⚠️ GUI creation failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
@@ -1244,7 +1267,7 @@ end
 local function main()
     local success, errorMsg = pcall(function()
         cleanupOldInstance()
-        task.wait(1) -- Delay to ensure PlayerGui is ready
+        task.wait(1.5) -- Delay lebih panjang untuk Android
         createGUI()
         createJoystick()
         initChar()
