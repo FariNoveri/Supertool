@@ -20,7 +20,7 @@ local spinSpeed = 20
 local savedPositions = { [1] = nil, [2] = nil }
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
 local macroActions = {}
-local macroSuccessfulRun = nil
+local macroSuccessfulEndTime = nil
 local isMobile = UserInputService.TouchEnabled
 local freecamCFrame = nil
 local hrCFrame = nil
@@ -32,8 +32,8 @@ local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
 local customNick = "PemainKeren"
-local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
-local defaultFramePos = UDim2.new(0.5, -200, 0.5, -300)
+local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
+local defaultFramePos = UDim2.new(0.5, -175, 0.5, -250)
 
 local connections = {}
 
@@ -55,6 +55,9 @@ local function notify(message, color)
         notif.Text = message
         notif.BorderSizePixel = 0
         notif.ZIndex = 20
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = notif
         notif.Parent = gui
         task.spawn(function()
             task.wait(3)
@@ -173,6 +176,9 @@ local function createJoystick()
     joystickFrame.BorderSizePixel = 0
     joystickFrame.ZIndex = 15
     joystickFrame.Visible = false
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 60)
+    corner.Parent = joystickFrame
     joystickFrame.Parent = gui
 
     local joystickKnob = Instance.new("Frame")
@@ -182,6 +188,9 @@ local function createJoystick()
     joystickKnob.BackgroundTransparency = 0.2
     joystickKnob.BorderSizePixel = 0
     joystickKnob.ZIndex = 16
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = UDim.new(0, 20)
+    knobCorner.Parent = joystickKnob
     joystickKnob.Parent = joystickFrame
 
     cameraControlFrame = Instance.new("Frame")
@@ -192,6 +201,9 @@ local function createJoystick()
     cameraControlFrame.BorderSizePixel = 0
     cameraControlFrame.ZIndex = 15
     cameraControlFrame.Visible = false
+    local camCorner = Instance.new("UICorner")
+    camCorner.CornerRadius = UDim.new(0, 60)
+    camCorner.Parent = cameraControlFrame
     cameraControlFrame.Parent = gui
 
     local cameraKnob = Instance.new("Frame")
@@ -201,6 +213,9 @@ local function createJoystick()
     cameraKnob.BackgroundTransparency = 0.2
     cameraKnob.BorderSizePixel = 0
     cameraKnob.ZIndex = 16
+    local camKnobCorner = Instance.new("UICorner")
+    camKnobCorner.CornerRadius = UDim.new(0, 20)
+    camKnobCorner.Parent = cameraKnob
     cameraKnob.Parent = cameraControlFrame
 
     local function updateJoystick(input)
@@ -999,47 +1014,18 @@ local function toggleRecordMacro()
     local success, errorMsg = pcall(function()
         if macroRecording then
             macroActions = {}
+            macroSuccessfulEndTime = nil
             local startTime = tick()
-            local lastValidState = nil
             connections.macroRecord = RunService.RenderStepped:Connect(function()
                 if hr and humanoid then
-                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
-                        macroRecording = false
-                        connections.macroRecord:Disconnect()
-                        connections.macroRecord = nil
-                        notify("🎥 Macro Recording Stopped (Character Died, " .. #macroActions .. " actions recorded)", Color3.fromRGB(255, 100, 100))
-                        return
-                    end
                     local action = {
                         time = tick() - startTime,
                         position = hr.CFrame,
                         velocity = hr.Velocity,
-                        state = humanoid:GetState()
+                        state = humanoid:GetState(),
+                        health = humanoid.Health
                     }
-                    if action.state ~= Enum.HumanoidStateType.Dead and humanoid.Health > 0 then
-                        lastValidState = action
-                        table.insert(macroActions, action)
-                    end
-                end
-            end)
-            connections.macroHealthCheck = humanoid.HealthChanged:Connect(function(health)
-                if health <= 0 and macroRecording then
-                    macroRecording = false
-                    if connections.macroRecord then
-                        connections.macroRecord:Disconnect()
-                        connections.macroRecord = nil
-                    end
-                    notify("🎥 Macro Recording Stopped (Health Depleted, " .. #macroActions .. " actions recorded)", Color3.fromRGB(255, 100, 100))
-                end
-            end)
-            connections.macroStateCheck = humanoid.StateChanged:Connect(function(_, newState)
-                if newState == Enum.HumanoidStateType.Dead and macroRecording then
-                    macroRecording = false
-                    if connections.macroRecord then
-                        connections.macroRecord:Disconnect()
-                        connections.macroRecord = nil
-                    end
-                    notify("🎥 Macro Recording Stopped (Character Died, " .. #macroActions .. " actions recorded)", Color3.fromRGB(255, 100, 100))
+                    table.insert(macroActions, action)
                 end
             end)
             notify("🎥 Macro Recording Started")
@@ -1047,14 +1033,6 @@ local function toggleRecordMacro()
             if connections.macroRecord then
                 connections.macroRecord:Disconnect()
                 connections.macroRecord = nil
-            end
-            if connections.macroHealthCheck then
-                connections.macroHealthCheck:Disconnect()
-                connections.macroHealthCheck = nil
-            end
-            if connections.macroStateCheck then
-                connections.macroStateCheck:Disconnect()
-                connections.macroStateCheck = nil
             end
             notify("🎥 Macro Recording Stopped (" .. #macroActions .. " actions recorded)")
         end
@@ -1065,15 +1043,21 @@ local function toggleRecordMacro()
             connections.macroRecord:Disconnect()
             connections.macroRecord = nil
         end
-        if connections.macroHealthCheck then
-            connections.macroHealthCheck:Disconnect()
-            connections.macroHealthCheck = nil
-        end
-        if connections.macroStateCheck then
-            connections.macroStateCheck:Disconnect()
-            connections.macroStateCheck = nil
-        end
         notify("⚠️ Macro Record error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
+local function markSuccessfulRun()
+    local success, errorMsg = pcall(function()
+        if macroRecording then
+            macroSuccessfulEndTime = tick() - (macroActions[1] and macroActions[1].time or tick())
+            notify("✅ Marked Successful Run at " .. string.format("%.2f", macroSuccessfulEndTime) .. "s")
+        else
+            notify("⚠️ Not recording macro", Color3.fromRGB(255, 100, 100))
+        end
+    end)
+    if not success then
+        notify("⚠️ Mark Successful Run error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
@@ -1104,16 +1088,16 @@ local function togglePlayMacro()
                 local currentTime = tick() - startTime
                 while index <= #macroActions and macroActions[index].time <= currentTime do
                     local action = macroActions[index]
-                    if action.state ~= Enum.HumanoidStateType.Dead and humanoid.Health > 0 then
+                    if action.health > 0 and action.state ~= Enum.HumanoidStateType.Dead and (not macroSuccessfulEndTime or action.time <= macroSuccessfulEndTime) then
                         hr.CFrame = action.position
                         hr.Velocity = action.velocity
                         humanoid:ChangeState(action.state)
                     end
                     index = index + 1
                 end
-                if index > #macroActions then
-                    macroSuccessfulRun = true
+                if index > #macroActions or (macroSuccessfulEndTime and currentTime >= macroSuccessfulEndTime) then
                     togglePlayMacro()
+                    notify("▶️ Macro Playback Completed")
                 end
             end)
             notify("▶️ Macro Playback Started")
@@ -1122,8 +1106,7 @@ local function togglePlayMacro()
                 connections.macroPlay:Disconnect()
                 connections.macroPlay = nil
             end
-            notify(macroSuccessfulRun and "▶️ Macro Playback Completed" or "▶️ Macro Playback Stopped")
-            macroSuccessfulRun = nil
+            notify("▶️ Macro Playback Stopped")
         end
     end)
     if not success then
@@ -1163,21 +1146,24 @@ local function createGUI()
         gui.Parent = player:WaitForChild("PlayerGui", 20)
 
         local scale = Instance.new("UIScale")
+        scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
         scale.Parent = gui
-        local screenSize = camera.ViewportSize
-        scale.Scale = math.min(1, math.min(screenSize.X / 1280, screenSize.Y / 720))
 
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 70, 0, 70)
+        logo.Size = UDim2.new(0, 50, 0, 50)
         logo.Position = defaultLogoPos
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+        logo.BackgroundTransparency = 0.3
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
         logo.ZIndex = 20
+        local logoCorner = Instance.new("UICorner")
+        logoCorner.CornerRadius = UDim.new(0, 8)
+        logoCorner.Parent = logo
         logo.Parent = gui
 
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 400, 0, 600)
+        frame.Size = UDim2.new(0, 350, 0, 500)
         frame.Position = defaultFramePos
         frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         frame.BackgroundTransparency = 0.1
@@ -1185,6 +1171,9 @@ local function createGUI()
         frame.Visible = false
         frame.ZIndex = 10
         frame.ClipsDescendants = true
+        local frameCorner = Instance.new("UICorner")
+        frameCorner.CornerRadius = UDim.new(0, 12)
+        frameCorner.Parent = frame
         frame.Parent = gui
 
         local uil = Instance.new("UIListLayout")
@@ -1193,7 +1182,7 @@ local function createGUI()
         uil.Parent = frame
 
         local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, 0, 0, 50)
+        title.Size = UDim2.new(1, 0, 0, 40)
         title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         title.BackgroundTransparency = 0.5
         title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1201,13 +1190,17 @@ local function createGUI()
         title.Font = Enum.Font.GothamBold
         title.Text = "Krnl UI"
         title.ZIndex = 11
+        local titleCorner = Instance.new("UICorner")
+        titleCorner.CornerRadius = UDim.new(0, 8)
+        titleCorner.Parent = title
         title.Parent = frame
 
         local scrollFrame = Instance.new("ScrollingFrame")
-        scrollFrame.Size = UDim2.new(1, 0, 1, -60)
-        scrollFrame.Position = UDim2.new(0, 0, 0, 60)
+        scrollFrame.Size = UDim2.new(1, -10, 1, -50)
+        scrollFrame.Position = UDim2.new(0, 5, 0, 45)
         scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 8
+        scrollFrame.ScrollBarThickness = 6
+        scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
         scrollFrame.ZIndex = 11
         scrollFrame.ClipsDescendants = true
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -1218,10 +1211,15 @@ local function createGUI()
         scrollUIL.Padding = UDim.new(0, 8)
         scrollUIL.Parent = scrollFrame
 
+        local scrollPadding = Instance.new("UIPadding")
+        scrollPadding.PaddingTop = UDim.new(0, 5)
+        scrollPadding.PaddingBottom = UDim.new(0, 20)
+        scrollPadding.Parent = scrollFrame
+
         local function createButton(text, callback, toggleState)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(0.9, 0, 0, 50)
-            button.Position = UDim2.new(0.05, 0, 0, 0)
+            button.Size = UDim2.new(0.95, 0, 0, 40)
+            button.Position = UDim2.new(0.025, 0, 0, 0)
             button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
             button.BackgroundTransparency = 0.3
             button.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1229,21 +1227,24 @@ local function createGUI()
             button.Font = Enum.Font.Gotham
             button.Text = text
             button.ZIndex = 12
+            local buttonCorner = Instance.new("UICorner")
+            buttonCorner.CornerRadius = UDim.new(0, 8)
+            buttonCorner.Parent = button
             button.MouseButton1Click:Connect(function()
                 local success, err = pcall(callback)
                 if not success then
                     notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
                 end
                 button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
             return button
         end
 
         local function createDropdown(text, items, callback)
             local dropdown = Instance.new("TextButton")
-            dropdown.Size = UDim2.new(0.9, 0, 0, 50)
-            dropdown.Position = UDim2.new(0.05, 0, 0, 0)
+            dropdown.Size = UDim2.new(0.95, 0, 0, 40)
+            dropdown.Position = UDim2.new(0.025, 0, 0, 0)
             dropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
             dropdown.BackgroundTransparency = 0.3
             dropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1251,16 +1252,22 @@ local function createGUI()
             dropdown.Font = Enum.Font.Gotham
             dropdown.Text = text
             dropdown.ZIndex = 12
+            local dropdownCorner = Instance.new("UICorner")
+            dropdownCorner.CornerRadius = UDim.new(0, 8)
+            dropdownCorner.Parent = dropdown
 
             local dropdownFrame = Instance.new("Frame")
-            dropdownFrame.Size = UDim2.new(0.9, 0, 0, 0)
-            dropdownFrame.Position = UDim2.new(0.05, 0, 0, 55)
+            dropdownFrame.Size = UDim2.new(0.95, 0, 0, 0)
+            dropdownFrame.Position = UDim2.new(0.025, 0, 0, 45)
             dropdownFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
             dropdownFrame.BackgroundTransparency = 0.1
             dropdownFrame.BorderSizePixel = 0
             dropdownFrame.Visible = false
             dropdownFrame.ZIndex = 13
             dropdownFrame.ClipsDescendants = true
+            local dropdownFrameCorner = Instance.new("UICorner")
+            dropdownFrameCorner.CornerRadius = UDim.new(0, 8)
+            dropdownFrameCorner.Parent = dropdownFrame
 
             local dropdownUIL = Instance.new("UIListLayout")
             dropdownUIL.FillDirection = Enum.FillDirection.Vertical
@@ -1269,7 +1276,7 @@ local function createGUI()
 
             for _, item in pairs(items) do
                 local itemButton = Instance.new("TextButton")
-                itemButton.Size = UDim2.new(1, 0, 0, 40)
+                itemButton.Size = UDim2.new(1, 0, 0, 35)
                 itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
                 itemButton.BackgroundTransparency = 0.3
                 itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1277,18 +1284,21 @@ local function createGUI()
                 itemButton.Font = Enum.Font.Gotham
                 itemButton.Text = item
                 itemButton.ZIndex = 14
+                local itemCorner = Instance.new("UICorner")
+                itemCorner.CornerRadius = UDim.new(0, 8)
+                itemCorner.Parent = itemButton
                 itemButton.Parent = dropdownFrame
                 itemButton.MouseButton1Click:Connect(function()
                     callback(item)
                     dropdownFrame.Visible = false
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
                 end)
             end
 
             dropdown.MouseButton1Click:Connect(function()
                 dropdownFrame.Visible = not dropdownFrame.Visible
-                dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(0.9, 0, 0, #items * 45) or UDim2.new(0.9, 0, 0, 0)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+                dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(0.95, 0, 0, #items * 40) or UDim2.new(0.95, 0, 0, 0)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
 
             return dropdown, dropdownFrame
@@ -1296,15 +1306,18 @@ local function createGUI()
 
         local function createCategory(titleText, buttons, parent)
             local categoryFrame = Instance.new("Frame")
-            categoryFrame.Size = UDim2.new(0.95, 0, 0, 50)
+            categoryFrame.Size = UDim2.new(0.95, 0, 0, 40)
             categoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
             categoryFrame.BackgroundTransparency = 0.2
             categoryFrame.BorderSizePixel = 0
             categoryFrame.ZIndex = 11
+            local categoryCorner = Instance.new("UICorner")
+            categoryCorner.CornerRadius = UDim.new(0, 8)
+            categoryCorner.Parent = categoryFrame
             categoryFrame.Parent = parent
 
             local categoryTitle = Instance.new("TextButton")
-            categoryTitle.Size = UDim2.new(1, 0, 0, 50)
+            categoryTitle.Size = UDim2.new(1, 0, 0, 40)
             categoryTitle.BackgroundTransparency = 1
             categoryTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
             categoryTitle.TextScaled = true
@@ -1314,8 +1327,8 @@ local function createGUI()
             categoryTitle.Parent = categoryFrame
 
             local buttonFrame = Instance.new("Frame")
-            buttonFrame.Size = UDim2.new(0.9, 0, 0, 0)
-            buttonFrame.Position = UDim2.new(0.05, 0, 0, 55)
+            buttonFrame.Size = UDim2.new(0.95, 0, 0, 0)
+            buttonFrame.Position = UDim2.new(0.025, 0, 0, 45)
             buttonFrame.BackgroundTransparency = 1
             buttonFrame.ZIndex = 12
             buttonFrame.ClipsDescendants = true
@@ -1327,14 +1340,19 @@ local function createGUI()
             buttonUIL.Padding = UDim.new(0, 8)
             buttonUIL.Parent = buttonFrame
 
+            local buttonPadding = Instance.new("UIPadding")
+            buttonPadding.PaddingTop = UDim.new(0, 5)
+            buttonPadding.PaddingBottom = UDim.new(0, 5)
+            buttonPadding.Parent = buttonFrame
+
             for _, button in pairs(buttons) do
                 button.Parent = buttonFrame
             end
 
             local function updateCategory()
-                buttonFrame.Size = buttonFrame.Visible and UDim2.new(0.9, 0, 0, buttonUIL.AbsoluteContentSize.Y + 10) or UDim2.new(0.9, 0, 0, 0)
+                buttonFrame.Size = buttonFrame.Visible and UDim2.new(0.95, 0, 0, buttonUIL.AbsoluteContentSize.Y + 10) or UDim2.new(0.95, 0, 0, 0)
                 categoryTitle.Text = titleText .. (buttonFrame.Visible and " ▼" or " ►")
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end
 
             categoryTitle.MouseButton1Click:Connect(function()
@@ -1388,6 +1406,7 @@ local function createGUI()
                 name = "Macro",
                 buttons = {
                     createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end),
+                    createButton("Mark Successful Run", markSuccessfulRun, function() return false end),
                     createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end),
                     createButton("Toggle Auto Play Macro on Respawn", toggleAutoPlayOnRespawn, function() return autoPlayOnRespawn end),
                     createButton("Toggle Record Macro on Respawn", toggleRecordOnRespawn, function() return recordOnRespawn end)
@@ -1408,9 +1427,9 @@ local function createGUI()
         end
 
         scrollUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
         end)
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
 
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
@@ -1459,7 +1478,7 @@ local function createGUI()
             dropdownUIL.Parent = playerDropdownFrame
             for _, item in pairs(playerNames) do
                 local itemButton = Instance.new("TextButton")
-                itemButton.Size = UDim2.new(1, 0, 0, 40)
+                itemButton.Size = UDim2.new(1, 0, 0, 35)
                 itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
                 itemButton.BackgroundTransparency = 0.3
                 itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1467,18 +1486,21 @@ local function createGUI()
                 itemButton.Font = Enum.Font.Gotham
                 itemButton.Text = item
                 itemButton.ZIndex = 14
+                local itemCorner = Instance.new("UICorner")
+                itemCorner.CornerRadius = UDim.new(0, 8)
+                itemCorner.Parent = itemButton
                 itemButton.Parent = playerDropdownFrame
                 itemButton.MouseButton1Click:Connect(function()
                     selectedPlayer = Players:FindFirstChild(item)
                     notify("👤 Selected Player: " .. item)
                     playerDropdownFrame.Visible = false
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
                 end)
             end
             playerDropdown.MouseButton1Click:Connect(function()
                 playerDropdownFrame.Visible = not playerDropdownFrame.Visible
-                playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(0.9, 0, 0, #playerNames * 45) or UDim2.new(0.9, 0, 0, 0)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+                playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(0.95, 0, 0, #playerNames * 40) or UDim2.new(0.95, 0, 0, 0)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
         end
 
