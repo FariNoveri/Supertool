@@ -95,49 +95,114 @@ local function clearConnections()
     debugPrint("Connections cleared")
 end
 
--- Clean adornments (remove white box)
+-- Enhanced adornment cleaning function
 local function cleanAdornments()
     local success, errorMsg = pcall(function()
-        -- Clean character
+        -- List of adornment types to remove
+        local adornmentTypes = {
+            "SelectionBox", "BoxHandleAdornment", "SurfaceGui", "GuiObject",
+            "Highlight", "SelectionLasso", "SelectionPointLight", 
+            "SelectionSphere", "Handles", "ArcHandles", "SurfaceSelection"
+        }
+        
+        -- Clean character thoroughly
         if char then
             for _, obj in pairs(char:GetDescendants()) do
-                if obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment") or obj:IsA("SurfaceGui") or obj:IsA("GuiObject") then
-                    debugPrint("Removed character adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
+                for _, adornmentType in pairs(adornmentTypes) do
+                    if obj:IsA(adornmentType) then
+                        debugPrint("Removed character adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
+                        obj:Destroy()
+                    end
+                end
+                
+                -- Remove any BillboardGui or SurfaceGui that might create boxes
+                if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+                    obj:Destroy()
+                end
+                
+                -- Remove any Part with specific names that might be selection boxes
+                if obj:IsA("Part") and (obj.Name:lower():find("selection") or obj.Name:lower():find("box") or obj.Name:lower():find("highlight")) then
                     obj:Destroy()
                 end
             end
         end
-        -- Clean workspace
+        
+        -- Clean workspace more thoroughly
         for _, obj in pairs(workspace:GetDescendants()) do
-            if (obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment")) and obj.Adornee == char then
-                debugPrint("Removed workspace adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
-                obj:Destroy()
+            for _, adornmentType in pairs(adornmentTypes) do
+                if obj:IsA(adornmentType) and (obj.Adornee == char or (char and obj.Parent == char)) then
+                    debugPrint("Removed workspace adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
+                    obj:Destroy()
+                end
             end
         end
-        -- Clean CoreGui
-        for _, obj in pairs(game:GetService("CoreGui"):GetDescendants()) do
-            if (obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment")) and obj.Adornee == char then
-                debugPrint("Removed CoreGui adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
-                obj:Destroy()
+        
+        -- Clean all GUI services
+        local guiServices = {
+            game:GetService("CoreGui"),
+            game:GetService("StarterGui"),
+            player:FindFirstChild("PlayerGui")
+        }
+        
+        for _, service in pairs(guiServices) do
+            if service then
+                for _, obj in pairs(service:GetDescendants()) do
+                    for _, adornmentType in pairs(adornmentTypes) do
+                        if obj:IsA(adornmentType) and (obj.Adornee == char or (char and obj.Parent == char)) then
+                            debugPrint("Removed GUI service adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
+                            obj:Destroy()
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Force remove any remaining selection boxes globally
+        for _, obj in pairs(game:GetDescendants()) do
+            if obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment") then
+                if obj.Adornee == char or (char and obj.Parent == char) then
+                    obj:Destroy()
+                end
             end
         end
     end)
     if not success then
         debugPrint("cleanAdornments error: " .. tostring(errorMsg))
-        notify("⚠️ Gagal membersihkan adornments: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
--- Ensure character visibility
+-- Ensure character visibility and remove any transparency effects
 local function ensureCharacterVisible()
     if char then
         for _, part in pairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.Transparency = 0
                 part.LocalTransparencyModifier = 0
+                -- Remove any highlight effects
+                for _, highlight in pairs(part:GetChildren()) do
+                    if highlight:IsA("Highlight") or highlight:IsA("SelectionBox") then
+                        highlight:Destroy()
+                    end
+                end
             end
         end
     end
+end
+
+-- Disable any selection services that might create boxes
+local function disableSelectionServices()
+    pcall(function()
+        -- Disable Studio selection service if it exists
+        local Selection = game:GetService("Selection")
+        if Selection then
+            Selection:Set({})
+        end
+    end)
+    
+    -- Remove any studio-related selection tools
+    pcall(function()
+        game:GetService("CoreGui").RobloxGui.SelectionHighlight.Enabled = false
+    end)
 end
 
 -- Initialize character
@@ -160,12 +225,32 @@ local function initChar()
         if not humanoid or not hr then
             error("Gagal menemukan Humanoid atau HumanoidRootPart setelah 10 detik")
         end
+        
+        -- Disable selection services
+        disableSelectionServices()
+        
+        -- Initial cleanup
         cleanAdornments()
         ensureCharacterVisible()
+        
         debugPrint("Character initialized")
-        -- Aggressive adornment cleanup every frame
-        connections.adornmentCleaner = RunService.Stepped:Connect(cleanAdornments)
+        
+        -- More aggressive cleanup - run every frame
+        connections.adornmentCleaner = RunService.Heartbeat:Connect(cleanAdornments)
         connections.renderCleaner = RunService.RenderStepped:Connect(cleanAdornments)
+        connections.steppedCleaner = RunService.Stepped:Connect(cleanAdornments)
+        
+        -- Additional cleanup when character moves
+        connections.characterMoved = hr:GetPropertyChangedSignal("CFrame"):Connect(function()
+            cleanAdornments()
+            ensureCharacterVisible()
+        end)
+        
+        -- Cleanup when humanoid state changes
+        connections.humanoidStateChanged = humanoid.StateChanged:Connect(function()
+            cleanAdornments()
+            ensureCharacterVisible()
+        end)
     end)
     if not success then
         debugPrint("initChar error: " .. tostring(errorMsg))
@@ -196,6 +281,8 @@ local function savePosition()
             saveTeleportSlots()
             notify("💾 Posisi disimpan ke Slot " .. slot)
             updateUI()
+            -- Clean after saving
+            cleanAdornments()
         else
             notify("⚠️ Karakter belum dimuat", Color3.fromRGB(255, 100, 100))
         end
@@ -210,6 +297,10 @@ local function loadPosition(slot)
         if hr and savedPositions[slot] and isValidPosition(savedPositions[slot].cframe.Position) then
             hr.CFrame = savedPositions[slot].cframe
             notify("📍 Berpindah ke " .. savedPositions[slot].name)
+            -- Clean after teleporting
+            task.wait(0.1)
+            cleanAdornments()
+            ensureCharacterVisible()
         else
             notify("⚠️ Tidak ada posisi tersimpan di slot " .. slot .. " atau posisi tidak valid", Color3.fromRGB(255, 100, 100))
         end
@@ -573,7 +664,7 @@ local function createUI()
             title.TextColor3 = Color3.fromRGB(255, 255, 255)
             title.TextScaled = true
             title.Font = Enum.Font.GothamBold
-            title.Text = "Krnl Enhanced UI"
+            title.Text = "Krnl Enhanced UI - No Box"
             title.ZIndex = 11
             corner = Instance.new("UICorner")
             corner.CornerRadius = UDim.new(0, 8)
@@ -650,14 +741,51 @@ end
 loadTeleportSlots()
 initChar()
 createUI()
+
+-- Character respawn handler
 player.CharacterAdded:Connect(function()
     clearConnections()
+    task.wait(2) -- Wait for character to fully load
     initChar()
     updateUI()
     debugPrint("Character respawned, UI updated")
 end)
 
--- Cleanup
+-- Additional periodic cleanup every 5 seconds
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if char then
+            cleanAdornments()
+            ensureCharacterVisible()
+            disableSelectionServices()
+        end
+    end
+end)
+
+-- Monitor for new adornments being added and remove them immediately
+workspace.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("SelectionBox") or descendant:IsA("BoxHandleAdornment") or descendant:IsA("Highlight") then
+        task.wait() -- Wait one frame
+        if descendant.Adornee == char or (char and descendant.Parent == char) then
+            descendant:Destroy()
+            debugPrint("Instantly removed new adornment: " .. descendant.ClassName)
+        end
+    end
+end)
+
+-- Monitor CoreGui for new adornments
+game:GetService("CoreGui").DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("SelectionBox") or descendant:IsA("BoxHandleAdornment") or descendant:IsA("Highlight") then
+        task.wait() -- Wait one frame
+        if descendant.Adornee == char or (char and descendant.Parent == char) then
+            descendant:Destroy()
+            debugPrint("Instantly removed CoreGui adornment: " .. descendant.ClassName)
+        end
+    end
+end)
+
+-- Cleanup on script end
 game:BindToClose(function()
     if ui then
         ui:Destroy()
