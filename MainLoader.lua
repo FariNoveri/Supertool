@@ -1,4 +1,3 @@
-```lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -18,8 +17,7 @@ local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, 
 local moveSpeed = 50
 local jumpPower = 100
 local spinSpeed = 20
-local savedPositions = {} -- {slot = {name = "string", cframe = CFrame}}
-local maxSlots = 10
+local savedPositions = { [1] = nil, [2] = nil }
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
 local macroActions = {}
 local macroSuccessfulEndTime = nil
@@ -38,41 +36,6 @@ local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
 local defaultFramePos = UDim2.new(0.5, -175, 0.5, -250)
 
 local connections = {}
-
--- File I/O for persistent storage
-local function saveTeleportSlots()
-    local success, errorMsg = pcall(function()
-        local data = {}
-        for slot, info in pairs(savedPositions) do
-            data[tostring(slot)] = {name = info.name, cframe = {info.cframe:GetComponents()}}
-        end
-        writefile("krnl/teleport_slots.json", HttpService:JSONEncode(data))
-    end)
-    if not success then
-        notify("⚠️ Failed to save teleport slots: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
-local function loadTeleportSlots()
-    local success, result = pcall(function()
-        if isfile("krnl/teleport_slots.json") then
-            local data = HttpService:JSONDecode(readfile("krnl/teleport_slots.json"))
-            savedPositions = {}
-            for slot, info in pairs(data) do
-                slot = tonumber(slot)
-                if slot and info.name and info.cframe and #info.cframe == 12 then
-                    savedPositions[slot] = {
-                        name = info.name,
-                        cframe = CFrame.new(table.unpack(info.cframe))
-                    }
-                end
-            end
-        end
-    end)
-    if not success then
-        notify("⚠️ Failed to load teleport slots: " .. tostring(result), Color3.fromRGB(255, 100, 100))
-    end
-end
 
 -- Notify function
 local function notify(message, color)
@@ -1017,21 +980,11 @@ local function teleportToSpawn()
     end
 end
 
-local function savePosition()
+local function savePosition(slot)
     local success, errorMsg = pcall(function()
         if hr then
-            local slot = 1
-            while savedPositions[slot] and slot <= maxSlots do
-                slot = slot + 1
-            end
-            if slot > maxSlots then
-                notify("⚠️ Maximum " .. maxSlots .. " slots reached", Color3.fromRGB(255, 100, 100))
-                return
-            end
-            savedPositions[slot] = {name = "Slot " .. slot, cframe = hr.CFrame}
-            saveTeleportSlots()
-            notify("💾 Position Saved to Slot " .. slot)
-            createGUI() -- Refresh GUI to show new slot
+            savedPositions[slot] = hr.CFrame
+            notify("💾 Position " .. slot .. " Saved")
         else
             notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
         end
@@ -1043,32 +996,15 @@ end
 
 local function loadPosition(slot)
     local success, errorMsg = pcall(function()
-        if hr and savedPositions[slot] and isValidPosition(savedPositions[slot].cframe.Position) then
-            hr.CFrame = savedPositions[slot].cframe
-            notify("📍 Teleported to " .. savedPositions[slot].name)
+        if hr and savedPositions[slot] and isValidPosition(savedPositions[slot].Position) then
+            hr.CFrame = savedPositions[slot]
+            notify("📍 Teleported to Position " .. slot)
         else
             notify("⚠️ No position saved in slot " .. slot .. " or invalid position", Color3.fromRGB(255, 100, 100))
         end
     end)
     if not success then
         notify("⚠️ Load Position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
-local function renamePosition(slot, newName)
-    local success, errorMsg = pcall(function()
-        if savedPositions[slot] then
-            newName = newName:sub(1, 20) -- Limit name length
-            savedPositions[slot].name = newName
-            saveTeleportSlots()
-            notify("✏️ Renamed Slot " .. slot .. " to " .. newName)
-            createGUI() -- Refresh GUI to show new name
-        else
-            notify("⚠️ No position saved in slot " .. slot, Color3.fromRGB(255, 100, 100))
-        end
-    end)
-    if not success then
-        notify("⚠️ Rename Position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
@@ -1280,71 +1216,7 @@ local function createGUI()
         scrollPadding.PaddingBottom = UDim.new(0, 20)
         scrollPadding.Parent = scrollFrame
 
-        local renameInput
-        local function createRenameInput(slot, isSave)
-            if renameInput then
-                renameInput:Destroy()
-            end
-            renameInput = Instance.new("Frame")
-            renameInput.Size = UDim2.new(0.95, 0, 0, 50)
-            renameInput.Position = UDim2.new(0.025, 0, 0, 0)
-            renameInput.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            renameInput.BackgroundTransparency = 0.2
-            renameInput.ZIndex = 15
-            renameInput.Parent = scrollFrame
-
-            local inputBox = Instance.new("TextBox")
-            inputBox.Size = UDim2.new(0.8, -10, 0, 40)
-            inputBox.Position = UDim2.new(0, 5, 0, 5)
-            inputBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            inputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-            inputBox.TextScaled = true
-            inputBox.Font = Enum.Font.Gotham
-            inputBox.Text = savedPositions[slot] and savedPositions[slot].name or "Slot " .. slot
-            inputBox.ZIndex = 16
-            local inputCorner = Instance.new("UICorner")
-            inputCorner.CornerRadius = UDim.new(0, 8)
-            inputCorner.Parent = inputBox
-            inputBox.Parent = renameInput
-
-            local confirmButton = Instance.new("TextButton")
-            confirmButton.Size = UDim2.new(0.2, -10, 0, 40)
-            confirmButton.Position = UDim2.new(0.8, 5, 0, 5)
-            confirmButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-            confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            confirmButton.TextScaled = true
-            confirmButton.Font = Enum.Font.Gotham
-            confirmButton.Text = "OK"
-            confirmButton.ZIndex = 16
-            local confirmCorner = Instance.new("UICorner")
-            confirmCorner.CornerRadius = UDim.new(0, 8)
-            confirmCorner.Parent = confirmButton
-            confirmButton.Parent = renameInput
-
-            confirmButton.MouseButton1Click:Connect(function()
-                local newName = inputBox.Text
-                if newName ~= "" then
-                    renamePosition(slot, newName)
-                end
-                renameInput:Destroy()
-                renameInput = nil
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-            end)
-
-            inputBox.FocusLost:Connect(function(enterPressed)
-                if enterPressed then
-                    local newName = inputBox.Text
-                    if newName ~= "" then
-                        renamePosition(slot, newName)
-                    end
-                    renameInput:Destroy()
-                    renameInput = nil
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-                end
-            end)
-        end
-
-        local function createButton(text, callback, toggleState, slot, isSave)
+        local function createButton(text, callback, toggleState)
             local button = Instance.new("TextButton")
             button.Size = UDim2.new(0.95, 0, 0, 40)
             button.Position = UDim2.new(0.025, 0, 0, 0)
@@ -1358,32 +1230,14 @@ local function createGUI()
             local buttonCorner = Instance.new("UICorner")
             buttonCorner.CornerRadius = UDim.new(0, 8)
             buttonCorner.Parent = button
-
-            local holdStart = nil
-            button.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    holdStart = tick()
+            button.MouseButton1Click:Connect(function()
+                local success, err = pcall(callback)
+                if not success then
+                    notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
                 end
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
-            button.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    if holdStart and tick() - holdStart >= 2 then
-                        if slot then
-                            createRenameInput(slot, isSave)
-                            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-                        end
-                    else
-                        local success, err = pcall(callback)
-                        if not success then
-                            notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
-                        end
-                        button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-                        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-                    end
-                    holdStart = nil
-                end
-            end)
-
             return button
         end
 
@@ -1541,8 +1395,11 @@ local function createGUI()
             {
                 name = "Teleport",
                 buttons = {
-                    createButton("Save Position", savePosition, function() return false end),
-                    createButton("Teleport to Spawn", teleportToSpawn, function() return false end)
+                    createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
+                    createButton("Save Position 1", function() savePosition(1) end, function() return false end),
+                    createButton("Save Position 2", function() savePosition(2) end, function() return false end),
+                    createButton("Load Position 1", function() loadPosition(1) end, function() return false end),
+                    createButton("Load Position 2", function() loadPosition(2) end, function() return false end)
                 }
             },
             {
@@ -1556,14 +1413,6 @@ local function createGUI()
                 }
             }
         }
-
-        -- Add saved position buttons dynamically
-        for slot = 1, maxSlots do
-            if savedPositions[slot] then
-                table.insert(categories[3].buttons, createButton("Save " .. savedPositions[slot].name, function() savePosition(slot) end, function() return false end, slot, true))
-                table.insert(categories[3].buttons, createButton("Load " .. savedPositions[slot].name, function() loadPosition(slot) end, function() return false end, slot, false))
-            end
-        end
 
         local playerDropdown, playerDropdownFrame = createDropdown("Select Player", {}, function(name)
             selectedPlayer = Players:FindFirstChild(name)
@@ -1664,5 +1513,33 @@ local function createGUI()
         task.wait(2)
         createGUI()
     end
+end
 
-    main()
+-- Cleanup old instance
+local function cleanupOldInstance()
+    local oldGui = player.PlayerGui:FindFirstChild("SimpleUILibrary_Krnl")
+    if oldGui then
+        oldGui:Destroy()
+        notify("🛠️ Old script instance terminated", Color3.fromRGB(255, 255, 0))
+    end
+end
+
+-- Main initialization
+local function main()
+    local success, errorMsg = pcall(function()
+        cleanupOldInstance()
+        task.wait(1.5)
+        createGUI()
+        createJoystick()
+        initChar()
+        player.CharacterAdded:Connect(initChar)
+        notify("✅ Script Loaded Successfully")
+    end)
+    if not success then
+        notify("⚠️ Script failed to load: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
+        task.wait(2)
+        main()
+    end
+end
+
+main()
