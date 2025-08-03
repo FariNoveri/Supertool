@@ -11,8 +11,8 @@ local gui, frame, logo, joystickFrame, cameraControlFrame
 local selectedPlayer = nil
 local flying, freecam, noclip, godMode = false, false, false, false
 local flySpeed = 40
-local freecamSpeed = isMobile and 20 or 30 -- Lebih lambat di mobile
-local cameraRotationSensitivity = isMobile and 0.01 or 0.005 -- Lebih cepat di mobile
+local freecamSpeed = UserInputService.TouchEnabled and 20 or 30
+local cameraRotationSensitivity = UserInputService.TouchEnabled and 0.01 or 0.005
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -27,7 +27,7 @@ local hrCFrame = nil
 local joystickTouch = nil
 local cameraTouch = nil
 local joystickRadius = 50
-local joystickDeadzone = 0.15 -- Deadzone lebih besar untuk kontrol gerakan
+local joystickDeadzone = 0.15
 local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
@@ -1096,7 +1096,7 @@ local function toggleRecordOnRespawn()
     notify(recordOnRespawn and "🔄 Record Macro on Respawn Enabled" or "🔄 Record Macro on Respawn Disabled")
 end
 
--- Create GUI
+-- Create GUI with categories
 local function createGUI()
     local success, errorMsg = pcall(function()
         if gui then
@@ -1160,6 +1160,7 @@ local function createGUI()
         scrollFrame.ScrollBarThickness = 8
         scrollFrame.ZIndex = 11
         scrollFrame.ClipsDescendants = true
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
         scrollFrame.Parent = frame
 
         local scrollUIL = Instance.new("UIListLayout")
@@ -1178,19 +1179,14 @@ local function createGUI()
             button.Font = Enum.Font.Gotham
             button.Text = text
             button.ZIndex = 12
-            button.Parent = scrollFrame
-            local function updateButton()
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
-            end
             button.MouseButton1Click:Connect(function()
                 local success, err = pcall(callback)
                 if not success then
                     notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
                 end
-                updateButton()
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
             end)
-            updateButton()
             return button
         end
 
@@ -1205,7 +1201,6 @@ local function createGUI()
             dropdown.Font = Enum.Font.Gotham
             dropdown.Text = text
             dropdown.ZIndex = 12
-            dropdown.Parent = scrollFrame
 
             local dropdownFrame = Instance.new("Frame")
             dropdownFrame.Size = UDim2.new(0.9, 0, 0, 0)
@@ -1216,7 +1211,6 @@ local function createGUI()
             dropdownFrame.Visible = false
             dropdownFrame.ZIndex = 13
             dropdownFrame.ClipsDescendants = true
-            dropdownFrame.Parent = scrollFrame
 
             local dropdownUIL = Instance.new("UIListLayout")
             dropdownUIL.FillDirection = Enum.FillDirection.Vertical
@@ -1247,12 +1241,126 @@ local function createGUI()
                 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
             end)
 
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+            return dropdown, dropdownFrame
+        end
+
+        local function createCategory(titleText, buttons, parent)
+            local categoryFrame = Instance.new("Frame")
+            categoryFrame.Size = UDim2.new(0.95, 0, 0, 50)
+            categoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            categoryFrame.BackgroundTransparency = 0.2
+            categoryFrame.BorderSizePixel = 0
+            categoryFrame.ZIndex = 11
+            categoryFrame.Parent = parent
+
+            local categoryTitle = Instance.new("TextButton")
+            categoryTitle.Size = UDim2.new(1, 0, 0, 50)
+            categoryTitle.BackgroundTransparency = 1
+            categoryTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            categoryTitle.TextScaled = true
+            categoryTitle.Font = Enum.Font.GothamBold
+            categoryTitle.Text = titleText .. " ▼"
+            categoryTitle.ZIndex = 12
+            categoryTitle.Parent = categoryFrame
+
+            local buttonFrame = Instance.new("Frame")
+            buttonFrame.Size = UDim2.new(0.9, 0, 0, 0)
+            buttonFrame.Position = UDim2.new(0.05, 0, 0, 55)
+            buttonFrame.BackgroundTransparency = 1
+            buttonFrame.ZIndex = 12
+            buttonFrame.ClipsDescendants = true
+            buttonFrame.Visible = true
+            buttonFrame.Parent = categoryFrame
+
+            local buttonUIL = Instance.new("UIListLayout")
+            buttonUIL.FillDirection = Enum.FillDirection.Vertical
+            buttonUIL.Padding = UDim.new(0, 8)
+            buttonUIL.Parent = buttonFrame
+
+            for _, button in pairs(buttons) do
+                button.Parent = buttonFrame
+            end
+
+            local function updateCategory()
+                buttonFrame.Size = buttonFrame.Visible and UDim2.new(0.9, 0, 0, buttonUIL.AbsoluteContentSize.Y + 10) or UDim2.new(0.9, 0, 0, 0)
+                categoryTitle.Text = titleText .. (buttonFrame.Visible and " ▼" or " ►")
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+            end
+
+            categoryTitle.MouseButton1Click:Connect(function()
+                buttonFrame.Visible = not buttonFrame.Visible
+                updateCategory()
+            end)
+
+            buttonUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCategory)
+            updateCategory()
+
+            return categoryFrame
+        end
+
+        local categories = {
+            {
+                name = "Movement",
+                buttons = {
+                    createButton("Toggle Fly", toggleFly, function() return flying end),
+                    createButton("Toggle Noclip", toggleNoclip, function() return noclip end),
+                    createButton("Toggle Speed", toggleSpeed, function() return speedEnabled end),
+                    createButton("Toggle Jump", toggleJump, function() return jumpEnabled end),
+                    createButton("Toggle Water Walk", toggleWaterWalk, function() return waterWalk end),
+                    createButton("Toggle Rocket", toggleRocket, function() return rocket end),
+                    createButton("Toggle Spin", toggleSpin, function() return spin end),
+                    createButton("Toggle God Mode", toggleGodMode, function() return godMode end)
+                }
+            },
+            {
+                name = "Visual",
+                buttons = {
+                    createButton("Toggle Freecam", toggleFreecam, function() return freecam end),
+                    createButton("Return to Character", returnToCharacter, function() return false end),
+                    createButton("Cancel Freecam", cancelFreecam, function() return false end),
+                    createButton("Teleport Character to Camera", teleportCharacterToCamera, function() return false end),
+                    createButton("Toggle Hide Nickname", toggleHideNick, function() return nickHidden end),
+                    createButton("Toggle Random Nickname", toggleRandomNick, function() return randomNick end),
+                    createButton("Set Custom Nickname", setCustomNick, function() return false end)
+                }
+            },
+            {
+                name = "Teleport",
+                buttons = {
+                    createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
+                    createButton("Save Position 1", function() savePosition(1) end, function() return false end),
+                    createButton("Save Position 2", function() savePosition(2) end, function() return false end),
+                    createButton("Load Position 1", function() loadPosition(1) end, function() return false end),
+                    createButton("Load Position 2", function() loadPosition(2) end, function() return false end)
+                }
+            },
+            {
+                name = "Macro",
+                buttons = {
+                    createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end),
+                    createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end),
+                    createButton("Toggle Auto Play Macro on Respawn", toggleAutoPlayOnRespawn, function() return autoPlayOnRespawn end),
+                    createButton("Toggle Record Macro on Respawn", toggleRecordOnRespawn, function() return recordOnRespawn end)
+                }
+            }
+        }
+
+        local playerDropdown, playerDropdownFrame = createDropdown("Select Player", {}, function(name)
+            selectedPlayer = Players:FindFirstChild(name)
+            notify("👤 Selected Player: " .. name)
+        end)
+        table.insert(categories[3].buttons, 1, playerDropdown)
+        table.insert(categories[3].buttons, 2, createButton("Teleport to Player", teleportToPlayer, function() return false end))
+        table.insert(categories[3].buttons, 3, playerDropdownFrame)
+
+        for _, category in pairs(categories) do
+            createCategory(category.name, category.buttons, scrollFrame)
         end
 
         scrollUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
         end)
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
 
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
@@ -1281,48 +1389,52 @@ local function createGUI()
                 dragInput = input
             end
         end)
-        UserInputService.InputChanged:Connect(function(input)
-            if input == dragInput and dragging then
-                updateDrag(input)
+        UserInputService.InputChanged:Connect(function()
+            if dragInput and dragging then
+                updateDrag(dragInput)
             end
         end)
 
-        createButton("Toggle Fly", toggleFly, function() return flying end)
-        createButton("Toggle Freecam", toggleFreecam, function() return freecam end)
-        createButton("Return to Character", returnToCharacter, function() return false end)
-        createButton("Cancel Freecam", cancelFreecam, function() return false end)
-        createButton("Teleport Character to Camera", teleportCharacterToCamera, function() return false end)
-        createButton("Toggle Noclip", toggleNoclip, function() return noclip end)
-        createButton("Toggle Speed", toggleSpeed, function() return speedEnabled end)
-        createButton("Toggle Jump", toggleJump, function() return jumpEnabled end)
-        createButton("Toggle Water Walk", toggleWaterWalk, function() return waterWalk end)
-        createButton("Toggle Rocket", toggleRocket, function() return rocket end)
-        createButton("Toggle Spin", toggleSpin, function() return spin end)
-        createButton("Toggle God Mode", toggleGodMode, function() return godMode end)
-        createButton("Toggle Hide Nickname", toggleHideNick, function() return nickHidden end)
-        createButton("Toggle Random Nickname", toggleRandomNick, function() return randomNick end)
-        createButton("Set Custom Nickname", setCustomNick, function() return false end)
-        createButton("Teleport to Player", teleportToPlayer, function() return false end)
-        createButton("Teleport to Spawn", teleportToSpawn, function() return false end)
-        createButton("Save Position 1", function() savePosition(1) end, function() return false end)
-        createButton("Save Position 2", function() savePosition(2) end, function() return false end)
-        createButton("Load Position 1", function() loadPosition(1) end, function() return false end)
-        createButton("Load Position 2", function() loadPosition(2) end, function() return false end)
-        createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end)
-        createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end)
-        createButton("Toggle Auto Play Macro on Respawn", toggleAutoPlayOnRespawn, function() return autoPlayOnRespawn end)
-        createButton("Toggle Record Macro on Respawn", toggleRecordOnRespawn, function() return recordOnRespawn end)
-
-        local playerNames = {}
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= player then
-                table.insert(playerNames, p.Name)
+        local function updatePlayerDropdown()
+            local playerNames = {}
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= player then
+                    table.insert(playerNames, p.Name)
+                end
             end
+            playerDropdownFrame:ClearAllChildren()
+            local dropdownUIL = Instance.new("UIListLayout")
+            dropdownUIL.FillDirection = Enum.FillDirection.Vertical
+            dropdownUIL.Padding = UDim.new(0, 5)
+            dropdownUIL.Parent = playerDropdownFrame
+            for _, item in pairs(playerNames) do
+                local itemButton = Instance.new("TextButton")
+                itemButton.Size = UDim2.new(1, 0, 0, 40)
+                itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                itemButton.BackgroundTransparency = 0.3
+                itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                itemButton.TextScaled = true
+                itemButton.Font = Enum.Font.Gotham
+                itemButton.Text = item
+                itemButton.ZIndex = 14
+                itemButton.Parent = playerDropdownFrame
+                itemButton.MouseButton1Click:Connect(function()
+                    selectedPlayer = Players:FindFirstChild(item)
+                    notify("👤 Selected Player: " .. item)
+                    playerDropdownFrame.Visible = false
+                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+                end)
+            end
+            playerDropdown.MouseButton1Click:Connect(function()
+                playerDropdownFrame.Visible = not playerDropdownFrame.Visible
+                playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(0.9, 0, 0, #playerNames * 45) or UDim2.new(0.9, 0, 0, 0)
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
+            end)
         end
-        createDropdown("Select Player", playerNames, function(name)
-            selectedPlayer = Players:FindFirstChild(name)
-            notify("👤 Selected Player: " .. name)
-        end)
+
+        Players.PlayerAdded:Connect(updatePlayerDropdown)
+        Players.PlayerRemoving:Connect(updatePlayerDropdown)
+        updatePlayerDropdown()
     end)
     if not success then
         notify("⚠️ GUI creation failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
