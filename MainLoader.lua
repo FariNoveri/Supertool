@@ -10,9 +10,9 @@ local humanoid, hr, char
 local gui, frame, logo, joystickFrame, cameraControlFrame
 local selectedPlayer = nil
 local flying, freecam, noclip, godMode = false, false, false, false
-local flySpeed = 50
+local flySpeed = 40 -- Dikurangi untuk kontrol lebih halus
 local freecamSpeed = 30
-local cameraRotationSensitivity = 0.005 -- Dikurangi untuk rotasi lebih halus
+local cameraRotationSensitivity = 0.005
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -27,6 +27,7 @@ local hrCFrame = nil
 local joystickTouch = nil
 local cameraTouch = nil
 local joystickRadius = 50
+local joystickDeadzone = 0.1 -- Deadzone untuk mencegah gerakan kecil
 local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
@@ -211,7 +212,12 @@ local function createJoystick()
             delta = delta.Unit * maxRadius
         end
         joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
-        moveDirection = Vector3.new(delta.X / maxRadius, 0, -delta.Y / maxRadius)
+        local inputMag = delta.Magnitude / maxRadius
+        if inputMag < joystickDeadzone then
+            moveDirection = Vector3.new(0, 0, 0)
+        else
+            moveDirection = Vector3.new(delta.X / maxRadius, 0, -delta.Y / maxRadius)
+        end
     end
 
     local function updateCameraControl(input)
@@ -223,7 +229,12 @@ local function createJoystick()
             delta = delta.Unit * maxRadius
         end
         cameraKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
-        cameraDelta = Vector2.new(-delta.X / maxRadius, delta.Y / maxRadius) -- Dibalik untuk rotasi tangan kanan
+        local inputMag = delta.Magnitude / maxRadius
+        if inputMag < joystickDeadzone then
+            cameraDelta = Vector2.new(0, 0)
+        else
+            cameraDelta = Vector2.new(-delta.X / maxRadius, delta.Y / maxRadius)
+        end
     end
 
     connections.joystickBegan = UserInputService.TouchStarted:Connect(function(input)
@@ -283,7 +294,12 @@ local function toggleFly()
             bv.Parent = hr
             connections.flyMouse = UserInputService.InputChanged:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y) -- Dibalik untuk rotasi tangan kanan
+                    local inputMag = input.Delta.Magnitude
+                    if inputMag < 2 then -- Deadzone untuk mouse
+                        cameraDelta = Vector2.new(0, 0)
+                    else
+                        cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y)
+                    end
                 end
             end)
             connections.fly = RunService.RenderStepped:Connect(function()
@@ -307,22 +323,50 @@ local function toggleFly()
                 if isMobile then
                     moveDir = moveDirection.X * right + moveDirection.Z * forward
                 else
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + forward end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - forward end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - right end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + right end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + up end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - up end
+                    local anyKeyPressed = false
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                        moveDir = moveDir + forward
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                        moveDir = moveDir - forward
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                        moveDir = moveDir - right
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                        moveDir = moveDir + right
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                        moveDir = moveDir + up
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                        moveDir = moveDir - up
+                        anyKeyPressed = true
+                    end
+                    if not anyKeyPressed then
+                        moveDir = Vector3.new(0, 0, 0) -- Reset jika nggak ada tombol ditekan
+                    end
                 end
                 if moveDir.Magnitude > 0 then
                     moveDir = moveDir.Unit * flySpeed
+                else
+                    moveDir = Vector3.new(0, 0, 0) -- Pastikan nggak gerak jika nggak ada input
                 end
                 bv.Velocity = moveDir
                 hr.CFrame = CFrame.new(hr.Position) * camera.CFrame.Rotation
-                local rotation = CFrame.Angles(0, cameraDelta.X * cameraRotationSensitivity, 0) * CFrame.Angles(cameraDelta.Y * cameraRotationSensitivity, 0, 0)
+                local yaw = cameraDelta.X * cameraRotationSensitivity
+                local pitch = cameraDelta.Y * cameraRotationSensitivity
+                local currentPitch = math.asin(camera.CFrame.LookVector.Y)
+                pitch = math.clamp(currentPitch + pitch, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
+                local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
                 camera.CFrame = CFrame.new(camera.CFrame.Position) * (camera.CFrame.Rotation * rotation)
                 if not isMobile then
-                    cameraDelta = Vector2.new(0, 0)
+                    cameraDelta = Vector2.new(0, 0) -- Reset cameraDelta setiap frame di desktop
                 end
             end)
             notify("🛫 Fly Enabled" .. (isMobile and " (Joystick + Camera Control)" or " (WASD, Space, Shift, Mouse)"))
@@ -340,6 +384,8 @@ local function toggleFly()
             end
             joystickFrame.Visible = false
             cameraControlFrame.Visible = false
+            moveDirection = Vector3.new(0, 0, 0)
+            cameraDelta = Vector2.new(0, 0)
             notify("🛬 Fly Disabled")
         end
     end)
@@ -358,6 +404,8 @@ local function toggleFly()
         end
         joystickFrame.Visible = false
         cameraControlFrame.Visible = false
+        moveDirection = Vector3.new(0, 0, 0)
+        cameraDelta = Vector2.new(0, 0)
         notify("⚠️ Fly error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
@@ -399,7 +447,12 @@ local function toggleFreecam()
             end)
             connections.freecamMouse = UserInputService.InputChanged:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y) -- Dibalik untuk rotasi tangan kanan
+                    local inputMag = input.Delta.Magnitude
+                    if inputMag < 2 then
+                        cameraDelta = Vector2.new(0, 0)
+                    else
+                        cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y)
+                    end
                 end
             end)
             connections.freecam = RunService.RenderStepped:Connect(function()
@@ -427,12 +480,34 @@ local function toggleFreecam()
                 if isMobile then
                     moveDir = moveDirection.X * right + moveDirection.Z * forward
                 else
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + forward end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - forward end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - right end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + right end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveDir = moveDir + up end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveDir = moveDir - up end
+                    local anyKeyPressed = false
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                        moveDir = moveDir + forward
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                        moveDir = moveDir - forward
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                        moveDir = moveDir - right
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                        moveDir = moveDir + right
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+                        moveDir = moveDir + up
+                        anyKeyPressed = true
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+                        moveDir = moveDir - up
+                        anyKeyPressed = true
+                    end
+                    if not anyKeyPressed then
+                        moveDir = Vector3.new(0, 0, 0)
+                    end
                 end
                 if moveDir.Magnitude > 0 then
                     moveDir = moveDir * freecamSpeed
@@ -440,7 +515,6 @@ local function toggleFreecam()
                 end
                 local yaw = cameraDelta.X * cameraRotationSensitivity
                 local pitch = cameraDelta.Y * cameraRotationSensitivity
-                -- Clamp pitch untuk mencegah muter-muter berlebihan
                 local currentPitch = math.asin(freecamCFrame.LookVector.Y)
                 pitch = math.clamp(currentPitch + pitch, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
                 local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
@@ -478,6 +552,8 @@ local function toggleFreecam()
             hrCFrame = nil
             joystickFrame.Visible = false
             cameraControlFrame.Visible = false
+            moveDirection = Vector3.new(0, 0, 0)
+            cameraDelta = Vector2.new(0, 0)
             notify("📷 Freecam Disabled")
         end
     end)
@@ -500,6 +576,8 @@ local function toggleFreecam()
         end
         joystickFrame.Visible = false
         cameraControlFrame.Visible = false
+        moveDirection = Vector3.new(0, 0, 0)
+        cameraDelta = Vector2.new(0, 0)
         notify("⚠️ Freecam error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
@@ -1037,7 +1115,7 @@ local function createGUI()
         local scale = Instance.new("UIScale")
         scale.Parent = gui
         local screenSize = camera.ViewportSize
-        scale.Scale = math.min(1, math.min(screenSize.X / 1280, screenSize.Y / 720)) -- Skala lebih besar untuk Android
+        scale.Scale = math.min(1, math.min(screenSize.X / 1280, screenSize.Y / 720))
 
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 70, 0, 70)
@@ -1049,7 +1127,7 @@ local function createGUI()
         logo.Parent = gui
 
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 400, 0, 600) -- Diperbesar agar nggak kecel
+        frame.Size = UDim2.new(0, 400, 0, 600)
         frame.Position = defaultFramePos
         frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         frame.BackgroundTransparency = 0.1
@@ -1091,7 +1169,7 @@ local function createGUI()
 
         local function createButton(text, callback, toggleState)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(0.9, 0, 0, 50) -- Tombol lebih besar
+            button.Size = UDim2.new(0.9, 0, 0, 50)
             button.Position = UDim2.new(0.05, 0, 0, 0)
             button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
             button.BackgroundTransparency = 0.3
@@ -1103,7 +1181,7 @@ local function createGUI()
             button.Parent = scrollFrame
             local function updateButton()
                 button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20) -- Tambah padding
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
             end
             button.MouseButton1Click:Connect(function()
                 local success, err = pcall(callback)
@@ -1172,7 +1250,6 @@ local function createGUI()
             scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
         end
 
-        -- Update CanvasSize saat konten berubah
         scrollUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 20)
         end)
@@ -1267,7 +1344,7 @@ end
 local function main()
     local success, errorMsg = pcall(function()
         cleanupOldInstance()
-        task.wait(1.5) -- Delay lebih panjang untuk Android
+        task.wait(1.5)
         createGUI()
         createJoystick()
         initChar()
