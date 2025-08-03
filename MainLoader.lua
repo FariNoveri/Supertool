@@ -1000,14 +1000,46 @@ local function toggleRecordMacro()
         if macroRecording then
             macroActions = {}
             local startTime = tick()
+            local lastValidState = nil
             connections.macroRecord = RunService.RenderStepped:Connect(function()
                 if hr and humanoid then
-                    table.insert(macroActions, {
+                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
+                        macroRecording = false
+                        connections.macroRecord:Disconnect()
+                        connections.macroRecord = nil
+                        notify("🎥 Macro Recording Stopped (Character Died, " .. #macroActions .. " actions recorded)", Color3.fromRGB(255, 100, 100))
+                        return
+                    end
+                    local action = {
                         time = tick() - startTime,
                         position = hr.CFrame,
                         velocity = hr.Velocity,
                         state = humanoid:GetState()
-                    })
+                    }
+                    if action.state ~= Enum.HumanoidStateType.Dead and humanoid.Health > 0 then
+                        lastValidState = action
+                        table.insert(macroActions, action)
+                    end
+                end
+            end)
+            connections.macroHealthCheck = humanoid.HealthChanged:Connect(function(health)
+                if health <= 0 and macroRecording then
+                    macroRecording = false
+                    if connections.macroRecord then
+                        connections.macroRecord:Disconnect()
+                        connections.macroRecord = nil
+                    end
+                    notify("🎥 Macro Recording Stopped (Health Depleted, " .. #macroActions .. " actions recorded)", Color3.fromRGB(255, 100, 100))
+                end
+            end)
+            connections.macroStateCheck = humanoid.StateChanged:Connect(function(_, newState)
+                if newState == Enum.HumanoidStateType.Dead and macroRecording then
+                    macroRecording = false
+                    if connections.macroRecord then
+                        connections.macroRecord:Disconnect()
+                        connections.macroRecord = nil
+                    end
+                    notify("🎥 Macro Recording Stopped (Character Died, " .. #macroActions .. " actions recorded)", Color3.fromRGB(255, 100, 100))
                 end
             end)
             notify("🎥 Macro Recording Started")
@@ -1015,6 +1047,14 @@ local function toggleRecordMacro()
             if connections.macroRecord then
                 connections.macroRecord:Disconnect()
                 connections.macroRecord = nil
+            end
+            if connections.macroHealthCheck then
+                connections.macroHealthCheck:Disconnect()
+                connections.macroHealthCheck = nil
+            end
+            if connections.macroStateCheck then
+                connections.macroStateCheck:Disconnect()
+                connections.macroStateCheck = nil
             end
             notify("🎥 Macro Recording Stopped (" .. #macroActions .. " actions recorded)")
         end
@@ -1024,6 +1064,14 @@ local function toggleRecordMacro()
         if connections.macroRecord then
             connections.macroRecord:Disconnect()
             connections.macroRecord = nil
+        end
+        if connections.macroHealthCheck then
+            connections.macroHealthCheck:Disconnect()
+            connections.macroHealthCheck = nil
+        end
+        if connections.macroStateCheck then
+            connections.macroStateCheck:Disconnect()
+            connections.macroStateCheck = nil
         end
         notify("⚠️ Macro Record error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
@@ -1056,9 +1104,11 @@ local function togglePlayMacro()
                 local currentTime = tick() - startTime
                 while index <= #macroActions and macroActions[index].time <= currentTime do
                     local action = macroActions[index]
-                    hr.CFrame = action.position
-                    hr.Velocity = action.velocity
-                    humanoid:ChangeState(action.state)
+                    if action.state ~= Enum.HumanoidStateType.Dead and humanoid.Health > 0 then
+                        hr.CFrame = action.position
+                        hr.Velocity = action.velocity
+                        humanoid:ChangeState(action.state)
+                    end
                     index = index + 1
                 end
                 if index > #macroActions then
