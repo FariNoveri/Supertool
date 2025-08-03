@@ -8,6 +8,9 @@ local camera = workspace.CurrentCamera
 local humanoid, hr, char
 local savedPositions = {} -- {slot = {name = "string", cframe = CFrame}}
 local maxSlots = 10
+local macroRecording, macroPlaying = false, false
+local macroActions = {}
+local macroSuccessfulEndTime = nil
 local ui
 local connections = {}
 
@@ -92,15 +95,30 @@ local function clearConnections()
     debugPrint("Connections cleared")
 end
 
--- Clean adornments (remove white/rectangular box)
-local function cleanAdornments(character)
+-- Clean adornments (remove white box)
+local function cleanAdornments()
     local success, errorMsg = pcall(function()
-        if character then
-            for _, obj in pairs(character:GetDescendants()) do
-                if obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment") or obj:IsA("SurfaceGui") then
+        -- Clean character
+        if char then
+            for _, obj in pairs(char:GetDescendants()) do
+                if obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment") or obj:IsA("SurfaceGui") or obj:IsA("GuiObject") then
+                    debugPrint("Removed character adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
                     obj:Destroy()
-                    debugPrint("Removed adornment: " .. obj.ClassName)
                 end
+            end
+        end
+        -- Clean workspace
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if (obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment")) and obj.Adornee == char then
+                debugPrint("Removed workspace adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
+                obj:Destroy()
+            end
+        end
+        -- Clean CoreGui
+        for _, obj in pairs(game:GetService("CoreGui"):GetDescendants()) do
+            if (obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment")) and obj.Adornee == char then
+                debugPrint("Removed CoreGui adornment: " .. obj.ClassName .. " (" .. obj.Name .. ")")
+                obj:Destroy()
             end
         end
     end)
@@ -126,7 +144,7 @@ end
 local function initChar()
     local success, errorMsg = pcall(function()
         local retryCount = 0
-        while not player.Character and retryCount < 10 do
+        while not player.Character and retryCount < 15 do
             debugPrint("Waiting for character, attempt " .. (retryCount + 1))
             notify("⏳ Menunggu karakter muncul... Attempt " .. (retryCount + 1), Color3.fromRGB(255, 255, 0))
             player.CharacterAdded:Wait()
@@ -134,7 +152,7 @@ local function initChar()
             retryCount = retryCount + 1
         end
         if not player.Character then
-            error("Karakter gagal dimuat setelah 10 kali coba")
+            error("Karakter gagal dimuat setelah 15 kali coba")
         end
         char = player.Character
         humanoid = char:WaitForChild("Humanoid", 10)
@@ -142,13 +160,12 @@ local function initChar()
         if not humanoid or not hr then
             error("Gagal menemukan Humanoid atau HumanoidRootPart setelah 10 detik")
         end
-        cleanAdornments(char)
+        cleanAdornments()
         ensureCharacterVisible()
         debugPrint("Character initialized")
         -- Aggressive adornment cleanup every frame
-        connections.adornmentCleaner = RunService.Stepped:Connect(function()
-            cleanAdornments(char)
-        end)
+        connections.adornmentCleaner = RunService.Stepped:Connect(cleanAdornments)
+        connections.renderCleaner = RunService.RenderStepped:Connect(cleanAdornments)
     end)
     if not success then
         debugPrint("initChar error: " .. tostring(errorMsg))
@@ -219,12 +236,123 @@ local function renamePosition(slot, newName)
     end
 end
 
+-- Macro functions
+local function toggleRecordMacro()
+    macroRecording = not macroRecording
+    local success, errorMsg = pcall(function()
+        if macroRecording then
+            macroActions = {}
+            macroSuccessfulEndTime = nil
+            local startTime = tick()
+            connections.macroRecord = RunService.RenderStepped:Connect(function()
+                if hr and humanoid then
+                    local action = {
+                        time = tick() - startTime,
+                        position = hr.CFrame,
+                        velocity = hr.Velocity,
+                        state = humanoid:GetState(),
+                        health = humanoid.Health
+                    }
+                    table.insert(macroActions, action)
+                end
+            end)
+            notify("🎥 Mulai merekam macro")
+        else
+            if connections.macroRecord then
+                connections.macroRecord:Disconnect()
+                connections.macroRecord = nil
+            end
+            notify("🎥 Perekaman macro dihentikan (" .. #macroActions .. " aksi direkam)")
+        end
+    end)
+    if not success then
+        macroRecording = false
+        if connections.macroRecord then
+            connections.macroRecord:Disconnect()
+            connections.macroRecord = nil
+        end
+        notify("⚠️ Gagal merekam macro: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
+local function markSuccessfulRun()
+    local success, errorMsg = pcall(function()
+        if macroRecording then
+            macroSuccessfulEndTime = tick() - (macroActions[1] and macroActions[1].time or tick())
+            notify("✅ Menandai run sukses pada " .. string.format("%.2f", macroSuccessfulEndTime) .. " detik")
+        else
+            notify("⚠️ Tidak sedang merekam macro", Color3.fromRGB(255, 100, 100))
+        end
+    end)
+    if not success then
+        notify("⚠️ Gagal menandai run sukses: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
+local function togglePlayMacro()
+    macroPlaying = not macroPlaying
+    local success, errorMsg = pcall(function()
+        if macroPlaying then
+            if #macroActions == 0 then
+                macroPlaying = false
+                error("Tidak ada aksi macro yang direkam")
+            end
+            if not hr or not humanoid then
+                macroPlaying = false
+                error("Karakter belum dimuat")
+            end
+            local startTime = tick()
+            local index = 1
+            connections.macroPlay = RunService.RenderStepped:Connect(function()
+                if not hr or not humanoid then
+                    macroPlaying = false
+                    if connections.macroPlay then
+                        connections.macroPlay:Disconnect()
+                        connections.macroPlay = nil
+                    end
+                    notify("⚠️ Pemutaran macro gagal: Karakter hilang", Color3.fromRGB(255, 100, 100))
+                    return
+                end
+                local currentTime = tick() - startTime
+                while index <= #macroActions and macroActions[index].time <= currentTime do
+                    local action = macroActions[index]
+                    if action.health > 0 and action.state ~= Enum.HumanoidStateType.Dead and (not macroSuccessfulEndTime or action.time <= macroSuccessfulEndTime) then
+                        hr.CFrame = action.position
+                        hr.Velocity = action.velocity
+                        humanoid:ChangeState(action.state)
+                    end
+                    index = index + 1
+                end
+                if index > #macroActions or (macroSuccessfulEndTime and currentTime >= macroSuccessfulEndTime) then
+                    togglePlayMacro()
+                    notify("▶️ Pemutaran macro selesai")
+                end
+            end)
+            notify("▶️ Mulai memutar macro")
+        else
+            if connections.macroPlay then
+                connections.macroPlay:Disconnect()
+                connections.macroPlay = nil
+            end
+            notify("▶️ Pemutaran macro dihentikan")
+        end
+    end)
+    if not success then
+        macroPlaying = false
+        if connections.macroPlay then
+            connections.macroPlay:Disconnect()
+            connections.macroPlay = nil
+        end
+        notify("⚠️ Gagal memutar macro: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
 -- UI Creation
-local function createButton(parent, text, onClick, slot, isSave)
+local function createButton(parent, text, onClick, toggleState, slot, isSave)
     local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0.95, 0, 0, 60)
+    button.Size = UDim2.new(0.95, 0, 0, 70)
     button.Position = UDim2.new(0.025, 0, 0, 0)
-    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    button.BackgroundColor3 = toggleState and toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
     button.BackgroundTransparency = 0.3
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextScaled = true
@@ -273,11 +401,16 @@ local function createButton(parent, text, onClick, slot, isSave)
         end
     end)
     button.Parent = parent
+    if toggleState then
+        connections["button_" .. text] = RunService.RenderStepped:Connect(function()
+            button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+        end)
+    end
 end
 
 local function createCategory(parent, title, buttons)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.95, 0, 0, 60 + #buttons * 68)
+    frame.Size = UDim2.new(0.95, 0, 0, 70 + #buttons * 78)
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     frame.BackgroundTransparency = 0.2
     frame.BorderSizePixel = 0
@@ -286,7 +419,7 @@ local function createCategory(parent, title, buttons)
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = frame
     local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, 0, 0, 60)
+    titleLabel.Size = UDim2.new(1, 0, 0, 70)
     titleLabel.BackgroundTransparency = 1
     titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     titleLabel.TextScaled = true
@@ -295,8 +428,8 @@ local function createCategory(parent, title, buttons)
     titleLabel.ZIndex = 12
     titleLabel.Parent = frame
     local buttonFrame = Instance.new("Frame")
-    buttonFrame.Size = UDim2.new(0.95, 0, 0, #buttons * 68)
-    buttonFrame.Position = UDim2.new(0.025, 0, 0, 65)
+    buttonFrame.Size = UDim2.new(0.95, 0, 0, #buttons * 78)
+    buttonFrame.Position = UDim2.new(0.025, 0, 0, 75)
     buttonFrame.BackgroundTransparency = 1
     buttonFrame.ZIndex = 12
     buttonFrame.ClipsDescendants = true
@@ -338,6 +471,11 @@ local function updateUI()
         Teleport = {
             {text = "Simpan Posisi", onClick = savePosition},
         },
+        Macro = {
+            {text = "Toggle Rekam Macro", onClick = toggleRecordMacro, toggleState = function() return macroRecording end},
+            {text = "Tandai Run Sukses", onClick = markSuccessfulRun},
+            {text = "Toggle Putar Macro", onClick = togglePlayMacro, toggleState = function() return macroPlaying end},
+        }
     }
     for slot = 1, maxSlots do
         if savedPositions[slot] then
@@ -349,7 +487,7 @@ local function updateUI()
         local buttonInstances = {}
         for _, button in ipairs(buttonList) do
             local btn = Instance.new("TextButton")
-            createButton(nil, button.text, button.onClick, button.slot, button.isSave)
+            createButton(nil, button.text, button.onClick, button.toggleState, button.slot, button.isSave)
             table.insert(buttonInstances, btn)
         end
         createCategory(scrollFrame, category, buttonInstances)
@@ -360,7 +498,7 @@ end
 
 local function createUI()
     local retryCount = 0
-    local maxRetries = 10
+    local maxRetries = 15
     local function tryCreateUI()
         local success, errorMsg = pcall(function()
             ui = Instance.new("ScreenGui")
@@ -373,11 +511,11 @@ local function createUI()
             end
             debugPrint("ScreenGui created")
             local scale = Instance.new("UIScale")
-            scale.Scale = math.min(1.2, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
+            scale.Scale = math.min(1.3, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
             scale.Parent = ui
             local logo = Instance.new("ImageButton")
-            logo.Size = UDim2.new(0, 70, 0, 70)
-            logo.Position = UDim2.new(0.95, -80, 0.05, 10)
+            logo.Size = UDim2.new(0, 80, 0, 80)
+            logo.Position = UDim2.new(0.95, -90, 0.05, 10)
             logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
             logo.BackgroundTransparency = 0.3
             logo.BorderSizePixel = 0
@@ -399,8 +537,8 @@ local function createUI()
             logo.Parent = ui
             local frame = Instance.new("Frame")
             frame.Name = "Frame"
-            frame.Size = UDim2.new(0, 700, 0, 800)
-            frame.Position = UDim2.new(1, -710, 0, 60)
+            frame.Size = UDim2.new(0, 800, 0, 900)
+            frame.Position = UDim2.new(1, -810, 0, 60)
             frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
             frame.BackgroundTransparency = 0.1
             frame.BorderSizePixel = 0
@@ -429,13 +567,13 @@ local function createUI()
             corner.CornerRadius = UDim.new(0, 12)
             corner.Parent = frame
             local title = Instance.new("TextLabel")
-            title.Size = UDim2.new(1, 0, 0, 60)
+            title.Size = UDim2.new(1, 0, 0, 70)
             title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
             title.BackgroundTransparency = 0.5
             title.TextColor3 = Color3.fromRGB(255, 255, 255)
             title.TextScaled = true
             title.Font = Enum.Font.GothamBold
-            title.Text = "Krnl Minimal UI"
+            title.Text = "Krnl Enhanced UI"
             title.ZIndex = 11
             corner = Instance.new("UICorner")
             corner.CornerRadius = UDim.new(0, 8)
@@ -443,10 +581,10 @@ local function createUI()
             title.Parent = frame
             local scrollFrame = Instance.new("ScrollingFrame")
             scrollFrame.Name = "ScrollFrame"
-            scrollFrame.Size = UDim2.new(1, -10, 1, -70)
-            scrollFrame.Position = UDim2.new(0, 5, 0, 65)
+            scrollFrame.Size = UDim2.new(1, -10, 1, -80)
+            scrollFrame.Position = UDim2.new(0, 5, 0, 75)
             scrollFrame.BackgroundTransparency = 1
-            scrollFrame.ScrollBarThickness = 10
+            scrollFrame.ScrollBarThickness = 12
             scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
             scrollFrame.ZIndex = 11
             scrollFrame.ClipsDescendants = true
@@ -461,7 +599,7 @@ local function createUI()
             renameFrame.Visible = false
             local inputBox = Instance.new("TextBox")
             inputBox.Name = "Input"
-            inputBox.Size = UDim2.new(0.8, -10, 0, 60)
+            inputBox.Size = UDim2.new(0.8, -10, 0, 70)
             inputBox.Position = UDim2.new(0, 5, 0, 5)
             inputBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
             inputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -475,7 +613,7 @@ local function createUI()
             inputBox.Parent = renameFrame
             local confirm = Instance.new("TextButton")
             confirm.Name = "Confirm"
-            confirm.Size = UDim2.new(0.2, -10, 0, 60)
+            confirm.Size = UDim2.new(0.2, -10, 0, 70)
             confirm.Position = UDim2.new(0.8, 5, 0, 5)
             confirm.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
             confirm.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -526,7 +664,7 @@ game:BindToClose(function()
     end
     clearConnections()
     if char then
-        cleanAdornments(char)
+        cleanAdornments()
     end
     debugPrint("Script cleanup completed")
 end)
