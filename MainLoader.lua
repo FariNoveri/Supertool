@@ -9,8 +9,6 @@ local camera = workspace.CurrentCamera
 local humanoid, hr, char
 local gui, frame, logo, joystickFrame, cameraControlFrame
 local selectedPlayer = nil
-local spectatingPlayer = nil
-local carriedPlayer = nil
 local flying, freecam, noclip, godMode = false, false, false, false
 local flySpeed = 50
 local freecamSpeed = 30
@@ -20,10 +18,6 @@ local moveSpeed = 50
 local jumpPower = 100
 local spinSpeed = 20
 local savedPositions = { [1] = nil, [2] = nil }
-local followTarget = nil
-local connections = {}
-local nickHidden, randomNick = false, false
-local customNick = ""
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
 local macroActions = {}
 local macroSuccessfulRun = nil
@@ -35,8 +29,11 @@ local cameraTouch = nil
 local joystickRadius = 50
 local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
+local nickHidden, randomNick = false, false
+local customNick = "PemainKeren"
 local defaultLogoPos = UDim2.new(0.95, -60, 0.05, 10)
 local defaultFramePos = UDim2.new(0.5, -150, 0.5, -200)
+local connections = {}
 
 -- Notify function
 local function notify(message, color)
@@ -117,21 +114,6 @@ local function resetCharacterState()
         ensureCharacterVisible()
         cleanAdornments(char)
     end
-end
-
--- Find stat
-local function findStat(statName)
-    local locations = { player, char, player.PlayerGui }
-    for _, loc in pairs(locations) do
-        if loc then
-            for _, obj in pairs(loc:GetDescendants()) do
-                if (obj:IsA("NumberValue") or obj:IsA("IntValue")) and obj.Name:lower():find(statName:lower()) then
-                    return obj
-                end
-            end
-        end
-    end
-    return nil
 end
 
 -- Initialize character
@@ -1047,29 +1029,20 @@ local function createGUI()
         logo.Parent = gui
 
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0.5, 0, 0.6, 0)
+        frame.Size = UDim2.new(0, 300, 0, 400)
         frame.Position = defaultFramePos
         frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         frame.BackgroundTransparency = 0.1
         frame.BorderSizePixel = 0
         frame.Visible = false
-        frame.ZIndex = 10
+        frame.ZIndex = 11
+        frame.ClipsDescendants = true
+        frame.Parent = gui
+
         local uil = Instance.new("UIListLayout")
         uil.FillDirection = Enum.FillDirection.Vertical
         uil.Padding = UDim.new(0, 10)
         uil.Parent = frame
-
-        local scrollFrame = Instance.new("ScrollingFrame")
-        scrollFrame.Size = UDim2.new(1, 0, 1, -60)
-        scrollFrame.Position = UDim2.new(0, 0, 0, 60)
-        scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 5
-        scrollFrame.ZIndex = 10
-        local scrollUIL = Instance.new("UIListLayout")
-        scrollUIL.FillDirection = Enum.FillDirection.Vertical
-        scrollUIL.Padding = UDim.new(0, 5)
-        scrollUIL.Parent = scrollFrame
-        scrollFrame.Parent = frame
 
         local title = Instance.new("TextLabel")
         title.Size = UDim2.new(1, 0, 0, 50)
@@ -1079,8 +1052,22 @@ local function createGUI()
         title.TextScaled = true
         title.Font = Enum.Font.GothamBold
         title.Text = "Krnl UI"
-        title.ZIndex = 10
+        title.ZIndex = 12
         title.Parent = frame
+
+        local scrollFrame = Instance.new("ScrollingFrame")
+        scrollFrame.Size = UDim2.new(1, 0, 1, -60)
+        scrollFrame.Position = UDim2.new(0, 0, 0, 60)
+        scrollFrame.BackgroundTransparency = 1
+        scrollFrame.ScrollBarThickness = 5
+        scrollFrame.ZIndex = 12
+        scrollFrame.ClipsDescendants = true
+        scrollFrame.Parent = frame
+
+        local scrollUIL = Instance.new("UIListLayout")
+        scrollUIL.FillDirection = Enum.FillDirection.Vertical
+        scrollUIL.Padding = UDim.new(0, 5)
+        scrollUIL.Parent = scrollFrame
 
         local function createButton(text, callback, toggleState)
             local button = Instance.new("TextButton")
@@ -1092,7 +1079,7 @@ local function createGUI()
             button.TextScaled = true
             button.Font = Enum.Font.Gotham
             button.Text = text
-            button.ZIndex = 10
+            button.ZIndex = 13
             button.Parent = scrollFrame
             local function updateButton()
                 button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
@@ -1119,7 +1106,7 @@ local function createGUI()
             dropdown.TextScaled = true
             dropdown.Font = Enum.Font.Gotham
             dropdown.Text = text
-            dropdown.ZIndex = 10
+            dropdown.ZIndex = 13
             dropdown.Parent = scrollFrame
 
             local dropdownFrame = Instance.new("Frame")
@@ -1129,12 +1116,14 @@ local function createGUI()
             dropdownFrame.BackgroundTransparency = 0.1
             dropdownFrame.BorderSizePixel = 0
             dropdownFrame.Visible = false
-            dropdownFrame.ZIndex = 11
+            dropdownFrame.ZIndex = 14
+            dropdownFrame.ClipsDescendants = true
+            dropdownFrame.Parent = scrollFrame
+
             local dropdownUIL = Instance.new("UIListLayout")
             dropdownUIL.FillDirection = Enum.FillDirection.Vertical
             dropdownUIL.Padding = UDim.new(0, 5)
             dropdownUIL.Parent = dropdownFrame
-            dropdownFrame.Parent = scrollFrame
 
             for _, item in pairs(items) do
                 local itemButton = Instance.new("TextButton")
@@ -1145,7 +1134,7 @@ local function createGUI()
                 itemButton.TextScaled = true
                 itemButton.Font = Enum.Font.Gotham
                 itemButton.Text = item
-                itemButton.ZIndex = 12
+                itemButton.ZIndex = 15
                 itemButton.Parent = dropdownFrame
                 itemButton.MouseButton1Click:Connect(function()
                     callback(item)
@@ -1236,7 +1225,7 @@ local function createGUI()
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y)
     end)
     if not success then
-        notify("⚠️ GUI creation failed: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("⚠️ GUI creation failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(2)
         createGUI()
     end
@@ -1255,6 +1244,7 @@ end
 local function main()
     local success, errorMsg = pcall(function()
         cleanupOldInstance()
+        task.wait(1) -- Delay to ensure PlayerGui is ready
         createGUI()
         createJoystick()
         initChar()
@@ -1262,7 +1252,7 @@ local function main()
         notify("✅ Script Loaded Successfully")
     end)
     if not success then
-        notify("⚠️ Script failed to load: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("⚠️ Script failed to load: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(2)
         main()
     end
