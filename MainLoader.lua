@@ -1,3 +1,69 @@
+-- KILL ALL PREVIOUS SCRIPTS FIRST
+local function killPreviousScripts()
+    debugPrint("Killing previous scripts...")
+    
+    -- Kill all running connections in shared environment
+    if getgenv and getgenv().krnl_connections then
+        for _, connection in pairs(getgenv().krnl_connections) do
+            if connection and connection.Disconnect then
+                connection:Disconnect()
+            end
+        end
+        getgenv().krnl_connections = {}
+    end
+    
+    -- Kill all UI instances with similar names
+    for _, gui in pairs(player:GetChildren()) do
+        if gui:IsA("ScreenGui") then
+            for _, obj in pairs(gui:GetDescendants()) do
+                if obj:IsA("TextLabel") and (obj.Text:find("Krnl") or obj.Text:find("Enhanced")) then
+                    gui:Destroy()
+                    debugPrint("Destroyed previous GUI: " .. gui.Name)
+                    break
+                end
+            end
+        end
+    end
+    
+    if player.PlayerGui then
+        for _, gui in pairs(player.PlayerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                for _, obj in pairs(gui:GetDescendants()) do
+                    if obj:IsA("TextLabel") and (obj.Text:find("Krnl") or obj.Text:find("Enhanced")) then
+                        gui:Destroy()
+                        debugPrint("Destroyed previous PlayerGui: " .. gui.Name)
+                        break
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Kill any script that might be creating adornments
+    pcall(function()
+        for _, connection in pairs(getconnections(workspace.DescendantAdded)) do
+            if connection and connection.Function then
+                local info = debug.getinfo(connection.Function)
+                if info and info.source and (info.source:find("krnl") or info.source:find("exploit")) then
+                    connection:Disable()
+                    debugPrint("Disabled conflicting DescendantAdded connection")
+                end
+            end
+        end
+    end)
+    
+    -- Clear any global variables that might conflict
+    if getgenv then
+        getgenv().krnl_ui = nil
+        getgenv().krnl_char = nil
+        getgenv().krnl_running = nil
+    end
+    
+    -- Wait a moment for cleanup
+    task.wait(1)
+    debugPrint("Previous scripts killed")
+end
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -13,6 +79,12 @@ local macroActions = {}
 local macroSuccessfulEndTime = nil
 local ui
 local connections = {}
+
+-- Store connections globally to kill them later
+if getgenv then
+    getgenv().krnl_connections = connections
+    getgenv().krnl_running = true
+end
 
 -- Debug print
 local function debugPrint(message)
@@ -95,7 +167,7 @@ local function clearConnections()
     debugPrint("Connections cleared")
 end
 
--- Enhanced adornment cleaning function
+-- Enhanced adornment cleaning function with script detection
 local function cleanAdornments()
     local success, errorMsg = pcall(function()
         -- List of adornment types to remove
@@ -165,6 +237,26 @@ local function cleanAdornments()
                 end
             end
         end
+        
+        -- Kill any scripts that might be adding adornments
+        pcall(function()
+            for _, connection in pairs(getconnections(workspace.DescendantAdded)) do
+                if connection and connection.Function then
+                    local success, result = pcall(function()
+                        local info = debug.getinfo(connection.Function)
+                        return info and info.source
+                    end)
+                    if success and result and result ~= debug.getinfo(1).source then
+                        -- This is not our script, check if it's creating adornments
+                        local envCheck = debug.getfenv(connection.Function)
+                        if envCheck and (envCheck.script or envCheck._G) then
+                            connection:Disable()
+                            debugPrint("Disabled potentially conflicting script connection")
+                        end
+                    end
+                end
+            end
+        end)
     end)
     if not success then
         debugPrint("cleanAdornments error: " .. tostring(errorMsg))
