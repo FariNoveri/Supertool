@@ -1,4 +1,3 @@
-local Roact = require(game:GetService("ReplicatedStorage"):WaitForChild("Roact"))
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -35,6 +34,7 @@ local nickHidden, randomNick = false, false
 local customNick = "PemainKeren"
 
 local connections = {}
+local ui
 
 -- File I/O for persistent storage
 local function saveTeleportSlots()
@@ -1029,6 +1029,7 @@ local function savePosition()
             savedPositions[slot] = {name = "Slot " .. slot, cframe = hr.CFrame}
             saveTeleportSlots()
             notify("💾 Position Saved to Slot " .. slot)
+            updateUI()
         else
             notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
         end
@@ -1059,6 +1060,7 @@ local function renamePosition(slot, newName)
             savedPositions[slot].name = newName
             saveTeleportSlots()
             notify("✏️ Renamed Slot " .. slot .. " to " .. newName)
+            updateUI()
         else
             notify("⚠️ No position saved in slot " .. slot, Color3.fromRGB(255, 100, 100))
         end
@@ -1189,436 +1191,362 @@ local function toggleRecordOnRespawn()
     notify(recordOnRespawn and "🔄 Record Macro on Respawn Enabled" or "🔄 Record Macro on Respawn Disabled")
 end
 
--- Roact Components
-local Button = Roact.Component:extend("Button")
-function Button:init()
-    self:setState({
-        isPressed = false,
-        holdStart = nil
-    })
-end
-
-function Button:render()
-    local props = self.props
-    local isToggled = props.toggleState and props.toggleState() or false
-    return Roact.createElement("TextButton", {
-        Size = UDim2.new(0.95, 0, 0, 40),
-        Position = UDim2.new(0.025, 0, 0, 0),
-        BackgroundColor3 = isToggled and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50),
-        BackgroundTransparency = 0.3,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextScaled = true,
-        Font = Enum.Font.Gotham,
-        Text = props.text,
-        ZIndex = 12,
-        [Roact.Event.InputBegan] = function(rbx, input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                self:setState({ holdStart = tick() })
-            end
-        end,
-        [Roact.Event.InputEnded] = function(rbx, input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                if self.state.holdStart and tick() - self.state.holdStart >= 2 and props.slot then
-                    props.onRename(props.slot, props.isSave)
-                else
-                    local success, err = pcall(props.onClick)
-                    if not success then
-                        notify("⚠️ Error in " .. props.text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
-                    end
+-- UI Creation
+local function createButton(parent, text, onClick, toggleState, slot, isSave)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0.95, 0, 0, 40)
+    button.Position = UDim2.new(0.025, 0, 0, 0)
+    button.BackgroundColor3 = toggleState and toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+    button.BackgroundTransparency = 0.3
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextScaled = true
+    button.Font = Enum.Font.Gotham
+    button.Text = text
+    button.ZIndex = 12
+    button.BorderSizePixel = 0
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = button
+    local holdStart
+    button.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            holdStart = tick()
+        end
+    end)
+    button.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if holdStart and tick() - holdStart >= 2 and slot then
+                local renameFrame = ui:FindFirstChild("RenameFrame")
+                if renameFrame then
+                    renameFrame.Visible = true
+                    local inputBox = renameFrame:FindFirstChild("Input")
+                    inputBox.Text = savedPositions[slot] and savedPositions[slot].name or ""
+                    inputBox.FocusLost:Connect(function(enterPressed)
+                        if enterPressed and inputBox.Text ~= "" then
+                            renamePosition(slot, inputBox.Text)
+                            renameFrame.Visible = false
+                        end
+                    end)
+                    local confirm = renameFrame:FindFirstChild("Confirm")
+                    confirm.MouseButton1Click:Connect(function()
+                        if inputBox.Text ~= "" then
+                            renamePosition(slot, inputBox.Text)
+                            renameFrame.Visible = false
+                        end
+                    end)
                 end
-                self:setState({ holdStart = nil })
+            else
+                local success, err = pcall(onClick)
+                if not success then
+                    notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
+                end
             end
+            holdStart = nil
         end
-    }, {
-        Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-    })
-end
-
-local Dropdown = Roact.Component:extend("Dropdown")
-function Dropdown:init()
-    self:setState({
-        isOpen = false
-    })
-end
-
-function Dropdown:render()
-    local props = self.props
-    local items = props.items
-    return Roact.createElement("Frame", {
-        Size = UDim2.new(0.95, 0, 0, self.state.isOpen and (#items * 40 + 40) or 40),
-        Position = UDim2.new(0.025, 0, 0, 0),
-        BackgroundTransparency = 1,
-        ZIndex = 12
-    }, {
-        Button = Roact.createElement("TextButton", {
-            Size = UDim2.new(1, 0, 0, 40),
-            BackgroundColor3 = Color3.fromRGB(50, 50, 50),
-            BackgroundTransparency = 0.3,
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextScaled = true,
-            Font = Enum.Font.Gotham,
-            Text = props.text,
-            ZIndex = 12,
-            [Roact.Event.MouseButton1Click] = function()
-                self:setState({ isOpen = not self.state.isOpen })
-                props.onToggle(self.state.isOpen)
-            end
-        }, {
-            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-        }),
-        ItemFrame = self.state.isOpen and Roact.createElement("Frame", {
-            Size = UDim2.new(0.95, 0, 0, #items * 40),
-            Position = UDim2.new(0.025, 0, 0, 45),
-            BackgroundColor3 = Color3.fromRGB(20, 20, 20),
-            BackgroundTransparency = 0.1,
-            BorderSizePixel = 0,
-            ZIndex = 13,
-            ClipsDescendants = true
-        }, {
-            UIL = Roact.createElement("UIListLayout", {
-                FillDirection = Enum.FillDirection.Vertical,
-                Padding = UDim.new(0, 5)
-            }),
-            Items = Roact.createFragment(table.map(items, function(item, index)
-                return Roact.createElement("TextButton", {
-                    Size = UDim2.new(1, 0, 0, 35),
-                    BackgroundColor3 = Color3.fromRGB(50, 50, 50),
-                    BackgroundTransparency = 0.3,
-                    TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextScaled = true,
-                    Font = Enum.Font.Gotham,
-                    Text = item,
-                    ZIndex = 14,
-                    [Roact.Event.MouseButton1Click] = function()
-                        props.onSelect(item)
-                        self:setState({ isOpen = false })
-                        props.onToggle(false)
-                    end
-                }, {
-                    Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-                })
-            end))
-        })
-    })
-end
-
-local Category = Roact.Component:extend("Category")
-function Category:init()
-    self:setState({
-        isOpen = true
-    })
-end
-
-function Category:render()
-    local props = self.props
-    return Roact.createElement("Frame", {
-        Size = UDim2.new(0.95, 0, 0, self.state.isOpen and (40 + #props.buttons * 48) or 40),
-        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-        ZIndex = 11
-    }, {
-        Title = Roact.createElement("TextButton", {
-            Size = UDim2.new(1, 0, 0, 40),
-            BackgroundTransparency = 1,
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextScaled = true,
-            Font = Enum.Font.GothamBold,
-            Text = props.title .. (self.state.isOpen and " ▼" or " ►"),
-            ZIndex = 12,
-            [Roact.Event.MouseButton1Click] = function()
-                self:setState({ isOpen = not self.state.isOpen })
-                props.onToggle(self.state.isOpen)
-            end
-        }, {
-            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-        }),
-        ButtonFrame = self.state.isOpen and Roact.createElement("Frame", {
-            Size = UDim2.new(0.95, 0, 0, #props.buttons * 48),
-            Position = UDim2.new(0.025, 0, 0, 45),
-            BackgroundTransparency = 1,
-            ZIndex = 12,
-            ClipsDescendants = true
-        }, {
-            UIL = Roact.createElement("UIListLayout", {
-                FillDirection = Enum.FillDirection.Vertical,
-                Padding = UDim.new(0, 8)
-            }),
-            Padding = Roact.createElement("UIPadding", {
-                PaddingTop = UDim.new(0, 5),
-                PaddingBottom = UDim.new(0, 5)
-            }),
-            Buttons = Roact.createFragment(props.buttons)
-        })
-    })
-end
-
-local MainUI = Roact.Component:extend("MainUI")
-function MainUI:init()
-    self:setState({
-        isVisible = false,
-        players = {},
-        selectedSlot = nil,
-        renameText = "",
-        canvasSize = 0
-    })
-    self.scrollFrameRef = Roact.createRef()
-end
-
-function MainUI:didMount()
-    local function updatePlayers()
-        local playerNames = {}
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= player then
-                table.insert(playerNames, p.Name)
-            end
-        end
-        self:setState({ players = playerNames })
-    end
-    updatePlayers()
-    connections.playerAdded = Players.PlayerAdded:Connect(updatePlayers)
-    connections.playerRemoving = Players.PlayerRemoving:Connect(updatePlayers)
-end
-
-function MainUI:willUnmount()
-    if connections.playerAdded then
-        connections.playerAdded:Disconnect()
-        connections.playerAdded = nil
-    end
-    if connections.playerRemoving then
-        connections.playerRemoving:Disconnect()
-        connections.playerRemoving = nil
+    end)
+    button.Parent = parent
+    if toggleState then
+        connections["button_" .. text] = RunService.RenderStepped:Connect(function()
+            button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+        end)
     end
 end
 
-function MainUI:render()
-    local function updateCanvasSize(isOpen)
-        local scrollFrame = self.scrollFrameRef.current
-        if scrollFrame then
-            local uil = scrollFrame:FindFirstChildOfClass("UIListLayout")
-            if uil then
-                self:setState({ canvasSize = uil.AbsoluteContentSize.Y + 30 })
-            end
-        end
+local function createCategory(parent, title, buttons)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0.95, 0, 0, 40 + #buttons * 48)
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    frame.BackgroundTransparency = 0.2
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 11
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = frame
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, 0, 0, 40)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.TextScaled = true
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.Text = title
+    titleLabel.ZIndex = 12
+    titleLabel.Parent = frame
+    local buttonFrame = Instance.new("Frame")
+    buttonFrame.Size = UDim2.new(0.95, 0, 0, #buttons * 48)
+    buttonFrame.Position = UDim2.new(0.025, 0, 0, 45)
+    buttonFrame.BackgroundTransparency = 1
+    buttonFrame.ZIndex = 12
+    buttonFrame.ClipsDescendants = true
+    local uil = Instance.new("UIListLayout")
+    uil.FillDirection = Enum.FillDirection.Vertical
+    uil.Padding = UDim.new(0, 8)
+    uil.Parent = buttonFrame
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 5)
+    padding.PaddingBottom = UDim.new(0, 5)
+    padding.Parent = buttonFrame
+    for _, button in ipairs(buttons) do
+        button.Parent = buttonFrame
     end
+    buttonFrame.Parent = frame
+    frame.Parent = parent
+end
 
+local function updateUI()
+    if not ui then return end
+    local scrollFrame = ui:FindFirstChild("ScrollFrame")
+    if not scrollFrame then return end
+    scrollFrame:ClearAllChildren()
+    local uil = Instance.new("UIListLayout")
+    uil.FillDirection = Enum.FillDirection.Vertical
+    uil.Padding = UDim.new(0, 8)
+    uil.Parent = scrollFrame
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 5)
+    padding.PaddingBottom = UDim.new(0, 20)
+    padding.Parent = scrollFrame
     local buttons = {
         Movement = {
-            Roact.createElement(Button, { text = "Toggle Fly", onClick = toggleFly, toggleState = function() return flying end }),
-            Roact.createElement(Button, { text = "Toggle Noclip", onClick = toggleNoclip, toggleState = function() return noclip end }),
-            Roact.createElement(Button, { text = "Toggle Speed", onClick = toggleSpeed, toggleState = function() return speedEnabled end }),
-            Roact.createElement(Button, { text = "Toggle Jump", onClick = toggleJump, toggleState = function() return jumpEnabled end }),
-            Roact.createElement(Button, { text = "Toggle Water Walk", onClick = toggleWaterWalk, toggleState = function() return waterWalk end }),
-            Roact.createElement(Button, { text = "Toggle Rocket", onClick = toggleRocket, toggleState = function() return rocket end }),
-            Roact.createElement(Button, { text = "Toggle Spin", onClick = toggleSpin, toggleState = function() return spin end }),
-            Roact.createElement(Button, { text = "Toggle God Mode", onClick = toggleGodMode, toggleState = function() return godMode end })
+            {text = "Toggle Fly", onClick = toggleFly, toggleState = function() return flying end},
+            {text = "Toggle Noclip", onClick = toggleNoclip, toggleState = function() return noclip end},
+            {text = "Toggle Speed", onClick = toggleSpeed, toggleState = function() return speedEnabled end},
+            {text = "Toggle Jump", onClick = toggleJump, toggleState = function() return jumpEnabled end},
+            {text = "Toggle Water Walk", onClick = toggleWaterWalk, toggleState = function() return waterWalk end},
+            {text = "Toggle Rocket", onClick = toggleRocket, toggleState = function() return rocket end},
+            {text = "Toggle Spin", onClick = toggleSpin, toggleState = function() return spin end},
+            {text = "Toggle God Mode", onClick = toggleGodMode, toggleState = function() return godMode end}
         },
         Visual = {
-            Roact.createElement(Button, { text = "Toggle Freecam", onClick = toggleFreecam, toggleState = function() return freecam end }),
-            Roact.createElement(Button, { text = "Return to Character", onClick = returnToCharacter, toggleState = function() return false end }),
-            Roact.createElement(Button, { text = "Cancel Freecam", onClick = cancelFreecam, toggleState = function() return false end }),
-            Roact.createElement(Button, { text = "Teleport Character to Camera", onClick = teleportCharacterToCamera, toggleState = function() return false end }),
-            Roact.createElement(Button, { text = "Toggle Hide Nickname", onClick = toggleHideNick, toggleState = function() return nickHidden end }),
-            Roact.createElement(Button, { text = "Toggle Random Nickname", onClick = toggleRandomNick, toggleState = function() return randomNick end }),
-            Roact.createElement(Button, { text = "Set Custom Nickname", onClick = setCustomNick, toggleState = function() return false end })
+            {text = "Toggle Freecam", onClick = toggleFreecam, toggleState = function() return freecam end},
+            {text = "Return to Character", onClick = returnToCharacter},
+            {text = "Cancel Freecam", onClick = cancelFreecam},
+            {text = "Teleport Character to Camera", onClick = teleportCharacterToCamera},
+            {text = "Toggle Hide Nickname", onClick = toggleHideNick, toggleState = function() return nickHidden end},
+            {text = "Toggle Random Nickname", onClick = toggleRandomNick, toggleState = function() return randomNick end},
+            {text = "Set Custom Nickname", onClick = setCustomNick}
         },
         Teleport = {
-            Roact.createElement(Dropdown, {
-                text = "Select Player",
-                items = self.state.players,
-                onSelect = function(name)
-                    selectedPlayer = Players:FindFirstChild(name)
-                    notify("👤 Selected Player: " .. name)
-                end,
-                onToggle = updateCanvasSize
-            }),
-            Roact.createElement(Button, { text = "Teleport to Player", onClick = teleportToPlayer, toggleState = function() return false end }),
-            Roact.createElement(Button, { text = "Save Position", onClick = savePosition, toggleState = function() return false end }),
-            Roact.createElement(Button, { text = "Teleport to Spawn", onClick = teleportToSpawn, toggleState = function() return false end })
+            {text = "Select Player", onClick = function()
+                local dropdown = ui:FindFirstChild("Dropdown")
+                if dropdown then
+                    dropdown.Visible = not dropdown.Visible
+                end
+            end},
+            {text = "Teleport to Player", onClick = teleportToPlayer},
+            {text = "Save Position", onClick = savePosition},
+            {text = "Teleport to Spawn", onClick = teleportToSpawn}
         },
         Macro = {
-            Roact.createElement(Button, { text = "Toggle Record Macro", onClick = toggleRecordMacro, toggleState = function() return macroRecording end }),
-            Roact.createElement(Button, { text = "Mark Successful Run", onClick = markSuccessfulRun, toggleState = function() return false end }),
-            Roact.createElement(Button, { text = "Toggle Play Macro", onClick = togglePlayMacro, toggleState = function() return macroPlaying end }),
-            Roact.createElement(Button, { text = "Toggle Auto Play Macro on Respawn", onClick = toggleAutoPlayOnRespawn, toggleState = function() return autoPlayOnRespawn end }),
-            Roact.createElement(Button, { text = "Toggle Record Macro on Respawn", onClick = toggleRecordOnRespawn, toggleState = function() return recordOnRespawn end })
+            {text = "Toggle Record Macro", onClick = toggleRecordMacro, toggleState = function() return macroRecording end},
+            {text = "Mark Successful Run", onClick = markSuccessfulRun},
+            {text = "Toggle Play Macro", onClick = togglePlayMacro, toggleState = function() return macroPlaying end},
+            {text = "Toggle Auto Play Macro on Respawn", onClick = toggleAutoPlayOnRespawn, toggleState = function() return autoPlayOnRespawn end},
+            {text = "Toggle Record Macro on Respawn", onClick = toggleRecordOnRespawn, toggleState = function() return recordOnRespawn end}
         }
     }
-
     for slot = 1, maxSlots do
         if savedPositions[slot] then
-            table.insert(buttons.Teleport, Roact.createElement(Button, {
-                text = "Save " .. savedPositions[slot].name,
-                onClick = savePosition,
-                toggleState = function() return false end,
-                slot = slot,
-                isSave = true,
-                onRename = function(slot, isSave)
-                    self:setState({ selectedSlot = slot, renameText = savedPositions[slot].name })
-                end
-            }))
-            table.insert(buttons.Teleport, Roact.createElement(Button, {
-                text = "Load " .. savedPositions[slot].name,
-                onClick = function() loadPosition(slot) end,
-                toggleState = function() return false end,
-                slot = slot,
-                isSave = false,
-                onRename = function(slot, isSave)
-                    self:setState({ selectedSlot = slot, renameText = savedPositions[slot].name })
-                end
-            }))
+            table.insert(buttons.Teleport, {text = "Save " .. savedPositions[slot].name, onClick = savePosition, slot = slot, isSave = true})
+            table.insert(buttons.Teleport, {text = "Load " .. savedPositions[slot].name, onClick = function() loadPosition(slot) end, slot = slot, isSave = false})
         end
     end
+    for category, buttonList in pairs(buttons) do
+        local buttonInstances = {}
+        for _, button in ipairs(buttonList) do
+            local btn = Instance.new("TextButton")
+            createButton(nil, button.text, button.onClick, button.toggleState, button.slot, button.isSave)
+            table.insert(buttonInstances, btn)
+        end
+        createCategory(scrollFrame, category, buttonInstances)
+    end
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, uil.AbsoluteContentSize.Y + 30)
+end
 
-    return Roact.createElement("ScreenGui", {
-        ResetOnSpawn = false,
-        IgnoreGuiInset = true,
-        ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    }, {
-        Scale = Roact.createElement("UIScale", {
-            Scale = math.min(1, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
-        }),
-        Logo = Roact.createElement("ImageButton", {
-            Size = UDim2.new(0, 50, 0, 50),
-            Position = UDim2.new(0.95, -50, 0.05, 10),
-            BackgroundColor3 = Color3.fromRGB(50, 150, 255),
-            BackgroundTransparency = 0.3,
-            BorderSizePixel = 0,
-            Image = "rbxassetid://3570695787",
-            ZIndex = 20,
-            [Roact.Event.MouseButton1Click] = function()
-                self:setState({ isVisible = not self.state.isVisible })
-                notify(self.state.isVisible and "🖼️ GUI Closed" or "🖼️ GUI Opened")
+local function createUI()
+    ui = Instance.new("ScreenGui")
+    ui.ResetOnSpawn = false
+    ui.IgnoreGuiInset = true
+    ui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ui.Parent = player:WaitForChild("PlayerGui")
+    local scale = Instance.new("UIScale")
+    scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
+    scale.Parent = ui
+    local logo = Instance.new("ImageButton")
+    logo.Size = UDim2.new(0, 50, 0, 50)
+    logo.Position = UDim2.new(0.95, -60, 0.05, 10)
+    logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+    logo.BackgroundTransparency = 0.3
+    logo.BorderSizePixel = 0
+    logo.Image = "rbxassetid://3570695787"
+    logo.ZIndex = 20
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = logo
+    logo.MouseButton1Click:Connect(function()
+        local frame = ui:FindFirstChild("Frame")
+        if frame then
+            frame.Visible = not frame.Visible
+            notify(frame.Visible and "🖼️ GUI Opened" or "🖼️ GUI Closed")
+        end
+    end)
+    logo.Parent = ui
+    local frame = Instance.new("Frame")
+    frame.Name = "Frame"
+    frame.Size = UDim2.new(0, 400, 0, 500)
+    frame.Position = UDim2.new(1, -410, 0, 60)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BackgroundTransparency = 0.1
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 10
+    frame.ClipsDescendants = true
+    frame.Visible = false
+    local dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    frame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragStart = nil
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if dragStart and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = frame
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    title.BackgroundTransparency = 0.5
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamBold
+    title.Text = "Krnl UI"
+    title.ZIndex = 11
+    corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = title
+    title.Parent = frame
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Name = "ScrollFrame"
+    scrollFrame.Size = UDim2.new(1, -10, 1, -50)
+    scrollFrame.Position = UDim2.new(0, 5, 0, 45)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+    scrollFrame.ZIndex = 11
+    scrollFrame.ClipsDescendants = true
+    scrollFrame.Parent = frame
+    local renameFrame = Instance.new("Frame")
+    renameFrame.Name = "RenameFrame"
+    renameFrame.Size = UDim2.new(0.95, 0, 0, 50)
+    renameFrame.Position = UDim2.new(0.025, 0, 0, 0)
+    renameFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    renameFrame.BackgroundTransparency = 0.2
+    renameFrame.ZIndex = 15
+    renameFrame.Visible = false
+    local inputBox = Instance.new("TextBox")
+    inputBox.Name = "Input"
+    inputBox.Size = UDim2.new(0.8, -10, 0, 40)
+    inputBox.Position = UDim2.new(0, 5, 0, 5)
+    inputBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    inputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    inputBox.TextScaled = true
+    inputBox.Font = Enum.Font.Gotham
+    inputBox.Text = ""
+    inputBox.ZIndex = 16
+    corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = inputBox
+    inputBox.Parent = renameFrame
+    local confirm = Instance.new("TextButton")
+    confirm.Name = "Confirm"
+    confirm.Size = UDim2.new(0.2, -10, 0, 40)
+    confirm.Position = UDim2.new(0.8, 5, 0, 5)
+    confirm.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    confirm.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirm.TextScaled = true
+    confirm.Font = Enum.Font.Gotham
+    confirm.Text = "OK"
+    confirm.ZIndex = 16
+    corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = confirm
+    confirm.Parent = renameFrame
+    renameFrame.Parent = frame
+    local dropdown = Instance.new("Frame")
+    dropdown.Name = "Dropdown"
+    dropdown.Size = UDim2.new(0.95, 0, 0, 0)
+    dropdown.Position = UDim2.new(0.025, 0, 0, 0)
+    dropdown.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    dropdown.BackgroundTransparency = 0.1
+    dropdown.BorderSizePixel = 0
+    dropdown.ZIndex = 13
+    dropdown.ClipsDescendants = true
+    dropdown.Visible = false
+    local uil = Instance.new("UIListLayout")
+    uil.FillDirection = Enum.FillDirection.Vertical
+    uil.Padding = UDim.new(0, 5)
+    uil.Parent = dropdown
+    dropdown.Parent = frame
+    local function updateDropdown()
+        dropdown:ClearAllChildren()
+        uil = Instance.new("UIListLayout")
+        uil.FillDirection = Enum.FillDirection.Vertical
+        uil.Padding = UDim.new(0, 5)
+        uil.Parent = dropdown
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player then
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(1, 0, 0, 35)
+                btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                btn.BackgroundTransparency = 0.3
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                btn.TextScaled = true
+                btn.Font = Enum.Font.Gotham
+                btn.Text = p.Name
+                btn.ZIndex = 14
+                corner = Instance.new("UICorner")
+                corner.CornerRadius = UDim.new(0, 8)
+                corner.Parent = btn
+                btn.MouseButton1Click:Connect(function()
+                    selectedPlayer = p
+                    notify("👤 Selected Player: " .. p.Name)
+                    dropdown.Visible = false
+                end)
+                btn.Parent = dropdown
             end
-        }, {
-            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-        }),
-        Frame = self.state.isVisible and Roact.createElement("Frame", {
-            Size = UDim2.new(0, 350, 0, 500),
-            Position = UDim2.new(0.5, -175, 0.5, -250),
-            BackgroundColor3 = Color3.fromRGB(20, 20, 20),
-            BackgroundTransparency = 0.1,
-            BorderSizePixel = 0,
-            ZIndex = 10,
-            ClipsDescendants = true,
-            [Roact.Event.InputBegan] = function(rbx, input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    self:setState({ dragging = true, dragStart = input.Position, startPos = rbx.Position })
-                end
-            end,
-            [Roact.Event.InputEnded] = function(rbx, input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    self:setState({ dragging = false })
-                end
-            end,
-            [Roact.Event.InputChanged] = function(rbx, input)
-                if self.state.dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-                    local delta = input.Position - self.state.dragStart
-                    rbx.Position = UDim2.new(self.state.startPos.X.Scale, self.state.startPos.X.Offset + delta.X, self.state.startPos.Y.Scale, self.state.startPos.Y.Offset + delta.Y)
-                end
-            end
-        }, {
-            Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 12) }),
-            Title = Roact.createElement("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 40),
-                BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-                BackgroundTransparency = 0.5,
-                TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextScaled = true,
-                Font = Enum.Font.GothamBold,
-                Text = "Krnl UI",
-                ZIndex = 11
-            }, {
-                Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-            }),
-            ScrollFrame = Roact.createElement("ScrollingFrame", {
-                Size = UDim2.new(1, -10, 1, -50),
-                Position = UDim2.new(0, 5, 0, 45),
-                BackgroundTransparency = 1,
-                ScrollBarThickness = 6,
-                ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100),
-                ZIndex = 11,
-                ClipsDescendants = true,
-                CanvasSize = UDim2.new(0, 0, 0, self.state.canvasSize),
-                Ref = self.scrollFrameRef
-            }, {
-                UIL = Roact.createElement("UIListLayout", {
-                    FillDirection = Enum.FillDirection.Vertical,
-                    Padding = UDim.new(0, 8)
-                }),
-                Padding = Roact.createElement("UIPadding", {
-                    PaddingTop = UDim.new(0, 5),
-                    PaddingBottom = UDim.new(0, 20)
-                }),
-                Categories = Roact.createFragment({
-                    Movement = Roact.createElement(Category, { title = "Movement", buttons = buttons.Movement, onToggle = updateCanvasSize }),
-                    Visual = Roact.createElement(Category, { title = "Visual", buttons = buttons.Visual, onToggle = updateCanvasSize }),
-                    Teleport = Roact.createElement(Category, { title = "Teleport", buttons = buttons.Teleport, onToggle = updateCanvasSize }),
-                    Macro = Roact.createElement(Category, { title = "Macro", buttons = buttons.Macro, onToggle = updateCanvasSize })
-                })
-            }),
-            RenameInput = self.state.selectedSlot and Roact.createElement("Frame", {
-                Size = UDim2.new(0.95, 0, 0, 50),
-                Position = UDim2.new(0.025, 0, 0, 0),
-                BackgroundColor3 = Color3.fromRGB(30, 30, 30),
-                BackgroundTransparency = 0.2,
-                ZIndex = 15
-            }, {
-                Input = Roact.createElement("TextBox", {
-                    Size = UDim2.new(0.8, -10, 0, 40),
-                    Position = UDim2.new(0, 5, 0, 5),
-                    BackgroundColor3 = Color3.fromRGB(50, 50, 50),
-                    TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextScaled = true,
-                    Font = Enum.Font.Gotham,
-                    Text = self.state.renameText,
-                    ZIndex = 16,
-                    [Roact.Change.Text] = function(rbx)
-                        self:setState({ renameText = rbx.Text })
-                    end,
-                    [Roact.Event.FocusLost] = function(rbx, enterPressed)
-                        if enterPressed and self.state.renameText ~= "" then
-                            renamePosition(self.state.selectedSlot, self.state.renameText)
-                            self:setState({ selectedSlot = nil, renameText = "" })
-                        end
-                    end
-                }, {
-                    Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-                }),
-                Confirm = Roact.createElement("TextButton", {
-                    Size = UDim2.new(0.2, -10, 0, 40),
-                    Position = UDim2.new(0.8, 5, 0, 5),
-                    BackgroundColor3 = Color3.fromRGB(0, 150, 0),
-                    TextColor3 = Color3.fromRGB(255, 255, 255),
-                    TextScaled = true,
-                    Font = Enum.Font.Gotham,
-                    Text = "OK",
-                    ZIndex = 16,
-                    [Roact.Event.MouseButton1Click] = function()
-                        if self.state.renameText ~= "" then
-                            renamePosition(self.state.selectedSlot, self.state.renameText)
-                            self:setState({ selectedSlot = nil, renameText = "" })
-                        end
-                    end
-                }, {
-                    Corner = Roact.createElement("UICorner", { CornerRadius = UDim.new(0, 8) })
-                })
-            })
-        })
-    })
+        end
+        dropdown.Size = UDim2.new(0.95, 0, 0, #Players:GetPlayers() * 40)
+    end
+    updateDropdown()
+    connections.playerAdded = Players.PlayerAdded:Connect(updateDropdown)
+    connections.playerRemoving = Players.PlayerRemoving:Connect(updateDropdown)
+    frame.Parent = ui
+    updateUI()
 end
 
 -- Initialize
 loadTeleportSlots()
 initChar()
-local handle = Roact.mount(Roact.createElement(MainUI), player:WaitForChild("PlayerGui"), "KrnlUI")
+createUI()
 player.CharacterAdded:Connect(function()
     clearConnections()
     initChar()
+    updateUI()
 end)
 
 -- Cleanup
 game:BindToClose(function()
-    Roact.unmount(handle)
+    if ui then
+        ui:Destroy()
+    end
     clearConnections()
 end)
