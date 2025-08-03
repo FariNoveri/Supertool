@@ -10,9 +10,9 @@ local humanoid, hr, char
 local gui, frame, logo, joystickFrame, cameraControlFrame
 local selectedPlayer = nil
 local flying, freecam, noclip, godMode = false, false, false, false
-local flySpeed = 40 -- Dikurangi untuk kontrol lebih halus
-local freecamSpeed = 30
-local cameraRotationSensitivity = 0.005
+local flySpeed = 40
+local freecamSpeed = isMobile and 20 or 30 -- Lebih lambat di mobile
+local cameraRotationSensitivity = isMobile and 0.01 or 0.005 -- Lebih cepat di mobile
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
 local moveSpeed = 50
 local jumpPower = 100
@@ -27,7 +27,7 @@ local hrCFrame = nil
 local joystickTouch = nil
 local cameraTouch = nil
 local joystickRadius = 50
-local joystickDeadzone = 0.1 -- Deadzone untuk mencegah gerakan kecil
+local joystickDeadzone = 0.15 -- Deadzone lebih besar untuk kontrol gerakan
 local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
@@ -295,7 +295,7 @@ local function toggleFly()
             connections.flyMouse = UserInputService.InputChanged:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
                     local inputMag = input.Delta.Magnitude
-                    if inputMag < 2 then -- Deadzone untuk mouse
+                    if inputMag < 2 then
                         cameraDelta = Vector2.new(0, 0)
                     else
                         cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y)
@@ -349,13 +349,13 @@ local function toggleFly()
                         anyKeyPressed = true
                     end
                     if not anyKeyPressed then
-                        moveDir = Vector3.new(0, 0, 0) -- Reset jika nggak ada tombol ditekan
+                        moveDir = Vector3.new(0, 0, 0)
                     end
                 end
                 if moveDir.Magnitude > 0 then
                     moveDir = moveDir.Unit * flySpeed
                 else
-                    moveDir = Vector3.new(0, 0, 0) -- Pastikan nggak gerak jika nggak ada input
+                    moveDir = Vector3.new(0, 0, 0)
                 end
                 bv.Velocity = moveDir
                 hr.CFrame = CFrame.new(hr.Position) * camera.CFrame.Rotation
@@ -366,7 +366,7 @@ local function toggleFly()
                 local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
                 camera.CFrame = CFrame.new(camera.CFrame.Position) * (camera.CFrame.Rotation * rotation)
                 if not isMobile then
-                    cameraDelta = Vector2.new(0, 0) -- Reset cameraDelta setiap frame di desktop
+                    cameraDelta = Vector2.new(0, 0)
                 end
             end)
             notify("🛫 Fly Enabled" .. (isMobile and " (Joystick + Camera Control)" or " (WASD, Space, Shift, Mouse)"))
