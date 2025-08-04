@@ -1,45 +1,45 @@
--- Minimalist Roblox Script for Android with Spectate (Fluxus Optimized)
--- Black theme, left sidebar, watermark with HWID
+-- Minimalist Roblox Script for Android (Fluxus Optimized)
+-- Black theme, compact right-aligned rectangular GUI, draggable, watermark with HWID
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local PhysicsService = game:GetService("PhysicsService")
 
--- Fallback to ScreenGui if CoreGui fails
-local function createGui()
-    local success, result = pcall(function()
-        return CoreGui
-    end)
-    return success and result or Instance.new("ScreenGui")
-end
-
-local gui = createGui()
+-- Use ScreenGui for Fluxus compatibility
+local gui = Instance.new("ScreenGui")
 gui.Name = "MinimalistGUI"
 gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 
--- Main Frame (Black Minimalist Theme)
+-- Main Frame (Compact, Right-Aligned, Rectangular)
 local mainFrame = Instance.new("Frame", gui)
-mainFrame.Size = UDim2.new(0, 400, 0, 250)
-mainFrame.Position = UDim2.new(0.5, -200, 0.5, -125)
+mainFrame.Size = UDim2.new(0, 300, 0, 200)
+mainFrame.Position = UDim2.new(1, -310, 0.5, -100)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
 mainFrame.Draggable = true
+mainFrame.ZIndex = 10
 
--- Sidebar (Left)
+-- Sidebar (Left within Frame)
 local sidebar = Instance.new("Frame", mainFrame)
-sidebar.Size = UDim2.new(0, 100, 1, 0)
+sidebar.Size = UDim2.new(0, 80, 1, 0)
 sidebar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 11
 
--- Content Frame (Right)
+-- Content Frame (Right within Frame)
 local contentFrame = Instance.new("Frame", mainFrame)
-contentFrame.Size = UDim2.new(0, 300, 1, 0)
-contentFrame.Position = UDim2.new(0, 100, 0, 0)
+contentFrame.Size = UDim2.new(0, 220, 1, 0)
+contentFrame.Position = UDim2.new(0, 80, 0, 0)
 contentFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 contentFrame.BorderSizePixel = 0
+contentFrame.ZIndex = 11
 
 -- Watermark with HWID
 local hwid = "Unknown"
@@ -47,13 +47,14 @@ pcall(function()
     hwid = gethwid and gethwid() or "No HWID"
 end)
 local watermark = Instance.new("TextLabel", mainFrame)
-watermark.Size = UDim2.new(0, 200, 0, 20)
-watermark.Position = UDim2.new(1, -200, 0, 5)
+watermark.Size = UDim2.new(0, 150, 0, 20)
+watermark.Position = UDim2.new(1, -155, 0, 5)
 watermark.BackgroundTransparency = 1
 watermark.Text = "unknown block - farinoveri | " .. hwid
 watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
-watermark.TextSize = 12
+watermark.TextSize = 10
 watermark.Font = Enum.Font.SourceSans
+watermark.ZIndex = 12
 
 -- Close Button
 local closeButton = Instance.new("TextButton", mainFrame)
@@ -63,19 +64,21 @@ closeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
 closeButton.Text = "✕"
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeButton.TextSize = 14
+closeButton.ZIndex = 12
 closeButton.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
 -- Main Button (⚡ Bottom Right)
 local mainButton = Instance.new("TextButton")
-mainButton.Size = UDim2.new(0, 50, 0, 50)
-mainButton.Position = UDim2.new(1, -60, 1, -60)
+mainButton.Size = UDim2.new(0, 40, 0, 40)
+mainButton.Position = UDim2.new(1, -50, 1, -50)
 mainButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainButton.Text = "⚡"
 mainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-mainButton.TextSize = 20
+mainButton.TextSize = 18
 mainButton.Parent = gui
+mainButton.ZIndex = 10
 mainButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = not mainFrame.Visible
 end)
@@ -83,16 +86,32 @@ end)
 -- Notification System
 local function notify(message)
     local notif = Instance.new("TextLabel", gui)
-    notif.Size = UDim2.new(0, 200, 0, 30)
-    notif.Position = UDim2.new(0.5, -100, 0, 10)
+    notif.Size = UDim2.new(0, 150, 0, 25)
+    notif.Position = UDim2.new(0.5, -75, 0, 10)
     notif.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     notif.Text = message
     notif.TextColor3 = Color3.fromRGB(255, 255, 255)
-    notif.TextSize = 14
-    notif.ZIndex = 10
+    notif.TextSize = 12
+    notif.ZIndex = 15
     wait(3)
     notif:Destroy()
 end
+
+-- Initialize GUI and handle respawn
+local function initializeGui()
+    if not gui.Parent then
+        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        notify("GUI Initialized")
+    end
+end
+
+initializeGui()
+LocalPlayer.CharacterAdded:Connect(initializeGui)
+Players.PlayerAdded:Connect(function(player)
+    if player == LocalPlayer then
+        initializeGui()
+    end
+end)
 
 -- Category System
 local categories = {"Movement", "Teleport", "Player", "Misc"}
@@ -102,12 +121,13 @@ local currentCategory = "Movement"
 local function createCategoryButtons()
     for i, category in ipairs(categories) do
         local button = Instance.new("TextButton", sidebar)
-        button.Size = UDim2.new(1, 0, 0, 30)
-        button.Position = UDim2.new(0, 0, 0, (i-1)*30)
+        button.Size = UDim2.new(1, 0, 0, 25)
+        button.Position = UDim2.new(0, 0, 0, (i-1)*25)
         button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         button.Text = category
         button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        button.TextSize = 14
+        button.TextSize = 12
+        button.ZIndex = 12
         button.MouseButton1Click:Connect(function()
             currentCategory = category
             contentFrame:ClearAllChildren()
@@ -124,12 +144,12 @@ local savedPositions = {
     Important = {},
     Custom = {}
 }
-local positionCategory = "General" -- Default category
+local positionCategory = "General"
 
 -- Freecam Variables
 local freecamEnabled = false
 local lastFreecamPos = nil
-local camera = game.Workspace.CurrentCamera
+local camera = Workspace.CurrentCamera
 
 -- Admin Detection
 local adminList = {}
@@ -145,21 +165,39 @@ local spectating = false
 local spectateTarget = nil
 local spectateIndex = 0
 
+-- Wall Climb Variables
+local wallClimbEnabled = false
+
+-- Freeze Blocks Variables
+local freezeBlocksEnabled = false
+local frozenBlocks = {}
+
+-- No Player Collision Variables
+local noPlayerCollisionEnabled = false
+local collisionGroupName = "NoPlayerCollision"
+
+-- Setup Collision Group
+pcall(function()
+    PhysicsService:CreateCollisionGroup(collisionGroupName)
+    PhysicsService:CollisionGroupSetCollidable(collisionGroupName, "Default", false)
+end)
+
 -- Create Button Helper
 local function createButton(parent, text, callback)
     local button = Instance.new("TextButton", parent)
-    button.Size = UDim2.new(0, 280, 0, 30)
-    button.Position = UDim2.new(0, 10, 0, #parent:GetChildren() * 35)
+    button.Size = UDim2.new(0, 200, 0, 25)
+    button.Position = UDim2.new(0, 10, 0, #parent:GetChildren() * 30)
     button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     button.Text = text
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 14
+    button.TextSize = 12
+    button.ZIndex = 12
     button.MouseButton1Click:Connect(callback)
 end
 
 -- Spectate Function
 local function updateSpectate(target)
-    if spectating and target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+    if spectating and target and target.Character and target.Character:FindFirstChild("Humanoid") then
         camera.CameraType = Enum.CameraType.Follow
         camera.CameraSubject = target.Character.Humanoid
         spectateTarget = target
@@ -179,11 +217,13 @@ local function loadCategoryContent(category)
         createButton(contentFrame, "🛫 Toggle Fly/Freecam", function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 freecamEnabled = not freecamEnabled
+                wallClimbEnabled = false
+                noPlayerCollisionEnabled = false
                 if freecamEnabled then
                     lastFreecamPos = LocalPlayer.Character.HumanoidRootPart.Position
                     camera.CameraType = Enum.CameraType.Scriptable
                     notify("Fly/Freecam Enabled")
-                    game:GetService("RunService").RenderStepped:Connect(function()
+                    RunService.RenderStepped:Connect(function()
                         if freecamEnabled then
                             local moveVector = Vector3.new()
                             if UserInputService:IsKeyDown(Enum.KeyCode.W) then
@@ -198,7 +238,7 @@ local function loadCategoryContent(category)
                             if UserInputService:IsKeyDown(Enum.KeyCode.D) then
                                 moveVector = moveVector + camera.CFrame.RightVector * 50
                             end
-                            camera.CFrame = camera.CFrame + moveVector * game:GetService("RunService").Heartbeat:Wait()
+                            camera.CFrame = camera.CFrame + moveVector * RunService.Heartbeat:Wait()
                         end
                     end)
                 else
@@ -222,10 +262,12 @@ local function loadCategoryContent(category)
             end
         end)
         createButton(contentFrame, "🚪 Toggle Noclip", function()
+            wallClimbEnabled = false
+            noPlayerCollisionEnabled = false
             local isNoclip = false
             isNoclip = not isNoclip
             notify(isNoclip and "Noclip Enabled" or "Noclip Disabled")
-            game:GetService("RunService").Stepped:Connect(function()
+            RunService.Stepped:Connect(function()
                 if isNoclip and LocalPlayer.Character then
                     for _, part in pairs(LocalPlayer.Character:GetChildren()) do
                         if part:IsA("BasePart") then
@@ -235,8 +277,49 @@ local function loadCategoryContent(category)
                 end
             end)
         end)
-        createButton(contentFrame, "🌊 Toggle Water Walk", function()
-            notify("Water Walk not supported on Android")
+        createButton(contentFrame, "🕸️ Toggle Wall Climb", function()
+            wallClimbEnabled = not wallClimbEnabled
+            noPlayerCollisionEnabled = false
+            notify(wallClimbEnabled and "Wall Climb Enabled" or "Wall Climb Disabled")
+            if wallClimbEnabled then
+                RunService.Stepped:Connect(function()
+                    if wallClimbEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        local hrp = LocalPlayer.Character.HumanoidRootPart
+                        local ray = Ray.new(hrp.Position, hrp.CFrame.LookVector * 2)
+                        local hit, pos = Workspace:FindPartOnRay(ray, LocalPlayer.Character)
+                        if hit and UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                            hrp.Velocity = Vector3.new(0, 50, 0)
+                        end
+                    end
+                end)
+            end
+        end)
+        createButton(contentFrame, "👻 Toggle No Player Collision", function()
+            noPlayerCollisionEnabled = not noPlayerCollisionEnabled
+            wallClimbEnabled = false
+            if noPlayerCollisionEnabled then
+                if LocalPlayer.Character then
+                    for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            pcall(function()
+                                PhysicsService:SetPartCollisionGroup(part, collisionGroupName)
+                            end)
+                        end
+                    end
+                end
+                notify("No Player Collision Enabled")
+            else
+                if LocalPlayer.Character then
+                    for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            pcall(function()
+                                PhysicsService:SetPartCollisionGroup(part, "Default")
+                            end)
+                        end
+                    end
+                end
+                notify("No Player Collision Disabled")
+            end
         end)
     elseif category == "Teleport" then
         createButton(contentFrame, "🚪 Teleport to Spawn", function()
@@ -248,12 +331,13 @@ local function loadCategoryContent(category)
         createButton(contentFrame, "💾 Save Current Position", function()
             contentFrame:ClearAllChildren()
             local categoryDropdown = Instance.new("TextButton", contentFrame)
-            categoryDropdown.Size = UDim2.new(0, 280, 0, 30)
+            categoryDropdown.Size = UDim2.new(0, 200, 0, 25)
             categoryDropdown.Position = UDim2.new(0, 10, 0, 0)
             categoryDropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
             categoryDropdown.Text = "Category: " .. positionCategory
             categoryDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-            categoryDropdown.TextSize = 14
+            categoryDropdown.TextSize = 12
+            categoryDropdown.ZIndex = 12
             categoryDropdown.MouseButton1Click:Connect(function()
                 local catList = {"General", "Spawn", "Checkpoint", "Important", "Custom"}
                 local index = table.find(catList, positionCategory) or 1
@@ -280,27 +364,30 @@ local function loadCategoryContent(category)
             for cat, positions in pairs(savedPositions) do
                 local collapsed = true
                 local catButton = Instance.new("TextButton", contentFrame)
-                catButton.Size = UDim2.new(0, 280, 0, 30)
-                catButton.Position = UDim2.new(0, 10, 0, #contentFrame:GetChildren() * 35)
+                catButton.Size = UDim2.new(0, 200, 0, 25)
+                catButton.Position = UDim2.new(0, 10, 0, #contentFrame:GetChildren() * 30)
                 catButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
                 catButton.Text = cat .. " (" .. #positions .. ")"
                 catButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                catButton.TextSize = 14
+                catButton.TextSize = 12
+                catButton.ZIndex = 12
                 catButton.MouseButton1Click:Connect(function()
                     collapsed = not collapsed
                     contentFrame:ClearAllChildren()
                     if not collapsed then
                         for i, posData in ipairs(positions) do
                             local posFrame = Instance.new("Frame", contentFrame)
-                            posFrame.Size = UDim2.new(0, 280, 0, 30)
-                            posFrame.Position = UDim2.new(0, 10, 0, #contentFrame:GetChildren() * 35)
+                            posFrame.Size = UDim2.new(0, 200, 0, 25)
+                            posFrame.Position = UDim2.new(0, 10, 0, #contentFrame:GetChildren() * 30)
                             posFrame.BackgroundTransparency = 1
+                            posFrame.ZIndex = 12
                             local goButton = Instance.new("TextButton", posFrame)
-                            goButton.Size = UDim2.new(0, 200, 0, 30)
+                            goButton.Size = UDim2.new(0, 140, 0, 25)
                             goButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
                             goButton.Text = posData.name
                             goButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            goButton.TextSize = 14
+                            goButton.TextSize = 12
+                            goButton.ZIndex = 12
                             goButton.MouseButton1Click:Connect(function()
                                 if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                                     LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(posData.pos)
@@ -308,23 +395,25 @@ local function loadCategoryContent(category)
                                 end
                             end)
                             local renameButton = Instance.new("TextButton", posFrame)
-                            renameButton.Size = UDim2.new(0, 40, 0, 30)
-                            renameButton.Position = UDim2.new(0, 205, 0, 0)
+                            renameButton.Size = UDim2.new(0, 30, 0, 25)
+                            renameButton.Position = UDim2.new(0, 145, 0, 0)
                             renameButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-                            renameButton.Text = "Rename"
+                            renameButton.Text = "Ren"
                             renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            renameButton.TextSize = 12
+                            renameButton.TextSize = 10
+                            renameButton.ZIndex = 12
                             renameButton.MouseButton1Click:Connect(function()
                                 posData.name = "Renamed Pos " .. i
                                 notify("Renamed to " .. posData.name)
                             end)
                             local deleteButton = Instance.new("TextButton", posFrame)
-                            deleteButton.Size = UDim2.new(0, 40, 0, 30)
-                            deleteButton.Position = UDim2.new(0, 250, 0, 0)
+                            deleteButton.Size = UDim2.new(0, 30, 0, 25)
+                            deleteButton.Position = UDim2.new(0, 180, 0, 0)
                             deleteButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
                             deleteButton.Text = "Del"
                             deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            deleteButton.TextSize = 12
+                            deleteButton.TextSize = 10
+                            deleteButton.ZIndex = 12
                             deleteButton.MouseButton1Click:Connect(function()
                                 table.remove(positions, i)
                                 notify("Deleted " .. posData.name)
@@ -347,6 +436,7 @@ local function loadCategoryContent(category)
                     end
                 end
             end
+            notify("Auto Teleport Completed")
         end)
         createButton(contentFrame, "📍 Teleport to Last Freecam", function()
             if lastFreecamPos and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -445,12 +535,14 @@ local function loadCategoryContent(category)
                 local billboard = Instance.new("BillboardGui", LocalPlayer.Character:FindFirstChild("Head"))
                 billboard.Size = UDim2.new(0, 100, 0, 50)
                 billboard.StudsOffset = Vector3.new(0, 3, 0)
+                billboard.ZIndex = 10
                 local statLabel = Instance.new("TextLabel", billboard)
                 statLabel.Size = UDim2.new(1, 0, 1, 0)
                 statLabel.BackgroundTransparency = 1
                 statLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
                 statLabel.TextSize = 14
                 statLabel.Text = fakeStats[currentStatIndex]
+                statLabel.ZIndex = 10
                 spawn(function()
                     while fakeStatsEnabled do
                         currentStatIndex = (currentStatIndex % #fakeStats) + 1
@@ -467,8 +559,27 @@ local function loadCategoryContent(category)
                 notify("Fake Stats Disabled")
             end
         end)
-        createButton(contentFrame, "🎮 Auto-Detect Game Stats", function()
-            notify("Game Stats Detection not supported on Android")
+        createButton(contentFrame, "🧊 Toggle Freeze Blocks", function()
+            freezeBlocksEnabled = not freezeBlocksEnabled
+            if freezeBlocksEnabled then
+                for _, obj in pairs(Workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and not obj.Anchored and obj.Velocity.Magnitude > 0 then
+                        table.insert(frozenBlocks, {part = obj, originalVelocity = obj.Velocity})
+                        obj.Velocity = Vector3.new(0, 0, 0)
+                        obj.Anchored = true
+                    end
+                end
+                notify("Moving Blocks Frozen")
+            else
+                for _, block in pairs(frozenBlocks) do
+                    if block.part and block.part.Parent then
+                        block.part.Anchored = false
+                        block.part.Velocity = block.originalVelocity
+                    end
+                end
+                frozenBlocks = {}
+                notify("Moving Blocks Unfrozen")
+            end
         end)
     end
 end
