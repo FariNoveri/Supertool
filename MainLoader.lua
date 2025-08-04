@@ -102,6 +102,215 @@ local autoDetectGameStats = true
 
 local connections = {}
 
+-- Create GUI function
+local function createGUI()
+    local success, errorMsg = pcall(function()
+        -- Clean up old GUI
+        local oldGui = player.PlayerGui:FindFirstChild("MainLoaderGUI")
+        if oldGui then
+            oldGui:Destroy()
+        end
+        
+        -- Create new GUI
+        gui = Instance.new("ScreenGui")
+        gui.Name = "MainLoaderGUI"
+        gui.ResetOnSpawn = false
+        gui.Parent = player:WaitForChild("PlayerGui", 10)
+        
+        -- Create main logo button
+        logo = Instance.new("TextButton")
+        logo.Size = UDim2.new(0, 80, 0, 80)
+        logo.Position = UDim2.new(0.85, 0, 0.8, 0)
+        logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+        logo.TextColor3 = Color3.fromRGB(255, 255, 255)
+        logo.Text = "⚡"
+        logo.TextSize = 30
+        logo.Font = Enum.Font.GothamBold
+        logo.ZIndex = 100
+        logo.Parent = gui
+        
+        -- Make logo circular
+        local logoCorner = Instance.new("UICorner")
+        logoCorner.CornerRadius = UDim.new(0, 40)
+        logoCorner.Parent = logo
+        
+        -- Create main frame (hidden by default)
+        frame = Instance.new("Frame")
+        frame.Size = UDim2.new(0, 320, 0, 500)
+        frame.Position = UDim2.new(0.5, -160, 0.5, -250)
+        frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        frame.BackgroundTransparency = 0.1
+        frame.BorderSizePixel = 0
+        frame.Visible = false
+        frame.ZIndex = 50
+        frame.Parent = gui
+        
+        local frameCorner = Instance.new("UICorner")
+        frameCorner.CornerRadius = UDim.new(0, 15)
+        frameCorner.Parent = frame
+        
+        -- Header
+        local header = Instance.new("Frame")
+        header.Size = UDim2.new(1, 0, 0, 60)
+        header.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+        header.BorderSizePixel = 0
+        header.ZIndex = 51
+        header.Parent = frame
+        
+        local headerCorner = Instance.new("UICorner")
+        headerCorner.CornerRadius = UDim.new(0, 15)
+        headerCorner.Parent = header
+        
+        -- Title
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, -60, 1, 0)
+        title.Position = UDim2.new(0, 20, 0, 0)
+        title.BackgroundTransparency = 1
+        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.TextSize = 24
+        title.Font = Enum.Font.GothamBold
+        title.Text = "MainLoader"
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.ZIndex = 52
+        title.Parent = header
+        
+        -- Close button
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Size = UDim2.new(0, 40, 0, 40)
+        closeBtn.Position = UDim2.new(1, -50, 0, 10)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        closeBtn.Text = "×"
+        closeBtn.TextSize = 24
+        closeBtn.Font = Enum.Font.GothamBold
+        closeBtn.ZIndex = 52
+        closeBtn.Parent = header
+        
+        local closeCorner = Instance.new("UICorner")
+        closeCorner.CornerRadius = UDim.new(0, 20)
+        closeCorner.Parent = closeBtn
+        
+        -- Content area
+        local contentArea = Instance.new("Frame")
+        contentArea.Size = UDim2.new(1, -20, 1, -80)
+        contentArea.Position = UDim2.new(0, 10, 0, 70)
+        contentArea.BackgroundTransparency = 1
+        contentArea.ZIndex = 51
+        contentArea.Parent = frame
+        
+        -- Scroll frame
+        local scrollFrame = Instance.new("ScrollingFrame")
+        scrollFrame.Size = UDim2.new(1, 0, 1, 0)
+        scrollFrame.BackgroundTransparency = 1
+        scrollFrame.ScrollBarThickness = 6
+        scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+        scrollFrame.ZIndex = 51
+        scrollFrame.ClipsDescendants = true
+        scrollFrame.ScrollingEnabled = true
+        scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        scrollFrame.Parent = contentArea
+        
+        local scrollUIL = Instance.new("UIListLayout")
+        scrollUIL.FillDirection = Enum.FillDirection.Vertical
+        scrollUIL.Padding = UDim.new(0, 8)
+        scrollUIL.Parent = scrollFrame
+        
+        -- Function to create buttons
+        local function createButton(text, callback, color, icon)
+            local button = Instance.new("TextButton")
+            button.Size = UDim2.new(1, 0, 0, 60)
+            button.BackgroundColor3 = color or Color3.fromRGB(40, 40, 40)
+            button.BackgroundTransparency = 0.1
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.TextSize = 18
+            button.Font = Enum.Font.GothamBold
+            button.Text = icon .. " " .. text
+            button.TextXAlignment = Enum.TextXAlignment.Left
+            button.ZIndex = 52
+            button.Parent = scrollFrame
+            
+            local buttonCorner = Instance.new("UICorner")
+            buttonCorner.CornerRadius = UDim.new(0, 10)
+            buttonCorner.Parent = button
+            
+            button.MouseButton1Click:Connect(function()
+                local success, err = pcall(callback)
+                if not success then
+                    notify("⚠️ Error: " .. tostring(err), Color3.fromRGB(255, 100, 100))
+                end
+            end)
+            
+            return button
+        end
+        
+        -- Add feature buttons
+        createButton("Toggle Fly", toggleFly, Color3.fromRGB(0, 150, 255), "🛫")
+        createButton("Toggle Speed", toggleSpeed, Color3.fromRGB(0, 150, 255), "🏃")
+        createButton("Toggle Jump Power", toggleJump, Color3.fromRGB(0, 150, 255), "🦘")
+        createButton("Toggle Noclip", toggleNoclip, Color3.fromRGB(0, 150, 255), "🚪")
+        createButton("Toggle God Mode", toggleGodMode, Color3.fromRGB(0, 150, 255), "🛡️")
+        createButton("Teleport to Spawn", teleportToSpawn, Color3.fromRGB(0, 150, 0), "🚪")
+        createButton("Teleport to Player", teleportToPlayer, Color3.fromRGB(150, 0, 150), "👥")
+        
+        -- Logo functionality
+        logo.MouseButton1Click:Connect(function()
+            frame.Visible = not frame.Visible
+            notify(frame.Visible and "📱 GUI Opened" or "📱 GUI Closed")
+            
+            -- Animate logo
+            if frame.Visible then
+                logo.Text = "✕"
+                logo.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+            else
+                logo.Text = "⚡"
+                logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+            end
+        end)
+        
+        -- Close button functionality
+        closeBtn.MouseButton1Click:Connect(function()
+            frame.Visible = false
+            logo.Text = "⚡"
+            logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+            notify("📱 GUI Closed")
+        end)
+        
+        -- Force show logo
+        logo.Visible = true
+        logo.ZIndex = 100
+        
+        print("✅ GUI created successfully")
+        notify("✅ MainLoader GUI created successfully")
+        
+    end)
+    
+    if not success then
+        print("❌ GUI creation failed: " .. tostring(errorMsg))
+        -- Create fallback GUI
+        local fallbackGui = Instance.new("ScreenGui")
+        fallbackGui.Name = "MainLoaderFallback"
+        fallbackGui.Parent = player:WaitForChild("PlayerGui", 10)
+        
+        local fallbackBtn = Instance.new("TextButton")
+        fallbackBtn.Size = UDim2.new(0, 100, 0, 50)
+        fallbackBtn.Position = UDim2.new(0.9, -100, 0.1, 0)
+        fallbackBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        fallbackBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        fallbackBtn.Text = "KRNL"
+        fallbackBtn.TextSize = 18
+        fallbackBtn.Font = Enum.Font.GothamBold
+        fallbackBtn.ZIndex = 100
+        fallbackBtn.Parent = fallbackGui
+        
+        fallbackBtn.MouseButton1Click:Connect(function()
+            print("Fallback button clicked - GUI creation failed")
+        end)
+        
+        print("⚠️ Using fallback GUI - Main GUI failed to create")
+    end
+end
+
 -- Android DCIM folder path
 local dcimPath = "DCIM/Supertool"
 local gameName = game.Name or "UnknownGame"
@@ -2654,6 +2863,75 @@ local function startAdminMonitoring()
         end
     end)
 end
+
+-- Initialize everything
+local function main()
+    print("🚀 Starting MainLoader...")
+    
+    -- Load admin list
+    loadAdminList()
+    
+    -- Load saved data
+    loadSavedData()
+    
+    -- Create GUI with retry mechanism
+    local retryCount = 0
+    while retryCount < 3 do
+        createGUI()
+        if gui and gui.Parent then
+            print("✅ GUI created successfully on attempt " .. (retryCount + 1))
+            break
+        else
+            retryCount = retryCount + 1
+            print("⚠️ GUI creation failed, retrying... (" .. retryCount .. "/3)")
+            task.wait(2)
+        end
+    end
+    
+    if not gui or not gui.Parent then
+        print("❌ GUI creation failed after 3 attempts")
+        error("Failed to create GUI")
+    end
+    
+    -- Initialize character when loaded
+    player.CharacterAdded:Connect(function()
+        task.wait(2)
+        local char, humanoid, hr = getChar()
+        if char then
+            notify("✅ Character loaded - All features ready", Color3.fromRGB(0, 255, 0))
+        end
+    end)
+    
+    -- Initialize character if already exists
+    if player.Character then
+        task.wait(1)
+        local char, humanoid, hr = getChar()
+        if char then
+            notify("✅ Character loaded - All features ready", Color3.fromRGB(0, 255, 0))
+        end
+    end
+    
+    -- Start monitoring systems
+    startOverlayProtection()
+    startAdminMonitoring()
+    
+    -- Auto-detect game for fake stats
+    if autoDetectGameStats then
+        detectGameAndCreateStats()
+    end
+    
+    print("🎉 MainLoader fully loaded!")
+    print("📱 Look for the ⚡ button in the bottom-right corner")
+    print("🎮 Features: Fly, Speed, Jump, Noclip, God Mode, Teleport, and more!")
+    print("💡 If GUI doesn't appear, check console for error messages")
+    
+    -- Test notification
+    task.wait(1)
+    notify("🎉 MainLoader Ready! Tap ⚡ button", Color3.fromRGB(0, 255, 255))
+end
+
+-- Start the script
+main()
 
 -- Create fake stats billboard (visible to all players)
 local function createFakeStatsBillboard()
