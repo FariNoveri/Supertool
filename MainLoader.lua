@@ -905,6 +905,8 @@ local function toggleFly()
     end
 end
 
+
+
 -- Fixed Freecam toggle
 local function toggleFreecam()
     freecam = not freecam
@@ -1734,6 +1736,45 @@ local function createEnhancedGUI()
         sidebarPadding.PaddingLeft = UDim.new(0, 10)
         sidebarPadding.PaddingRight = UDim.new(0, 10)
         sidebarPadding.Parent = sidebar
+
+        local function createCategoryButton(categoryName)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -20, 0, 45)
+    button.BackgroundColor3 = categoryName == currentCategory and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
+    button.BackgroundTransparency = 0.2
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 16
+    button.Font = Enum.Font.Gotham
+    button.Text = categoryName
+    button.Name = categoryName
+    button.ZIndex = 12
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 8)
+    buttonCorner.Parent = button
+    
+    button.MouseEnter:Connect(function()
+        if categoryName ~= currentCategory then
+            button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        end
+    end)
+    
+    button.MouseLeave:Connect(function()
+        if categoryName ~= currentCategory then
+            button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        end
+    end)
+    
+    button.MouseButton1Click:Connect(function()
+        updateCategory(categoryName)
+    end)
+    
+    button.Parent = sidebar
+    return button
+end
+
+for categoryName, _ in pairs(categories) do
+    createCategoryButton(categoryName)
+end
 
         local title = Instance.new("TextLabel")
         title.Size = UDim2.new(1, -20, 0, 50)
