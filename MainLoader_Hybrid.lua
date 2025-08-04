@@ -1,5 +1,5 @@
--- MainLoader Hybrid Version: Fitur Lengkap + GUI Pasti Muncul
--- Gabungan MainLoader.lua (fitur) + MainLoader_Fixed.lua (GUI & error handling)
+-- MainLoader Minimalist Version: UI Kiri + Fungsi Fixed
+-- Desain minimalis dengan kategori di kiri dan fungsi yang diperbaiki
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -10,211 +10,79 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- Debug GUI untuk memastikan script berjalan
-local function createDebugGUI()
-    local debugGui = Instance.new("ScreenGui")
-    debugGui.Name = "DebugGUI"
-    debugGui.Parent = game.CoreGui
-    local debugFrame = Instance.new("Frame")
-    debugFrame.Size = UDim2.new(0, 200, 0, 100)
-    debugFrame.Position = UDim2.new(0.5, -100, 0.1, 0)
-    debugFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-    debugFrame.Parent = debugGui
-    local debugText = Instance.new("TextLabel")
-    debugText.Size = UDim2.new(1, 0, 1, 0)
-    debugText.BackgroundTransparency = 1
-    debugText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    debugText.Text = "DEBUG: Script Loaded"
-    debugText.TextSize = 16
-    debugText.Font = Enum.Font.GothamBold
-    debugText.Parent = debugFrame
-    task.wait(5)
-    debugGui:Destroy()
-end
+-- Variables
+local gui, logo, frame
+local humanoid, hr, char
+local selectedPlayer = nil
+local spectatingPlayer = nil
+local flying, freecam, noclip, godMode = false, false, false, false
+local flySpeed = 40
+local speedEnabled, jumpEnabled, waterWalk = false, false, false
+local moveSpeed = 50
+local jumpPower = 100
+local savedPositions = {}
+local positionCounter = 0
+local connections = {}
 
--- Notification function
+-- Enhanced position saving system
+local categories = {
+    "General",
+    "Spawn", 
+    "Checkpoint",
+    "Important"
+}
+local currentCategory = "General"
+
+-- Notification function (improved)
 local function notify(message, color)
     color = color or Color3.fromRGB(255, 255, 255)
     local notification = Instance.new("ScreenGui")
     notification.Name = "Notification"
     notification.Parent = game.CoreGui
+    
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 50)
-    frame.Position = UDim2.new(0.5, -150, 0.1, 0)
+    frame.Size = UDim2.new(0, 280, 0, 45)
+    frame.Position = UDim2.new(0.5, -140, 0.05, 0)
     frame.BackgroundColor3 = color
     frame.BorderSizePixel = 0
     frame.Parent = notification
+    
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
+    corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = frame
+    
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, 0, 1, 0)
+    text.Size = UDim2.new(1, -20, 1, 0)
+    text.Position = UDim2.new(0, 10, 0, 0)
     text.BackgroundTransparency = 1
     text.TextColor3 = Color3.fromRGB(255, 255, 255)
     text.Text = message
-    text.TextSize = 16
-    text.Font = Enum.Font.GothamBold
+    text.TextSize = 14
+    text.Font = Enum.Font.GothamMedium
+    text.TextXAlignment = Enum.TextXAlignment.Left
     text.Parent = frame
-    task.wait(3)
-    notification:Destroy()
-end
-
--- Semua variabel dan fitur dari MainLoader.lua
-local humanoid, hr, char
-local joystickFrame, cameraControlFrame, playerListFrame, positionListFrame
-local selectedPlayer = nil
-local spectatingPlayer = nil
-local spectateUI = nil
-local spectateNextBtn = nil
-local spectatePrevBtn = nil
-local spectateStopBtn = nil
-local flying, freecam, noclip, godMode = false, false, false, false
-local flySpeed = 40
-local freecamSpeed = 20
-local cameraRotationSensitivity = 0.01
-local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
-local moveSpeed = 50
-local jumpPower = 100
-
--- Enhanced position saving system
-local savedPositions = {}
-local positionCounter = 0
-local maxSavedPositions = 50
-local autoSaveEnabled = false
-local autoSaveInterval = 30
-
--- Category system for positions
-local categories = {
-    "General",
-    "Spawn",
-    "Checkpoint", 
-    "Important",
-    "Custom"
-}
-local currentCategory = "General"
-
--- Android DCIM folder path
-local dcimPath = "DCIM/Supertool"
-local gameName = game.Name or "UnknownGame"
-
--- Save data function
-local function saveData()
-    if writefile then
-        local data = {
-            positions = savedPositions,
-            positionCounter = positionCounter,
-            categories = categories,
-            currentCategory = currentCategory
-        }
-        
-        local success, result = pcall(function()
-            writefile(dcimPath .. "/" .. gameName .. "_checkpoints.json", HttpService:JSONEncode(data))
-        end)
-        
-        if success then
-            print("💾 Data saved successfully")
-        else
-            print("❌ Failed to save data: " .. tostring(result))
-        end
-    end
-end
-
--- Function to add new category
-local function addNewCategory(categoryName)
-    if not categoryName or categoryName == "" then return false end
     
-    -- Check if category already exists
-    for _, cat in ipairs(categories) do
-        if cat == categoryName then
-            return false
-        end
-    end
+    -- Animation
+    frame.Position = UDim2.new(0.5, -140, -0.1, 0)
+    local tween = TweenService:Create(frame, TweenInfo.new(0.3), {Position = UDim2.new(0.5, -140, 0.05, 0)})
+    tween:Play()
     
-    table.insert(categories, categoryName)
-    saveData()
-    notify("📁 Added new category: " .. categoryName, Color3.fromRGB(0, 255, 255))
-    return true
-end
-
--- Simple macro system (like Geometry Dash)
-local macroRecording = false
-local macroPlaying = false
-local macroActions = {}
-local macroPerfectActions = {}
-local currentAttempt = 1
-local totalAttempts = 0
-local practiceMode = false
-local macroStartTime = 0
-
--- Mobile specific variables
-local freecamCFrame = nil
-local hrCFrame = nil
-local joystickTouch = nil
-local cameraTouch = nil
-local joystickRadius = 50
-local joystickDeadzone = 0.15
-local moveDirection = Vector3.new(0, 0, 0)
-local cameraDelta = Vector2.new(0, 0)
-local cameraRotationSensitivity = 0.02 -- Increased from 0.01
-local nickHidden, randomNick = false, false
-local customNick = "PemainKeren"
-local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
-local defaultFramePos = UDim2.new(0.5, -400, 0.5, -250)
-local freezeMovingParts = false
-local originalCFrames = {}
-
--- Admin detection system
-local adminDetectionEnabled = true
-local adminList = {}
-local detectedAdmins = {}
-local adminWarningShown = false
-
--- Fake stats system
-local fakeStatsEnabled = false
-local fakeStatsData = {}
-local fakeStatsBillboard = nil
-local fakeStatsText = nil
-local currentFakeStat = ""
-local fakeStatsRotation = {}
-local fakeStatsRotationIndex = 1
-local fakeStatsRotationSpeed = 3 -- seconds per stat
-local autoDetectGameStats = true
-
-local connections = {}
-
--- Load saved data with local persistence
-local function loadSavedData()
-    local success, result = pcall(function()
-        -- Try to load from DCIM/Supertool folder if available
-        if writefile and readfile then
-            local filePath = dcimPath .. "/" .. gameName .. "_checkpoints.json"
-            if isfile and isfile(filePath) then
-                local fileContent = readfile(filePath)
-                local savedData = HttpService:JSONDecode(fileContent)
-                savedPositions = savedData.positions or {}
-                positionCounter = savedData.positionCounter or #savedPositions
-                categories = savedData.categories or categories
-                currentCategory = savedData.currentCategory or "General"
-                notify("📁 Loaded " .. #savedPositions .. " checkpoints from DCIM/Supertool", Color3.fromRGB(0, 255, 255))
-                return true
-            else
-                notify("📁 No saved checkpoints found, starting fresh", Color3.fromRGB(255, 255, 0))
-            end
-        end
-        
-        return false
+    task.wait(2.5)
+    
+    local tweenOut = TweenService:Create(frame, TweenInfo.new(0.3), {Position = UDim2.new(0.5, -140, -0.1, 0)})
+    tweenOut:Play()
+    tweenOut.Completed:Connect(function()
+        notification:Destroy()
     end)
-    
-    if not success then
-        print("❌ Failed to load saved data: " .. tostring(result))
-    end
 end
 
--- Drag function for any GUI element
+-- Drag function
 local function makeDraggable(guiElement, dragHandle)
     local dragging = false
     local dragStart = nil
     local startPos = nil
+    
+    dragHandle = dragHandle or guiElement
     
     local function updateDrag(input)
         local delta = input.Position - dragStart
@@ -255,66 +123,103 @@ local function makeDraggable(guiElement, dragHandle)
     end)
 end
 
--- Real feature functions
+-- Character initialization (improved)
+local function initChar()
+    local success, errorMsg = pcall(function()
+        if not player.Character then
+            player.CharacterAdded:Wait()
+        end
+        
+        char = player.Character
+        humanoid = char:WaitForChild("Humanoid", 10)
+        hr = char:WaitForChild("HumanoidRootPart", 10)
+        
+        if not humanoid or not hr then
+            error("Failed to find Humanoid or HumanoidRootPart")
+        end
+        
+        notify("✅ Character loaded", Color3.fromRGB(0, 255, 0))
+    end)
+    
+    if not success then
+        notify("⚠️ Character init failed: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        task.wait(2)
+        initChar()
+    end
+end
+
+-- Movement functions (fixed)
 local function toggleFly()
     flying = not flying
     local success, errorMsg = pcall(function()
         if flying then
-            if not hr or not humanoid or not camera then
+            if not hr or not humanoid then
                 flying = false
-                error("Character or camera not loaded")
+                error("Character not loaded")
+            end
+            
+            -- Remove existing BodyVelocity
+            local existingBV = hr:FindFirstChildOfClass("BodyVelocity")
+            if existingBV then
+                existingBV:Destroy()
             end
             
             local bv = Instance.new("BodyVelocity")
-            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.MaxForce = Vector3.new(4000, 4000, 4000)
             bv.Velocity = Vector3.new(0, 0, 0)
             bv.Parent = hr
             
-            connections.fly = RunService.RenderStepped:Connect(function()
-                if not hr or not humanoid or not camera then
+            connections.fly = RunService.Heartbeat:Connect(function()
+                if not hr or not bv or not bv.Parent then
                     flying = false
                     if connections.fly then
                         connections.fly:Disconnect()
                         connections.fly = nil
                     end
-                    notify("⚠️ Fly failed: Character or camera lost", Color3.fromRGB(255, 100, 100))
                     return
                 end
                 
-                local forward = camera.CFrame.LookVector
-                local right = camera.CFrame.RightVector
-                local up = Vector3.new(0, 1, 0)
-                local moveDir = Vector3.new(0, 0, 0)
+                local moveVector = humanoid.MoveDirection
+                local cameraDirection = camera.CFrame.LookVector
+                local rightVector = camera.CFrame.RightVector
                 
-                if moveDir.Magnitude > 0 then
-                    moveDir = moveDir.Unit * flySpeed
-                else
-                    moveDir = Vector3.new(0, 0, 0)
+                local flyDirection = Vector3.new(0, 0, 0)
+                
+                if moveVector.Magnitude > 0 then
+                    flyDirection = (cameraDirection * moveVector.Z + rightVector * moveVector.X) * flySpeed
                 end
                 
-                bv.Velocity = moveDir
-                hr.CFrame = CFrame.new(hr.Position) * camera.CFrame.Rotation
+                -- Add vertical movement
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    flyDirection = flyDirection + Vector3.new(0, flySpeed, 0)
+                elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    flyDirection = flyDirection + Vector3.new(0, -flySpeed, 0)
+                end
+                
+                bv.Velocity = flyDirection
             end)
-            notify("🛫 Fly Enabled")
+            
+            notify("🛫 Fly Enabled", Color3.fromRGB(0, 255, 0))
         else
             if connections.fly then
                 connections.fly:Disconnect()
                 connections.fly = nil
             end
-            if hr and hr:FindFirstChildOfClass("BodyVelocity") then
-                hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
+            
+            local bv = hr:FindFirstChildOfClass("BodyVelocity")
+            if bv then
+                bv:Destroy()
             end
-            notify("🛬 Fly Disabled")
+            
+            notify("🛬 Fly Disabled", Color3.fromRGB(255, 255, 0))
         end
     end)
+    
     if not success then
         flying = false
         if connections.fly then
             connections.fly:Disconnect()
             connections.fly = nil
-        end
-        if hr and hr:FindFirstChildOfClass("BodyVelocity") then
-            hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
         end
         notify("⚠️ Fly error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
@@ -323,18 +228,19 @@ end
 local function toggleSpeed()
     speedEnabled = not speedEnabled
     local success, errorMsg = pcall(function()
+        if not humanoid then
+            error("Humanoid not found")
+        end
+        
         if speedEnabled then
-            if humanoid then
-                humanoid.WalkSpeed = moveSpeed
-            end
-            notify("🏃 Speed Enabled")
+            humanoid.WalkSpeed = moveSpeed
+            notify("🏃 Speed Enabled (" .. moveSpeed .. ")", Color3.fromRGB(0, 255, 0))
         else
-            if humanoid then
-                humanoid.WalkSpeed = 16
-            end
-            notify("🏃 Speed Disabled")
+            humanoid.WalkSpeed = 16
+            notify("🏃 Speed Disabled", Color3.fromRGB(255, 255, 0))
         end
     end)
+    
     if not success then
         speedEnabled = false
         notify("⚠️ Speed error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
@@ -344,18 +250,19 @@ end
 local function toggleJump()
     jumpEnabled = not jumpEnabled
     local success, errorMsg = pcall(function()
+        if not humanoid then
+            error("Humanoid not found")
+        end
+        
         if jumpEnabled then
-            if humanoid then
-                humanoid.JumpPower = jumpPower
-            end
-            notify("🦘 Jump Enabled")
+            humanoid.JumpPower = jumpPower
+            notify("🦘 Jump Enabled (" .. jumpPower .. ")", Color3.fromRGB(0, 255, 0))
         else
-            if humanoid then
-                humanoid.JumpPower = 50
-            end
-            notify("🦘 Jump Disabled")
+            humanoid.JumpPower = 50
+            notify("🦘 Jump Disabled", Color3.fromRGB(255, 255, 0))
         end
     end)
+    
     if not success then
         jumpEnabled = false
         notify("⚠️ Jump error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
@@ -369,28 +276,30 @@ local function toggleNoclip()
             connections.noclip = RunService.Stepped:Connect(function()
                 if char then
                     for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
+                        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                             part.CanCollide = false
                         end
                     end
                 end
             end)
-            notify("🚪 Noclip Enabled")
+            notify("🚪 Noclip Enabled", Color3.fromRGB(0, 255, 0))
         else
             if connections.noclip then
                 connections.noclip:Disconnect()
                 connections.noclip = nil
             end
+            
             if char then
                 for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                         part.CanCollide = true
                     end
                 end
             end
-            notify("🚪 Noclip Disabled")
+            notify("🚪 Noclip Disabled", Color3.fromRGB(255, 255, 0))
         end
     end)
+    
     if not success then
         noclip = false
         if connections.noclip then
@@ -406,23 +315,27 @@ local function toggleWaterWalk()
     local success, errorMsg = pcall(function()
         if waterWalk then
             connections.waterWalk = RunService.Stepped:Connect(function()
-                if humanoid and hr then
-                    local ray = Ray.new(hr.Position, Vector3.new(0, -5, 0))
-                    local hit, pos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
-                    if hit and hit.Name:lower():find("water") then
-                        hr.Position = Vector3.new(hr.Position.X, pos.Y + 1, hr.Position.Z)
+                if humanoid and hr and humanoid.MoveDirection.Magnitude > 0 then
+                    local raycast = workspace:Raycast(hr.Position, Vector3.new(0, -10, 0))
+                    if raycast and raycast.Instance then
+                        local hit = raycast.Instance
+                        if hit.Name:lower():find("water") or hit.Material == Enum.Material.Water then
+                            local waterSurface = raycast.Position.Y
+                            hr.Position = Vector3.new(hr.Position.X, waterSurface + 3, hr.Position.Z)
+                        end
                     end
                 end
             end)
-            notify("🌊 Water Walk Enabled")
+            notify("🌊 Water Walk Enabled", Color3.fromRGB(0, 255, 0))
         else
             if connections.waterWalk then
                 connections.waterWalk:Disconnect()
                 connections.waterWalk = nil
             end
-            notify("🌊 Water Walk Disabled")
+            notify("🌊 Water Walk Disabled", Color3.fromRGB(255, 255, 0))
         end
     end)
+    
     if not success then
         waterWalk = false
         if connections.waterWalk then
@@ -436,29 +349,33 @@ end
 local function toggleGodMode()
     godMode = not godMode
     local success, errorMsg = pcall(function()
+        if not humanoid then
+            error("Humanoid not found")
+        end
+        
         if godMode then
-            if humanoid then
-                humanoid.MaxHealth = math.huge
-                humanoid.Health = math.huge
-            end
+            humanoid.MaxHealth = math.huge
+            humanoid.Health = math.huge
+            
             connections.godMode = humanoid.HealthChanged:Connect(function(health)
                 if health < math.huge then
                     humanoid.Health = math.huge
                 end
             end)
-            notify("🛡️ God Mode Enabled")
+            
+            notify("🛡️ God Mode Enabled", Color3.fromRGB(0, 255, 0))
         else
             if connections.godMode then
                 connections.godMode:Disconnect()
                 connections.godMode = nil
             end
-            if humanoid then
-                humanoid.MaxHealth = 100
-                humanoid.Health = 100
-            end
-            notify("🛡️ God Mode Disabled")
+            
+            humanoid.MaxHealth = 100
+            humanoid.Health = 100
+            notify("🛡️ God Mode Disabled", Color3.fromRGB(255, 255, 0))
         end
     end)
+    
     if not success then
         godMode = false
         if connections.godMode then
@@ -469,22 +386,23 @@ local function toggleGodMode()
     end
 end
 
+-- Teleport functions
 local function teleportToSpawn()
     local success, errorMsg = pcall(function()
         if not hr then
-            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
-            return
+            error("Character not loaded")
         end
         
         local spawnLocation = workspace:FindFirstChild("SpawnLocation") or workspace:FindFirstChild("Spawn")
         if spawnLocation then
-            hr.CFrame = CFrame.new(spawnLocation.Position + Vector3.new(0, 3, 0))
-            notify("🚪 Teleported to spawn")
+            hr.CFrame = CFrame.new(spawnLocation.Position + Vector3.new(0, 5, 0))
+            notify("🚪 Teleported to spawn", Color3.fromRGB(0, 255, 0))
         else
-            hr.CFrame = CFrame.new(0, 100, 0)
-            notify("🚪 Teleported to default spawn")
+            hr.CFrame = CFrame.new(0, 50, 0)
+            notify("🚪 Teleported to default spawn", Color3.fromRGB(0, 255, 0))
         end
     end)
+    
     if not success then
         notify("⚠️ Teleport error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
@@ -493,8 +411,7 @@ end
 local function saveCurrentPosition()
     local success, errorMsg = pcall(function()
         if not hr then
-            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
-            return
+            error("Character not loaded")
         end
         
         positionCounter = positionCounter + 1
@@ -502,245 +419,198 @@ local function saveCurrentPosition()
         local positionData = {
             name = positionName,
             position = hr.Position,
+            cframe = hr.CFrame,
             category = currentCategory,
             timestamp = os.time()
         }
         
         table.insert(savedPositions, positionData)
-        saveData()
         notify("💾 Position saved: " .. positionName, Color3.fromRGB(0, 255, 0))
     end)
+    
     if not success then
         notify("⚠️ Save position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
--- Position List UI
-local function createPositionListUI()
-    if positionListFrame then
-        positionListFrame:Destroy()
-    end
+local function showPositionList()
+    -- Create simple position selector
+    local posGui = Instance.new("ScreenGui")
+    posGui.Name = "PositionList"
+    posGui.Parent = game.CoreGui
     
-    positionListFrame = Instance.new("Frame")
-    positionListFrame.Size = UDim2.new(0, 400, 0, 500)
-    positionListFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
-    positionListFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    positionListFrame.BackgroundTransparency = 0.1
-    positionListFrame.BorderSizePixel = 0
-    positionListFrame.Visible = false
-    positionListFrame.ZIndex = 30
-    positionListFrame.Parent = gui
+    local posFrame = Instance.new("Frame")
+    posFrame.Size = UDim2.new(0, 300, 0, 400)
+    posFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
+    posFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    posFrame.BorderSizePixel = 0
+    posFrame.Parent = posGui
     
-    local frameCorner = Instance.new("UICorner")
-    frameCorner.CornerRadius = UDim.new(0, 10)
-    frameCorner.Parent = positionListFrame
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = posFrame
     
     -- Title
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 50)
+    title.Size = UDim2.new(1, 0, 0, 40)
     title.BackgroundTransparency = 1
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 20
+    title.TextSize = 16
     title.Font = Enum.Font.GothamBold
-    title.Text = "Saved Positions"
-    title.ZIndex = 31
-    title.Parent = positionListFrame
+    title.Text = "📍 Saved Positions"
+    title.Parent = posFrame
+    
+    -- Close button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -35, 0, 5)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Text = "×"
+    closeBtn.TextSize = 16
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = posFrame
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 5)
+    closeCorner.Parent = closeBtn
+    
+    closeBtn.MouseButton1Click:Connect(function()
+        posGui:Destroy()
+    end)
     
     -- Scroll frame
     local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Size = UDim2.new(1, -20, 1, -60)
-    scrollFrame.Position = UDim2.new(0, 10, 0, 50)
+    scrollFrame.Size = UDim2.new(1, -20, 1, -50)
+    scrollFrame.Position = UDim2.new(0, 10, 0, 40)
     scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 8
-    scrollFrame.ZIndex = 31
-    scrollFrame.Parent = positionListFrame
+    scrollFrame.ScrollBarThickness = 5
+    scrollFrame.Parent = posFrame
     
     local listLayout = Instance.new("UIListLayout")
     listLayout.FillDirection = Enum.FillDirection.Vertical
     listLayout.Padding = UDim.new(0, 5)
     listLayout.Parent = scrollFrame
-    
-    -- Close button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -40, 0, 10)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.Text = "×"
-    closeBtn.TextSize = 18
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.ZIndex = 31
-    closeBtn.Parent = positionListFrame
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        positionListFrame.Visible = false
-    end)
-    
-    -- Make draggable
-    makeDraggable(positionListFrame, title)
-end
-
--- Update position list
-local function updatePositionList()
-    if not positionListFrame then return end
-    
-    local scrollFrame = positionListFrame:FindFirstChild("ScrollingFrame")
-    if not scrollFrame then return end
-    
-    -- Clear existing buttons
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
     
     -- Add position buttons
     for i, posData in ipairs(savedPositions) do
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 40)
-        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        btn.Size = UDim2.new(1, 0, 0, 35)
+        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.TextSize = 14
+        btn.TextSize = 12
         btn.Font = Enum.Font.Gotham
         btn.Text = posData.name .. " (" .. posData.category .. ")"
-        btn.ZIndex = 32
         btn.Parent = scrollFrame
         
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 5)
-        corner.Parent = btn
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 5)
+        btnCorner.Parent = btn
         
         btn.MouseButton1Click:Connect(function()
-            if hr then
-                hr.CFrame = CFrame.new(posData.position)
-                notify("🚀 Teleported to " .. posData.name)
+            if hr and posData.cframe then
+                hr.CFrame = posData.cframe
+                notify("🚀 Teleported to " .. posData.name, Color3.fromRGB(0, 255, 0))
+                posGui:Destroy()
             end
         end)
     end
+    
+    -- Update canvas size
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, #savedPositions * 40)
+    
+    makeDraggable(posFrame, title)
+    notify("📍 Position List Opened", Color3.fromRGB(0, 255, 255))
 end
 
-local function showPositionList()
-    if positionListFrame then
-        positionListFrame.Visible = not positionListFrame.Visible
-        if positionListFrame.Visible then
-            updatePositionList()
-        end
-        notify(positionListFrame.Visible and "📍 Position List Opened" or "📍 Position List Closed")
-    end
-end
-
--- Player List UI
-local function createPlayerListUI()
-    if playerListFrame then
-        playerListFrame:Destroy()
-    end
+-- Player functions
+local function showPlayerList()
+    local playerGui = Instance.new("ScreenGui")
+    playerGui.Name = "PlayerList"
+    playerGui.Parent = game.CoreGui
     
-    playerListFrame = Instance.new("Frame")
-    playerListFrame.Size = UDim2.new(0, 300, 0, 400)
-    playerListFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
-    playerListFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    playerListFrame.BackgroundTransparency = 0.1
-    playerListFrame.BorderSizePixel = 0
-    playerListFrame.Visible = false
-    playerListFrame.ZIndex = 30
-    playerListFrame.Parent = gui
+    local playerFrame = Instance.new("Frame")
+    playerFrame.Size = UDim2.new(0, 250, 0, 350)
+    playerFrame.Position = UDim2.new(0.5, -125, 0.5, -175)
+    playerFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    playerFrame.BorderSizePixel = 0
+    playerFrame.Parent = playerGui
     
-    local frameCorner = Instance.new("UICorner")
-    frameCorner.CornerRadius = UDim.new(0, 10)
-    frameCorner.Parent = playerListFrame
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = playerFrame
     
     -- Title
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 50)
+    title.Size = UDim2.new(1, 0, 0, 40)
     title.BackgroundTransparency = 1
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 20
+    title.TextSize = 16
     title.Font = Enum.Font.GothamBold
-    title.Text = "Players"
-    title.ZIndex = 31
-    title.Parent = playerListFrame
-    
-    -- Scroll frame
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Size = UDim2.new(1, -20, 1, -60)
-    scrollFrame.Position = UDim2.new(0, 10, 0, 50)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 8
-    scrollFrame.ZIndex = 31
-    scrollFrame.Parent = playerListFrame
-    
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.FillDirection = Enum.FillDirection.Vertical
-    listLayout.Padding = UDim.new(0, 5)
-    listLayout.Parent = scrollFrame
+    title.Text = "👥 Players"
+    title.Parent = playerFrame
     
     -- Close button
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -40, 0, 10)
+    closeBtn.Position = UDim2.new(1, -35, 0, 5)
     closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeBtn.Text = "×"
-    closeBtn.TextSize = 18
+    closeBtn.TextSize = 16
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.ZIndex = 31
-    closeBtn.Parent = playerListFrame
+    closeBtn.Parent = playerFrame
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 5)
+    closeCorner.Parent = closeBtn
     
     closeBtn.MouseButton1Click:Connect(function()
-        playerListFrame.Visible = false
+        playerGui:Destroy()
     end)
     
-    -- Make draggable
-    makeDraggable(playerListFrame, title)
-end
-
--- Update player list
-local function updatePlayerList()
-    if not playerListFrame then return end
+    -- Scroll frame
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, -20, 1, -50)
+    scrollFrame.Position = UDim2.new(0, 10, 0, 40)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.ScrollBarThickness = 5
+    scrollFrame.Parent = playerFrame
     
-    local scrollFrame = playerListFrame:FindFirstChild("ScrollingFrame")
-    if not scrollFrame then return end
-    
-    -- Clear existing buttons
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.FillDirection = Enum.FillDirection.Vertical
+    listLayout.Padding = UDim.new(0, 3)
+    listLayout.Parent = scrollFrame
     
     -- Add player buttons
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= player then
             local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, 0, 0, 40)
-            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            btn.Size = UDim2.new(1, 0, 0, 30)
+            btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
             btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.TextSize = 14
+            btn.TextSize = 12
             btn.Font = Enum.Font.Gotham
             btn.Text = plr.Name
-            btn.ZIndex = 32
             btn.Parent = scrollFrame
             
-            local corner = Instance.new("UICorner")
-            corner.CornerRadius = UDim.new(0, 5)
-            corner.Parent = btn
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, 5)
+            btnCorner.Parent = btn
             
             btn.MouseButton1Click:Connect(function()
                 selectedPlayer = plr
-                notify("👤 Selected: " .. plr.Name)
+                notify("👤 Selected: " .. plr.Name, Color3.fromRGB(0, 255, 255))
+                playerGui:Destroy()
             end)
         end
     end
-end
-
-local function showPlayerList()
-    if playerListFrame then
-        playerListFrame.Visible = not playerListFrame.Visible
-        if playerListFrame.Visible then
-            updatePlayerList()
-        end
-        notify(playerListFrame.Visible and "👥 Player List Opened" or "👥 Player List Closed")
-    end
+    
+    -- Update canvas size
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, #Players:GetPlayers() * 35)
+    
+    makeDraggable(playerFrame, title)
+    notify("👥 Player List Opened", Color3.fromRGB(0, 255, 255))
 end
 
 local function teleportToPlayer()
@@ -749,628 +619,190 @@ local function teleportToPlayer()
         return
     end
     
-    if not selectedPlayer.Character then
-        notify("⚠️ " .. selectedPlayer.Name .. " has no character", Color3.fromRGB(255, 100, 100))
-        return
-    end
-    
-    local targetRootPart = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not targetRootPart then
-        notify("⚠️ " .. selectedPlayer.Name .. " has no root part", Color3.fromRGB(255, 100, 100))
-        return
-    end
-    
-    if not hr then
-        notify("⚠️ Your character not loaded", Color3.fromRGB(255, 100, 100))
-        return
-    end
-    
-    hr.CFrame = CFrame.new(targetRootPart.Position + Vector3.new(0, 3, 0))
-    notify("🚀 Teleported to " .. selectedPlayer.Name)
-end
-
--- Admin detection system
-local function loadAdminList()
-    -- Load admin list from file or use default
-    if readfile and isfile then
-        local adminFile = "admin_list.txt"
-        if isfile(adminFile) then
-            local content = readfile(adminFile)
-            for line in content:gmatch("[^\r\n]+") do
-                table.insert(adminList, line)
-            end
-        end
-    end
-    
-    -- Default admin names (common admin names)
-    local defaultAdmins = {"Admin", "Moderator", "Owner", "Manager", "Staff"}
-    for _, name in ipairs(defaultAdmins) do
-        if not table.find(adminList, name) then
-            table.insert(adminList, name)
-        end
-    end
-end
-
-local function startAdminMonitoring()
-    if not adminDetectionEnabled then return end
-    
-    connections.adminMonitor = RunService.Heartbeat:Connect(function()
-        for _, plr in pairs(Players:GetPlayers()) do
-            if plr ~= player then
-                local isAdmin = false
-                for _, adminName in ipairs(adminList) do
-                    if plr.Name:lower():find(adminName:lower()) or 
-                       plr.DisplayName:lower():find(adminName:lower()) then
-                        isAdmin = true
-                        break
-                    end
-                end
-                
-                if isAdmin and not table.find(detectedAdmins, plr) then
-                    table.insert(detectedAdmins, plr)
-                    notify("⚠️ Admin detected: " .. plr.Name, Color3.fromRGB(255, 100, 100))
-                end
-            end
-        end
-    end)
-end
-
-local function toggleAdminDetection()
-    adminDetectionEnabled = not adminDetectionEnabled
-    if adminDetectionEnabled then
-        startAdminMonitoring()
-        notify("🛡️ Admin Detection Enabled", Color3.fromRGB(0, 255, 0))
-    else
-        if connections.adminMonitor then
-            connections.adminMonitor:Disconnect()
-            connections.adminMonitor = nil
-        end
-        notify("🛡️ Admin Detection Disabled", Color3.fromRGB(255, 100, 100))
-    end
-end
-
--- Fake stats system
-local function createFakeStatsBillboard()
-    if fakeStatsBillboard then
-        fakeStatsBillboard:Destroy()
-    end
-    
-    fakeStatsBillboard = Instance.new("BillboardGui")
-    fakeStatsBillboard.Size = UDim2.new(0, 200, 0, 50)
-    fakeStatsBillboard.StudsOffset = Vector3.new(0, 3, 0)
-    fakeStatsBillboard.AlwaysOnTop = true
-    fakeStatsBillboard.Enabled = false
-    fakeStatsBillboard.Parent = hr
-    
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    frame.BackgroundTransparency = 0.5
-    frame.Parent = fakeStatsBillboard
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 5)
-    corner.Parent = frame
-    
-    fakeStatsText = Instance.new("TextLabel")
-    fakeStatsText.Size = UDim2.new(1, 0, 1, 0)
-    fakeStatsText.BackgroundTransparency = 1
-    fakeStatsText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    fakeStatsText.TextSize = 16
-    fakeStatsText.Font = Enum.Font.GothamBold
-    fakeStatsText.Text = "Loading stats..."
-    fakeStatsText.Parent = frame
-end
-
-local function updateFakeStatsDisplay()
-    if not fakeStatsText then return end
-    
-    local stats = {
-        "Kills: 999",
-        "Wins: 50",
-        "Level: 100",
-        "Coins: 999999",
-        "Experience: 999999"
-    }
-    
-    fakeStatsText.Text = stats[fakeStatsRotationIndex] or "Stats: 999"
-end
-
-local function startFakeStatsRotation()
-    if not fakeStatsEnabled then return end
-    
-    connections.fakeStatsRotation = RunService.Heartbeat:Connect(function()
-        if fakeStatsEnabled and fakeStatsText then
-            fakeStatsRotationIndex = fakeStatsRotationIndex + 1
-            if fakeStatsRotationIndex > 5 then
-                fakeStatsRotationIndex = 1
-            end
-            updateFakeStatsDisplay()
-        end
-    end)
-end
-
-local function toggleFakeStats()
-    fakeStatsEnabled = not fakeStatsEnabled
-    
-    if fakeStatsEnabled then
-        if not fakeStatsBillboard then
-            createFakeStatsBillboard()
-        end
-        fakeStatsBillboard.Enabled = true
-        startFakeStatsRotation()
-        notify("📊 Fake Stats Enabled", Color3.fromRGB(0, 255, 0))
-    else
-        if fakeStatsBillboard then
-            fakeStatsBillboard.Enabled = false
-        end
-        if connections.fakeStatsRotation then
-            connections.fakeStatsRotation:Disconnect()
-            connections.fakeStatsRotation = nil
-        end
-        notify("📊 Fake Stats Disabled", Color3.fromRGB(255, 100, 100))
-    end
-end
-
-local function detectGameAndCreateStats()
-    local gameName = game.Name:lower()
-    local stats = {}
-    
-    if gameName:find("adopt") then
-        stats = {"Pets: 999", "Money: 999999", "Level: 100"}
-    elseif gameName:find("murder") then
-        stats = {"Wins: 50", "Kills: 999", "Sheriff Wins: 25"}
-    elseif gameName:find("tycoon") then
-        stats = {"Money: 999999", "Level: 100", "Rebirths: 10"}
-    else
-        stats = {"Level: 100", "Coins: 999999", "Experience: 999999"}
-    end
-    
-    fakeStatsRotation = stats
-    notify("🎮 Game detected: " .. game.Name, Color3.fromRGB(0, 255, 255))
-end
-
--- Character initialization
-local function initChar()
     local success, errorMsg = pcall(function()
-        local retryCount = 0
-        while not player.Character and retryCount < 5 do
-            notify("⏳ Waiting for character to spawn... Attempt " .. (retryCount + 1), Color3.fromRGB(255, 255, 0))
-            player.CharacterAdded:Wait()
-            task.wait(2)
-            retryCount = retryCount + 1
+        if not selectedPlayer.Character then
+            error(selectedPlayer.Name .. " has no character")
         end
         
-        if not player.Character then
-            error("Character failed to load after retries")
+        local targetRootPart = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not targetRootPart then
+            error(selectedPlayer.Name .. " has no root part")
         end
         
-        char = player.Character
-        humanoid = char:WaitForChild("Humanoid", 20)
-        hr = char:WaitForChild("HumanoidRootPart", 20)
-        
-        if not humanoid or not hr then
-            error("Failed to find Humanoid or HumanoidRootPart after 20s")
+        if not hr then
+            error("Your character not loaded")
         end
         
-        notify("✅ Character loaded successfully", Color3.fromRGB(0, 255, 0))
+        hr.CFrame = CFrame.new(targetRootPart.Position + Vector3.new(0, 5, 0))
+        notify("🚀 Teleported to " .. selectedPlayer.Name, Color3.fromRGB(0, 255, 0))
     end)
     
     if not success then
-        print("initChar error: " .. tostring(errorMsg))
-        notify("⚠️ Character init failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(5)
-        initChar()
+        notify("⚠️ Teleport error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
--- Joystick for mobile controls
-local function createJoystick()
-    if joystickFrame then
-        joystickFrame:Destroy()
-    end
-    
-    joystickFrame = Instance.new("Frame")
-    joystickFrame.Size = UDim2.new(0, 150, 0, 150)
-    joystickFrame.Position = UDim2.new(0, 50, 1, -200)
-    joystickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    joystickFrame.BackgroundTransparency = 0.5
-    joystickFrame.BorderSizePixel = 0
-    joystickFrame.Visible = false
-    joystickFrame.ZIndex = 40
-    joystickFrame.Parent = gui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 75)
-    corner.Parent = joystickFrame
-    
-    -- Joystick handle
-    local handle = Instance.new("Frame")
-    handle.Size = UDim2.new(0, 30, 0, 30)
-    handle.Position = UDim2.new(0.5, -15, 0.5, -15)
-    handle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    handle.BorderSizePixel = 0
-    handle.ZIndex = 41
-    handle.Parent = joystickFrame
-    
-    local handleCorner = Instance.new("UICorner")
-    handleCorner.CornerRadius = UDim.new(0, 15)
-    handleCorner.Parent = handle
-    
-    -- Touch handling
-    joystickFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            joystickTouch = input
-        end
-    end)
-    
-    joystickFrame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch and joystickTouch then
-            local center = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize / 2
-            local touchPos = input.Position
-            local direction = (touchPos - center)
-            local distance = direction.Magnitude
-            
-            if distance > joystickRadius then
-                direction = direction.Unit * joystickRadius
-            end
-            
-            if distance > joystickDeadzone * joystickRadius then
-                moveDirection = Vector3.new(direction.X / joystickRadius, 0, direction.Y / joystickRadius)
-            else
-                moveDirection = Vector3.new(0, 0, 0)
-            end
-            
-            handle.Position = UDim2.new(0.5, -15 + direction.X, 0.5, -15 + direction.Y)
-        end
-    end)
-    
-    joystickFrame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            joystickTouch = nil
-            moveDirection = Vector3.new(0, 0, 0)
-            handle.Position = UDim2.new(0.5, -15, 0.5, -15)
-        end
-    end)
-end
-
--- Camera control for mobile
-local function createCameraControl()
-    if cameraControlFrame then
-        cameraControlFrame:Destroy()
-    end
-    
-    cameraControlFrame = Instance.new("Frame")
-    cameraControlFrame.Size = UDim2.new(0, 200, 0, 200)
-    cameraControlFrame.Position = UDim2.new(1, -250, 1, -250)
-    cameraControlFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    cameraControlFrame.BackgroundTransparency = 0.5
-    cameraControlFrame.BorderSizePixel = 0
-    cameraControlFrame.Visible = false
-    cameraControlFrame.ZIndex = 40
-    cameraControlFrame.Parent = gui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 100)
-    corner.Parent = cameraControlFrame
-    
-    -- Camera handle
-    local cameraHandle = Instance.new("Frame")
-    cameraHandle.Size = UDim2.new(0, 40, 0, 40)
-    cameraHandle.Position = UDim2.new(0.5, -20, 0.5, -20)
-    cameraHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    cameraHandle.BorderSizePixel = 0
-    cameraHandle.ZIndex = 41
-    cameraHandle.Parent = cameraControlFrame
-    
-    local handleCorner = Instance.new("UICorner")
-    handleCorner.CornerRadius = UDim.new(0, 20)
-    handleCorner.Parent = cameraHandle
-    
-    -- Touch handling
-    cameraControlFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            cameraTouch = input
-        end
-    end)
-    
-    cameraControlFrame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch and cameraTouch then
-            local center = cameraControlFrame.AbsolutePosition + cameraControlFrame.AbsoluteSize / 2
-            local touchPos = input.Position
-            local direction = (touchPos - center)
-            
-            cameraDelta = Vector2.new(direction.X / 100, direction.Y / 100)
-            cameraHandle.Position = UDim2.new(0.5, -20 + direction.X, 0.5, -20 + direction.Y)
-        end
-    end)
-    
-    cameraControlFrame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            cameraTouch = nil
-            cameraDelta = Vector2.new(0, 0)
-            cameraHandle.Position = UDim2.new(0.5, -20, 0.5, -20)
-        end
-    end)
-end
-
--- Spectate UI
-local function createSpectateUI()
-    if spectateUI then
-        spectateUI:Destroy()
-    end
-    
-    spectateUI = Instance.new("Frame")
-    spectateUI.Size = UDim2.new(0, 350, 0, 120)
-    spectateUI.Position = UDim2.new(0.5, -175, 0.1, 0)
-    spectateUI.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    spectateUI.BackgroundTransparency = 0.2
-    spectateUI.BorderSizePixel = 0
-    spectateUI.ZIndex = 50
-    spectateUI.Visible = false
-    spectateUI.Parent = gui
-    
-    local spectateCorner = Instance.new("UICorner")
-    spectateCorner.CornerRadius = UDim.new(0, 10)
-    spectateCorner.Parent = spectateUI
-    
-    -- Make spectate UI draggable
-    makeDraggable(spectateUI, spectateUI)
-    
-    -- Spectate info
-    local spectateInfo = Instance.new("TextLabel")
-    spectateInfo.Size = UDim2.new(1, 0, 0, 40)
-    spectateInfo.Position = UDim2.new(0, 10, 0, 5)
-    spectateInfo.BackgroundTransparency = 1
-    spectateInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
-    spectateInfo.TextSize = 18
-    spectateInfo.Font = Enum.Font.GothamBold
-    spectateInfo.Text = "👁️ Spectating: None"
-    spectateInfo.ZIndex = 51
-    spectateInfo.Parent = spectateUI
-    
-    -- Previous button
-    spectatePrevBtn = Instance.new("TextButton")
-    spectatePrevBtn.Size = UDim2.new(0, 100, 0, 40)
-    spectatePrevBtn.Position = UDim2.new(0, 10, 0, 50)
-    spectatePrevBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
-    spectatePrevBtn.BackgroundTransparency = 0.2
-    spectatePrevBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    spectatePrevBtn.TextSize = 16
-    spectatePrevBtn.Font = Enum.Font.GothamBold
-    spectatePrevBtn.Text = "◀ Previous"
-    spectatePrevBtn.ZIndex = 51
-    spectatePrevBtn.Parent = spectateUI
-    
-    local prevCorner = Instance.new("UICorner")
-    prevCorner.CornerRadius = UDim.new(0, 8)
-    prevCorner.Parent = spectatePrevBtn
-    
-    -- Next button
-    spectateNextBtn = Instance.new("TextButton")
-    spectateNextBtn.Size = UDim2.new(0, 100, 0, 40)
-    spectateNextBtn.Position = UDim2.new(0, 125, 0, 50)
-    spectateNextBtn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-    spectateNextBtn.BackgroundTransparency = 0.2
-    spectateNextBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    spectateNextBtn.TextSize = 16
-    spectateNextBtn.Font = Enum.Font.GothamBold
-    spectateNextBtn.Text = "Next ▶"
-    spectateNextBtn.ZIndex = 51
-    spectateNextBtn.Parent = spectateUI
-    
-    local nextCorner = Instance.new("UICorner")
-    nextCorner.CornerRadius = UDim.new(0, 8)
-    nextCorner.Parent = spectateNextBtn
-    
-    -- Stop button
-    spectateStopBtn = Instance.new("TextButton")
-    spectateStopBtn.Size = UDim2.new(0, 100, 0, 40)
-    spectateStopBtn.Position = UDim2.new(0, 240, 0, 50)
-    spectateStopBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-    spectateStopBtn.BackgroundTransparency = 0.2
-    spectateStopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    spectateStopBtn.TextSize = 16
-    spectateStopBtn.Font = Enum.Font.GothamBold
-    spectateStopBtn.Text = "Stop"
-    spectateStopBtn.ZIndex = 51
-    spectateStopBtn.Parent = spectateUI
-    
-    local stopCorner = Instance.new("UICorner")
-    stopCorner.CornerRadius = UDim.new(0, 8)
-    stopCorner.Parent = spectateStopBtn
-    
-    notify("👁️ Spectate UI created", Color3.fromRGB(0, 255, 255))
-end
-
--- Overlay protection
-local function startOverlayProtection()
-    -- Ensure GUI stays on top
-    connections.overlayProtection = RunService.Heartbeat:Connect(function()
-        if gui then
-            gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        end
-    end)
-end
-
--- Create GUI function dengan error handling yang aman
+-- Create minimalist GUI
 local function createGUI()
-    print("🔧 Starting GUI creation...")
     local success, errorMsg = pcall(function()
         -- Clean up old GUI
-        local oldGui = player.PlayerGui:FindFirstChild("MainLoaderGUI")
+        local oldGui = game.CoreGui:FindFirstChild("MainLoaderMinimal")
         if oldGui then
             oldGui:Destroy()
-            print("🗑️ Cleaned up old GUI")
         end
         
-        print("📱 Creating ScreenGui...")
-        -- Create new GUI - Try CoreGui first, then PlayerGui
+        -- Create ScreenGui
         gui = Instance.new("ScreenGui")
-        gui.Name = "MainLoaderGUI"
+        gui.Name = "MainLoaderMinimal"
         gui.ResetOnSpawn = false
+        gui.Parent = game.CoreGui
         
-        -- Try CoreGui first (better for executors)
-        local success1 = pcall(function()
-            gui.Parent = game.CoreGui
-        end)
-        
-        if not success1 then
-            -- Fallback to PlayerGui
-            gui.Parent = player:WaitForChild("PlayerGui", 10)
-        end
-        
-        if not gui then
-            error("Failed to create ScreenGui")
-        end
-        
-        print("✅ ScreenGui created successfully")
-        
-        print("🎯 Creating logo button...")
-        -- Create main logo button (draggable)
+        -- Create logo button (smaller, bottom-right)
         logo = Instance.new("TextButton")
-        logo.Size = UDim2.new(0, 80, 0, 80)
-        logo.Position = UDim2.new(0.85, 0, 0.8, 0)
-        logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+        logo.Size = UDim2.new(0, 50, 0, 50)
+        logo.Position = UDim2.new(1, -60, 1, -60)
+        logo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         logo.TextColor3 = Color3.fromRGB(255, 255, 255)
         logo.Text = "⚡"
-        logo.TextSize = 30
+        logo.TextSize = 20
         logo.Font = Enum.Font.GothamBold
         logo.ZIndex = 1000
-        logo.Visible = true
         logo.Parent = gui
         
-        if not logo then
-            error("Failed to create logo button")
-        end
-        
-        print("✅ Logo button created successfully")
-        
-        -- Make logo circular
+        -- Logo styling
         local logoCorner = Instance.new("UICorner")
-        logoCorner.CornerRadius = UDim.new(0, 40)
+        logoCorner.CornerRadius = UDim.new(0, 25)
         logoCorner.Parent = logo
         
-        -- Make logo draggable
-        makeDraggable(logo, logo)
+        local logoStroke = Instance.new("UIStroke")
+        logoStroke.Color = Color3.fromRGB(100, 100, 100)
+        logoStroke.Thickness = 1
+        logoStroke.Parent = logo
         
-        print("📋 Creating main frame...")
-        -- Create main frame (hidden by default, draggable)
+        -- Main frame (smaller, minimalist)
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 800, 0, 500)
-        frame.Position = UDim2.new(0.5, -400, 0.5, -250)
+        frame.Size = UDim2.new(0, 500, 0, 350)
+        frame.Position = UDim2.new(0.5, -250, 0.5, -175)
         frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-        frame.BackgroundTransparency = 0.1
+        frame.BackgroundTransparency = 0.05
         frame.BorderSizePixel = 0
         frame.Visible = false
-        frame.ZIndex = 50
+        frame.ZIndex = 100
         frame.Parent = gui
         
         local frameCorner = Instance.new("UICorner")
-        frameCorner.CornerRadius = UDim.new(0, 15)
+        frameCorner.CornerRadius = UDim.new(0, 8)
         frameCorner.Parent = frame
         
-        -- Header (draggable handle)
+        local frameStroke = Instance.new("UIStroke")
+        frameStroke.Color = Color3.fromRGB(50, 50, 50)
+        frameStroke.Thickness = 1
+        frameStroke.Parent = frame
+        
+        -- Header
         local header = Instance.new("Frame")
-        header.Size = UDim2.new(1, 0, 0, 60)
-        header.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        header.Size = UDim2.new(1, 0, 0, 40)
+        header.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         header.BorderSizePixel = 0
-        header.ZIndex = 51
+        header.ZIndex = 101
         header.Parent = frame
         
         local headerCorner = Instance.new("UICorner")
-        headerCorner.CornerRadius = UDim.new(0, 15)
+        headerCorner.CornerRadius = UDim.new(0, 8)
         headerCorner.Parent = header
-        
-        -- Make frame draggable by header
-        makeDraggable(frame, header)
         
         -- Title
         local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, -60, 1, 0)
-        title.Position = UDim2.new(0, 20, 0, 0)
+        title.Size = UDim2.new(1, -50, 1, 0)
+        title.Position = UDim2.new(0, 15, 0, 0)
         title.BackgroundTransparency = 1
         title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        title.TextSize = 24
+        title.TextSize = 14
         title.Font = Enum.Font.GothamBold
-        title.Text = "MainLoader Enhanced"
+        title.Text = "MainLoader Minimal"
         title.TextXAlignment = Enum.TextXAlignment.Left
-        title.ZIndex = 52
+        title.ZIndex = 102
         title.Parent = header
         
         -- Close button
         local closeBtn = Instance.new("TextButton")
-        closeBtn.Size = UDim2.new(0, 40, 0, 40)
-        closeBtn.Position = UDim2.new(1, -50, 0, 10)
-        closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        closeBtn.Size = UDim2.new(0, 30, 0, 30)
+        closeBtn.Position = UDim2.new(1, -35, 0, 5)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         closeBtn.Text = "×"
-        closeBtn.TextSize = 24
+        closeBtn.TextSize = 16
         closeBtn.Font = Enum.Font.GothamBold
-        closeBtn.ZIndex = 52
+        closeBtn.ZIndex = 102
         closeBtn.Parent = header
         
-        local closeCorner = Instance.new("UICorner")
-        closeCorner.CornerRadius = UDim.new(0, 20)
-        closeCorner.Parent = closeBtn
+        local closeBtnCorner = Instance.new("UICorner")
+        closeBtnCorner.CornerRadius = UDim.new(0, 5)
+        closeBtnCorner.Parent = closeBtn
         
-        -- Left sidebar for categories
+        -- Left sidebar (categories) - smaller
         local sidebar = Instance.new("Frame")
-        sidebar.Size = UDim2.new(0, 200, 1, -60)
-        sidebar.Position = UDim2.new(0, 0, 0, 60)
-        sidebar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        sidebar.Size = UDim2.new(0, 120, 1, -40)
+        sidebar.Position = UDim2.new(0, 0, 0, 40)
+        sidebar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
         sidebar.BorderSizePixel = 0
-        sidebar.ZIndex = 51
+        sidebar.ZIndex = 101
         sidebar.Parent = frame
-        
-        local sidebarCorner = Instance.new("UICorner")
-        sidebarCorner.CornerRadius = UDim.new(0, 15)
-        sidebarCorner.Parent = sidebar
         
         -- Right content area
         local contentArea = Instance.new("Frame")
-        contentArea.Size = UDim2.new(1, -200, 1, -60)
-        contentArea.Position = UDim2.new(0, 200, 0, 60)
+        contentArea.Size = UDim2.new(1, -120, 1, -40)
+        contentArea.Position = UDim2.new(0, 120, 0, 40)
         contentArea.BackgroundTransparency = 1
-        contentArea.ZIndex = 51
+        contentArea.ZIndex = 101
         contentArea.Parent = frame
         
         -- Scroll frame for content
         local scrollFrame = Instance.new("ScrollingFrame")
-        scrollFrame.Size = UDim2.new(1, -20, 1, -20)
-        scrollFrame.Position = UDim2.new(0, 10, 0, 10)
+        scrollFrame.Size = UDim2.new(1, -10, 1, -10)
+        scrollFrame.Position = UDim2.new(0, 5, 0, 5)
         scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 8
-        scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-        scrollFrame.ZIndex = 51
-        scrollFrame.ClipsDescendants = true
-        scrollFrame.ScrollingEnabled = true
-        scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        scrollFrame.ScrollBarThickness = 4
+        scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+        scrollFrame.ZIndex = 101
         scrollFrame.Parent = contentArea
         
         local scrollUIL = Instance.new("UIListLayout")
         scrollUIL.FillDirection = Enum.FillDirection.Vertical
-        scrollUIL.Padding = UDim.new(0, 8)
+        scrollUIL.Padding = UDim.new(0, 4)
         scrollUIL.Parent = scrollFrame
         
-        -- Function to create buttons
+        -- Function to create feature buttons (smaller)
         local function createButton(text, callback, color, icon)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, 0, 0, 50)
-            button.BackgroundColor3 = color or Color3.fromRGB(30, 30, 30)
+            button.Size = UDim2.new(1, 0, 0, 32)
+            button.BackgroundColor3 = color or Color3.fromRGB(25, 25, 25)
             button.BackgroundTransparency = 0.1
             button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 16
-            button.Font = Enum.Font.GothamBold
-            button.Text = icon .. " " .. text
+            button.TextSize = 12
+            button.Font = Enum.Font.Gotham
+            button.Text = "  " .. (icon or "•") .. " " .. text
             button.TextXAlignment = Enum.TextXAlignment.Left
-            button.ZIndex = 52
+            button.ZIndex = 102
             button.Parent = scrollFrame
             
             local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
+            buttonCorner.CornerRadius = UDim.new(0, 4)
             buttonCorner.Parent = button
+            
+            local buttonStroke = Instance.new("UIStroke")
+            buttonStroke.Color = Color3.fromRGB(40, 40, 40)
+            buttonStroke.Thickness = 1
+            buttonStroke.Parent = button
+            
+            -- Hover effect
+            button.MouseEnter:Connect(function()
+                button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            end)
+            
+            button.MouseLeave:Connect(function()
+                button.BackgroundColor3 = color or Color3.fromRGB(25, 25, 25)
+            end)
             
             button.MouseButton1Click:Connect(function()
                 local success, err = pcall(callback)
@@ -1382,32 +814,38 @@ local function createGUI()
             return button
         end
         
-        -- Category buttons for sidebar
-        local function createCategoryButton(text, categoryName)
+        -- Function to create category buttons (smaller)
+        local function createCategoryButton(text, categoryName, yPos)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -20, 0, 45)
-            button.Position = UDim2.new(0, 10, 0, 10 + (45 * #sidebar:GetChildren()))
-            button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            button.BackgroundTransparency = 0.2
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 16
-            button.Font = Enum.Font.GothamBold
+            button.Size = UDim2.new(1, -8, 0, 35)
+            button.Position = UDim2.new(0, 4, 0, yPos)
+            button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            button.BackgroundTransparency = 0.1
+            button.TextColor3 = Color3.fromRGB(200, 200, 200)
+            button.TextSize = 11
+            button.Font = Enum.Font.GothamMedium
             button.Text = text
-            button.ZIndex = 52
+            button.ZIndex = 102
             button.Name = categoryName
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
-            buttonCorner.Parent = button
             button.Parent = sidebar
+            
+            local buttonCorner = Instance.new("UICorner")
+            buttonCorner.CornerRadius = UDim.new(0, 4)
+            buttonCorner.Parent = button
+            
+            local buttonStroke = Instance.new("UIStroke")
+            buttonStroke.Color = Color3.fromRGB(40, 40, 40)
+            buttonStroke.Thickness = 1
+            buttonStroke.Parent = button
             
             return button
         end
         
         -- Create category buttons
-        local movementBtn = createCategoryButton("Movement", "Movement")
-        local teleportBtn = createCategoryButton("Teleport", "Teleport")
-        local playerBtn = createCategoryButton("Player", "Player")
-        local miscBtn = createCategoryButton("Misc", "Misc")
+        local movementBtn = createCategoryButton("Movement", "Movement", 5)
+        local teleportBtn = createCategoryButton("Teleport", "Teleport", 45)
+        local playerBtn = createCategoryButton("Player", "Player", 85)
+        local miscBtn = createCategoryButton("Misc", "Misc", 125)
         
         -- Function to show category content
         local function showCategory(categoryName)
@@ -1421,35 +859,143 @@ local function createGUI()
             -- Reset all category button colors
             for _, child in pairs(sidebar:GetChildren()) do
                 if child:IsA("TextButton") then
-                    child.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                    child.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                    child.TextColor3 = Color3.fromRGB(200, 200, 200)
                 end
             end
             
             -- Highlight selected category
             local selectedBtn = sidebar:FindFirstChild(categoryName)
             if selectedBtn then
-                selectedBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+                selectedBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                selectedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
             end
             
             -- Add category-specific buttons
             if categoryName == "Movement" then
-                createButton("Toggle Fly", toggleFly, Color3.fromRGB(0, 150, 255), "🛫")
-                createButton("Toggle Speed", toggleSpeed, Color3.fromRGB(0, 150, 255), "🏃")
-                createButton("Toggle Jump Power", toggleJump, Color3.fromRGB(0, 150, 255), "🦘")
-                createButton("Toggle Noclip", toggleNoclip, Color3.fromRGB(0, 150, 255), "🚪")
-                createButton("Toggle Water Walk", toggleWaterWalk, Color3.fromRGB(0, 150, 255), "🌊")
+                createButton("Toggle Fly", toggleFly, Color3.fromRGB(30, 30, 30), "🛫")
+                createButton("Toggle Speed", toggleSpeed, Color3.fromRGB(30, 30, 30), "🏃")
+                createButton("Toggle Jump Power", toggleJump, Color3.fromRGB(30, 30, 30), "🦘")
+                createButton("Toggle Noclip", toggleNoclip, Color3.fromRGB(30, 30, 30), "🚪")
+                createButton("Toggle Water Walk", toggleWaterWalk, Color3.fromRGB(30, 30, 30), "🌊")
+                createButton("Toggle God Mode", toggleGodMode, Color3.fromRGB(30, 30, 30), "🛡️")
+                
             elseif categoryName == "Teleport" then
-                createButton("Teleport to Spawn", teleportToSpawn, Color3.fromRGB(0, 150, 0), "🚪")
-                createButton("Save Current Position", saveCurrentPosition, Color3.fromRGB(150, 150, 0), "💾")
-                createButton("Show Position List", showPositionList, Color3.fromRGB(150, 150, 0), "📍")
+                createButton("Teleport to Spawn", teleportToSpawn, Color3.fromRGB(30, 30, 30), "🚪")
+                createButton("Save Current Position", saveCurrentPosition, Color3.fromRGB(30, 30, 30), "💾")
+                createButton("Show Position List", showPositionList, Color3.fromRGB(30, 30, 30), "📍")
+                
             elseif categoryName == "Player" then
-                createButton("Show Player List", showPlayerList, Color3.fromRGB(150, 0, 150), "👥")
-                createButton("Teleport to Player", teleportToPlayer, Color3.fromRGB(150, 0, 150), "🚀")
-                createButton("Toggle Admin Detection", toggleAdminDetection, Color3.fromRGB(255, 100, 100), "🛡️")
+                createButton("Show Player List", showPlayerList, Color3.fromRGB(30, 30, 30), "👥")
+                createButton("Teleport to Player", teleportToPlayer, Color3.fromRGB(30, 30, 30), "🚀")
+                if selectedPlayer then
+                    createButton("Selected: " .. selectedPlayer.Name, function() end, Color3.fromRGB(40, 40, 40), "👤")
+                else
+                    createButton("No Player Selected", function() end, Color3.fromRGB(60, 30, 30), "👤")
+                end
+                
             elseif categoryName == "Misc" then
-                createButton("Toggle God Mode", toggleGodMode, Color3.fromRGB(0, 150, 255), "🛡️")
-                createButton("Toggle Fake Stats", toggleFakeStats, Color3.fromRGB(255, 150, 0), "📊")
-                createButton("Auto-Detect Game Stats", detectGameAndCreateStats, Color3.fromRGB(0, 255, 255), "🎮")
+                createButton("Respawn Character", function()
+                    player:LoadCharacter()
+                    notify("🔄 Respawning...", Color3.fromRGB(0, 255, 255))
+                end, Color3.fromRGB(30, 30, 30), "🔄")
+                
+                createButton("Reset All Features", function()
+                    -- Reset all features
+                    if flying then toggleFly() end
+                    if speedEnabled then toggleSpeed() end
+                    if jumpEnabled then toggleJump() end
+                    if noclip then toggleNoclip() end
+                    if waterWalk then toggleWaterWalk() end
+                    if godMode then toggleGodMode() end
+                    notify("🔄 All features reset", Color3.fromRGB(255, 255, 0))
+                end, Color3.fromRGB(30, 30, 30), "🔄")
+                
+                createButton("Settings", function()
+                    -- Create settings UI
+                    local settingsGui = Instance.new("ScreenGui")
+                    settingsGui.Name = "Settings"
+                    settingsGui.Parent = game.CoreGui
+                    
+                    local settingsFrame = Instance.new("Frame")
+                    settingsFrame.Size = UDim2.new(0, 300, 0, 200)
+                    settingsFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+                    settingsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                    settingsFrame.BorderSizePixel = 0
+                    settingsFrame.Parent = settingsGui
+                    
+                    local settingsCorner = Instance.new("UICorner")
+                    settingsCorner.CornerRadius = UDim.new(0, 8)
+                    settingsCorner.Parent = settingsFrame
+                    
+                    -- Settings content
+                    local settingsTitle = Instance.new("TextLabel")
+                    settingsTitle.Size = UDim2.new(1, 0, 0, 40)
+                    settingsTitle.BackgroundTransparency = 1
+                    settingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    settingsTitle.Text = "⚙️ Settings"
+                    settingsTitle.TextSize = 16
+                    settingsTitle.Font = Enum.Font.GothamBold
+                    settingsTitle.Parent = settingsFrame
+                    
+                    -- Speed slider
+                    local speedLabel = Instance.new("TextLabel")
+                    speedLabel.Size = UDim2.new(1, -20, 0, 25)
+                    speedLabel.Position = UDim2.new(0, 10, 0, 50)
+                    speedLabel.BackgroundTransparency = 1
+                    speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    speedLabel.Text = "Speed: " .. moveSpeed
+                    speedLabel.TextSize = 12
+                    speedLabel.Font = Enum.Font.Gotham
+                    speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    speedLabel.Parent = settingsFrame
+                    
+                    -- Fly speed slider
+                    local flyLabel = Instance.new("TextLabel")
+                    flyLabel.Size = UDim2.new(1, -20, 0, 25)
+                    flyLabel.Position = UDim2.new(0, 10, 0, 90)
+                    flyLabel.BackgroundTransparency = 1
+                    flyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    flyLabel.Text = "Fly Speed: " .. flySpeed
+                    flyLabel.TextSize = 12
+                    flyLabel.Font = Enum.Font.Gotham
+                    flyLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    flyLabel.Parent = settingsFrame
+                    
+                    -- Jump power slider
+                    local jumpLabel = Instance.new("TextLabel")
+                    jumpLabel.Size = UDim2.new(1, -20, 0, 25)
+                    jumpLabel.Position = UDim2.new(0, 10, 0, 130)
+                    jumpLabel.BackgroundTransparency = 1
+                    jumpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    jumpLabel.Text = "Jump Power: " .. jumpPower
+                    jumpLabel.TextSize = 12
+                    jumpLabel.Font = Enum.Font.Gotham
+                    jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    jumpLabel.Parent = settingsFrame
+                    
+                    -- Close settings
+                    local closeSettings = Instance.new("TextButton")
+                    closeSettings.Size = UDim2.new(0, 30, 0, 30)
+                    closeSettings.Position = UDim2.new(1, -35, 0, 5)
+                    closeSettings.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+                    closeSettings.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    closeSettings.Text = "×"
+                    closeSettings.TextSize = 16
+                    closeSettings.Font = Enum.Font.GothamBold
+                    closeSettings.Parent = settingsFrame
+                    
+                    local closeSettingsCorner = Instance.new("UICorner")
+                    closeSettingsCorner.CornerRadius = UDim.new(0, 5)
+                    closeSettingsCorner.Parent = closeSettings
+                    
+                    closeSettings.MouseButton1Click:Connect(function()
+                        settingsGui:Destroy()
+                    end)
+                    
+                    makeDraggable(settingsFrame, settingsTitle)
+                    notify("⚙️ Settings opened", Color3.fromRGB(0, 255, 255))
+                end, Color3.fromRGB(30, 30, 30), "⚙️")
             end
         end
         
@@ -1473,20 +1019,16 @@ local function createGUI()
         -- Show default category
         showCategory("Movement")
         
-        print("🔘 Creating feature buttons...")
-        
-        print("🔗 Setting up logo functionality...")
         -- Logo functionality
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
             
-            -- Animate logo
             if frame.Visible then
-                logo.Text = "✕"
-                logo.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+                logo.Text = "×"
+                logo.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
             else
                 logo.Text = "⚡"
-                logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+                logo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             end
         end)
         
@@ -1494,160 +1036,73 @@ local function createGUI()
         closeBtn.MouseButton1Click:Connect(function()
             frame.Visible = false
             logo.Text = "⚡"
-            logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
-            notify("📱 GUI Closed")
+            logo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         end)
         
-        print("✅ GUI created successfully")
-        notify("✅ MainLoader GUI created successfully")
+        -- Make draggable
+        makeDraggable(frame, header)
+        makeDraggable(logo, logo)
         
-        -- Ensure logo is visible
-        if logo then
-            logo.Visible = true
-            logo.ZIndex = 1000 -- Ensure it's on top
-            print("✅ Logo is visible and ready")
-        end
+        notify("✅ MainLoader Minimal GUI Ready", Color3.fromRGB(0, 255, 0))
         
     end)
     
     if not success then
-        print("❌ GUI creation failed: " .. tostring(errorMsg))
-        notify("❌ GUI creation failed", Color3.fromRGB(255, 100, 100))
-        -- Create fallback GUI
-        local fallbackGui = Instance.new("ScreenGui")
-        fallbackGui.Name = "MainLoaderFallback"
-        
-        -- Try CoreGui first
-        local success1 = pcall(function()
-            fallbackGui.Parent = game.CoreGui
-        end)
-        
-        if not success1 then
-            fallbackGui.Parent = player:WaitForChild("PlayerGui", 10)
-        end
-        
-        local fallbackBtn = Instance.new("TextButton")
-        fallbackBtn.Size = UDim2.new(0, 100, 0, 50)
-        fallbackBtn.Position = UDim2.new(0.9, -100, 0.1, 0)
-        fallbackBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-        fallbackBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        fallbackBtn.Text = "⚡"
-        fallbackBtn.TextSize = 18
-        fallbackBtn.Font = Enum.Font.GothamBold
-        fallbackBtn.ZIndex = 1000
-        fallbackBtn.Visible = true
-        fallbackBtn.Parent = fallbackGui
-        
-        fallbackBtn.MouseButton1Click:Connect(function()
-            notify("⚠️ Main GUI failed to create", Color3.fromRGB(255, 100, 100))
-        end)
-        
-        print("⚠️ Using fallback GUI - Main GUI failed to create")
+        notify("❌ GUI creation failed: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
 -- Main function
 local function main()
-    print("🚀 Starting MainLoader Hybrid...")
+    task.wait(2)
     
-    local success, errorMsg = pcall(function()
-        -- Wait a bit for game to load
+    -- Initialize character
+    initChar()
+    
+    -- Create GUI
+    createGUI()
+    
+    -- Connect character respawn
+    player.CharacterAdded:Connect(function()
         task.wait(2)
-        
-        -- Load basic data
-        loadSavedData()
-        task.wait(1)
-        
-        -- Create GUI with retry mechanism
-        local retryCount = 0
-        local guiCreated = false
-        
-        while retryCount < 3 and not guiCreated do
-            createGUI()
-            
-            -- Check if GUI was created successfully
-            if gui and gui.Parent then
-                print("✅ GUI created successfully on attempt " .. (retryCount + 1))
-                guiCreated = true
-                break
-            else
-                retryCount = retryCount + 1
-                print("⚠️ GUI creation failed, retrying... (" .. retryCount .. "/3)")
-                task.wait(3) -- Wait longer between retries
-            end
-        end
-        
-        if not guiCreated then
-            print("❌ Failed to create GUI after 3 attempts")
-            notify("❌ GUI creation failed - Check console", Color3.fromRGB(255, 100, 100))
-            return
-        end
-        
-        -- Create other UI elements (with error handling)
-        local function safeCreate(func, name)
-            local success, err = pcall(func)
-            if not success then
-                print("⚠️ Failed to create " .. name .. ": " .. tostring(err))
-            else
-                print("✅ " .. name .. " created successfully")
-            end
-        end
-        
-        -- Only create essential UI elements
-        safeCreate(createJoystick, "Joystick")
-        safeCreate(createCameraControl, "Camera Control")
-        safeCreate(createPlayerListUI, "Player List UI")
-        safeCreate(createPositionListUI, "Position List UI")
-        safeCreate(createSpectateUI, "Spectate UI")
-        
-        -- Start systems (with error handling)
-        local function safeStart(func, name)
-            local success, err = pcall(func)
-            if not success then
-                print("⚠️ Failed to start " .. name .. ": " .. tostring(err))
-            else
-                print("✅ " .. name .. " started successfully")
-            end
-        end
-        
-        safeStart(startOverlayProtection, "Overlay Protection")
-        safeStart(loadAdminList, "Admin List")
-        safeStart(startAdminMonitoring, "Admin Monitoring")
-        safeStart(detectGameAndCreateStats, "Game Detection")
-        safeStart(initChar, "Character Init")
-        
-        -- Connect character respawn
-        player.CharacterAdded:Connect(function()
-            task.wait(2)
-            safeStart(initChar, "Character Init (Respawn)")
-        end)
-        
-        print("🎉 MainLoader Hybrid fully loaded!")
-        print("📱 Look for the ⚡ button in the bottom-right corner")
-        print("🎮 Features: Movement, Teleport, Player, Misc categories")
-        
-        -- Test notification
-        task.wait(1)
-        notify("✅ MainLoader Hybrid Ready! Tap ⚡ button", Color3.fromRGB(0, 255, 0))
-        
-        -- Additional test to ensure GUI is visible
-        task.wait(2)
-        if logo and logo.Visible then
-            print("✅ Logo is visible and ready!")
-            notify("🎯 Logo button is visible - Click it to open GUI!", Color3.fromRGB(0, 255, 255))
-        else
-            print("⚠️ Logo might not be visible")
-            notify("⚠️ Logo button may not be visible - Check console for errors", Color3.fromRGB(255, 255, 0))
-        end
-        
+        initChar()
     end)
     
-    if not success then
-        print("❌ Main function error: " .. tostring(errorMsg))
-        print("🔄 Retrying in 3 seconds...")
-        task.wait(3)
-        main()
+    -- Connect player selection update
+    task.spawn(function()
+        while true do
+            task.wait(5)
+            -- Update player list periodically if GUI is open
+            if frame and frame.Visible then
+                local selectedBtn = sidebar:FindFirstChild("Player")
+                if selectedBtn and selectedBtn.BackgroundColor3 == Color3.fromRGB(40, 40, 40) then
+                    -- Refresh player category if it's currently selected
+                    showCategory("Player")
+                end
+            end
+        end
+    end)
+    
+    notify("🚀 MainLoader Minimal Loaded!", Color3.fromRGB(0, 255, 255))
+    notify("Click the ⚡ button to open GUI", Color3.fromRGB(255, 255, 0))
+end
+
+-- Cleanup function
+local function cleanup()
+    for _, connection in pairs(connections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    connections = {}
+    
+    if gui then
+        gui:Destroy()
     end
 end
 
+-- Run on game closing
+game:BindToClose(cleanup)
+
+-- Start the script
 main()
