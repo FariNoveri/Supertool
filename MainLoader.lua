@@ -149,19 +149,29 @@ end
 
 -- Create GUI function
 local function createGUI()
+    print("🔧 Starting GUI creation...")
     local success, errorMsg = pcall(function()
         -- Clean up old GUI
         local oldGui = player.PlayerGui:FindFirstChild("MainLoaderGUI")
         if oldGui then
             oldGui:Destroy()
+            print("🗑️ Cleaned up old GUI")
         end
         
+        print("📱 Creating ScreenGui...")
         -- Create new GUI
         gui = Instance.new("ScreenGui")
         gui.Name = "MainLoaderGUI"
         gui.ResetOnSpawn = false
         gui.Parent = player:WaitForChild("PlayerGui", 10)
         
+        if not gui then
+            error("Failed to create ScreenGui")
+        end
+        
+        print("✅ ScreenGui created successfully")
+        
+        print("🎯 Creating logo button...")
         -- Create main logo button (draggable)
         logo = Instance.new("TextButton")
         logo.Size = UDim2.new(0, 80, 0, 80)
@@ -172,7 +182,14 @@ local function createGUI()
         logo.TextSize = 30
         logo.Font = Enum.Font.GothamBold
         logo.ZIndex = 100
+        logo.Visible = true
         logo.Parent = gui
+        
+        if not logo then
+            error("Failed to create logo button")
+        end
+        
+        print("✅ Logo button created successfully")
         
         -- Make logo circular
         local logoCorner = Instance.new("UICorner")
@@ -182,6 +199,7 @@ local function createGUI()
         -- Make logo draggable
         makeDraggable(logo, logo)
         
+        print("📋 Creating main frame...")
         -- Create main frame (hidden by default, draggable)
         frame = Instance.new("Frame")
         frame.Size = UDim2.new(0, 320, 0, 500)
@@ -295,6 +313,7 @@ local function createGUI()
             return button
         end
         
+        print("🔘 Creating feature buttons...")
         -- Add feature buttons
         createButton("Toggle Fly", toggleFly, Color3.fromRGB(0, 150, 255), "🛫")
         createButton("Toggle Speed", toggleSpeed, Color3.fromRGB(0, 150, 255), "🏃")
@@ -304,6 +323,7 @@ local function createGUI()
         createButton("Teleport to Spawn", teleportToSpawn, Color3.fromRGB(0, 150, 0), "🚪")
         createButton("Teleport to Player", teleportToPlayer, Color3.fromRGB(150, 0, 150), "👥")
         
+        print("🔗 Setting up logo functionality...")
         -- Logo functionality
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
@@ -326,10 +346,6 @@ local function createGUI()
             logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
             notify("📱 GUI Closed")
         end)
-        
-        -- Force show logo
-        logo.Visible = true
-        logo.ZIndex = 100
         
         print("✅ GUI created successfully")
         notify("✅ MainLoader GUI created successfully")
@@ -2922,6 +2938,17 @@ local function startAdminMonitoring()
     end)
 end
 
+-- Get character function
+local function getChar()
+    if player.Character then
+        char = player.Character
+        humanoid = char:FindFirstChild("Humanoid")
+        hr = char:FindFirstChild("HumanoidRootPart")
+        return char, humanoid, hr
+    end
+    return nil, nil, nil
+end
+
 -- Initialize everything
 local function main()
     print("🚀 Starting MainLoader...")
@@ -4428,11 +4455,22 @@ local function main()
         loadSavedData()
         task.wait(1)
         
-        -- Create simple GUI first
-        local guiSuccess = createSimpleGUI()
+        -- Create GUI with retry mechanism
+        local retryCount = 0
+        while retryCount < 3 do
+            createGUI()
+            if gui and gui.Parent then
+                print("✅ GUI created successfully on attempt " .. (retryCount + 1))
+                break
+            else
+                retryCount = retryCount + 1
+                print("⚠️ GUI creation failed, retrying... (" .. retryCount .. "/3)")
+                task.wait(2)
+            end
+        end
         
-        if not guiSuccess then
-            error("Failed to create simple GUI")
+        if not gui or not gui.Parent then
+            error("Failed to create GUI after 3 attempts")
         end
         
         -- Create other UI elements
@@ -4461,7 +4499,17 @@ local function main()
         
         -- Test notification
         task.wait(1)
-        print("✅ GUI Ready! Tap ⚡ button")
+        notify("✅ GUI Ready! Tap ⚡ button", Color3.fromRGB(0, 255, 0))
+        
+        -- Additional test to ensure GUI is visible
+        task.wait(2)
+        if logo and logo.Visible then
+            print("✅ Logo is visible and ready!")
+            notify("🎯 Logo button is visible - Click it to open GUI!", Color3.fromRGB(0, 255, 255))
+        else
+            print("⚠️ Logo might not be visible")
+            notify("⚠️ Logo button may not be visible - Check console for errors", Color3.fromRGB(255, 255, 0))
+        end
         
     end)
     
