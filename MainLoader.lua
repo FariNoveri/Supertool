@@ -24,6 +24,8 @@ local positionCounter = 0
 local maxSavedPositions = 50
 local autoSaveEnabled = false
 local autoSaveInterval = 30
+local isPositionListMinimized = false -- NEW: Tracks minimized state of position list
+local isAutoTeleportActive = false -- NEW: Tracks auto-teleport state
 
 -- Enhanced macro system
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
@@ -49,7 +51,7 @@ local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
 local defaultFramePos = UDim2.new(0.5, -400, 0.5, -250)
 local freezeMovingParts = false
 local originalCFrames = {}
-
+local localStorage = {}
 local connections = {}
 local currentCategory = "Movement"
 
@@ -263,6 +265,23 @@ local function togglePlayMacro()
     end
 end
 
+local function saveToLocalStorage()
+    localStorage[dataKey] = {
+        savedPositions = savedPositions,
+        positionCounter = positionCounter
+    }
+end
+
+local function loadFromLocalStorage()
+    if localStorage[dataKey] then
+        savedPositions = localStorage[dataKey].savedPositions or {}
+        positionCounter = localStorage[dataKey].positionCounter or #savedPositions
+    else
+        savedPositions = {}
+        positionCounter = 0
+    end
+end
+
 -- Enhanced position saving system
 local function saveCurrentPosition(customName)
     local success, errorMsg = pcall(function()
@@ -282,7 +301,7 @@ local function saveCurrentPosition(customName)
                 table.remove(savedPositions, 1)
             end
             
-            saveData()
+            saveToLocalStorage() -- CHANGED: Use new storage function
             notify("💾 Saved: " .. positionName)
             
             if positionListFrame and positionListFrame.Visible then
@@ -322,13 +341,52 @@ local function deletePosition(positionId)
     for i, pos in ipairs(savedPositions) do
         if pos.id == positionId then
             table.remove(savedPositions, i)
-            saveData()
+            saveToLocalStorage() -- CHANGED: Use new storage function
             notify("🗑️ Deleted: " .. pos.name, Color3.fromRGB(255, 100, 100))
             if positionListFrame and positionListFrame.Visible then
                 updatePositionList()
             end
             break
         end
+    end
+end
+
+local function toggleAutoTeleport()
+    isAutoTeleportActive = not isAutoTeleportActive
+    if isAutoTeleportActive then
+        if #savedPositions == 0 then
+            isAutoTeleportActive = false
+            notify("⚠️ No saved positions to auto-teleport!", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        notify("🚀 Auto-Teleport Started (" .. #savedPositions .. " positions)", Color3.fromRGB(0, 255, 0))
+        
+        task.spawn(function()
+            local index = 1
+            while isAutoTeleportActive and #savedPositions > 0 do
+                local pos = savedPositions[index]
+                if pos and hr and isValidPosition(pos.cframe.Position) then
+                    hr.CFrame = pos.cframe
+                    notify("📍 Auto-Teleported to: " .. pos.name)
+                else
+                    notify("⚠️ Invalid position or character not loaded at index " .. index, Color3.fromRGB(255, 100, 100))
+                end
+                
+                index = index + 1
+                if index > #savedPositions then
+                    index = 1 -- Loop back to the first position
+                end
+                
+                task.wait(2) -- Delay between teleports (adjustable)
+            end
+            
+            if not isAutoTeleportActive then
+                notify("⏹️ Auto-Teleport Stopped", Color3.fromRGB(255, 255, 0))
+            end
+        end)
+    else
+        notify("⏹️ Auto-Teleport Stopped", Color3.fromRGB(255, 255, 0))
     end
 end
 
@@ -589,7 +647,7 @@ local function createPositionListUI()
     end
     
     positionListFrame = Instance.new("Frame")
-    positionListFrame.Size = UDim2.new(0, 400, 0, 500)
+    positionListFrame.Size = UDim2.new(0, 400, 0, isPositionListMinimized and 50 or 500) -- CHANGED: Dynamic size based on minimized state
     positionListFrame.Position = UDim2.new(0, 20, 0.5, -250)
     positionListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     positionListFrame.BackgroundTransparency = 0.1
@@ -623,6 +681,7 @@ local function createPositionListUI()
     posScrollFrame.ScrollingEnabled = true
     posScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
     posScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    posScrollFrame.Visible = not isPositionListMinimized -- CHANGED: Hide scroll frame when minimized
     posScrollFrame.Parent = positionListFrame
 
     local posUIL = Instance.new("UIListLayout")
@@ -637,7 +696,33 @@ local function createPositionListUI()
     posPadding.PaddingRight = UDim.new(0, 5)
     posPadding.Parent = posScrollFrame
 
-    -- Close button
+    -- NEW: Minimize/Maximize button
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+    minimizeBtn.Position = UDim2.new(1, -80, 0, 10)
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    minimizeBtn.BackgroundTransparency = 0.3
+    minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minimizeBtn.TextSize = 18
+    minimizeBtn.Font = Enum.Font.GothamBold
+    minimizeBtn.Text = isPositionListMinimized and "+" or "-"
+    minimizeBtn.ZIndex = 28
+    local minimizeCorner = Instance.new("UICorner")
+    minimizeCorner.CornerRadius = UDim.new(0, 15)
+    minimizeCorner.Parent = minimizeBtn
+    minimizeBtn.MouseButton1Click:Connect(function()
+        isPositionListMinimized = not isPositionListMinimized
+        positionListFrame.Size = UDim2.new(0, 400, 0, isPositionListMinimized and 50 or 500)
+        posScrollFrame.Visible = not isPositionListMinimized
+        minimizeBtn.Text = isPositionListMinimized and "+" or "-"
+        notify(isPositionListMinimized and "📍 Position List Minimized" or "📍 Position List Maximized")
+        if not isPositionListMinimized then
+            updatePositionList()
+        end
+    end)
+    minimizeBtn.Parent = positionListFrame
+
+    -- Close button (unchanged but included for context)
     local closePosListBtn = Instance.new("TextButton")
     closePosListBtn.Size = UDim2.new(0, 30, 0, 30)
     closePosListBtn.Position = UDim2.new(1, -40, 0, 10)
@@ -658,6 +743,7 @@ local function createPositionListUI()
 
     updatePositionList()
 end
+
 
 local function showPositionList()
     if positionListFrame then
@@ -1580,7 +1666,6 @@ local function showPlayerList()
                 playerTitle.Text = "Player List (" .. (#Players:GetPlayers() - 1) .. " players)"
             end
         end
-        notify(playerListFrame.Visible and "👥 Player List Opened" or "👥 Player List Closed")
     end
 end
 
@@ -1725,7 +1810,7 @@ local function createEnhancedGUI()
             return button
         end
 
-        -- Define all categories with complete enhanced feature set
+        -- CHANGED: Added Toggle Auto Teleport button to Teleport category
         local categories = {
             Movement = {
                 createButton("Toggle Fly", toggleFly, function() return flying end),
@@ -1751,7 +1836,8 @@ local function createEnhancedGUI()
             Teleport = {
                 createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
                 createButton("Save Current Position", function() saveCurrentPosition() end, function() return false end),
-                createButton("Open Position List", showPositionList, function() return false end)
+                createButton("Open Position List", showPositionList, function() return false end),
+                createButton("Toggle Auto Teleport", toggleAutoTeleport, function() return isAutoTeleportActive end) -- NEW: Auto-Teleport button
             },
             Macro = {
                 createButton("Toggle Practice Mode", togglePracticeMode, function() return practiceMode end),
@@ -1761,7 +1847,7 @@ local function createEnhancedGUI()
             }
         }
 
-        -- Add all buttons to scrollFrame
+        -- Rest of createEnhancedGUI remains unchanged, included for context
         for categoryName, buttons in pairs(categories) do
             for _, button in pairs(buttons) do
                 button.Parent = scrollFrame
@@ -1793,42 +1879,11 @@ local function createEnhancedGUI()
             notify("📂 " .. categoryName .. " (" .. #categories[categoryName] .. " features)")
         end
 
-        -- Create sidebar category buttons
-        for categoryName, _ in pairs(categories) do
-            local categoryButton = Instance.new("TextButton")
-            categoryButton.Size = UDim2.new(1, -20, 0, 45)
-            categoryButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            categoryButton.BackgroundTransparency = 0.2
-            categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            categoryButton.TextSize = 16
-            categoryButton.Font = Enum.Font.GothamBold
-            categoryButton.Text = categoryName
-            categoryButton.ZIndex = 12
-            categoryButton.Name = categoryName
-            local categoryCorner = Instance.new("UICorner")
-            categoryCorner.CornerRadius = UDim.new(0, 8)
-            categoryCorner.Parent = categoryButton
-            
-            categoryButton.MouseEnter:Connect(function()
-                if currentCategory ~= categoryName then
-                    categoryButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-                end
-            end)
-            categoryButton.MouseLeave:Connect(function()
-                categoryButton.BackgroundColor3 = currentCategory == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
-            end)
-            categoryButton.MouseButton1Click:Connect(function()
-                updateCategory(categoryName)
-            end)
-            categoryButton.Parent = sidebar
-        end
-
         -- Initialize with Movement category
         updateCategory("Movement")
 
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
-            notify(frame.Visible and "🖼️ Enhanced GUI Opened" or "🖼️ Enhanced GUI Closed")
         end)
 
         -- Make frame draggable
@@ -1928,7 +1983,7 @@ end
 local function main()
     local success, errorMsg = pcall(function()
         cleanupOldInstance()
-        loadSavedData()
+        loadFromLocalStorage() -- CHANGED: Use new storage function
         task.wait(1.5)
         createEnhancedGUI()
         createJoystick()
