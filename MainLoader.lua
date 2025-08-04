@@ -202,9 +202,9 @@ local function createGUI()
         print("📋 Creating main frame...")
         -- Create main frame (hidden by default, draggable)
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 320, 0, 500)
-        frame.Position = UDim2.new(0.5, -160, 0.5, -250)
-        frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        frame.Size = UDim2.new(0, 800, 0, 500)
+        frame.Position = UDim2.new(0.5, -400, 0.5, -250)
+        frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
         frame.BackgroundTransparency = 0.1
         frame.BorderSizePixel = 0
         frame.Visible = false
@@ -218,7 +218,7 @@ local function createGUI()
         -- Header (draggable handle)
         local header = Instance.new("Frame")
         header.Size = UDim2.new(1, 0, 0, 60)
-        header.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+        header.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         header.BorderSizePixel = 0
         header.ZIndex = 51
         header.Parent = frame
@@ -238,7 +238,7 @@ local function createGUI()
         title.TextColor3 = Color3.fromRGB(255, 255, 255)
         title.TextSize = 24
         title.Font = Enum.Font.GothamBold
-        title.Text = "MainLoader"
+        title.Text = "MainLoader Enhanced"
         title.TextXAlignment = Enum.TextXAlignment.Left
         title.ZIndex = 52
         title.Parent = header
@@ -259,19 +259,33 @@ local function createGUI()
         closeCorner.CornerRadius = UDim.new(0, 20)
         closeCorner.Parent = closeBtn
         
-        -- Content area
+        -- Left sidebar for categories
+        local sidebar = Instance.new("Frame")
+        sidebar.Size = UDim2.new(0, 200, 1, -60)
+        sidebar.Position = UDim2.new(0, 0, 0, 60)
+        sidebar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        sidebar.BorderSizePixel = 0
+        sidebar.ZIndex = 51
+        sidebar.Parent = frame
+        
+        local sidebarCorner = Instance.new("UICorner")
+        sidebarCorner.CornerRadius = UDim.new(0, 15)
+        sidebarCorner.Parent = sidebar
+        
+        -- Right content area
         local contentArea = Instance.new("Frame")
-        contentArea.Size = UDim2.new(1, -20, 1, -80)
-        contentArea.Position = UDim2.new(0, 10, 0, 70)
+        contentArea.Size = UDim2.new(1, -200, 1, -60)
+        contentArea.Position = UDim2.new(0, 200, 0, 60)
         contentArea.BackgroundTransparency = 1
         contentArea.ZIndex = 51
         contentArea.Parent = frame
         
-        -- Scroll frame
+        -- Scroll frame for content
         local scrollFrame = Instance.new("ScrollingFrame")
-        scrollFrame.Size = UDim2.new(1, 0, 1, 0)
+        scrollFrame.Size = UDim2.new(1, -20, 1, -20)
+        scrollFrame.Position = UDim2.new(0, 10, 0, 10)
         scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 6
+        scrollFrame.ScrollBarThickness = 8
         scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
         scrollFrame.ZIndex = 51
         scrollFrame.ClipsDescendants = true
@@ -288,11 +302,11 @@ local function createGUI()
         -- Function to create buttons
         local function createButton(text, callback, color, icon)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, 0, 0, 60)
-            button.BackgroundColor3 = color or Color3.fromRGB(40, 40, 40)
+            button.Size = UDim2.new(1, 0, 0, 50)
+            button.BackgroundColor3 = color or Color3.fromRGB(30, 30, 30)
             button.BackgroundTransparency = 0.1
             button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 18
+            button.TextSize = 16
             button.Font = Enum.Font.GothamBold
             button.Text = icon .. " " .. text
             button.TextXAlignment = Enum.TextXAlignment.Left
@@ -300,7 +314,7 @@ local function createGUI()
             button.Parent = scrollFrame
             
             local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 10)
+            buttonCorner.CornerRadius = UDim.new(0, 8)
             buttonCorner.Parent = button
             
             button.MouseButton1Click:Connect(function()
@@ -313,15 +327,98 @@ local function createGUI()
             return button
         end
         
+        -- Category buttons for sidebar
+        local function createCategoryButton(text, categoryName)
+            local button = Instance.new("TextButton")
+            button.Size = UDim2.new(1, -20, 0, 45)
+            button.Position = UDim2.new(0, 10, 0, 10 + (45 * #sidebar:GetChildren()))
+            button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            button.BackgroundTransparency = 0.2
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.TextSize = 16
+            button.Font = Enum.Font.GothamBold
+            button.Text = text
+            button.ZIndex = 52
+            button.Name = categoryName
+            local buttonCorner = Instance.new("UICorner")
+            buttonCorner.CornerRadius = UDim.new(0, 8)
+            buttonCorner.Parent = button
+            button.Parent = sidebar
+            
+            return button
+        end
+        
+        -- Create category buttons
+        local movementBtn = createCategoryButton("Movement", "Movement")
+        local teleportBtn = createCategoryButton("Teleport", "Teleport")
+        local playerBtn = createCategoryButton("Player", "Player")
+        local miscBtn = createCategoryButton("Misc", "Misc")
+        
+        -- Function to show category content
+        local function showCategory(categoryName)
+            -- Clear existing content
+            for _, child in pairs(scrollFrame:GetChildren()) do
+                if child:IsA("TextButton") then
+                    child:Destroy()
+                end
+            end
+            
+            -- Reset all category button colors
+            for _, child in pairs(sidebar:GetChildren()) do
+                if child:IsA("TextButton") then
+                    child.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                end
+            end
+            
+            -- Highlight selected category
+            local selectedBtn = sidebar:FindFirstChild(categoryName)
+            if selectedBtn then
+                selectedBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+            end
+            
+            -- Add category-specific buttons
+            if categoryName == "Movement" then
+                createButton("Toggle Fly", toggleFly, Color3.fromRGB(0, 150, 255), "🛫")
+                createButton("Toggle Speed", toggleSpeed, Color3.fromRGB(0, 150, 255), "🏃")
+                createButton("Toggle Jump Power", toggleJump, Color3.fromRGB(0, 150, 255), "🦘")
+                createButton("Toggle Noclip", toggleNoclip, Color3.fromRGB(0, 150, 255), "🚪")
+                createButton("Toggle Water Walk", toggleWaterWalk, Color3.fromRGB(0, 150, 255), "🌊")
+            elseif categoryName == "Teleport" then
+                createButton("Teleport to Spawn", teleportToSpawn, Color3.fromRGB(0, 150, 0), "🚪")
+                createButton("Save Current Position", saveCurrentPosition, Color3.fromRGB(150, 150, 0), "💾")
+                createButton("Show Position List", showPositionList, Color3.fromRGB(150, 150, 0), "📍")
+            elseif categoryName == "Player" then
+                createButton("Show Player List", showPlayerList, Color3.fromRGB(150, 0, 150), "👥")
+                createButton("Teleport to Player", teleportToPlayer, Color3.fromRGB(150, 0, 150), "🚀")
+                createButton("Toggle Admin Detection", toggleAdminDetection, Color3.fromRGB(255, 100, 100), "🛡️")
+            elseif categoryName == "Misc" then
+                createButton("Toggle God Mode", toggleGodMode, Color3.fromRGB(0, 150, 255), "🛡️")
+                createButton("Toggle Fake Stats", toggleFakeStats, Color3.fromRGB(255, 150, 0), "📊")
+                createButton("Auto-Detect Game Stats", detectGameAndCreateStats, Color3.fromRGB(0, 255, 255), "🎮")
+            end
+        end
+        
+        -- Connect category buttons
+        movementBtn.MouseButton1Click:Connect(function()
+            showCategory("Movement")
+        end)
+        
+        teleportBtn.MouseButton1Click:Connect(function()
+            showCategory("Teleport")
+        end)
+        
+        playerBtn.MouseButton1Click:Connect(function()
+            showCategory("Player")
+        end)
+        
+        miscBtn.MouseButton1Click:Connect(function()
+            showCategory("Misc")
+        end)
+        
+        -- Show default category
+        showCategory("Movement")
+        
         print("🔘 Creating feature buttons...")
-        -- Add feature buttons
-        createButton("Toggle Fly", toggleFly, Color3.fromRGB(0, 150, 255), "🛫")
-        createButton("Toggle Speed", toggleSpeed, Color3.fromRGB(0, 150, 255), "🏃")
-        createButton("Toggle Jump Power", toggleJump, Color3.fromRGB(0, 150, 255), "🦘")
-        createButton("Toggle Noclip", toggleNoclip, Color3.fromRGB(0, 150, 255), "🚪")
-        createButton("Toggle God Mode", toggleGodMode, Color3.fromRGB(0, 150, 255), "🛡️")
-        createButton("Teleport to Spawn", teleportToSpawn, Color3.fromRGB(0, 150, 0), "🚪")
-        createButton("Teleport to Player", teleportToPlayer, Color3.fromRGB(150, 0, 150), "👥")
         
         print("🔗 Setting up logo functionality...")
         -- Logo functionality
@@ -4448,7 +4545,7 @@ end
 
 -- Main initialization
 local function main()
-    print("🚀 Starting MainLoader...")
+    print("🚀 Starting MainLoader Enhanced...")
     
     local success, errorMsg = pcall(function()
         -- Load basic data
@@ -4483,6 +4580,7 @@ local function main()
             end
         end
         
+        -- Only create essential UI elements
         safeCreate(createJoystick, "Joystick")
         safeCreate(createCameraControl, "Camera Control")
         safeCreate(createPlayerListUI, "Player List UI")
@@ -4511,13 +4609,13 @@ local function main()
             safeStart(initChar, "Character Init (Respawn)")
         end)
         
-        print("🎉 MainLoader fully loaded!")
+        print("🎉 MainLoader Enhanced fully loaded!")
         print("📱 Look for the ⚡ button in the bottom-right corner")
-        print("🎮 Features: Fly, Speed, Jump, Noclip, God Mode, Teleport")
+        print("🎮 Features: Movement, Teleport, Player, Misc categories")
         
         -- Test notification
         task.wait(1)
-        notify("✅ GUI Ready! Tap ⚡ button", Color3.fromRGB(0, 255, 0))
+        notify("✅ MainLoader Enhanced Ready! Tap ⚡ button", Color3.fromRGB(0, 255, 0))
         
         -- Additional test to ensure GUI is visible
         task.wait(2)
