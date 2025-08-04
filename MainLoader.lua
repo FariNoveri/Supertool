@@ -24,8 +24,6 @@ local positionCounter = 0
 local maxSavedPositions = 50
 local autoSaveEnabled = false
 local autoSaveInterval = 30
-local isPositionListMinimized = false -- NEW: Tracks minimized state of position list
-local isAutoTeleportActive = false -- NEW: Tracks auto-teleport state
 
 -- Enhanced macro system
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
@@ -51,7 +49,7 @@ local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
 local defaultFramePos = UDim2.new(0.5, -400, 0.5, -250)
 local freezeMovingParts = false
 local originalCFrames = {}
-local localStorage = {}
+
 local connections = {}
 local currentCategory = "Movement"
 
@@ -265,23 +263,6 @@ local function togglePlayMacro()
     end
 end
 
-local function saveToLocalStorage()
-    localStorage[dataKey] = {
-        savedPositions = savedPositions,
-        positionCounter = positionCounter
-    }
-end
-
-local function loadFromLocalStorage()
-    if localStorage[dataKey] then
-        savedPositions = localStorage[dataKey].savedPositions or {}
-        positionCounter = localStorage[dataKey].positionCounter or #savedPositions
-    else
-        savedPositions = {}
-        positionCounter = 0
-    end
-end
-
 -- Enhanced position saving system
 local function saveCurrentPosition(customName)
     local success, errorMsg = pcall(function()
@@ -301,7 +282,7 @@ local function saveCurrentPosition(customName)
                 table.remove(savedPositions, 1)
             end
             
-            saveToLocalStorage() -- CHANGED: Use new storage function
+            saveData()
             notify("💾 Saved: " .. positionName)
             
             if positionListFrame and positionListFrame.Visible then
@@ -341,52 +322,13 @@ local function deletePosition(positionId)
     for i, pos in ipairs(savedPositions) do
         if pos.id == positionId then
             table.remove(savedPositions, i)
-            saveToLocalStorage() -- CHANGED: Use new storage function
+            saveData()
             notify("🗑️ Deleted: " .. pos.name, Color3.fromRGB(255, 100, 100))
             if positionListFrame and positionListFrame.Visible then
                 updatePositionList()
             end
             break
         end
-    end
-end
-
-local function toggleAutoTeleport()
-    isAutoTeleportActive = not isAutoTeleportActive
-    if isAutoTeleportActive then
-        if #savedPositions == 0 then
-            isAutoTeleportActive = false
-            notify("⚠️ No saved positions to auto-teleport!", Color3.fromRGB(255, 100, 100))
-            return
-        end
-        
-        notify("🚀 Auto-Teleport Started (" .. #savedPositions .. " positions)", Color3.fromRGB(0, 255, 0))
-        
-        task.spawn(function()
-            local index = 1
-            while isAutoTeleportActive and #savedPositions > 0 do
-                local pos = savedPositions[index]
-                if pos and hr and isValidPosition(pos.cframe.Position) then
-                    hr.CFrame = pos.cframe
-                    notify("📍 Auto-Teleported to: " .. pos.name)
-                else
-                    notify("⚠️ Invalid position or character not loaded at index " .. index, Color3.fromRGB(255, 100, 100))
-                end
-                
-                index = index + 1
-                if index > #savedPositions then
-                    index = 1 -- Loop back to the first position
-                end
-                
-                task.wait(2) -- Delay between teleports (adjustable)
-            end
-            
-            if not isAutoTeleportActive then
-                notify("⏹️ Auto-Teleport Stopped", Color3.fromRGB(255, 255, 0))
-            end
-        end)
-    else
-        notify("⏹️ Auto-Teleport Stopped", Color3.fromRGB(255, 255, 0))
     end
 end
 
@@ -647,7 +589,7 @@ local function createPositionListUI()
     end
     
     positionListFrame = Instance.new("Frame")
-    positionListFrame.Size = UDim2.new(0, 400, 0, isPositionListMinimized and 50 or 500) -- CHANGED: Dynamic size based on minimized state
+    positionListFrame.Size = UDim2.new(0, 400, 0, 500)
     positionListFrame.Position = UDim2.new(0, 20, 0.5, -250)
     positionListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     positionListFrame.BackgroundTransparency = 0.1
@@ -681,7 +623,6 @@ local function createPositionListUI()
     posScrollFrame.ScrollingEnabled = true
     posScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
     posScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    posScrollFrame.Visible = not isPositionListMinimized -- CHANGED: Hide scroll frame when minimized
     posScrollFrame.Parent = positionListFrame
 
     local posUIL = Instance.new("UIListLayout")
@@ -696,33 +637,7 @@ local function createPositionListUI()
     posPadding.PaddingRight = UDim.new(0, 5)
     posPadding.Parent = posScrollFrame
 
-    -- NEW: Minimize/Maximize button
-    local minimizeBtn = Instance.new("TextButton")
-    minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
-    minimizeBtn.Position = UDim2.new(1, -80, 0, 10)
-    minimizeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    minimizeBtn.BackgroundTransparency = 0.3
-    minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    minimizeBtn.TextSize = 18
-    minimizeBtn.Font = Enum.Font.GothamBold
-    minimizeBtn.Text = isPositionListMinimized and "+" or "-"
-    minimizeBtn.ZIndex = 28
-    local minimizeCorner = Instance.new("UICorner")
-    minimizeCorner.CornerRadius = UDim.new(0, 15)
-    minimizeCorner.Parent = minimizeBtn
-    minimizeBtn.MouseButton1Click:Connect(function()
-        isPositionListMinimized = not isPositionListMinimized
-        positionListFrame.Size = UDim2.new(0, 400, 0, isPositionListMinimized and 50 or 500)
-        posScrollFrame.Visible = not isPositionListMinimized
-        minimizeBtn.Text = isPositionListMinimized and "+" or "-"
-        notify(isPositionListMinimized and "📍 Position List Minimized" or "📍 Position List Maximized")
-        if not isPositionListMinimized then
-            updatePositionList()
-        end
-    end)
-    minimizeBtn.Parent = positionListFrame
-
-    -- Close button (unchanged but included for context)
+    -- Close button
     local closePosListBtn = Instance.new("TextButton")
     closePosListBtn.Size = UDim2.new(0, 30, 0, 30)
     closePosListBtn.Position = UDim2.new(1, -40, 0, 10)
@@ -743,7 +658,6 @@ local function createPositionListUI()
 
     updatePositionList()
 end
-
 
 local function showPositionList()
     if positionListFrame then
@@ -781,8 +695,9 @@ local function initChar()
         cleanAdornments(char)
         ensureCharacterVisible()
         
-        -- Removed auto-save spawn position
-        -- saveCurrentPosition("Spawn " .. positionCounter) -- Commented out to disable auto-save on respawn
+        -- Auto-save spawn position
+        task.wait(1)
+        saveCurrentPosition("Spawn " .. positionCounter)
         
         -- Connect macro recording to new character
         if macroRecording and humanoid then
@@ -904,8 +819,6 @@ local function toggleFly()
         notify("⚠️ Fly error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
-
-
 
 -- Fixed Freecam toggle
 local function toggleFreecam()
@@ -1668,6 +1581,7 @@ local function showPlayerList()
                 playerTitle.Text = "Player List (" .. (#Players:GetPlayers() - 1) .. " players)"
             end
         end
+        notify(playerListFrame.Visible and "👥 Player List Opened" or "👥 Player List Closed")
     end
 end
 
@@ -1690,43 +1604,6 @@ local function createEnhancedGUI()
         local scale = Instance.new("UIScale")
         scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 1280, camera.ViewportSize.Y / 720))
         scale.Parent = gui
-
-        -- Define categories table here
-        local categories = {
-            Movement = {
-                createButton("Toggle Fly", toggleFly, function() return flying end),
-                createButton("Toggle Noclip", toggleNoclip, function() return noclip end),
-                createButton("Toggle Speed", toggleSpeed, function() return speedEnabled end),
-                createButton("Toggle Jump Power", toggleJump, function() return jumpEnabled end),
-                createButton("Toggle Water Walk", toggleWaterWalk, function() return waterWalk end),
-                createButton("Toggle God Mode", toggleGodMode, function() return godMode end)
-            },
-            Visual = {
-                createButton("Toggle Freecam", toggleFreecam, function() return freecam end),
-                createButton("Teleport to Freecam", teleportToFreecam, function() return false end)
-            },
-            World = {
-                createButton("Toggle Freeze Moving Parts", toggleFreezeMovingParts, function() return freezeMovingParts end)
-            },
-            Player = {
-                createButton("Open Player List", showPlayerList, function() return false end),
-                createButton("Spectate Selected Player", spectatePlayer, function() return spectatingPlayer ~= nil end),
-                createButton("Stop Spectate", stopSpectate, function() return false end),
-                createButton("Teleport to Selected Player", teleportToPlayer, function() return false end)
-            },
-            Teleport = {
-                createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
-                createButton("Save Current Position", function() saveCurrentPosition() end, function() return false end),
-                createButton("Open Position List", showPositionList, function() return false end),
-                createButton("Toggle Auto Teleport", toggleAutoTeleport, function() return isAutoTeleportActive end)
-            },
-            Macro = {
-                createButton("Toggle Practice Mode", togglePracticeMode, function() return practiceMode end),
-                createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end),
-                createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end),
-                createButton("Finish Macro Successfully", finishMacroSuccessfully, function() return false end)
-            }
-        }
 
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 60, 0, 60)
@@ -1774,45 +1651,6 @@ local function createEnhancedGUI()
         sidebarPadding.PaddingRight = UDim.new(0, 10)
         sidebarPadding.Parent = sidebar
 
-        local function createCategoryButton(categoryName)
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -20, 0, 45)
-            button.BackgroundColor3 = categoryName == currentCategory and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
-            button.BackgroundTransparency = 0.2
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 16
-            button.Font = Enum.Font.Gotham
-            button.Text = categoryName
-            button.Name = categoryName
-            button.ZIndex = 12
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
-            buttonCorner.Parent = button
-            
-            button.MouseEnter:Connect(function()
-                if categoryName ~= currentCategory then
-                    button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-                end
-            end)
-            
-            button.MouseLeave:Connect(function()
-                if categoryName ~= currentCategory then
-                    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-                end
-            end)
-            
-            button.MouseButton1Click:Connect(function()
-                updateCategory(categoryName)
-            end)
-            
-            button.Parent = sidebar
-            return button
-        end
-
-for categoryName, _ in pairs(categories) do
-    createCategoryButton(categoryName)
-end
-
         local title = Instance.new("TextLabel")
         title.Size = UDim2.new(1, -20, 0, 50)
         title.BackgroundTransparency = 1
@@ -1856,39 +1694,39 @@ end
         scrollPadding.PaddingRight = UDim.new(0, 15)
         scrollPadding.Parent = scrollFrame
 
-local function createButton(text, callback, toggleState)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, -10, 0, 45)
-    button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-    button.BackgroundTransparency = 0.2
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 16
-    button.Font = Enum.Font.Gotham
-    button.Text = text
-    button.TextWrapped = true
-    button.ZIndex = 12
-    button.Visible = false
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 8)
-    buttonCorner.Parent = button
-    
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(70, 70, 70)
-    end)
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-    end)
-    button.MouseButton1Click:Connect(function()
-        local success, err = pcall(callback)
-        if not success then
-            notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
+        local function createButton(text, callback, toggleState)
+            local button = Instance.new("TextButton")
+            button.Size = UDim2.new(1, -10, 0, 45)
+            button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+            button.BackgroundTransparency = 0.2
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.TextSize = 16
+            button.Font = Enum.Font.Gotham
+            button.Text = text
+            button.TextWrapped = true
+            button.ZIndex = 12
+            button.Visible = false
+            local buttonCorner = Instance.new("UICorner")
+            buttonCorner.CornerRadius = UDim.new(0, 8)
+            buttonCorner.Parent = button
+            
+            button.MouseEnter:Connect(function()
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(70, 70, 70)
+            end)
+            button.MouseLeave:Connect(function()
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+            end)
+            button.MouseButton1Click:Connect(function()
+                local success, err = pcall(callback)
+                if not success then
+                    notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
+                end
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+            end)
+            return button
         end
-        button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-    end)
-    return button
-end
 
-        -- CHANGED: Added Toggle Auto Teleport button to Teleport category
+        -- Define all categories with complete enhanced feature set
         local categories = {
             Movement = {
                 createButton("Toggle Fly", toggleFly, function() return flying end),
@@ -1914,8 +1752,8 @@ end
             Teleport = {
                 createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
                 createButton("Save Current Position", function() saveCurrentPosition() end, function() return false end),
-                createButton("Open Position List", showPositionList, function() return false end),
-                createButton("Toggle Auto Teleport", toggleAutoTeleport, function() return isAutoTeleportActive end) -- NEW: Auto-Teleport button
+                createButton("Toggle Auto Save", toggleAutoSave, function() return autoSaveEnabled end),
+                createButton("Open Position List", showPositionList, function() return false end)
             },
             Macro = {
                 createButton("Toggle Practice Mode", togglePracticeMode, function() return practiceMode end),
@@ -1925,7 +1763,7 @@ end
             }
         }
 
-        -- Rest of createEnhancedGUI remains unchanged, included for context
+        -- Add all buttons to scrollFrame
         for categoryName, buttons in pairs(categories) do
             for _, button in pairs(buttons) do
                 button.Parent = scrollFrame
@@ -1947,14 +1785,44 @@ end
             
             currentCategory = categoryName
             
-for _, child in pairs(sidebar:GetChildren()) do
-    if child:IsA("TextButton") and categories[child.Name] then
-        child.BackgroundColor3 = child.Name == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
-    end
-end
+            for _, child in pairs(sidebar:GetChildren()) do
+                if child:IsA("TextButton") and categories[child.Name] then
+                    child.BackgroundColor3 = child.Name == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
+                end
+            end
             
             scrollFrame.CanvasPosition = Vector2.new(0, 0)
             notify("📂 " .. categoryName .. " (" .. #categories[categoryName] .. " features)")
+        end
+
+        -- Create sidebar category buttons
+        for categoryName, _ in pairs(categories) do
+            local categoryButton = Instance.new("TextButton")
+            categoryButton.Size = UDim2.new(1, -20, 0, 45)
+            categoryButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            categoryButton.BackgroundTransparency = 0.2
+            categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            categoryButton.TextSize = 16
+            categoryButton.Font = Enum.Font.GothamBold
+            categoryButton.Text = categoryName
+            categoryButton.ZIndex = 12
+            categoryButton.Name = categoryName
+            local categoryCorner = Instance.new("UICorner")
+            categoryCorner.CornerRadius = UDim.new(0, 8)
+            categoryCorner.Parent = categoryButton
+            
+            categoryButton.MouseEnter:Connect(function()
+                if currentCategory ~= categoryName then
+                    categoryButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+                end
+            end)
+            categoryButton.MouseLeave:Connect(function()
+                categoryButton.BackgroundColor3 = currentCategory == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
+            end)
+            categoryButton.MouseButton1Click:Connect(function()
+                updateCategory(categoryName)
+            end)
+            categoryButton.Parent = sidebar
         end
 
         -- Initialize with Movement category
@@ -1962,6 +1830,7 @@ end
 
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
+            notify(frame.Visible and "🖼️ Enhanced GUI Opened" or "🖼️ Enhanced GUI Closed")
         end)
 
         -- Make frame draggable
@@ -2061,7 +1930,7 @@ end
 local function main()
     local success, errorMsg = pcall(function()
         cleanupOldInstance()
-        loadFromLocalStorage() -- CHANGED: Use new storage function
+        loadSavedData()
         task.wait(1.5)
         createEnhancedGUI()
         createJoystick()
