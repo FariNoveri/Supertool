@@ -24,6 +24,7 @@ local function disablePreviousScript()
         fakeStatsEnabled = false
         adminDetectionEnabled = false
         spectating = false
+        isNoclip = false
         if LocalPlayer.Character then
             local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
             if humanoid then
@@ -182,7 +183,9 @@ local function createCategoryButtons()
         button.MouseButton1Click:Connect(function()
             currentCategory = category
             contentFrame:ClearAllChildren()
+            contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
             loadCategoryContent(category)
+            notify("Loaded Category: " .. category)
         end)
     end
 end
@@ -215,6 +218,7 @@ local frozenBlocks = {}
 local noPlayerCollisionEnabled = false
 local collisionGroupName = "NoPlayerCollision"
 local isNoclip = false
+local isGodMode = false
 
 -- Setup Collision Group
 pcall(function()
@@ -254,7 +258,9 @@ end
 
 -- Content Loader
 local function loadCategoryContent(category)
+    contentFrame:ClearAllChildren()
     contentFrame.CanvasPosition = Vector2.new(0, 0) -- Reset scroll position
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Reset canvas size
     if category == "Movement" then
         createButton(contentFrame, freecamEnabled and "🛫 Fly/Freecam: ON" or "🛫 Fly/Freecam: OFF", function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -286,29 +292,27 @@ local function loadCategoryContent(category)
                     end)
                 else
                     camera.CameraType = Enum.CameraType.Custom
+                    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
                     notify("Fly/Freecam Disabled")
                 end
-                contentFrame:ClearAllChildren()
-                loadCategoryContent("Movement")
             end
+            loadCategoryContent("Movement")
         end)
         createButton(contentFrame, LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.WalkSpeed == 100 and "🏃 Speed: ON" or "🏃 Speed: OFF", function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
                 local humanoid = LocalPlayer.Character.Humanoid
                 humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 100 or 16
                 notify(humanoid.WalkSpeed == 100 and "Speed Enabled" or "Speed Disabled")
-                contentFrame:ClearAllChildren()
-                loadCategoryContent("Movement")
             end
+            loadCategoryContent("Movement")
         end)
         createButton(contentFrame, LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.JumpPower == 100 and "🦘 Jump Power: ON" or "🦘 Jump Power: OFF", function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
                 local humanoid = LocalPlayer.Character.Humanoid
                 humanoid.JumpPower = humanoid.JumpPower == 50 and 100 or 50
                 notify(humanoid.JumpPower == 100 and "Jump Power Enabled" or "Jump Power Disabled")
-                contentFrame:ClearAllChildren()
-                loadCategoryContent("Movement")
             end
+            loadCategoryContent("Movement")
         end)
         createButton(contentFrame, isNoclip and "🚪 Noclip: ON" or "🚪 Noclip: OFF", function()
             isNoclip = not isNoclip
@@ -324,7 +328,6 @@ local function loadCategoryContent(category)
                     end
                 end
             end)
-            contentFrame:ClearAllChildren()
             loadCategoryContent("Movement")
         end)
         createButton(contentFrame, wallClimbEnabled and "🕸️ Wall Climb: ON" or "🕸️ Wall Climb: OFF", function()
@@ -344,7 +347,6 @@ local function loadCategoryContent(category)
                     end
                 end)
             end
-            contentFrame:ClearAllChildren()
             loadCategoryContent("Movement")
         end)
         createButton(contentFrame, noPlayerCollisionEnabled and "👻 No Player Collision: ON" or "👻 No Player Collision: OFF", function()
@@ -374,7 +376,6 @@ local function loadCategoryContent(category)
                 end
                 notify("No Player Collision Disabled")
             end
-            contentFrame:ClearAllChildren()
             loadCategoryContent("Movement")
         end)
     elseif category == "Teleport" then
@@ -399,7 +400,6 @@ local function loadCategoryContent(category)
                 local index = table.find(catList, positionCategory) or 1
                 positionCategory = catList[(index % #catList) + 1]
                 categoryDropdown.Text = "Category: " .. positionCategory
-                contentFrame:ClearAllChildren()
                 loadCategoryContent("Teleport")
             end)
             createButton(contentFrame, "Save Position", function()
@@ -532,7 +532,6 @@ local function loadCategoryContent(category)
                     end)
                 end)
             end
-            contentFrame:ClearAllChildren()
             loadCategoryContent("Player")
         end)
         createButton(contentFrame, "📜 Show Admin List", function()
@@ -550,7 +549,6 @@ local function loadCategoryContent(category)
             else
                 updateSpectate(nil)
             end
-            contentFrame:ClearAllChildren()
             loadCategoryContent("Player")
         end)
         createButton(contentFrame, "⏮️ Previous Player", function()
@@ -583,15 +581,21 @@ local function loadCategoryContent(category)
             end
         end)
     elseif category == "Misc" then
-        createButton(contentFrame, LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.MaxHealth == math.huge and "🛡️ God Mode: ON" or "🛡️ God Mode: OFF", function()
+        createButton(contentFrame, isGodMode and "🛡️ God Mode: ON" or "🛡️ God Mode: OFF", function()
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
                 local humanoid = LocalPlayer.Character.Humanoid
-                humanoid.MaxHealth = math.huge
-                humanoid.Health = math.huge
-                notify("God Mode Enabled")
-                contentFrame:ClearAllChildren()
-                loadCategoryContent("Misc")
+                isGodMode = not isGodMode
+                if isGodMode then
+                    humanoid.MaxHealth = math.huge
+                    humanoid.Health = math.huge
+                    notify("God Mode Enabled")
+                else
+                    humanoid.MaxHealth = 100
+                    humanoid.Health = 100
+                    notify("God Mode Disabled")
+                end
             end
+            loadCategoryContent("Misc")
         end)
         createButton(contentFrame, fakeStatsEnabled and "📊 Fake Stats: ON" or "📊 Fake Stats: OFF", function()
             fakeStatsEnabled = not fakeStatsEnabled
@@ -622,7 +626,6 @@ local function loadCategoryContent(category)
                 end
                 notify("Fake Stats Disabled")
             end
-            contentFrame:ClearAllChildren()
             loadCategoryContent("Misc")
         end)
         createButton(contentFrame, freezeBlocksEnabled and "🧊 Freeze Blocks: ON" or "🧊 Freeze Blocks: OFF", function()
@@ -646,7 +649,6 @@ local function loadCategoryContent(category)
                 frozenBlocks = {}
                 notify("Moving Blocks Unfrozen")
             end
-            contentFrame:ClearAllChildren()
             loadCategoryContent("Misc")
         end)
     end
@@ -655,3 +657,4 @@ end
 -- Initialize
 createCategoryButtons()
 loadCategoryContent("Movement")
+notify("Script Initialized")
