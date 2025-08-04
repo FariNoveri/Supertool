@@ -1691,6 +1691,43 @@ local function createEnhancedGUI()
         scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 1280, camera.ViewportSize.Y / 720))
         scale.Parent = gui
 
+        -- Define categories table here
+        local categories = {
+            Movement = {
+                createButton("Toggle Fly", toggleFly, function() return flying end),
+                createButton("Toggle Noclip", toggleNoclip, function() return noclip end),
+                createButton("Toggle Speed", toggleSpeed, function() return speedEnabled end),
+                createButton("Toggle Jump Power", toggleJump, function() return jumpEnabled end),
+                createButton("Toggle Water Walk", toggleWaterWalk, function() return waterWalk end),
+                createButton("Toggle God Mode", toggleGodMode, function() return godMode end)
+            },
+            Visual = {
+                createButton("Toggle Freecam", toggleFreecam, function() return freecam end),
+                createButton("Teleport to Freecam", teleportToFreecam, function() return false end)
+            },
+            World = {
+                createButton("Toggle Freeze Moving Parts", toggleFreezeMovingParts, function() return freezeMovingParts end)
+            },
+            Player = {
+                createButton("Open Player List", showPlayerList, function() return false end),
+                createButton("Spectate Selected Player", spectatePlayer, function() return spectatingPlayer ~= nil end),
+                createButton("Stop Spectate", stopSpectate, function() return false end),
+                createButton("Teleport to Selected Player", teleportToPlayer, function() return false end)
+            },
+            Teleport = {
+                createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
+                createButton("Save Current Position", function() saveCurrentPosition() end, function() return false end),
+                createButton("Open Position List", showPositionList, function() return false end),
+                createButton("Toggle Auto Teleport", toggleAutoTeleport, function() return isAutoTeleportActive end)
+            },
+            Macro = {
+                createButton("Toggle Practice Mode", togglePracticeMode, function() return practiceMode end),
+                createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end),
+                createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end),
+                createButton("Finish Macro Successfully", finishMacroSuccessfully, function() return false end)
+            }
+        }
+
         logo = Instance.new("ImageButton")
         logo.Size = UDim2.new(0, 60, 0, 60)
         logo.Position = defaultLogoPos
@@ -1738,39 +1775,39 @@ local function createEnhancedGUI()
         sidebarPadding.Parent = sidebar
 
         local function createCategoryButton(categoryName)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, -20, 0, 45)
-    button.BackgroundColor3 = categoryName == currentCategory and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
-    button.BackgroundTransparency = 0.2
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 16
-    button.Font = Enum.Font.Gotham
-    button.Text = categoryName
-    button.Name = categoryName
-    button.ZIndex = 12
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 8)
-    buttonCorner.Parent = button
-    
-    button.MouseEnter:Connect(function()
-        if categoryName ~= currentCategory then
-            button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            local button = Instance.new("TextButton")
+            button.Size = UDim2.new(1, -20, 0, 45)
+            button.BackgroundColor3 = categoryName == currentCategory and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
+            button.BackgroundTransparency = 0.2
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.TextSize = 16
+            button.Font = Enum.Font.Gotham
+            button.Text = categoryName
+            button.Name = categoryName
+            button.ZIndex = 12
+            local buttonCorner = Instance.new("UICorner")
+            buttonCorner.CornerRadius = UDim.new(0, 8)
+            buttonCorner.Parent = button
+            
+            button.MouseEnter:Connect(function()
+                if categoryName ~= currentCategory then
+                    button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+                end
+            end)
+            
+            button.MouseLeave:Connect(function()
+                if categoryName ~= currentCategory then
+                    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                end
+            end)
+            
+            button.MouseButton1Click:Connect(function()
+                updateCategory(categoryName)
+            end)
+            
+            button.Parent = sidebar
+            return button
         end
-    end)
-    
-    button.MouseLeave:Connect(function()
-        if categoryName ~= currentCategory then
-            button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        end
-    end)
-    
-    button.MouseButton1Click:Connect(function()
-        updateCategory(categoryName)
-    end)
-    
-    button.Parent = sidebar
-    return button
-end
 
 for categoryName, _ in pairs(categories) do
     createCategoryButton(categoryName)
@@ -1819,37 +1856,37 @@ end
         scrollPadding.PaddingRight = UDim.new(0, 15)
         scrollPadding.Parent = scrollFrame
 
-        local function createButton(text, callback, toggleState)
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -10, 0, 45)
-            button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-            button.BackgroundTransparency = 0.2
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 16
-            button.Font = Enum.Font.Gotham
-            button.Text = text
-            button.TextWrapped = true
-            button.ZIndex = 12
-            button.Visible = false
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
-            buttonCorner.Parent = button
-            
-            button.MouseEnter:Connect(function()
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(70, 70, 70)
-            end)
-            button.MouseLeave:Connect(function()
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-            end)
-            button.MouseButton1Click:Connect(function()
-                local success, err = pcall(callback)
-                if not success then
-                    notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
-                end
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-            end)
-            return button
+local function createButton(text, callback, toggleState)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -10, 0, 45)
+    button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+    button.BackgroundTransparency = 0.2
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 16
+    button.Font = Enum.Font.Gotham
+    button.Text = text
+    button.TextWrapped = true
+    button.ZIndex = 12
+    button.Visible = false
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 8)
+    buttonCorner.Parent = button
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(70, 70, 70)
+    end)
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+    end)
+    button.MouseButton1Click:Connect(function()
+        local success, err = pcall(callback)
+        if not success then
+            notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
         end
+        button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+    end)
+    return button
+end
 
         -- CHANGED: Added Toggle Auto Teleport button to Teleport category
         local categories = {
@@ -1910,11 +1947,11 @@ end
             
             currentCategory = categoryName
             
-            for _, child in pairs(sidebar:GetChildren()) do
-                if child:IsA("TextButton") and categories[child.Name] then
-                    child.BackgroundColor3 = child.Name == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
-                end
-            end
+for _, child in pairs(sidebar:GetChildren()) do
+    if child:IsA("TextButton") and categories[child.Name] then
+        child.BackgroundColor3 = child.Name == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
+    end
+end
             
             scrollFrame.CanvasPosition = Vector2.new(0, 0)
             notify("📂 " .. categoryName .. " (" .. #categories[categoryName] .. " features)")
