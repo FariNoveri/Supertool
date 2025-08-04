@@ -1490,7 +1490,10 @@ local function freezeAllMovingObjects()
                     originalCFrames[obj] = obj.CFrame
                     obj.Anchored = true
                     obj.Velocity = Vector3.new(0, 0, 0)
-                    obj.AngularVelocity = Vector3.new(0, 0, 0)
+                    -- Only set AngularVelocity if the object is not a UnionOperation
+                    if not obj:IsA("UnionOperation") then
+                        obj.AngularVelocity = Vector3.new(0, 0, 0)
+                    end
                     
                     -- Disable BodyMovers
                     for _, child in pairs(obj:GetChildren()) do
