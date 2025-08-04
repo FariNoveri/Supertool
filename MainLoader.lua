@@ -10,6 +10,10 @@ local humanoid, hr, char
 local gui, frame, logo, joystickFrame, cameraControlFrame, playerListFrame, positionListFrame
 local selectedPlayer = nil
 local spectatingPlayer = nil
+local spectateUI = nil
+local spectateNextBtn = nil
+local spectatePrevBtn = nil
+local spectateStopBtn = nil
 local flying, freecam, noclip, godMode = false, false, false, false
 local flySpeed = 40
 local freecamSpeed = 20
@@ -1632,15 +1636,43 @@ local function toggleGodMode()
     end
 end
 
--- Player functions
+-- Enhanced player functions
 local function spectatePlayer()
     local success, errorMsg = pcall(function()
-        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
-            spectatingPlayer = selectedPlayer
-            camera.CameraSubject = selectedPlayer.Character.Humanoid
-            notify("👁️ Spectating " .. selectedPlayer.Name)
-        else
-            notify("⚠️ No player selected or invalid character", Color3.fromRGB(255, 100, 100))
+        if not selectedPlayer then
+            notify("⚠️ No player selected", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        if not selectedPlayer.Character then
+            notify("⚠️ " .. selectedPlayer.Name .. " has no character", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        local targetHumanoid = selectedPlayer.Character:FindFirstChild("Humanoid")
+        if not targetHumanoid then
+            notify("⚠️ " .. selectedPlayer.Name .. " has no humanoid", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        if targetHumanoid.Health <= 0 then
+            notify("⚠️ Cannot spectate dead player", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        spectatingPlayer = selectedPlayer
+        camera.CameraSubject = targetHumanoid
+        notify("👁️ Spectating " .. selectedPlayer.Name)
+        
+        -- Show spectate UI
+        updateSpectateUI()
+        
+        -- Setup auto-switch when player dies
+        setupSpectateAutoSwitch()
+        
+        -- Update player list to reflect spectate status
+        if playerListFrame and playerListFrame.Visible then
+            updatePlayerList()
         end
     end)
     if not success then
@@ -1648,12 +1680,290 @@ local function spectatePlayer()
     end
 end
 
+-- Create spectate UI
+local function createSpectateUI()
+    if spectateUI then
+        spectateUI:Destroy()
+    end
+    
+    spectateUI = Instance.new("Frame")
+    spectateUI.Size = UDim2.new(0, 350, 0, 120) -- Bigger for mobile
+    spectateUI.Position = UDim2.new(0.5, -175, 0.1, 0)
+    spectateUI.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    spectateUI.BackgroundTransparency = 0.2
+    spectateUI.BorderSizePixel = 0
+    spectateUI.ZIndex = 50
+    spectateUI.Visible = false
+    local spectateCorner = Instance.new("UICorner")
+    spectateCorner.CornerRadius = UDim.new(0, 10)
+    spectateCorner.Parent = spectateUI
+    spectateUI.Parent = gui
+    
+    -- Spectate info
+    local spectateInfo = Instance.new("TextLabel")
+    spectateInfo.Size = UDim2.new(1, 0, 0, 40)
+    spectateInfo.Position = UDim2.new(0, 10, 0, 5)
+    spectateInfo.BackgroundTransparency = 1
+    spectateInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
+    spectateInfo.TextSize = 18
+    spectateInfo.Font = Enum.Font.GothamBold
+    spectateInfo.Text = "👁️ Spectating: None"
+    spectateInfo.ZIndex = 51
+    spectateInfo.Parent = spectateUI
+    
+    -- Previous button (bigger for mobile)
+    spectatePrevBtn = Instance.new("TextButton")
+    spectatePrevBtn.Size = UDim2.new(0, 100, 0, 40)
+    spectatePrevBtn.Position = UDim2.new(0, 10, 0, 50)
+    spectatePrevBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+    spectatePrevBtn.BackgroundTransparency = 0.2
+    spectatePrevBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    spectatePrevBtn.TextSize = 16
+    spectatePrevBtn.Font = Enum.Font.GothamBold
+    spectatePrevBtn.Text = "◀ Previous"
+    spectatePrevBtn.ZIndex = 51
+    local prevCorner = Instance.new("UICorner")
+    prevCorner.CornerRadius = UDim.new(0, 8)
+    prevCorner.Parent = spectatePrevBtn
+    spectatePrevBtn.Parent = spectateUI
+    
+    -- Next button (bigger for mobile)
+    spectateNextBtn = Instance.new("TextButton")
+    spectateNextBtn.Size = UDim2.new(0, 100, 0, 40)
+    spectateNextBtn.Position = UDim2.new(0, 125, 0, 50)
+    spectateNextBtn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+    spectateNextBtn.BackgroundTransparency = 0.2
+    spectateNextBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    spectateNextBtn.TextSize = 16
+    spectateNextBtn.Font = Enum.Font.GothamBold
+    spectateNextBtn.Text = "Next ▶"
+    spectateNextBtn.ZIndex = 51
+    local nextCorner = Instance.new("UICorner")
+    nextCorner.CornerRadius = UDim.new(0, 8)
+    nextCorner.Parent = spectateNextBtn
+    spectateNextBtn.Parent = spectateUI
+    
+    -- Stop button (bigger for mobile)
+    spectateStopBtn = Instance.new("TextButton")
+    spectateStopBtn.Size = UDim2.new(0, 100, 0, 40)
+    spectateStopBtn.Position = UDim2.new(0, 240, 0, 50)
+    spectateStopBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    spectateStopBtn.BackgroundTransparency = 0.2
+    spectateStopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    spectateStopBtn.TextSize = 16
+    spectateStopBtn.Font = Enum.Font.GothamBold
+    spectateStopBtn.Text = "Stop"
+    spectateStopBtn.ZIndex = 51
+    local stopCorner = Instance.new("UICorner")
+    stopCorner.CornerRadius = UDim.new(0, 8)
+    stopCorner.Parent = spectateStopBtn
+    spectateStopBtn.Parent = spectateUI
+    
+    -- Button functionality with touch feedback
+    spectatePrevBtn.MouseButton1Click:Connect(function()
+        spectatePreviousPlayer()
+    end)
+    
+    spectatePrevBtn.MouseEnter:Connect(function()
+        spectatePrevBtn.BackgroundColor3 = Color3.fromRGB(120, 120, 255)
+    end)
+    
+    spectatePrevBtn.MouseLeave:Connect(function()
+        spectatePrevBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+    end)
+    
+    spectateNextBtn.MouseButton1Click:Connect(function()
+        spectateNextPlayer()
+    end)
+    
+    spectateNextBtn.MouseEnter:Connect(function()
+        spectateNextBtn.BackgroundColor3 = Color3.fromRGB(120, 255, 120)
+    end)
+    
+    spectateNextBtn.MouseLeave:Connect(function()
+        spectateNextBtn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+    end)
+    
+    spectateStopBtn.MouseButton1Click:Connect(function()
+        stopSpectate()
+    end)
+    
+    spectateStopBtn.MouseEnter:Connect(function()
+        spectateStopBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 120)
+    end)
+    
+    spectateStopBtn.MouseLeave:Connect(function()
+        spectateStopBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    end)
+    
+    notify("👁️ Spectate UI created (Mobile Optimized)", Color3.fromRGB(0, 255, 255))
+    
+    -- Add swipe gestures for mobile
+    local touchStart = nil
+    local touchEnd = nil
+    
+    spectateUI.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            touchStart = input.Position
+        end
+    end)
+    
+    spectateUI.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch and touchStart then
+            touchEnd = input.Position
+            local swipeDistance = (touchEnd - touchStart).Magnitude
+            
+            if swipeDistance > 50 then -- Minimum swipe distance
+                local swipeDirection = (touchEnd - touchStart).Unit
+                
+                if math.abs(swipeDirection.X) > math.abs(swipeDirection.Y) then
+                    -- Horizontal swipe
+                    if swipeDirection.X > 0 then
+                        -- Swipe right = Next
+                        spectateNextPlayer()
+                    else
+                        -- Swipe left = Previous
+                        spectatePreviousPlayer()
+                    end
+                end
+            end
+            
+            touchStart = nil
+            touchEnd = nil
+        end
+    end)
+end
+
+-- Get all alive players
+local function getAlivePlayers()
+    local alivePlayers = {}
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= player and plr.Character and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
+            table.insert(alivePlayers, plr)
+        end
+    end
+    return alivePlayers
+end
+
+-- Spectate next player
+local function spectateNextPlayer()
+    local alivePlayers = getAlivePlayers()
+    if #alivePlayers == 0 then
+        notify("⚠️ No alive players to spectate", Color3.fromRGB(255, 100, 100))
+        return
+    end
+    
+    local currentIndex = 1
+    if spectatingPlayer then
+        for i, plr in ipairs(alivePlayers) do
+            if plr == spectatingPlayer then
+                currentIndex = i
+                break
+            end
+        end
+    end
+    
+    local nextIndex = currentIndex + 1
+    if nextIndex > #alivePlayers then
+        nextIndex = 1 -- Loop back to first
+    end
+    
+    local nextPlayer = alivePlayers[nextIndex]
+    spectatingPlayer = nextPlayer
+    selectedPlayer = nextPlayer
+    
+    if nextPlayer.Character and nextPlayer.Character:FindFirstChild("Humanoid") then
+        camera.CameraSubject = nextPlayer.Character.Humanoid
+        notify("👁️ Spectating: " .. nextPlayer.Name, Color3.fromRGB(0, 255, 255))
+        updateSpectateUI()
+        setupSpectateAutoSwitch()
+    end
+end
+
+-- Spectate previous player
+local function spectatePreviousPlayer()
+    local alivePlayers = getAlivePlayers()
+    if #alivePlayers == 0 then
+        notify("⚠️ No alive players to spectate", Color3.fromRGB(255, 100, 100))
+        return
+    end
+    
+    local currentIndex = 1
+    if spectatingPlayer then
+        for i, plr in ipairs(alivePlayers) do
+            if plr == spectatingPlayer then
+                currentIndex = i
+                break
+            end
+        end
+    end
+    
+    local prevIndex = currentIndex - 1
+    if prevIndex < 1 then
+        prevIndex = #alivePlayers -- Loop to last
+    end
+    
+    local prevPlayer = alivePlayers[prevIndex]
+    spectatingPlayer = prevPlayer
+    selectedPlayer = prevPlayer
+    
+    if prevPlayer.Character and prevPlayer.Character:FindFirstChild("Humanoid") then
+        camera.CameraSubject = prevPlayer.Character.Humanoid
+        notify("👁️ Spectating: " .. prevPlayer.Name, Color3.fromRGB(0, 255, 255))
+        updateSpectateUI()
+        setupSpectateAutoSwitch()
+    end
+end
+
+-- Update spectate UI
+local function updateSpectateUI()
+    if not spectateUI then return end
+    
+    if spectatingPlayer then
+        spectateUI.Visible = true
+        local infoLabel = spectateUI:FindFirstChild("TextLabel")
+        if infoLabel then
+            infoLabel.Text = "👁️ Spectating: " .. spectatingPlayer.Name
+        end
+    else
+        spectateUI.Visible = false
+    end
+end
+
+-- Auto switch spectate when current player dies
+local function setupSpectateAutoSwitch()
+    if spectatingPlayer and spectatingPlayer.Character then
+        local humanoid = spectatingPlayer.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.Died:Connect(function()
+                task.wait(1) -- Wait a bit
+                if spectatingPlayer then -- Still spectating the same player
+                    notify("💀 " .. spectatingPlayer.Name .. " died, switching to next player", Color3.fromRGB(255, 100, 100))
+                    spectateNextPlayer()
+                end
+            end)
+        end
+    end
+end
+
 local function stopSpectate()
     local success, errorMsg = pcall(function()
         if spectatingPlayer then
-            camera.CameraSubject = humanoid
+            if humanoid then
+                camera.CameraSubject = humanoid
+            else
+                camera.CameraSubject = nil
+            end
             spectatingPlayer = nil
             notify("👁️ Stopped spectating")
+            
+            -- Hide spectate UI
+            updateSpectateUI()
+            
+            -- Update player list to reflect spectate status
+            if playerListFrame and playerListFrame.Visible then
+                updatePlayerList()
+            end
         else
             notify("⚠️ Not currently spectating", Color3.fromRGB(255, 100, 100))
         end
@@ -1665,16 +1975,33 @@ end
 
 local function teleportToPlayer()
     local success, errorMsg = pcall(function()
-        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and hr then
-            local targetPos = selectedPlayer.Character.HumanoidRootPart.Position
-            if isValidPosition(targetPos) then
-                hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
-                notify("🚀 Teleported to " .. selectedPlayer.Name)
-            else
-                notify("⚠️ Invalid position for teleport", Color3.fromRGB(255, 100, 100))
-            end
+        if not selectedPlayer then
+            notify("⚠️ No player selected", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        if not selectedPlayer.Character then
+            notify("⚠️ " .. selectedPlayer.Name .. " has no character", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        local targetRootPart = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not targetRootPart then
+            notify("⚠️ " .. selectedPlayer.Name .. " has no root part", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        if not hr then
+            notify("⚠️ Your character not loaded", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        local targetPos = targetRootPart.Position
+        if isValidPosition(targetPos) then
+            hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+            notify("🚀 Teleported to " .. selectedPlayer.Name)
         else
-            notify("⚠️ No player selected or invalid character", Color3.fromRGB(255, 100, 100))
+            notify("⚠️ Invalid position for teleport", Color3.fromRGB(255, 100, 100))
         end
     end)
     if not success then
@@ -2732,7 +3059,7 @@ local function createCameraControl()
     end)
 end
 
--- Fixed player list UI
+-- Enhanced player list UI with live updates
 local function updatePlayerList()
     if not playerListFrame then return end
     
@@ -2784,6 +3111,28 @@ local function updatePlayerList()
             infoLabel.TextXAlignment = Enum.TextXAlignment.Left
             infoLabel.ZIndex = 28
             infoLabel.Parent = itemFrame
+            
+            -- Live status update
+            local function updateStatus()
+                local isAlive = plr.Character and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0
+                infoLabel.Text = "ID: " .. plr.UserId .. " | " .. (isAlive and "🟢 Alive" or "🔴 Dead")
+                infoLabel.TextColor3 = isAlive and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 100, 100)
+            end
+            
+            -- Update status immediately
+            updateStatus()
+            
+            -- Connect to character changes for live updates
+            plr.CharacterAdded:Connect(function()
+                task.wait(1) -- Wait for character to load
+                updateStatus()
+            end)
+            
+            if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                plr.Character.Humanoid.Died:Connect(function()
+                    updateStatus()
+                end)
+            end
             
             -- Select button
             local selectBtn = Instance.new("TextButton")
@@ -2908,6 +3257,38 @@ local function createPlayerListUI()
     playerPadding.PaddingRight = UDim.new(0, 5)
     playerPadding.Parent = playerScrollFrame
 
+    -- Make player list draggable
+    local dragging, dragInput, dragStart, startPos
+    local function updatePlayerListDrag(input)
+        local delta = input.Position - dragStart
+        playerListFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    playerTitle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = playerListFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    playerTitle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function()
+        if dragInput and dragging then
+            updatePlayerListDrag(dragInput)
+        end
+    end)
+    
     -- Close button
     local closePlayerListBtn = Instance.new("TextButton")
     closePlayerListBtn.Size = UDim2.new(0, 30, 0, 30)
@@ -2929,9 +3310,25 @@ local function createPlayerListUI()
 
     updatePlayerList()
     
+    -- Live update system for player list
+    local function startPlayerListLiveUpdate()
+        task.spawn(function()
+            while playerListFrame and playerListFrame.Parent do
+                if playerListFrame.Visible then
+                    updatePlayerList()
+                    playerTitle.Text = "Player List (" .. (#Players:GetPlayers() - 1) .. " players)"
+                end
+                task.wait(1) -- Update every second
+            end
+        end)
+    end
+    
+    startPlayerListLiveUpdate()
+    
     -- Update player list when players join/leave
     Players.PlayerAdded:Connect(function()
         if playerListFrame and playerListFrame.Visible then
+            task.wait(0.5) -- Wait for player to load
             updatePlayerList()
             playerTitle.Text = "Player List (" .. (#Players:GetPlayers() - 1) .. " players)"
         end
@@ -3491,6 +3888,7 @@ local function main()
         createCameraControl()
         createPlayerListUI()
         createPositionListUI()
+        createSpectateUI()
         startOverlayProtection()
         loadAdminList()
         startAdminMonitoring()
