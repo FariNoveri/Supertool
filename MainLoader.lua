@@ -102,6 +102,51 @@ local autoDetectGameStats = true
 
 local connections = {}
 
+-- Drag function for any GUI element
+local function makeDraggable(guiElement, dragHandle)
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    local function updateDrag(input)
+        local delta = input.Position - dragStart
+        guiElement.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+    
+    dragHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = guiElement.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    dragHandle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging then
+                updateDrag(input)
+            end
+        end
+    end)
+    
+    dragHandle.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
 -- Create GUI function
 local function createGUI()
     local success, errorMsg = pcall(function()
@@ -117,7 +162,7 @@ local function createGUI()
         gui.ResetOnSpawn = false
         gui.Parent = player:WaitForChild("PlayerGui", 10)
         
-        -- Create main logo button
+        -- Create main logo button (draggable)
         logo = Instance.new("TextButton")
         logo.Size = UDim2.new(0, 80, 0, 80)
         logo.Position = UDim2.new(0.85, 0, 0.8, 0)
@@ -134,7 +179,10 @@ local function createGUI()
         logoCorner.CornerRadius = UDim.new(0, 40)
         logoCorner.Parent = logo
         
-        -- Create main frame (hidden by default)
+        -- Make logo draggable
+        makeDraggable(logo, logo)
+        
+        -- Create main frame (hidden by default, draggable)
         frame = Instance.new("Frame")
         frame.Size = UDim2.new(0, 320, 0, 500)
         frame.Position = UDim2.new(0.5, -160, 0.5, -250)
@@ -149,7 +197,7 @@ local function createGUI()
         frameCorner.CornerRadius = UDim.new(0, 15)
         frameCorner.Parent = frame
         
-        -- Header
+        -- Header (draggable handle)
         local header = Instance.new("Frame")
         header.Size = UDim2.new(1, 0, 0, 60)
         header.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
@@ -160,6 +208,9 @@ local function createGUI()
         local headerCorner = Instance.new("UICorner")
         headerCorner.CornerRadius = UDim.new(0, 15)
         headerCorner.Parent = header
+        
+        -- Make frame draggable by header
+        makeDraggable(frame, header)
         
         -- Title
         local title = Instance.new("TextLabel")
@@ -1138,7 +1189,8 @@ local function createPositionListUI()
     posFrameCorner.CornerRadius = UDim.new(0, 12)
     posFrameCorner.Parent = positionListFrame
     positionListFrame.Parent = gui
-
+    
+    -- Make position list frame draggable by title
     local posTitle = Instance.new("TextLabel")
     posTitle.Size = UDim2.new(1, 0, 0, 50)
     posTitle.BackgroundTransparency = 1
@@ -1148,6 +1200,9 @@ local function createPositionListUI()
     posTitle.Text = "Saved Checkpoints (" .. #savedPositions .. ")"
     posTitle.ZIndex = 26
     posTitle.Parent = positionListFrame
+    
+    -- Make draggable by title
+    makeDraggable(positionListFrame, posTitle)
 
     -- Auto teleport button
     local autoTeleportBtn = Instance.new("TextButton")
@@ -1907,6 +1962,9 @@ local function createSpectateUI()
     spectateCorner.CornerRadius = UDim.new(0, 10)
     spectateCorner.Parent = spectateUI
     spectateUI.Parent = gui
+    
+    -- Make spectate UI draggable
+    makeDraggable(spectateUI, spectateUI)
     
     -- Spectate info
     local spectateInfo = Instance.new("TextLabel")
@@ -3198,6 +3256,9 @@ local function createJoystick()
     corner.CornerRadius = UDim.new(0, 60)
     corner.Parent = joystickFrame
     joystickFrame.Parent = gui
+    
+    -- Make joystick draggable
+    makeDraggable(joystickFrame, joystickFrame)
 
     local joystickKnob = Instance.new("Frame")
     joystickKnob.Size = UDim2.new(0, 40, 0, 40)
@@ -3287,6 +3348,9 @@ local function createCameraControl()
     camCorner.CornerRadius = UDim.new(0, 10)
     camCorner.Parent = cameraControlFrame
     cameraControlFrame.Parent = gui
+    
+    -- Make camera control draggable
+    makeDraggable(cameraControlFrame, cameraControlFrame)
 
     local camLabel = Instance.new("TextLabel")
     camLabel.Size = UDim2.new(1, 0, 0, 30)
@@ -3535,37 +3599,8 @@ local function createPlayerListUI()
     playerPadding.PaddingRight = UDim.new(0, 5)
     playerPadding.Parent = playerScrollFrame
 
-    -- Make player list draggable
-    local dragging, dragInput, dragStart, startPos
-    local function updatePlayerListDrag(input)
-        local delta = input.Position - dragStart
-        playerListFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-    
-    playerTitle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = playerListFrame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-    
-    playerTitle.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function()
-        if dragInput and dragging then
-            updatePlayerListDrag(dragInput)
-        end
-    end)
+    -- Make player list draggable by title
+    makeDraggable(playerListFrame, playerTitle)
 
     -- Close button
     local closePlayerListBtn = Instance.new("TextButton")
@@ -4245,6 +4280,7 @@ local function main()
         notify("🚀 Enhanced Krnl Mobile v2.0 Loaded Successfully!")
         notify("📱 100% Mobile GUI - All features accessible via touch interface")
         notify("🖼️ Tap the blue logo to open the main menu", Color3.fromRGB(0, 255, 255))
+        notify("🖱️ All UI panels can be dragged around!", Color3.fromRGB(0, 255, 0))
     end)
     if not success then
         print("Main function error: " .. tostring(errorMsg))
