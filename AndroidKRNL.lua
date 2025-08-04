@@ -262,17 +262,25 @@ end
 
 -- Create Mobile GUI
 local function createMobileGUI()
-    -- Clean up old GUI
-    local oldGui = player.PlayerGui:FindFirstChild("AndroidKRNL")
-    if oldGui then
-        oldGui:Destroy()
-    end
-    
-    -- Create new GUI
-    gui = Instance.new("ScreenGui")
-    gui.Name = "AndroidKRNL"
-    gui.ResetOnSpawn = false
-    gui.Parent = player:WaitForChild("PlayerGui", 10)
+    local success, errorMsg = pcall(function()
+        -- Clean up old GUI
+        local oldGui = player.PlayerGui:FindFirstChild("AndroidKRNL")
+        if oldGui then
+            oldGui:Destroy()
+        end
+        
+        -- Create new GUI with better error handling
+        gui = Instance.new("ScreenGui")
+        gui.Name = "AndroidKRNL"
+        gui.ResetOnSpawn = false
+        gui.Parent = player:WaitForChild("PlayerGui", 10)
+        
+        -- Ensure GUI is created
+        if not gui then
+            error("Failed to create ScreenGui")
+        end
+        
+        print("✅ GUI created successfully")
     
     -- Create floating action button (FAB)
     logo = Instance.new("TextButton")
@@ -433,8 +441,43 @@ local function createMobileGUI()
         notify("📱 GUI Closed")
     end)
     
-    notify("📱 Android KRNL GUI created successfully")
-    print("✅ Android KRNL loaded! Tap the ⚡ button to open menu")
+        notify("📱 Android KRNL GUI created successfully")
+        print("✅ Android KRNL loaded! Tap the ⚡ button to open menu")
+        
+        -- Force show the FAB to ensure it's visible
+        logo.Visible = true
+        logo.ZIndex = 100
+        
+        -- Test notification to confirm GUI is working
+        task.wait(1)
+        notify("🎉 GUI Ready! Tap ⚡ button", Color3.fromRGB(0, 255, 255))
+        
+    end)
+    
+    if not success then
+        print("❌ GUI creation failed: " .. tostring(errorMsg))
+        -- Create fallback GUI
+        local fallbackGui = Instance.new("ScreenGui")
+        fallbackGui.Name = "AndroidKRNL_Fallback"
+        fallbackGui.Parent = player:WaitForChild("PlayerGui", 10)
+        
+        local fallbackBtn = Instance.new("TextButton")
+        fallbackBtn.Size = UDim2.new(0, 100, 0, 50)
+        fallbackBtn.Position = UDim2.new(0.9, -100, 0.1, 0)
+        fallbackBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        fallbackBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        fallbackBtn.Text = "KRNL"
+        fallbackBtn.TextSize = 18
+        fallbackBtn.Font = Enum.Font.GothamBold
+        fallbackBtn.ZIndex = 100
+        fallbackBtn.Parent = fallbackGui
+        
+        fallbackBtn.MouseButton1Click:Connect(function()
+            print("Fallback button clicked - GUI creation failed")
+        end)
+        
+        print("⚠️ Using fallback GUI - Main GUI failed to create")
+    end
 end
 
 -- Initialize character when loaded
@@ -446,8 +489,29 @@ player.CharacterAdded:Connect(function()
     end
 end)
 
--- Create GUI
-createMobileGUI()
+-- Create GUI with retry mechanism
+local function initGUI()
+    local retryCount = 0
+    while retryCount < 3 do
+        createMobileGUI()
+        if gui and gui.Parent then
+            print("✅ GUI created successfully on attempt " .. (retryCount + 1))
+            break
+        else
+            retryCount = retryCount + 1
+            print("⚠️ GUI creation failed, retrying... (" .. retryCount .. "/3)")
+            task.wait(2)
+        end
+    end
+    
+    if not gui or not gui.Parent then
+        print("❌ GUI creation failed after 3 attempts")
+        error("Failed to create GUI")
+    end
+end
+
+-- Initialize GUI
+initGUI()
 
 -- Initialize character if already exists
 if player.Character then
@@ -460,4 +524,5 @@ end
 
 print("🎉 Android KRNL fully loaded!")
 print("📱 Look for the ⚡ button in the bottom-right corner")
-print("🎮 Features: Fly, Speed, Jump, Noclip, God Mode, Teleport") 
+print("🎮 Features: Fly, Speed, Jump, Noclip, God Mode, Teleport")
+print("💡 If GUI doesn't appear, check console for error messages") 
