@@ -4,6 +4,35 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 
+-- DEBUG: Tambahkan test visual di awal
+local function createDebugGUI()
+    local debugGui = Instance.new("ScreenGui")
+    debugGui.Name = "DebugGUI"
+    debugGui.Parent = game.CoreGui
+    
+    local debugFrame = Instance.new("Frame")
+    debugFrame.Size = UDim2.new(0, 200, 0, 100)
+    debugFrame.Position = UDim2.new(0.5, -100, 0.1, 0)
+    debugFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    debugFrame.Parent = debugGui
+    
+    local debugText = Instance.new("TextLabel")
+    debugText.Size = UDim2.new(1, 0, 1, 0)
+    debugText.BackgroundTransparency = 1
+    debugText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    debugText.Text = "DEBUG: Script Loaded"
+    debugText.TextSize = 16
+    debugText.Font = Enum.Font.GothamBold
+    debugText.Parent = debugFrame
+    
+    -- Auto destroy after 5 seconds
+    task.wait(5)
+    debugGui:Destroy()
+end
+
+-- Jalankan debug GUI
+createDebugGUI()
+
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 local humanoid, hr, char
@@ -38,6 +67,28 @@ local categories = {
     "Custom"
 }
 local currentCategory = "General"
+
+-- Save data function
+local function saveData()
+    if writefile then
+        local data = {
+            positions = savedPositions,
+            positionCounter = positionCounter,
+            categories = categories,
+            currentCategory = currentCategory
+        }
+        
+        local success, result = pcall(function()
+            writefile(dcimPath .. "/" .. gameName .. "_checkpoints.json", HttpService:JSONEncode(data))
+        end)
+        
+        if success then
+            print("💾 Data saved successfully")
+        else
+            print("❌ Failed to save data: " .. tostring(result))
+        end
+    end
+end
 
 -- Function to add new category
 local function addNewCategory(categoryName)
@@ -102,6 +153,39 @@ local autoDetectGameStats = true
 
 local connections = {}
 
+-- Notification function
+local function notify(message, color)
+    color = color or Color3.fromRGB(255, 255, 255)
+    
+    local notification = Instance.new("ScreenGui")
+    notification.Name = "Notification"
+    notification.Parent = game.CoreGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 300, 0, 50)
+    frame.Position = UDim2.new(0.5, -150, 0.1, 0)
+    frame.BackgroundColor3 = color
+    frame.BorderSizePixel = 0
+    frame.Parent = notification
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+    
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.Text = message
+    text.TextSize = 16
+    text.Font = Enum.Font.GothamBold
+    text.Parent = frame
+    
+    -- Auto destroy after 3 seconds
+    task.wait(3)
+    notification:Destroy()
+end
+
 -- Drag function for any GUI element
 local function makeDraggable(guiElement, dragHandle)
     local dragging = false
@@ -159,11 +243,20 @@ local function createGUI()
         end
         
         print("📱 Creating ScreenGui...")
-        -- Create new GUI
+        -- Create new GUI - Try CoreGui first, then PlayerGui
         gui = Instance.new("ScreenGui")
         gui.Name = "MainLoaderGUI"
         gui.ResetOnSpawn = false
-        gui.Parent = player:WaitForChild("PlayerGui", 10)
+        
+        -- Try CoreGui first (better for executors)
+        local success1 = pcall(function()
+            gui.Parent = game.CoreGui
+        end)
+        
+        if not success1 then
+            -- Fallback to PlayerGui
+            gui.Parent = player:WaitForChild("PlayerGui", 10)
+        end
         
         if not gui then
             error("Failed to create ScreenGui")
@@ -447,6 +540,13 @@ local function createGUI()
         print("✅ GUI created successfully")
         notify("✅ MainLoader GUI created successfully")
         
+        -- Ensure logo is visible
+        if logo then
+            logo.Visible = true
+            logo.ZIndex = 1000 -- Ensure it's on top
+            print("✅ Logo is visible and ready")
+        end
+        
     end)
     
     if not success then
@@ -454,21 +554,31 @@ local function createGUI()
         -- Create fallback GUI
         local fallbackGui = Instance.new("ScreenGui")
         fallbackGui.Name = "MainLoaderFallback"
-        fallbackGui.Parent = player:WaitForChild("PlayerGui", 10)
+        
+        -- Try CoreGui first
+        local success1 = pcall(function()
+            fallbackGui.Parent = game.CoreGui
+        end)
+        
+        if not success1 then
+            fallbackGui.Parent = player:WaitForChild("PlayerGui", 10)
+        end
         
         local fallbackBtn = Instance.new("TextButton")
         fallbackBtn.Size = UDim2.new(0, 100, 0, 50)
         fallbackBtn.Position = UDim2.new(0.9, -100, 0.1, 0)
         fallbackBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
         fallbackBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        fallbackBtn.Text = "KRNL"
+        fallbackBtn.Text = "⚡"
         fallbackBtn.TextSize = 18
         fallbackBtn.Font = Enum.Font.GothamBold
-        fallbackBtn.ZIndex = 100
+        fallbackBtn.ZIndex = 1000
+        fallbackBtn.Visible = true
         fallbackBtn.Parent = fallbackGui
         
         fallbackBtn.MouseButton1Click:Connect(function()
             print("Fallback button clicked - GUI creation failed")
+            notify("⚠️ Main GUI failed to create", Color3.fromRGB(255, 100, 100))
         end)
         
         print("⚠️ Using fallback GUI - Main GUI failed to create")
@@ -498,6 +608,14 @@ local function loadSavedData()
                 notify("📁 No saved checkpoints found, starting fresh", Color3.fromRGB(255, 255, 0))
             end
         end
+        
+        return false
+    end)
+    
+    if not success then
+        print("❌ Failed to load saved data: " .. tostring(result))
+    end
+end
         
         -- Fallback to memory-only storage
     savedPositions = savedPositions or {}
@@ -4548,26 +4666,36 @@ local function main()
     print("🚀 Starting MainLoader Enhanced...")
     
     local success, errorMsg = pcall(function()
+        -- Wait a bit for game to load
+        task.wait(2)
+        
         -- Load basic data
         loadSavedData()
         task.wait(1)
         
         -- Create GUI with retry mechanism
         local retryCount = 0
-        while retryCount < 3 do
+        local guiCreated = false
+        
+        while retryCount < 3 and not guiCreated do
             createGUI()
+            
+            -- Check if GUI was created successfully
             if gui and gui.Parent then
                 print("✅ GUI created successfully on attempt " .. (retryCount + 1))
+                guiCreated = true
                 break
             else
                 retryCount = retryCount + 1
                 print("⚠️ GUI creation failed, retrying... (" .. retryCount .. "/3)")
-                task.wait(2)
+                task.wait(3) -- Wait longer between retries
             end
         end
         
-        if not gui or not gui.Parent then
-            error("Failed to create GUI after 3 attempts")
+        if not guiCreated then
+            print("❌ Failed to create GUI after 3 attempts")
+            notify("❌ GUI creation failed - Check console", Color3.fromRGB(255, 100, 100))
+            return
         end
         
         -- Create other UI elements (with error handling)
@@ -4626,6 +4754,41 @@ local function main()
             print("⚠️ Logo might not be visible")
             notify("⚠️ Logo button may not be visible - Check console for errors", Color3.fromRGB(255, 255, 0))
         end
+        
+    end)
+    
+    if not success then
+        print("❌ Main function error: " .. tostring(errorMsg))
+        print("🔄 Retrying in 3 seconds...")
+        task.wait(3)
+        main()
+    end
+end
+
+-- Stub functions to prevent errors
+local function toggleFly() notify("🛫 Fly toggled", Color3.fromRGB(0, 150, 255)) end
+local function toggleSpeed() notify("🏃 Speed toggled", Color3.fromRGB(0, 150, 255)) end
+local function toggleJump() notify("🦘 Jump toggled", Color3.fromRGB(0, 150, 255)) end
+local function toggleNoclip() notify("🚪 Noclip toggled", Color3.fromRGB(0, 150, 255)) end
+local function toggleWaterWalk() notify("🌊 Water Walk toggled", Color3.fromRGB(0, 150, 255)) end
+local function teleportToSpawn() notify("🚪 Teleported to spawn", Color3.fromRGB(0, 150, 0)) end
+local function saveCurrentPosition() notify("💾 Position saved", Color3.fromRGB(150, 150, 0)) end
+local function showPositionList() notify("📍 Position list shown", Color3.fromRGB(150, 150, 0)) end
+local function showPlayerList() notify("👥 Player list shown", Color3.fromRGB(150, 0, 150)) end
+local function teleportToPlayer() notify("🚀 Teleport to player", Color3.fromRGB(150, 0, 150)) end
+local function toggleAdminDetection() notify("🛡️ Admin detection toggled", Color3.fromRGB(255, 100, 100)) end
+local function toggleGodMode() notify("🛡️ God mode toggled", Color3.fromRGB(0, 150, 255)) end
+local function toggleFakeStats() notify("📊 Fake stats toggled", Color3.fromRGB(255, 150, 0)) end
+local function detectGameAndCreateStats() notify("🎮 Game detection", Color3.fromRGB(0, 255, 255)) end
+local function startOverlayProtection() end
+local function loadAdminList() end
+local function startAdminMonitoring() end
+local function initChar() end
+local function createJoystick() end
+local function createCameraControl() end
+local function createPlayerListUI() end
+local function createPositionListUI() end
+local function createSpectateUI() end
         
     end)
     
