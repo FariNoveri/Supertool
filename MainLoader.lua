@@ -1426,46 +1426,53 @@ local function createGUI()
 
         local currentCategory = nil
 
+        local function updateCategory(categoryName, buttons)
+            scrollFrame:ClearAllChildren()
+            scrollUIL = Instance.new("UIListLayout")
+            scrollUIL.FillDirection = Enum.FillDirection.Vertical
+            scrollUIL.Padding = UDim.new(0, 8)
+            scrollUIL.Parent = scrollFrame
+            scrollPadding = Instance.new("UIPadding")
+            scrollPadding.PaddingTop = UDim.new(0, 10)
+            scrollPadding.PaddingBottom = UDim.new(0, 20)
+            scrollPadding.PaddingLeft = UDim.new(0, 10)
+            scrollPadding.PaddingRight = UDim.new(0, 10)
+            scrollPadding.Parent = scrollFrame
+
+            for _, btn in pairs(buttons) do
+                btn.Parent = scrollFrame
+            end
+            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
+            currentCategory = categoryName
+            for _, cat in pairs(categories) do
+                local catButton = sidebar:FindFirstChild(cat.name)
+                if catButton then
+                    catButton.BackgroundColor3 = cat.name == currentCategory and Color3.fromRGB(70, 70, 70) or Color3.fromRGB(50, 50, 50)
+                end
+            end
+            notify("🔄 Switched to category: " .. categoryName)
+        end
+
         for _, category in pairs(categories) do
-            local button, buttons = createCategory(category.name, buttons)
+            local button, buttons = createCategory(category.name, category.buttons)
+            button.Name = category.name
             button.Parent = sidebar
             button.MouseButton1Click:Connect(function()
-                scrollFrame:ClearAllChildren()
-                scrollUIL = Instance.new("UIListLayout")
-                scrollUIL.FillDirection = Enum.FillDirection.Vertical
-                scrollUIL.Padding = UDim.new(0, 8)
-                scrollUIL.Parent = scrollFrame
-                scrollPadding = Instance.new("UIPadding")
-                scrollPadding.PaddingTop = UDim.new(0, 10)
-                scrollPadding.PaddingBottom = UDim.new(0, 20)
-                scrollPadding.PaddingLeft = UDim.new(0, 10)
-                scrollPadding.PaddingRight = UDim.new(0, 10)
-                scrollPadding.Parent = scrollFrame
-                for _, btn in pairs(buttons) do
-                    btn.Parent = scrollFrame
-                end
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-                currentCategory = category.name
-                for _, cat in pairs(categories) do
-                    local catButton = sidebar:FindFirstChild(cat.name)
-                    if catButton then
-                        catButton.BackgroundColor3 = cat.name == currentCategory and Color3.fromRGB(70, 70, 70) or Color3.fromRGB(50, 50, 50)
-                    end
-                end
+                updateCategory(category.name, buttons)
             end)
         end
 
-        -- Select the first category by default
+        -- Select the first category by default when GUI is opened
         if categories[1] then
-            local firstCategoryButton = sidebar:FindFirstChild(categories[1].name)
-            if firstCategoryButton then
-                firstCategoryButton:MouseButton1Click()
-            end
+            updateCategory(categories[1].name, categories[1].buttons)
         end
 
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
             notify(frame.Visible and "🖼️ GUI Opened" or "🖼️ GUI Closed")
+            if frame.Visible and not currentCategory and categories[1] then
+                updateCategory(categories[1].name, categories[1].buttons)
+            end
         end)
 
         local dragging, dragInput, dragStart, startPos
