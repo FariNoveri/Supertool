@@ -4797,6 +4797,8 @@ local function createSpectateUI() end
         main()
     end
 end
-createDebugGUI()
+
+task.wait(2) -- delay biar game sempat load (optional tapi disarankan)
 createGUI()
+createDebugGUI()
 main()
