@@ -1270,6 +1270,7 @@ local function createGUI()
             return button
         end
 
+        local playerDropdown, playerDropdownFrame
         local function createDropdown(text, items, callback)
             local dropdown = Instance.new("TextButton")
             dropdown.Size = UDim2.new(1, -10, 0, 50)
@@ -1418,7 +1419,7 @@ local function createGUI()
             }
         }
 
-        local playerDropdown, playerDropdownFrame = createDropdown("Select Player", {}, function(name)
+        playerDropdown, playerDropdownFrame = createDropdown("Select Player", {}, function(name)
             selectedPlayer = Players:FindFirstChild(name)
             notify("👤 Selected Player: " .. name)
         end)
@@ -1434,9 +1435,24 @@ local function createGUI()
                     child:Destroy()
                 end
             end
-            for _, btn in pairs(buttons) do
+            local buttonCount = 0
+            for i, btn in ipairs(buttons) do
                 btn.Parent = scrollFrame
                 btn.Visible = true
+                btn.ZIndex = 12
+                if btn:IsA("TextButton") then
+                    buttonCount = buttonCount + 1
+                elseif btn == playerDropdownFrame then
+                    btn.Visible = false -- Hide dropdown frame by default
+                    btn.ZIndex = 13
+                    for _, item in pairs(btn:GetChildren()) do
+                        if item:IsA("TextButton") then
+                            item.Visible = true
+                            item.ZIndex = 14
+                            buttonCount = buttonCount + 1
+                        end
+                    end
+                end
             end
             currentCategory = categoryName
             for _, cat in pairs(categories) do
@@ -1445,7 +1461,10 @@ local function createGUI()
                     catButton.BackgroundColor3 = cat.name == currentCategory and Color3.fromRGB(70, 70, 70) or Color3.fromRGB(50, 50, 50)
                 end
             end
-            notify("🔄 Switched to category: " .. categoryName .. " (" .. #buttons .. " buttons loaded)")
+            -- Force layout update
+            scrollFrame.CanvasPosition = Vector2.new(0, 0)
+            scrollUIL:ApplyLayout()
+            notify("🔄 Switched to category: " .. categoryName .. " (" .. buttonCount .. " buttons loaded)")
         end
 
         for _, category in pairs(categories) do
@@ -1546,7 +1565,13 @@ local function createGUI()
             playerDropdown.MouseButton1Click:Connect(function()
                 playerDropdownFrame.Visible = not playerDropdownFrame.Visible
                 playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(1, -10, 0, #playerNames * 45) or UDim2.new(1, -10, 0, 0)
+                if playerDropdownFrame.Visible and currentCategory == "Teleport" then
+                    playerDropdownFrame.Parent = scrollFrame
+                end
             end)
+            if currentCategory == "Teleport" then
+                updateCategory(currentCategory, categories[3].buttons)
+            end
         end
 
         Players.PlayerAdded:Connect(updatePlayerDropdown)
