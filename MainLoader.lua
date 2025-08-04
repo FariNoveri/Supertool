@@ -127,8 +127,8 @@ local function loadSavedData()
         end
         
         -- Fallback to memory-only storage
-        savedPositions = savedPositions or {}
-        positionCounter = #savedPositions
+    savedPositions = savedPositions or {}
+    positionCounter = #savedPositions
         return true
     end)
     
@@ -791,108 +791,108 @@ function updatePositionList()
         
         -- Add position items to this category
         for i, pos in ipairs(categoryPositions) do
-            local itemFrame = Instance.new("Frame")
-            itemFrame.Name = "PositionItem"
-            itemFrame.Size = UDim2.new(1, -10, 0, 100)
-            itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            itemFrame.BackgroundTransparency = 0.3
-            itemFrame.BorderSizePixel = 0
-            itemFrame.ZIndex = 27
-            local itemCorner = Instance.new("UICorner")
-            itemCorner.CornerRadius = UDim.new(0, 8)
-            itemCorner.Parent = itemFrame
+        local itemFrame = Instance.new("Frame")
+        itemFrame.Name = "PositionItem"
+        itemFrame.Size = UDim2.new(1, -10, 0, 100)
+        itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        itemFrame.BackgroundTransparency = 0.3
+        itemFrame.BorderSizePixel = 0
+        itemFrame.ZIndex = 27
+        local itemCorner = Instance.new("UICorner")
+        itemCorner.CornerRadius = UDim.new(0, 8)
+        itemCorner.Parent = itemFrame
             itemFrame.Parent = contentFrame
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(1, -10, 0, 25)
-            nameLabel.Position = UDim2.new(0, 10, 0, 5)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nameLabel.TextSize = 16
-            nameLabel.Font = Enum.Font.GothamBold
-            nameLabel.Text = pos.name
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            nameLabel.ZIndex = 28
-            nameLabel.Parent = itemFrame
-            
-            local infoLabel = Instance.new("TextLabel")
-            infoLabel.Size = UDim2.new(1, -10, 0, 20)
-            infoLabel.Position = UDim2.new(0, 10, 0, 30)
-            infoLabel.BackgroundTransparency = 1
-            infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            infoLabel.TextSize = 12
-            infoLabel.Font = Enum.Font.Gotham
-            infoLabel.Text = "ID: " .. pos.id .. " | " .. os.date("%H:%M:%S", pos.timestamp)
-            infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-            infoLabel.ZIndex = 28
-            infoLabel.Parent = itemFrame
-            
-            -- Button container
-            local buttonFrame = Instance.new("Frame")
-            buttonFrame.Size = UDim2.new(1, -10, 0, 35)
-            buttonFrame.Position = UDim2.new(0, 10, 0, 55)
-            buttonFrame.BackgroundTransparency = 1
-            buttonFrame.ZIndex = 28
-            buttonFrame.Parent = itemFrame
-            
-            local buttonUIL = Instance.new("UIListLayout")
-            buttonUIL.FillDirection = Enum.FillDirection.Horizontal
-            buttonUIL.Padding = UDim.new(0, 5)
-            buttonUIL.Parent = buttonFrame
-            
-            -- Teleport button
-            local teleportBtn = Instance.new("TextButton")
-            teleportBtn.Size = UDim2.new(0, 70, 0, 30)
-            teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-            teleportBtn.BackgroundTransparency = 0.2
-            teleportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            teleportBtn.TextSize = 12
-            teleportBtn.Font = Enum.Font.Gotham
-            teleportBtn.Text = "Go"
-            teleportBtn.ZIndex = 29
-            local teleportCorner = Instance.new("UICorner")
-            teleportCorner.CornerRadius = UDim.new(0, 4)
-            teleportCorner.Parent = teleportBtn
-            teleportBtn.MouseButton1Click:Connect(function()
-                loadPosition(pos.id)
-            end)
-            teleportBtn.Parent = buttonFrame
-            
-            -- Rename button
-            local renameBtn = Instance.new("TextButton")
-            renameBtn.Size = UDim2.new(0, 70, 0, 30)
-            renameBtn.BackgroundColor3 = Color3.fromRGB(200, 120, 0)
-            renameBtn.BackgroundTransparency = 0.2
-            renameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameBtn.TextSize = 12
-            renameBtn.Font = Enum.Font.Gotham
-            renameBtn.Text = "Rename"
-            renameBtn.ZIndex = 29
-            local renameCorner = Instance.new("UICorner")
-            renameCorner.CornerRadius = UDim.new(0, 4)
-            renameCorner.Parent = renameBtn
-            renameBtn.MouseButton1Click:Connect(function()
-                showRenameDialog(pos.id)
-            end)
-            renameBtn.Parent = buttonFrame
-            
-            -- Delete button
-            local deleteBtn = Instance.new("TextButton")
-            deleteBtn.Size = UDim2.new(0, 70, 0, 30)
-            deleteBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-            deleteBtn.BackgroundTransparency = 0.2
-            deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            deleteBtn.TextSize = 12
-            deleteBtn.Font = Enum.Font.Gotham
-            deleteBtn.Text = "Delete"
-            deleteBtn.ZIndex = 29
-            local deleteCorner = Instance.new("UICorner")
-            deleteCorner.CornerRadius = UDim.new(0, 4)
-            deleteCorner.Parent = deleteBtn
-            deleteBtn.MouseButton1Click:Connect(function()
-                deletePosition(pos.id)
-            end)
-            deleteBtn.Parent = buttonFrame
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -10, 0, 25)
+        nameLabel.Position = UDim2.new(0, 10, 0, 5)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 16
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.Text = pos.name
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.ZIndex = 28
+        nameLabel.Parent = itemFrame
+        
+        local infoLabel = Instance.new("TextLabel")
+        infoLabel.Size = UDim2.new(1, -10, 0, 20)
+        infoLabel.Position = UDim2.new(0, 10, 0, 30)
+        infoLabel.BackgroundTransparency = 1
+        infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        infoLabel.TextSize = 12
+        infoLabel.Font = Enum.Font.Gotham
+        infoLabel.Text = "ID: " .. pos.id .. " | " .. os.date("%H:%M:%S", pos.timestamp)
+        infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        infoLabel.ZIndex = 28
+        infoLabel.Parent = itemFrame
+        
+        -- Button container
+        local buttonFrame = Instance.new("Frame")
+        buttonFrame.Size = UDim2.new(1, -10, 0, 35)
+        buttonFrame.Position = UDim2.new(0, 10, 0, 55)
+        buttonFrame.BackgroundTransparency = 1
+        buttonFrame.ZIndex = 28
+        buttonFrame.Parent = itemFrame
+        
+        local buttonUIL = Instance.new("UIListLayout")
+        buttonUIL.FillDirection = Enum.FillDirection.Horizontal
+        buttonUIL.Padding = UDim.new(0, 5)
+        buttonUIL.Parent = buttonFrame
+        
+        -- Teleport button
+        local teleportBtn = Instance.new("TextButton")
+        teleportBtn.Size = UDim2.new(0, 70, 0, 30)
+        teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+        teleportBtn.BackgroundTransparency = 0.2
+        teleportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        teleportBtn.TextSize = 12
+        teleportBtn.Font = Enum.Font.Gotham
+        teleportBtn.Text = "Go"
+        teleportBtn.ZIndex = 29
+        local teleportCorner = Instance.new("UICorner")
+        teleportCorner.CornerRadius = UDim.new(0, 4)
+        teleportCorner.Parent = teleportBtn
+        teleportBtn.MouseButton1Click:Connect(function()
+            loadPosition(pos.id)
+        end)
+        teleportBtn.Parent = buttonFrame
+        
+        -- Rename button
+        local renameBtn = Instance.new("TextButton")
+        renameBtn.Size = UDim2.new(0, 70, 0, 30)
+        renameBtn.BackgroundColor3 = Color3.fromRGB(200, 120, 0)
+        renameBtn.BackgroundTransparency = 0.2
+        renameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        renameBtn.TextSize = 12
+        renameBtn.Font = Enum.Font.Gotham
+        renameBtn.Text = "Rename"
+        renameBtn.ZIndex = 29
+        local renameCorner = Instance.new("UICorner")
+        renameCorner.CornerRadius = UDim.new(0, 4)
+        renameCorner.Parent = renameBtn
+        renameBtn.MouseButton1Click:Connect(function()
+            showRenameDialog(pos.id)
+        end)
+        renameBtn.Parent = buttonFrame
+        
+        -- Delete button
+        local deleteBtn = Instance.new("TextButton")
+        deleteBtn.Size = UDim2.new(0, 70, 0, 30)
+        deleteBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        deleteBtn.BackgroundTransparency = 0.2
+        deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        deleteBtn.TextSize = 12
+        deleteBtn.Font = Enum.Font.Gotham
+        deleteBtn.Text = "Delete"
+        deleteBtn.ZIndex = 29
+        local deleteCorner = Instance.new("UICorner")
+        deleteCorner.CornerRadius = UDim.new(0, 4)
+        deleteCorner.Parent = deleteBtn
+        deleteBtn.MouseButton1Click:Connect(function()
+            deletePosition(pos.id)
+        end)
+        deleteBtn.Parent = buttonFrame
         end
         
         -- Collapse/Expand functionality
@@ -1660,9 +1660,9 @@ local function spectatePlayer()
             return
         end
         
-        spectatingPlayer = selectedPlayer
+            spectatingPlayer = selectedPlayer
         camera.CameraSubject = targetHumanoid
-        notify("👁️ Spectating " .. selectedPlayer.Name)
+            notify("👁️ Spectating " .. selectedPlayer.Name)
         
         -- Show spectate UI
         updateSpectateUI()
@@ -1950,7 +1950,7 @@ local function stopSpectate()
     local success, errorMsg = pcall(function()
         if spectatingPlayer then
             if humanoid then
-                camera.CameraSubject = humanoid
+            camera.CameraSubject = humanoid
             else
                 camera.CameraSubject = nil
             end
@@ -1997,11 +1997,11 @@ local function teleportToPlayer()
         end
         
         local targetPos = targetRootPart.Position
-        if isValidPosition(targetPos) then
-            hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
-            notify("🚀 Teleported to " .. selectedPlayer.Name)
-        else
-            notify("⚠️ Invalid position for teleport", Color3.fromRGB(255, 100, 100))
+            if isValidPosition(targetPos) then
+                hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+                notify("🚀 Teleported to " .. selectedPlayer.Name)
+            else
+                notify("⚠️ Invalid position for teleport", Color3.fromRGB(255, 100, 100))
         end
     end)
     if not success then
@@ -3288,7 +3288,7 @@ local function createPlayerListUI()
             updatePlayerListDrag(dragInput)
         end
     end)
-    
+
     -- Close button
     local closePlayerListBtn = Instance.new("TextButton")
     closePlayerListBtn.Size = UDim2.new(0, 30, 0, 30)
@@ -3378,6 +3378,11 @@ local function createEnhancedGUI()
         gui.Enabled = true
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         gui.Parent = player:WaitForChild("PlayerGui", 20)
+        
+        -- Ensure GUI is properly created
+        if not gui then
+            error("Failed to create ScreenGui")
+        end
 
         local scale = Instance.new("UIScale")
         scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 1280, camera.ViewportSize.Y / 720))
@@ -3391,10 +3396,19 @@ local function createEnhancedGUI()
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
         logo.ZIndex = 20
+        logo.Visible = true
         local logoCorner = Instance.new("UICorner")
         logoCorner.CornerRadius = UDim.new(0, 12)
         logoCorner.Parent = logo
         logo.Parent = gui
+        
+        -- Ensure logo is visible and clickable
+        if not logo then
+            error("Failed to create logo")
+        end
+        
+        -- Test notification to ensure GUI is working
+        notify("🖼️ GUI created successfully - Logo should be visible", Color3.fromRGB(0, 255, 0))
 
         frame = Instance.new("Frame")
         frame.Size = UDim2.new(0, 900, 0, 600)
@@ -3862,9 +3876,35 @@ local function createEnhancedGUI()
     end)
     
     if not success then
+        print("Enhanced GUI creation failed: " .. tostring(errorMsg))
         notify("⚠️ Enhanced GUI creation failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(2)
-        createEnhancedGUI()
+        
+        -- Try a simpler GUI creation as fallback
+        local fallbackSuccess, fallbackError = pcall(function()
+            if gui then gui:Destroy() end
+            gui = Instance.new("ScreenGui")
+            gui.Name = "SimpleUILibrary_Krnl_Fallback"
+            gui.Parent = player:WaitForChild("PlayerGui", 10)
+            
+            logo = Instance.new("TextButton")
+            logo.Size = UDim2.new(0, 100, 0, 50)
+            logo.Position = UDim2.new(0.9, -100, 0.1, 0)
+            logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+            logo.TextColor3 = Color3.fromRGB(255, 255, 255)
+            logo.Text = "KRNL"
+            logo.TextSize = 18
+            logo.Font = Enum.Font.GothamBold
+            logo.ZIndex = 100
+            logo.Parent = gui
+            
+            notify("🛠️ Fallback GUI created - Basic functionality available", Color3.fromRGB(255, 255, 0))
+        end)
+        
+        if not fallbackSuccess then
+            print("Fallback GUI also failed: " .. tostring(fallbackError))
+            notify("❌ GUI creation completely failed - Script may not work properly", Color3.fromRGB(255, 0, 0))
+        end
     end
 end
 
@@ -3883,7 +3923,24 @@ local function main()
         cleanupOldInstance()
         loadSavedData()
         task.wait(1.5)
-        createEnhancedGUI()
+        
+        -- Create GUI with better error handling
+        local guiSuccess, guiError = pcall(function()
+            createEnhancedGUI()
+        end)
+        
+        if not guiSuccess then
+            print("GUI creation failed: " .. tostring(guiError))
+            notify("⚠️ GUI creation failed, retrying...", Color3.fromRGB(255, 100, 100))
+            task.wait(1)
+            createEnhancedGUI()
+        end
+        
+        -- Ensure GUI exists before creating other elements
+        if not gui then
+            error("GUI was not created successfully")
+        end
+        
         createJoystick()
         createCameraControl()
         createPlayerListUI()
@@ -3901,10 +3958,18 @@ local function main()
             initChar()
         end)
         
+        -- Force show the logo to ensure GUI is visible
+        if logo then
+            logo.Visible = true
+            logo.Position = defaultLogoPos
+        end
+        
         notify("🚀 Enhanced Krnl Mobile v2.0 Loaded Successfully!")
         notify("📱 100% Mobile GUI - All features accessible via touch interface")
+        notify("🖼️ Tap the blue logo to open the main menu", Color3.fromRGB(0, 255, 255))
     end)
     if not success then
+        print("Main function error: " .. tostring(errorMsg))
         notify("⚠️ Script failed to load: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
         task.wait(2)
         main()
