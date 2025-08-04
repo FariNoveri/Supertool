@@ -55,7 +55,6 @@ mainFrame.Position = UDim2.new(1, -360, 0.5, -125)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
-mainFrame.Draggable = true
 mainFrame.ZIndex = 10
 
 -- Add corner rounding
@@ -67,31 +66,72 @@ local mainStroke = Instance.new("UIStroke", mainFrame)
 mainStroke.Color = Color3.fromRGB(40, 40, 40)
 mainStroke.Thickness = 1
 
--- Title Bar
+-- Title Bar - Make it draggable
 local titleBar = Instance.new("Frame", mainFrame)
 titleBar.Size = UDim2.new(1, 0, 0, 30)
 titleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 titleBar.BorderSizePixel = 0
 titleBar.ZIndex = 11
+titleBar.Active = true
+
+-- Make titleBar draggable
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+
+titleBar.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+titleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
 
 local titleCorner = Instance.new("UICorner", titleBar)
 titleCorner.CornerRadius = UDim.new(0, 8)
 
--- Logo
-local logo = Instance.new("TextLabel", titleBar)
-logo.Size = UDim2.new(0, 30, 1, 0)
-logo.Position = UDim2.new(0, 5, 0, 0)
-logo.BackgroundTransparency = 1
+-- Logo (Top-right, draggable)
+local logo = Instance.new("TextButton", gui)
+logo.Size = UDim2.new(0, 35, 0, 35)
+logo.Position = UDim2.new(1, -45, 0, 10)
+logo.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 logo.Text = "⚡"
 logo.TextColor3 = Color3.fromRGB(100, 150, 255)
-logo.TextSize = 16
+logo.TextSize = 18
 logo.Font = Enum.Font.SourceSansBold
-logo.ZIndex = 12
+logo.ZIndex = 15
+logo.Active = true
+logo.Draggable = true
 
--- Title
+local logoCorner = Instance.new("UICorner", logo)
+logoCorner.CornerRadius = UDim.new(0, 17)
+
+local logoStroke = Instance.new("UIStroke", logo)
+logoStroke.Color = Color3.fromRGB(40, 40, 40)
+logoStroke.Thickness = 2
+
+-- Logo click to toggle GUI
+logo.MouseButton1Click:Connect(function()
+    mainFrame.Visible = not mainFrame.Visible
+end)
+
+-- Title (adjusted position)
 local title = Instance.new("TextLabel", titleBar)
-title.Size = UDim2.new(0, 150, 1, 0)
-title.Position = UDim2.new(0, 35, 0, 0)
+title.Size = UDim2.new(0, 120, 1, 0)
+title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
 title.Text = "Unknown Block"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -325,11 +365,18 @@ end)
 
 -- Category Button Creation
 local function createCategoryButtons()
+    -- Clear existing buttons first
+    for _, child in pairs(sidebar:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
     for i, category in ipairs(categories) do
         local button = Instance.new("TextButton", sidebar)
         button.Size = UDim2.new(1, -10, 0, 35)
         button.Position = UDim2.new(0, 5, 0, 5 + (i-1)*40)
-        button.BackgroundColor3 = category == currentCategory and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(30, 30, 30)
+        button.BackgroundColor3 = category == currentCategory and Color3.fromRGB(60, 100, 60) or Color3.fromRGB(30, 30, 30)
         button.Text = category
         button.TextColor3 = Color3.fromRGB(255, 255, 255)
         button.TextSize = 11
@@ -339,16 +386,16 @@ local function createCategoryButtons()
         local buttonCorner = Instance.new("UICorner", button)
         buttonCorner.CornerRadius = UDim.new(0, 4)
         
+        local buttonStroke = Instance.new("UIStroke", button)
+        buttonStroke.Color = category == currentCategory and Color3.fromRGB(80, 120, 80) or Color3.fromRGB(50, 50, 50)
+        buttonStroke.Thickness = 1
+        
         categoryButtons[category] = button
         
         button.MouseButton1Click:Connect(function()
-            -- Update button colors
-            for cat, btn in pairs(categoryButtons) do
-                btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            end
-            button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            
             currentCategory = category
+            -- Recreate all buttons with updated colors
+            createCategoryButtons()
             loadCategoryContent(category)
         end)
     end
@@ -442,7 +489,16 @@ end
 
 -- Content Loader
 local function loadCategoryContent(category)
-    contentFrame:ClearAllChildren()
+    -- Clear content frame
+    for _, child in pairs(contentFrame:GetChildren()) do
+        if not child:IsA("UICorner") then
+            child:Destroy()
+        end
+    end
+    
+    -- Reset canvas position and size
+    contentFrame.CanvasPosition = Vector2.new(0, 0)
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     
     if category == "Movement" then
         createButton(contentFrame, "🛫 Toggle Fly/Freecam", function()
@@ -555,11 +611,27 @@ local function loadCategoryContent(category)
         end)
         
         createButton(contentFrame, "📍 Show Position List", function()
-            contentFrame:ClearAllChildren()
+            -- Clear content frame
+            for _, child in pairs(contentFrame:GetChildren()) do
+                if not child:IsA("UICorner") then
+                    child:Destroy()
+                end
+            end
+            contentFrame.CanvasPosition = Vector2.new(0, 0)
+            contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            
             for cat, positions in pairs(savedPositions) do
                 if #positions > 0 then
                     createButton(contentFrame, cat .. " (" .. #positions .. ")", function()
-                        contentFrame:ClearAllChildren()
+                        -- Clear content frame
+                        for _, child in pairs(contentFrame:GetChildren()) do
+                            if not child:IsA("UICorner") then
+                                child:Destroy()
+                            end
+                        end
+                        contentFrame.CanvasPosition = Vector2.new(0, 0)
+                        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+                        
                         for i, posData in ipairs(positions) do
                             createButton(contentFrame, "📍 " .. posData.name, function()
                                 if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -587,7 +659,15 @@ local function loadCategoryContent(category)
         
     elseif category == "Player" then
         createButton(contentFrame, "👥 Show Player List", function()
-            contentFrame:ClearAllChildren()
+            -- Clear content frame
+            for _, child in pairs(contentFrame:GetChildren()) do
+                if not child:IsA("UICorner") then
+                    child:Destroy()
+                end
+            end
+            contentFrame.CanvasPosition = Vector2.new(0, 0)
+            contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            
             for _, player in ipairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
                     createButton(contentFrame, "👤 " .. player.Name, function()
@@ -743,7 +823,15 @@ local function loadCategoryContent(category)
         end, featureStates.adminDetectionEnabled)
         
         createButton(contentFrame, "📜 Show Admin List", function()
-            contentFrame:ClearAllChildren()
+            -- Clear content frame
+            for _, child in pairs(contentFrame:GetChildren()) do
+                if not child:IsA("UICorner") then
+                    child:Destroy()
+                end
+            end
+            contentFrame.CanvasPosition = Vector2.new(0, 0)
+            contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            
             if #adminList > 0 then
                 for i, admin in ipairs(adminList) do
                     createButton(contentFrame, "⚠️ Admin: " .. admin, function() end)
