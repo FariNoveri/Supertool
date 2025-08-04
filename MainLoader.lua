@@ -4230,35 +4230,219 @@ local function cleanupOldInstance()
     end
 end
 
--- Main initialization
-local function main()
-    local success, errorMsg = pcall(function()
-        cleanupOldInstance()
-        loadSavedData()
-        task.wait(1.5)
+-- Simple GUI creation that will definitely work
+local function createSimpleGUI()
+    print("🔧 Creating simple GUI...")
+    
+    -- Clean up any existing GUI
+    local oldGui = player.PlayerGui:FindFirstChild("MainLoaderGUI")
+    if oldGui then
+        oldGui:Destroy()
+    end
+    
+    -- Create basic ScreenGui
+    gui = Instance.new("ScreenGui")
+    gui.Name = "MainLoaderGUI"
+    gui.ResetOnSpawn = false
+    gui.Parent = player:WaitForChild("PlayerGui", 10)
+    
+    print("✅ ScreenGui created")
+    
+    -- Create simple logo button
+    logo = Instance.new("TextButton")
+    logo.Size = UDim2.new(0, 80, 0, 80)
+    logo.Position = UDim2.new(0.85, 0, 0.8, 0)
+    logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+    logo.TextColor3 = Color3.fromRGB(255, 255, 255)
+    logo.Text = "⚡"
+    logo.TextSize = 30
+    logo.Font = Enum.Font.GothamBold
+    logo.ZIndex = 100
+    logo.Visible = true
+    logo.Parent = gui
+    
+    print("✅ Logo button created")
+    
+    -- Make logo circular
+    local logoCorner = Instance.new("UICorner")
+    logoCorner.CornerRadius = UDim.new(0, 40)
+    logoCorner.Parent = logo
+    
+    -- Make logo draggable
+    makeDraggable(logo, logo)
+    
+    -- Create simple main frame
+    frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 300, 0, 400)
+    frame.Position = UDim2.new(0.5, -150, 0.5, -200)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    frame.BackgroundTransparency = 0.1
+    frame.BorderSizePixel = 0
+    frame.Visible = false
+    frame.ZIndex = 50
+    frame.Parent = gui
+    
+    local frameCorner = Instance.new("UICorner")
+    frameCorner.CornerRadius = UDim.new(0, 15)
+    frameCorner.Parent = frame
+    
+    -- Simple header
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 50)
+    header.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+    header.BorderSizePixel = 0
+    header.ZIndex = 51
+    header.Parent = frame
+    
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 15)
+    headerCorner.Parent = header
+    
+    -- Make frame draggable by header
+    makeDraggable(frame, header)
+    
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -60, 1, 0)
+    title.Position = UDim2.new(0, 20, 0, 0)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 20
+    title.Font = Enum.Font.GothamBold
+    title.Text = "MainLoader"
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.ZIndex = 52
+    title.Parent = header
+    
+    -- Close button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 40, 0, 40)
+    closeBtn.Position = UDim2.new(1, -50, 0, 5)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Text = "×"
+    closeBtn.TextSize = 24
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.ZIndex = 52
+    closeBtn.Parent = header
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 20)
+    closeCorner.Parent = closeBtn
+    
+    -- Simple content area
+    local contentArea = Instance.new("Frame")
+    contentArea.Size = UDim2.new(1, -20, 1, -70)
+    contentArea.Position = UDim2.new(0, 10, 0, 60)
+    contentArea.BackgroundTransparency = 1
+    contentArea.ZIndex = 51
+    contentArea.Parent = frame
+    
+    -- Simple scroll frame
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+    scrollFrame.ZIndex = 51
+    scrollFrame.ClipsDescendants = true
+    scrollFrame.ScrollingEnabled = true
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.Parent = contentArea
+    
+    local scrollUIL = Instance.new("UIListLayout")
+    scrollUIL.FillDirection = Enum.FillDirection.Vertical
+    scrollUIL.Padding = UDim.new(0, 8)
+    scrollUIL.Parent = scrollFrame
+    
+    -- Function to create simple buttons
+    local function createSimpleButton(text, callback, color, icon)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, 0, 0, 50)
+        button.BackgroundColor3 = color or Color3.fromRGB(40, 40, 40)
+        button.BackgroundTransparency = 0.1
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.TextSize = 16
+        button.Font = Enum.Font.GothamBold
+        button.Text = icon .. " " .. text
+        button.TextXAlignment = Enum.TextXAlignment.Left
+        button.ZIndex = 52
+        button.Parent = scrollFrame
         
-        -- Create GUI with better error handling
-        local guiSuccess, guiError = pcall(function()
-            createEnhancedGUI()
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 10)
+        buttonCorner.Parent = button
+        
+        button.MouseButton1Click:Connect(function()
+            local success, err = pcall(callback)
+            if not success then
+                print("Button error: " .. tostring(err))
+            end
         end)
         
+        return button
+    end
+    
+    -- Add basic feature buttons
+    createSimpleButton("Toggle Fly", toggleFly, Color3.fromRGB(0, 150, 255), "🛫")
+    createSimpleButton("Toggle Speed", toggleSpeed, Color3.fromRGB(0, 150, 255), "🏃")
+    createSimpleButton("Toggle Jump Power", toggleJump, Color3.fromRGB(0, 150, 255), "🦘")
+    createSimpleButton("Toggle Noclip", toggleNoclip, Color3.fromRGB(0, 150, 255), "🚪")
+    createSimpleButton("Toggle God Mode", toggleGodMode, Color3.fromRGB(0, 150, 255), "🛡️")
+    createSimpleButton("Teleport to Spawn", teleportToSpawn, Color3.fromRGB(0, 150, 0), "🚪")
+    createSimpleButton("Teleport to Player", teleportToPlayer, Color3.fromRGB(150, 0, 150), "👥")
+    
+    -- Logo functionality
+    logo.MouseButton1Click:Connect(function()
+        frame.Visible = not frame.Visible
+        print("GUI toggled: " .. tostring(frame.Visible))
+        
+        -- Animate logo
+        if frame.Visible then
+            logo.Text = "✕"
+            logo.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        else
+            logo.Text = "⚡"
+            logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+        end
+    end)
+    
+    -- Close button functionality
+    closeBtn.MouseButton1Click:Connect(function()
+        frame.Visible = false
+        logo.Text = "⚡"
+        logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+    end)
+    
+    print("✅ Simple GUI created successfully")
+    return true
+end
+
+-- Main initialization
+local function main()
+    print("🚀 Starting MainLoader...")
+    
+    local success, errorMsg = pcall(function()
+        -- Load basic data
+        loadSavedData()
+        task.wait(1)
+        
+        -- Create simple GUI first
+        local guiSuccess = createSimpleGUI()
+        
         if not guiSuccess then
-            print("GUI creation failed: " .. tostring(guiError))
-            notify("⚠️ GUI creation failed, retrying...", Color3.fromRGB(255, 100, 100))
-            task.wait(1)
-            createEnhancedGUI()
+            error("Failed to create simple GUI")
         end
         
-        -- Ensure GUI exists before creating other elements
-        if not gui then
-            error("GUI was not created successfully")
-        end
-        
+        -- Create other UI elements
         createJoystick()
         createCameraControl()
         createPlayerListUI()
         createPositionListUI()
         createSpectateUI()
+        
+        -- Start systems
         startOverlayProtection()
         loadAdminList()
         startAdminMonitoring()
@@ -4271,21 +4455,20 @@ local function main()
             initChar()
         end)
         
-        -- Force show the logo to ensure GUI is visible
-        if logo then
-            logo.Visible = true
-            logo.Position = defaultLogoPos
-        end
+        print("🎉 MainLoader fully loaded!")
+        print("📱 Look for the ⚡ button in the bottom-right corner")
+        print("🎮 Features: Fly, Speed, Jump, Noclip, God Mode, Teleport")
         
-        notify("🚀 Enhanced Krnl Mobile v2.0 Loaded Successfully!")
-        notify("📱 100% Mobile GUI - All features accessible via touch interface")
-        notify("🖼️ Tap the blue logo to open the main menu", Color3.fromRGB(0, 255, 255))
-        notify("🖱️ All UI panels can be dragged around!", Color3.fromRGB(0, 255, 0))
+        -- Test notification
+        task.wait(1)
+        print("✅ GUI Ready! Tap ⚡ button")
+        
     end)
+    
     if not success then
-        print("Main function error: " .. tostring(errorMsg))
-        notify("⚠️ Script failed to load: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
+        print("❌ Main function error: " .. tostring(errorMsg))
+        print("🔄 Retrying in 3 seconds...")
+        task.wait(3)
         main()
     end
 end
