@@ -107,6 +107,10 @@ local function addNewCategory(categoryName)
     return true
 end
 
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+gui.ResetOnSpawn = false
+
 -- Simple macro system (like Geometry Dash)
 local macroRecording = false
 local macroPlaying = false
@@ -233,30 +237,24 @@ end
 
 -- Create GUI function
 local function createGUI()
-    print("🔧 Starting GUI creation...")
-    local success, errorMsg = pcall(function()
-        -- Clean up old GUI
-        local oldGui = player.PlayerGui:FindFirstChild("MainLoaderGUI")
-        if oldGui then
-            oldGui:Destroy()
-            print("🗑️ Cleaned up old GUI")
-        end
-        
-        print("📱 Creating ScreenGui...")
-        -- Create new GUI - Try CoreGui first, then PlayerGui
-        gui = Instance.new("ScreenGui")
-        gui.Name = "MainLoaderGUI"
-        gui.ResetOnSpawn = false
-        
-        -- Try CoreGui first (better for executors)
-        local success1 = pcall(function()
-            gui.Parent = game.CoreGui
-        end)
-        
-        if not success1 then
-            -- Fallback to PlayerGui
-            gui.Parent = player:WaitForChild("PlayerGui", 10)
-        end
+    -- Hapus GUI lama jika ada
+    local oldGui = game:GetService("CoreGui"):FindFirstChild("MainLoaderGUI") 
+    if oldGui then oldGui:Destroy() end
+    
+    -- Buat GUI baru di CoreGui
+    gui = Instance.new("ScreenGui")
+    gui.Name = "MainLoaderGUI"
+    
+    -- Coba pasang ke CoreGui dulu
+    local success = pcall(function()
+        gui.Parent = game:GetService("CoreGui")
+    end)
+    
+    -- Jika gagal, coba PlayerGui sebagai fallback
+    if not success then
+        gui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    end
+    
         
         if not gui then
             error("Failed to create ScreenGui")
@@ -4799,5 +4797,6 @@ local function createSpectateUI() end
         main()
     end
 end
-
+createDebugGUI()
+createGUI()
 main()
