@@ -1218,10 +1218,12 @@ local function createGUI()
         scrollFrame.Size = UDim2.new(1, -10, 1, -10)
         scrollFrame.Position = UDim2.new(0, 5, 0, 5)
         scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 6
+        scrollFrame.ScrollBarThickness = 8
         scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
         scrollFrame.ZIndex = 11
         scrollFrame.ClipsDescendants = true
+        scrollFrame.ScrollingEnabled = true
+        scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
         scrollFrame.Parent = contentFrame
 
@@ -1248,6 +1250,7 @@ local function createGUI()
             button.Text = text
             button.TextWrapped = true
             button.ZIndex = 12
+            button.Visible = true
             local buttonCorner = Instance.new("UICorner")
             buttonCorner.CornerRadius = UDim.new(0, 10)
             buttonCorner.Parent = button
@@ -1263,7 +1266,6 @@ local function createGUI()
                     notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
                 end
                 button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
             return button
         end
@@ -1279,6 +1281,7 @@ local function createGUI()
             dropdown.Text = text
             dropdown.TextWrapped = true
             dropdown.ZIndex = 12
+            dropdown.Visible = true
             local dropdownCorner = Instance.new("UICorner")
             dropdownCorner.CornerRadius = UDim.new(0, 10)
             dropdownCorner.Parent = dropdown
@@ -1319,6 +1322,7 @@ local function createGUI()
                 itemButton.Text = item
                 itemButton.TextWrapped = true
                 itemButton.ZIndex = 14
+                itemButton.Visible = true
                 local itemCorner = Instance.new("UICorner")
                 itemCorner.CornerRadius = UDim.new(0, 8)
                 itemCorner.Parent = itemButton
@@ -1332,14 +1336,12 @@ local function createGUI()
                 itemButton.MouseButton1Click:Connect(function()
                     callback(item)
                     dropdownFrame.Visible = false
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
                 end)
             end
 
             dropdown.MouseButton1Click:Connect(function()
                 dropdownFrame.Visible = not dropdownFrame.Visible
                 dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(1, -10, 0, #items * 45) or UDim2.new(1, -10, 0, 0)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
 
             return dropdown, dropdownFrame
@@ -1427,22 +1429,15 @@ local function createGUI()
         local currentCategory = nil
 
         local function updateCategory(categoryName, buttons)
-            scrollFrame:ClearAllChildren()
-            scrollUIL = Instance.new("UIListLayout")
-            scrollUIL.FillDirection = Enum.FillDirection.Vertical
-            scrollUIL.Padding = UDim.new(0, 8)
-            scrollUIL.Parent = scrollFrame
-            scrollPadding = Instance.new("UIPadding")
-            scrollPadding.PaddingTop = UDim.new(0, 10)
-            scrollPadding.PaddingBottom = UDim.new(0, 20)
-            scrollPadding.PaddingLeft = UDim.new(0, 10)
-            scrollPadding.PaddingRight = UDim.new(0, 10)
-            scrollPadding.Parent = scrollFrame
-
+            for _, child in pairs(scrollFrame:GetChildren()) do
+                if child:IsA("GuiObject") and child ~= scrollUIL and child ~= scrollPadding then
+                    child:Destroy()
+                end
+            end
             for _, btn in pairs(buttons) do
                 btn.Parent = scrollFrame
+                btn.Visible = true
             end
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             currentCategory = categoryName
             for _, cat in pairs(categories) do
                 local catButton = sidebar:FindFirstChild(cat.name)
@@ -1450,7 +1445,7 @@ local function createGUI()
                     catButton.BackgroundColor3 = cat.name == currentCategory and Color3.fromRGB(70, 70, 70) or Color3.fromRGB(50, 50, 50)
                 end
             end
-            notify("🔄 Switched to category: " .. categoryName)
+            notify("🔄 Switched to category: " .. categoryName .. " (" .. #buttons .. " buttons loaded)")
         end
 
         for _, category in pairs(categories) do
@@ -1462,7 +1457,6 @@ local function createGUI()
             end)
         end
 
-        -- Select the first category by default when GUI is opened
         if categories[1] then
             updateCategory(categories[1].name, categories[1].buttons)
         end
@@ -1532,6 +1526,7 @@ local function createGUI()
                 itemButton.Text = item
                 itemButton.TextWrapped = true
                 itemButton.ZIndex = 14
+                itemButton.Visible = true
                 local itemCorner = Instance.new("UICorner")
                 itemCorner.CornerRadius = UDim.new(0, 8)
                 itemCorner.Parent = itemButton
@@ -1546,13 +1541,11 @@ local function createGUI()
                     selectedPlayer = Players:FindFirstChild(item)
                     notify("👤 Selected Player: " .. item)
                     playerDropdownFrame.Visible = false
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
                 end)
             end
             playerDropdown.MouseButton1Click:Connect(function()
                 playerDropdownFrame.Visible = not playerDropdownFrame.Visible
                 playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(1, -10, 0, #playerNames * 45) or UDim2.new(1, -10, 0, 0)
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
         end
 
