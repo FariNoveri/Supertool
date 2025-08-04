@@ -4473,24 +4473,42 @@ local function main()
             error("Failed to create GUI after 3 attempts")
         end
         
-        -- Create other UI elements
-        createJoystick()
-        createCameraControl()
-        createPlayerListUI()
-        createPositionListUI()
-        createSpectateUI()
+        -- Create other UI elements (with error handling)
+        local function safeCreate(func, name)
+            local success, err = pcall(func)
+            if not success then
+                print("⚠️ Failed to create " .. name .. ": " .. tostring(err))
+            else
+                print("✅ " .. name .. " created successfully")
+            end
+        end
         
-        -- Start systems
-        startOverlayProtection()
-        loadAdminList()
-        startAdminMonitoring()
-        detectGameAndCreateStats()
-        initChar()
+        safeCreate(createJoystick, "Joystick")
+        safeCreate(createCameraControl, "Camera Control")
+        safeCreate(createPlayerListUI, "Player List UI")
+        safeCreate(createPositionListUI, "Position List UI")
+        safeCreate(createSpectateUI, "Spectate UI")
+        
+        -- Start systems (with error handling)
+        local function safeStart(func, name)
+            local success, err = pcall(func)
+            if not success then
+                print("⚠️ Failed to start " .. name .. ": " .. tostring(err))
+            else
+                print("✅ " .. name .. " started successfully")
+            end
+        end
+        
+        safeStart(startOverlayProtection, "Overlay Protection")
+        safeStart(loadAdminList, "Admin List")
+        safeStart(startAdminMonitoring, "Admin Monitoring")
+        safeStart(detectGameAndCreateStats, "Game Detection")
+        safeStart(initChar, "Character Init")
         
         -- Connect character respawn
         player.CharacterAdded:Connect(function()
             task.wait(2)
-            initChar()
+            safeStart(initChar, "Character Init (Respawn)")
         end)
         
         print("🎉 MainLoader fully loaded!")
