@@ -25,14 +25,42 @@ local maxSavedPositions = 50
 local autoSaveEnabled = false
 local autoSaveInterval = 30
 
--- Enhanced macro system
-local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
+-- Category system for positions
+local categories = {
+    "General",
+    "Spawn",
+    "Checkpoint", 
+    "Important",
+    "Custom"
+}
+local currentCategory = "General"
+
+-- Function to add new category
+local function addNewCategory(categoryName)
+    if not categoryName or categoryName == "" then return false end
+    
+    -- Check if category already exists
+    for _, cat in ipairs(categories) do
+        if cat == categoryName then
+            return false
+        end
+    end
+    
+    table.insert(categories, categoryName)
+    saveData()
+    notify("📁 Added new category: " .. categoryName, Color3.fromRGB(0, 255, 255))
+    return true
+end
+
+-- Simple macro system (like Geometry Dash)
+local macroRecording = false
+local macroPlaying = false
 local macroActions = {}
-local macroSuccessfulActions = {}
-local macroSuccessfulEndTime = nil
+local macroPerfectActions = {}
 local currentAttempt = 1
 local totalAttempts = 0
 local practiceMode = false
+local macroStartTime = 0
 
 -- Mobile specific variables
 local freecamCFrame = nil
@@ -43,6 +71,7 @@ local joystickRadius = 50
 local joystickDeadzone = 0.15
 local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
+local cameraRotationSensitivity = 0.02 -- Increased from 0.01
 local nickHidden, randomNick = false, false
 local customNick = "PemainKeren"
 local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
@@ -50,22 +79,126 @@ local defaultFramePos = UDim2.new(0.5, -400, 0.5, -250)
 local freezeMovingParts = false
 local originalCFrames = {}
 
+-- Admin detection system
+local adminDetectionEnabled = true
+local adminList = {}
+local detectedAdmins = {}
+local adminWarningShown = false
+
+-- Fake stats system
+local fakeStatsEnabled = false
+local fakeStatsData = {}
+local fakeStatsBillboard = nil
+local fakeStatsText = nil
+local currentFakeStat = ""
+local fakeStatsRotation = {}
+local fakeStatsRotationIndex = 1
+local fakeStatsRotationSpeed = 3 -- seconds per stat
+local autoDetectGameStats = true
+
 local connections = {}
-local currentCategory = "Movement"
 
--- Data persistence key
-local dataKey = "EnhancedKrnlUI_" .. tostring(player.UserId) .. "_" .. game.PlaceId
+-- Android DCIM folder path
+local dcimPath = "DCIM/Supertool"
+local gameName = game.Name or "UnknownGame"
 
--- Load saved data
+-- Load saved data with local persistence
 local function loadSavedData()
-    savedPositions = savedPositions or {}
-    positionCounter = #savedPositions
+    local success, result = pcall(function()
+        -- Try to load from DCIM/Supertool folder if available
+        if writefile and readfile then
+            local filePath = dcimPath .. "/" .. gameName .. "_checkpoints.json"
+            if isfile and isfile(filePath) then
+                local fileContent = readfile(filePath)
+                local savedData = HttpService:JSONDecode(fileContent)
+                savedPositions = savedData.positions or {}
+                positionCounter = savedData.positionCounter or #savedPositions
+                categories = savedData.categories or categories
+                currentCategory = savedData.currentCategory or "General"
+                notify("📁 Loaded " .. #savedPositions .. " checkpoints from DCIM/Supertool", Color3.fromRGB(0, 255, 255))
+                return true
+            else
+                notify("📁 No saved checkpoints found, starting fresh", Color3.fromRGB(255, 255, 0))
+            end
+        end
+        
+        -- Fallback to memory-only storage
+        savedPositions = savedPositions or {}
+        positionCounter = #savedPositions
+        return true
+    end)
+    
+    if not success then
+        print("Failed to load saved data: " .. tostring(result))
+        savedPositions = savedPositions or {}
+        positionCounter = #savedPositions
+        notify("⚠️ Failed to load checkpoints: " .. tostring(result), Color3.fromRGB(255, 100, 100))
+    end
 end
 
--- Save data
+-- Save data with local persistence
 local function saveData()
-    -- In a real environment, you'd save to DataStore here
-    -- For now, data persists in memory during the session
+    local success, errorMsg = pcall(function()
+        local dataToSave = {
+            positions = savedPositions,
+            positionCounter = positionCounter,
+            categories = categories,
+            currentCategory = currentCategory,
+            lastSaved = os.time(),
+            gameName = gameName
+        }
+        local jsonData = HttpService:JSONEncode(dataToSave)
+        
+        -- Try to save to DCIM/Supertool folder if available
+        if writefile then
+            local filePath = dcimPath .. "/" .. gameName .. "_checkpoints.json"
+            writefile(filePath, jsonData)
+            notify("💾 Saved " .. #savedPositions .. " checkpoints to DCIM/Supertool", Color3.fromRGB(0, 255, 0))
+        end
+        
+        -- Data is also kept in memory for the session
+    end)
+    
+    if not success then
+        print("Failed to save data: " .. tostring(errorMsg))
+        notify("⚠️ Failed to save checkpoints: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
+-- Save individual checkpoint with custom name
+local function saveCheckpoint(checkpointName, category)
+    local success, errorMsg = pcall(function()
+        if hr then
+            positionCounter = positionCounter + 1
+            local positionName = checkpointName or ("Checkpoint " .. positionCounter)
+            local positionCategory = category or currentCategory
+            local positionData = {
+                name = positionName,
+                cframe = hr.CFrame,
+                timestamp = os.time(),
+                id = positionCounter,
+                category = positionCategory
+            }
+            
+            table.insert(savedPositions, positionData)
+            
+            if #savedPositions > maxSavedPositions then
+                table.remove(savedPositions, 1)
+            end
+            
+            saveData()
+            notify("💾 Saved: " .. positionName .. " (" .. positionCategory .. ")")
+            
+            if positionListFrame and positionListFrame.Visible then
+                updatePositionList()
+            end
+        else
+            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
+        end
+    end)
+    if not success then
+        notify("⚠️ Save Checkpoint error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
 end
 
 -- Notify function
@@ -153,11 +286,11 @@ local function resetCharacterState()
     end
 end
 
--- Enhanced macro system functions
+-- Simple macro system functions (like Geometry Dash)
 local function recordMacroAction(actionType, data)
     if macroRecording then
         local action = {
-            time = tick(),
+            time = tick() - macroStartTime,
             type = actionType,
             data = data
         }
@@ -170,25 +303,23 @@ local function onCharacterDied()
         totalAttempts = totalAttempts + 1
         currentAttempt = currentAttempt + 1
         notify("💀 Death recorded - Attempt " .. currentAttempt .. " (Total: " .. totalAttempts .. ")", Color3.fromRGB(255, 100, 100))
+        
+        -- Reset actions for next attempt
+        macroActions = {}
+        macroStartTime = tick()
     end
 end
 
-local function finishMacroSuccessfully()
-    if macroRecording then
-        macroSuccessfulActions = {}
-        local lastDeathTime = 0
-        
+local function onCharacterFinished()
+    if macroRecording and practiceMode then
+        -- Save the perfect run (no deaths)
+        macroPerfectActions = {}
         for _, action in ipairs(macroActions) do
-            if action.type ~= "death" and action.time > lastDeathTime then
-                table.insert(macroSuccessfulActions, action)
-            elseif action.type == "death" then
-                lastDeathTime = action.time
-                macroSuccessfulActions = {}
-            end
+            table.insert(macroPerfectActions, action)
         end
         
-        macroSuccessfulEndTime = tick()
-        notify("✅ Macro completed successfully! (" .. #macroSuccessfulActions .. " actions, " .. totalAttempts .. " attempts)", Color3.fromRGB(0, 255, 0))
+        notify("✅ Perfect run recorded! (" .. #macroPerfectActions .. " actions, " .. totalAttempts .. " attempts)", Color3.fromRGB(0, 255, 0))
+        notify("🎯 Now you can play the perfect run!", Color3.fromRGB(0, 255, 255))
     end
 end
 
@@ -196,47 +327,53 @@ local function toggleRecordMacro()
     macroRecording = not macroRecording
     if macroRecording then
         macroActions = {}
-        macroSuccessfulActions = {}
+        macroPerfectActions = {}
         currentAttempt = 1
         totalAttempts = 1
         practiceMode = true
-        macroSuccessfulEndTime = nil
+        macroStartTime = tick()
         
         if humanoid then
             connections.macroDeath = humanoid.Died:Connect(onCharacterDied)
         end
         
         notify("🔴 Macro Recording Started (Practice Mode)", Color3.fromRGB(255, 0, 0))
+        notify("💀 Practice until you complete without dying", Color3.fromRGB(255, 255, 0))
     else
         if connections.macroDeath then
             connections.macroDeath:Disconnect()
             connections.macroDeath = nil
         end
         
-        finishMacroSuccessfully()
         practiceMode = false
         notify("⏹️ Macro Recording Stopped", Color3.fromRGB(255, 255, 0))
+        
+        if #macroPerfectActions > 0 then
+            notify("🎯 Perfect run saved! (" .. #macroPerfectActions .. " actions)", Color3.fromRGB(0, 255, 0))
+        else
+            notify("⚠️ No perfect run recorded", Color3.fromRGB(255, 100, 100))
+        end
     end
 end
 
 local function togglePlayMacro()
     macroPlaying = not macroPlaying
     if macroPlaying then
-        if #macroSuccessfulActions == 0 then
+        if #macroPerfectActions == 0 then
             macroPlaying = false
-            notify("⚠️ No successful macro recorded!", Color3.fromRGB(255, 100, 100))
+            notify("⚠️ No perfect macro recorded! Practice first!", Color3.fromRGB(255, 100, 100))
             return
         end
         
-        notify("▶️ Playing Successful Macro (" .. #macroSuccessfulActions .. " actions)", Color3.fromRGB(0, 255, 0))
+        notify("▶️ Playing Perfect Macro (" .. #macroPerfectActions .. " actions)", Color3.fromRGB(0, 255, 0))
         
         task.spawn(function()
             local startTime = tick()
             local actionIndex = 1
             
-            while macroPlaying and actionIndex <= #macroSuccessfulActions do
-                local action = macroSuccessfulActions[actionIndex]
-                local targetTime = startTime + (action.time - macroSuccessfulActions[1].time)
+            while macroPlaying and actionIndex <= #macroPerfectActions do
+                local action = macroPerfectActions[actionIndex]
+                local targetTime = startTime + action.time
                 
                 while tick() < targetTime and macroPlaying do
                     task.wait(0.01)
@@ -254,7 +391,7 @@ local function togglePlayMacro()
             end
             
             if macroPlaying then
-                notify("✅ Macro playback completed!", Color3.fromRGB(0, 255, 0))
+                notify("✅ Perfect macro completed!", Color3.fromRGB(0, 255, 0))
                 macroPlaying = false
             end
         end)
@@ -264,37 +401,8 @@ local function togglePlayMacro()
 end
 
 -- Enhanced position saving system
-local function saveCurrentPosition(customName)
-    local success, errorMsg = pcall(function()
-        if hr then
-            positionCounter = positionCounter + 1
-            local positionName = customName or ("Position " .. positionCounter)
-            local positionData = {
-                name = positionName,
-                cframe = hr.CFrame,
-                timestamp = os.time(),
-                id = positionCounter
-            }
-            
-            table.insert(savedPositions, positionData)
-            
-            if #savedPositions > maxSavedPositions then
-                table.remove(savedPositions, 1)
-            end
-            
-            saveData()
-            notify("💾 Saved: " .. positionName)
-            
-            if positionListFrame and positionListFrame.Visible then
-                updatePositionList()
-            end
-        else
-            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
-        end
-    end)
-    if not success then
-        notify("⚠️ Save Position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
+local function saveCurrentPosition(customName, category)
+    saveCheckpoint(customName, category)
 end
 
 local function toggleAutoSave()
@@ -307,7 +415,7 @@ local function toggleAutoSave()
                 task.wait(autoSaveInterval)
                 if hr and hr.Position and autoSaveEnabled then
                     if not lastPosition or (hr.Position - lastPosition).Magnitude > 10 then
-                        saveCurrentPosition("Auto " .. os.date("%H:%M:%S"))
+                        saveCheckpoint("Auto Checkpoint " .. os.date("%H:%M:%S"), currentCategory)
                         lastPosition = hr.Position
                     end
                 end
@@ -332,6 +440,41 @@ local function deletePosition(positionId)
     end
 end
 
+-- Auto teleport through all saved positions
+local function autoTeleportAllPositions()
+    local success, errorMsg = pcall(function()
+        if #savedPositions == 0 then
+            notify("⚠️ No saved checkpoints to teleport to", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        if not hr then
+            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
+            return
+        end
+        
+        notify("🚀 Starting auto teleport through " .. #savedPositions .. " checkpoints", Color3.fromRGB(0, 255, 0))
+        
+        task.spawn(function()
+            for i, pos in ipairs(savedPositions) do
+                if hr then
+                    hr.CFrame = pos.cframe
+                    notify("📍 Teleported to: " .. pos.name .. " (" .. (pos.category or "General") .. ") - " .. i .. "/" .. #savedPositions, Color3.fromRGB(0, 255, 255))
+                    task.wait(2) -- Wait 2 seconds between teleports
+                else
+                    notify("⚠️ Character lost during teleport", Color3.fromRGB(255, 100, 100))
+                    break
+                end
+            end
+            notify("✅ Auto teleport completed!", Color3.fromRGB(0, 255, 0))
+        end)
+    end)
+    
+    if not success then
+        notify("⚠️ Auto teleport error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+    end
+end
+
 local function showRenameDialog(positionId)
     local pos = nil
     for _, p in ipairs(savedPositions) do
@@ -345,8 +488,8 @@ local function showRenameDialog(positionId)
     
     -- Create rename dialog
     local renameDialog = Instance.new("Frame")
-    renameDialog.Size = UDim2.new(0, 300, 0, 150)
-    renameDialog.Position = UDim2.new(0.5, -150, 0.5, -75)
+    renameDialog.Size = UDim2.new(0, 350, 0, 200)
+    renameDialog.Position = UDim2.new(0.5, -175, 0.5, -100)
     renameDialog.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     renameDialog.BorderSizePixel = 0
     renameDialog.ZIndex = 35
@@ -361,13 +504,26 @@ local function showRenameDialog(positionId)
     renameTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     renameTitle.TextSize = 16
     renameTitle.Font = Enum.Font.GothamBold
-    renameTitle.Text = "Rename Position"
+    renameTitle.Text = "Edit Position"
     renameTitle.ZIndex = 36
     renameTitle.Parent = renameDialog
     
+    -- Name label and input
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(0, 80, 0, 25)
+    nameLabel.Position = UDim2.new(0, 10, 0, 50)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextSize = 14
+    nameLabel.Font = Enum.Font.Gotham
+    nameLabel.Text = "Name:"
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.ZIndex = 36
+    nameLabel.Parent = renameDialog
+    
     local renameBox = Instance.new("TextBox")
-    renameBox.Size = UDim2.new(1, -20, 0, 30)
-    renameBox.Position = UDim2.new(0, 10, 0, 50)
+    renameBox.Size = UDim2.new(1, -100, 0, 25)
+    renameBox.Position = UDim2.new(0, 100, 0, 50)
     renameBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     renameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
     renameBox.TextSize = 14
@@ -380,9 +536,93 @@ local function showRenameDialog(positionId)
     boxCorner.Parent = renameBox
     renameBox.Parent = renameDialog
     
+    -- Category label and dropdown
+    local categoryLabel = Instance.new("TextLabel")
+    categoryLabel.Size = UDim2.new(0, 80, 0, 25)
+    categoryLabel.Position = UDim2.new(0, 10, 0, 85)
+    categoryLabel.BackgroundTransparency = 1
+    categoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    categoryLabel.TextSize = 14
+    categoryLabel.Font = Enum.Font.Gotham
+    categoryLabel.Text = "Category:"
+    categoryLabel.TextXAlignment = Enum.TextXAlignment.Left
+    categoryLabel.ZIndex = 36
+    categoryLabel.Parent = renameDialog
+    
+    local categoryDropdown = Instance.new("TextButton")
+    categoryDropdown.Size = UDim2.new(1, -100, 0, 25)
+    categoryDropdown.Position = UDim2.new(0, 100, 0, 85)
+    categoryDropdown.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    categoryDropdown.BackgroundTransparency = 0.3
+    categoryDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    categoryDropdown.TextSize = 14
+    categoryDropdown.Font = Enum.Font.Gotham
+    categoryDropdown.Text = pos.category or "General"
+    categoryDropdown.ZIndex = 36
+    local categoryDropdownCorner = Instance.new("UICorner")
+    categoryDropdownCorner.CornerRadius = UDim.new(0, 5)
+    categoryDropdownCorner.Parent = categoryDropdown
+    categoryDropdown.Parent = renameDialog
+    
+    -- Category dropdown functionality
+    local dropdownOpen = false
+    local dropdownFrame = nil
+    local selectedCategory = pos.category or "General"
+    
+    categoryDropdown.MouseButton1Click:Connect(function()
+        if dropdownOpen then
+            if dropdownFrame then
+                dropdownFrame:Destroy()
+                dropdownFrame = nil
+            end
+            dropdownOpen = false
+        else
+            if dropdownFrame then
+                dropdownFrame:Destroy()
+            end
+            
+            dropdownFrame = Instance.new("Frame")
+            dropdownFrame.Size = UDim2.new(1, -100, 0, 25 * #categories)
+            dropdownFrame.Position = UDim2.new(0, 100, 0, 110)
+            dropdownFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            dropdownFrame.BorderSizePixel = 0
+            dropdownFrame.ZIndex = 38
+            local dropdownFrameCorner = Instance.new("UICorner")
+            dropdownFrameCorner.CornerRadius = UDim.new(0, 5)
+            dropdownFrameCorner.Parent = dropdownFrame
+            dropdownFrame.Parent = renameDialog
+            
+            local dropdownUIL = Instance.new("UIListLayout")
+            dropdownUIL.FillDirection = Enum.FillDirection.Vertical
+            dropdownUIL.Parent = dropdownFrame
+            
+            for _, category in ipairs(categories) do
+                local categoryBtn = Instance.new("TextButton")
+                categoryBtn.Size = UDim2.new(1, 0, 0, 25)
+                categoryBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                categoryBtn.BackgroundTransparency = 0.3
+                categoryBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                categoryBtn.TextSize = 14
+                categoryBtn.Font = Enum.Font.Gotham
+                categoryBtn.Text = category
+                categoryBtn.ZIndex = 39
+                categoryBtn.MouseButton1Click:Connect(function()
+                    selectedCategory = category
+                    categoryDropdown.Text = category
+                    dropdownFrame:Destroy()
+                    dropdownFrame = nil
+                    dropdownOpen = false
+                end)
+                categoryBtn.Parent = dropdownFrame
+            end
+            
+            dropdownOpen = true
+        end
+    end)
+    
     local confirmBtn = Instance.new("TextButton")
     confirmBtn.Size = UDim2.new(0, 80, 0, 30)
-    confirmBtn.Position = UDim2.new(0, 50, 0, 100)
+    confirmBtn.Position = UDim2.new(0, 50, 0, 150)
     confirmBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
     confirmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     confirmBtn.TextSize = 14
@@ -395,8 +635,9 @@ local function showRenameDialog(positionId)
     confirmBtn.MouseButton1Click:Connect(function()
         if renameBox.Text ~= "" then
             pos.name = renameBox.Text
+            pos.category = selectedCategory
             saveData()
-            notify("✏️ Renamed to: " .. renameBox.Text)
+            notify("✏️ Updated: " .. renameBox.Text .. " (" .. selectedCategory .. ")")
             if positionListFrame and positionListFrame.Visible then
                 updatePositionList()
             end
@@ -407,7 +648,7 @@ local function showRenameDialog(positionId)
     
     local cancelBtn = Instance.new("TextButton")
     cancelBtn.Size = UDim2.new(0, 80, 0, 30)
-    cancelBtn.Position = UDim2.new(0, 170, 0, 100)
+    cancelBtn.Position = UDim2.new(0, 220, 0, 150)
     cancelBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
     cancelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     cancelBtn.TextSize = 14
@@ -462,124 +703,208 @@ local function teleportToFreecam()
     end
 end
 
--- Create position list UI
+-- Create position list UI with categories
 function updatePositionList()
     if not positionListFrame then return end
     
     local scrollFrame = positionListFrame:FindFirstChild("ScrollFrame")
     if not scrollFrame then return end
     
-    -- Clear existing buttons
+    -- Clear existing items
     for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("Frame") and child.Name == "PositionItem" then
+        if child:IsA("Frame") then
             child:Destroy()
         end
     end
     
-    -- Add position items
-    for i, pos in ipairs(savedPositions) do
-        local itemFrame = Instance.new("Frame")
-        itemFrame.Name = "PositionItem"
-        itemFrame.Size = UDim2.new(1, -10, 0, 100)
-        itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        itemFrame.BackgroundTransparency = 0.3
-        itemFrame.BorderSizePixel = 0
-        itemFrame.ZIndex = 27
-        local itemCorner = Instance.new("UICorner")
-        itemCorner.CornerRadius = UDim.new(0, 8)
-        itemCorner.Parent = itemFrame
-        itemFrame.Parent = scrollFrame
+    -- Group positions by category
+    local positionsByCategory = {}
+    for _, pos in ipairs(savedPositions) do
+        local category = pos.category or "General"
+        if not positionsByCategory[category] then
+            positionsByCategory[category] = {}
+        end
+        table.insert(positionsByCategory[category], pos)
+    end
+    
+    -- Create category sections
+    for categoryName, categoryPositions in pairs(positionsByCategory) do
+        -- Category header
+        local categoryFrame = Instance.new("Frame")
+        categoryFrame.Name = "Category_" .. categoryName
+        categoryFrame.Size = UDim2.new(1, -10, 0, 40)
+        categoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        categoryFrame.BackgroundTransparency = 0.2
+        categoryFrame.BorderSizePixel = 0
+        categoryFrame.ZIndex = 27
+        local categoryCorner = Instance.new("UICorner")
+        categoryCorner.CornerRadius = UDim.new(0, 8)
+        categoryCorner.Parent = categoryFrame
+        categoryFrame.Parent = scrollFrame
         
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(1, -10, 0, 25)
-        nameLabel.Position = UDim2.new(0, 10, 0, 5)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextSize = 16
-        nameLabel.Font = Enum.Font.GothamBold
-        nameLabel.Text = pos.name
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.ZIndex = 28
-        nameLabel.Parent = itemFrame
+        -- Category name and count
+        local categoryLabel = Instance.new("TextLabel")
+        categoryLabel.Size = UDim2.new(1, -80, 1, 0)
+        categoryLabel.Position = UDim2.new(0, 10, 0, 0)
+        categoryLabel.BackgroundTransparency = 1
+        categoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        categoryLabel.TextSize = 16
+        categoryLabel.Font = Enum.Font.GothamBold
+        categoryLabel.Text = categoryName .. " (" .. #categoryPositions .. ")"
+        categoryLabel.TextXAlignment = Enum.TextXAlignment.Left
+        categoryLabel.ZIndex = 28
+        categoryLabel.Parent = categoryFrame
         
-        local infoLabel = Instance.new("TextLabel")
-        infoLabel.Size = UDim2.new(1, -10, 0, 20)
-        infoLabel.Position = UDim2.new(0, 10, 0, 30)
-        infoLabel.BackgroundTransparency = 1
-        infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        infoLabel.TextSize = 12
-        infoLabel.Font = Enum.Font.Gotham
-        infoLabel.Text = "ID: " .. pos.id .. " | " .. os.date("%H:%M:%S", pos.timestamp)
-        infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-        infoLabel.ZIndex = 28
-        infoLabel.Parent = itemFrame
+        -- Collapse/Expand button
+        local collapseBtn = Instance.new("TextButton")
+        collapseBtn.Size = UDim2.new(0, 30, 0, 30)
+        collapseBtn.Position = UDim2.new(1, -40, 0, 5)
+        collapseBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        collapseBtn.BackgroundTransparency = 0.3
+        collapseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        collapseBtn.TextSize = 18
+        collapseBtn.Font = Enum.Font.GothamBold
+        collapseBtn.Text = "▼"
+        collapseBtn.ZIndex = 29
+        local collapseCorner = Instance.new("UICorner")
+        collapseCorner.CornerRadius = UDim.new(0, 4)
+        collapseCorner.Parent = collapseBtn
+        collapseBtn.Parent = categoryFrame
         
-        -- Button container
-        local buttonFrame = Instance.new("Frame")
-        buttonFrame.Size = UDim2.new(1, -10, 0, 35)
-        buttonFrame.Position = UDim2.new(0, 10, 0, 55)
-        buttonFrame.BackgroundTransparency = 1
-        buttonFrame.ZIndex = 28
-        buttonFrame.Parent = itemFrame
+        -- Category content container
+        local contentFrame = Instance.new("Frame")
+        contentFrame.Name = "Content"
+        contentFrame.Size = UDim2.new(1, 0, 0, 0)
+        contentFrame.Position = UDim2.new(0, 0, 1, 0)
+        contentFrame.BackgroundTransparency = 1
+        contentFrame.ZIndex = 26
+        contentFrame.Parent = categoryFrame
         
-        local buttonUIL = Instance.new("UIListLayout")
-        buttonUIL.FillDirection = Enum.FillDirection.Horizontal
-        buttonUIL.Padding = UDim.new(0, 5)
-        buttonUIL.Parent = buttonFrame
+        local contentUIL = Instance.new("UIListLayout")
+        contentUIL.FillDirection = Enum.FillDirection.Vertical
+        contentUIL.Padding = UDim.new(0, 5)
+        contentUIL.Parent = contentFrame
         
-        -- Teleport button
-        local teleportBtn = Instance.new("TextButton")
-        teleportBtn.Size = UDim2.new(0, 70, 0, 30)
-        teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-        teleportBtn.BackgroundTransparency = 0.2
-        teleportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        teleportBtn.TextSize = 12
-        teleportBtn.Font = Enum.Font.Gotham
-        teleportBtn.Text = "Go"
-        teleportBtn.ZIndex = 29
-        local teleportCorner = Instance.new("UICorner")
-        teleportCorner.CornerRadius = UDim.new(0, 4)
-        teleportCorner.Parent = teleportBtn
-        teleportBtn.MouseButton1Click:Connect(function()
-            loadPosition(pos.id)
+        -- Add position items to this category
+        for i, pos in ipairs(categoryPositions) do
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Name = "PositionItem"
+            itemFrame.Size = UDim2.new(1, -10, 0, 100)
+            itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            itemFrame.BackgroundTransparency = 0.3
+            itemFrame.BorderSizePixel = 0
+            itemFrame.ZIndex = 27
+            local itemCorner = Instance.new("UICorner")
+            itemCorner.CornerRadius = UDim.new(0, 8)
+            itemCorner.Parent = itemFrame
+            itemFrame.Parent = contentFrame
+            
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, -10, 0, 25)
+            nameLabel.Position = UDim2.new(0, 10, 0, 5)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextSize = 16
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.Text = pos.name
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.ZIndex = 28
+            nameLabel.Parent = itemFrame
+            
+            local infoLabel = Instance.new("TextLabel")
+            infoLabel.Size = UDim2.new(1, -10, 0, 20)
+            infoLabel.Position = UDim2.new(0, 10, 0, 30)
+            infoLabel.BackgroundTransparency = 1
+            infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+            infoLabel.TextSize = 12
+            infoLabel.Font = Enum.Font.Gotham
+            infoLabel.Text = "ID: " .. pos.id .. " | " .. os.date("%H:%M:%S", pos.timestamp)
+            infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+            infoLabel.ZIndex = 28
+            infoLabel.Parent = itemFrame
+            
+            -- Button container
+            local buttonFrame = Instance.new("Frame")
+            buttonFrame.Size = UDim2.new(1, -10, 0, 35)
+            buttonFrame.Position = UDim2.new(0, 10, 0, 55)
+            buttonFrame.BackgroundTransparency = 1
+            buttonFrame.ZIndex = 28
+            buttonFrame.Parent = itemFrame
+            
+            local buttonUIL = Instance.new("UIListLayout")
+            buttonUIL.FillDirection = Enum.FillDirection.Horizontal
+            buttonUIL.Padding = UDim.new(0, 5)
+            buttonUIL.Parent = buttonFrame
+            
+            -- Teleport button
+            local teleportBtn = Instance.new("TextButton")
+            teleportBtn.Size = UDim2.new(0, 70, 0, 30)
+            teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+            teleportBtn.BackgroundTransparency = 0.2
+            teleportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            teleportBtn.TextSize = 12
+            teleportBtn.Font = Enum.Font.Gotham
+            teleportBtn.Text = "Go"
+            teleportBtn.ZIndex = 29
+            local teleportCorner = Instance.new("UICorner")
+            teleportCorner.CornerRadius = UDim.new(0, 4)
+            teleportCorner.Parent = teleportBtn
+            teleportBtn.MouseButton1Click:Connect(function()
+                loadPosition(pos.id)
+            end)
+            teleportBtn.Parent = buttonFrame
+            
+            -- Rename button
+            local renameBtn = Instance.new("TextButton")
+            renameBtn.Size = UDim2.new(0, 70, 0, 30)
+            renameBtn.BackgroundColor3 = Color3.fromRGB(200, 120, 0)
+            renameBtn.BackgroundTransparency = 0.2
+            renameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            renameBtn.TextSize = 12
+            renameBtn.Font = Enum.Font.Gotham
+            renameBtn.Text = "Rename"
+            renameBtn.ZIndex = 29
+            local renameCorner = Instance.new("UICorner")
+            renameCorner.CornerRadius = UDim.new(0, 4)
+            renameCorner.Parent = renameBtn
+            renameBtn.MouseButton1Click:Connect(function()
+                showRenameDialog(pos.id)
+            end)
+            renameBtn.Parent = buttonFrame
+            
+            -- Delete button
+            local deleteBtn = Instance.new("TextButton")
+            deleteBtn.Size = UDim2.new(0, 70, 0, 30)
+            deleteBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            deleteBtn.BackgroundTransparency = 0.2
+            deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            deleteBtn.TextSize = 12
+            deleteBtn.Font = Enum.Font.Gotham
+            deleteBtn.Text = "Delete"
+            deleteBtn.ZIndex = 29
+            local deleteCorner = Instance.new("UICorner")
+            deleteCorner.CornerRadius = UDim.new(0, 4)
+            deleteCorner.Parent = deleteBtn
+            deleteBtn.MouseButton1Click:Connect(function()
+                deletePosition(pos.id)
+            end)
+            deleteBtn.Parent = buttonFrame
+        end
+        
+        -- Collapse/Expand functionality
+        local isCollapsed = false
+        collapseBtn.MouseButton1Click:Connect(function()
+            isCollapsed = not isCollapsed
+            if isCollapsed then
+                collapseBtn.Text = "▶"
+                contentFrame.Size = UDim2.new(1, 0, 0, 0)
+                contentFrame.Visible = false
+            else
+                collapseBtn.Text = "▼"
+                contentFrame.Size = UDim2.new(1, 0, 0, contentUIL.AbsoluteContentSize.Y)
+                contentFrame.Visible = true
+            end
         end)
-        teleportBtn.Parent = buttonFrame
-        
-        -- Rename button
-        local renameBtn = Instance.new("TextButton")
-        renameBtn.Size = UDim2.new(0, 70, 0, 30)
-        renameBtn.BackgroundColor3 = Color3.fromRGB(200, 120, 0)
-        renameBtn.BackgroundTransparency = 0.2
-        renameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameBtn.TextSize = 12
-        renameBtn.Font = Enum.Font.Gotham
-        renameBtn.Text = "Rename"
-        renameBtn.ZIndex = 29
-        local renameCorner = Instance.new("UICorner")
-        renameCorner.CornerRadius = UDim.new(0, 4)
-        renameCorner.Parent = renameBtn
-        renameBtn.MouseButton1Click:Connect(function()
-            showRenameDialog(pos.id)
-        end)
-        renameBtn.Parent = buttonFrame
-        
-        -- Delete button
-        local deleteBtn = Instance.new("TextButton")
-        deleteBtn.Size = UDim2.new(0, 70, 0, 30)
-        deleteBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        deleteBtn.BackgroundTransparency = 0.2
-        deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        deleteBtn.TextSize = 12
-        deleteBtn.Font = Enum.Font.Gotham
-        deleteBtn.Text = "Delete"
-        deleteBtn.ZIndex = 29
-        local deleteCorner = Instance.new("UICorner")
-        deleteCorner.CornerRadius = UDim.new(0, 4)
-        deleteCorner.Parent = deleteBtn
-        deleteBtn.MouseButton1Click:Connect(function()
-            deletePosition(pos.id)
-        end)
-        deleteBtn.Parent = buttonFrame
     end
 end
 
@@ -589,8 +914,8 @@ local function createPositionListUI()
     end
     
     positionListFrame = Instance.new("Frame")
-    positionListFrame.Size = UDim2.new(0, 400, 0, 500)
-    positionListFrame.Position = UDim2.new(0, 20, 0.5, -250)
+    positionListFrame.Size = UDim2.new(0, 450, 0, 600)
+    positionListFrame.Position = UDim2.new(0, 20, 0.5, -300)
     positionListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     positionListFrame.BackgroundTransparency = 0.1
     positionListFrame.BorderSizePixel = 0
@@ -607,14 +932,213 @@ local function createPositionListUI()
     posTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     posTitle.TextSize = 20
     posTitle.Font = Enum.Font.GothamBold
-    posTitle.Text = "Saved Positions (" .. #savedPositions .. ")"
+    posTitle.Text = "Saved Checkpoints (" .. #savedPositions .. ")"
     posTitle.ZIndex = 26
     posTitle.Parent = positionListFrame
 
+    -- Auto teleport button
+    local autoTeleportBtn = Instance.new("TextButton")
+    autoTeleportBtn.Size = UDim2.new(0, 120, 0, 35)
+    autoTeleportBtn.Position = UDim2.new(0, 10, 0, 55)
+    autoTeleportBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+    autoTeleportBtn.BackgroundTransparency = 0.2
+    autoTeleportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    autoTeleportBtn.TextSize = 14
+    autoTeleportBtn.Font = Enum.Font.GothamBold
+    autoTeleportBtn.Text = "🚀 Auto Teleport"
+    autoTeleportBtn.ZIndex = 28
+    local autoTeleportCorner = Instance.new("UICorner")
+    autoTeleportCorner.CornerRadius = UDim.new(0, 6)
+    autoTeleportCorner.Parent = autoTeleportBtn
+    autoTeleportBtn.MouseButton1Click:Connect(function()
+        autoTeleportAllPositions()
+    end)
+    autoTeleportBtn.Parent = positionListFrame
+
+    -- Category selector
+    local categoryLabel = Instance.new("TextLabel")
+    categoryLabel.Size = UDim2.new(0, 80, 0, 35)
+    categoryLabel.Position = UDim2.new(0, 140, 0, 55)
+    categoryLabel.BackgroundTransparency = 1
+    categoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    categoryLabel.TextSize = 14
+    categoryLabel.Font = Enum.Font.Gotham
+    categoryLabel.Text = "Category:"
+    categoryLabel.TextXAlignment = Enum.TextXAlignment.Left
+    categoryLabel.ZIndex = 26
+    categoryLabel.Parent = positionListFrame
+
+    local categoryDropdown = Instance.new("TextButton")
+    categoryDropdown.Size = UDim2.new(0, 100, 0, 35)
+    categoryDropdown.Position = UDim2.new(0, 230, 0, 55)
+    categoryDropdown.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    categoryDropdown.BackgroundTransparency = 0.3
+    categoryDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    categoryDropdown.TextSize = 14
+    categoryDropdown.Font = Enum.Font.Gotham
+    categoryDropdown.Text = currentCategory
+    categoryDropdown.ZIndex = 28
+    local categoryDropdownCorner = Instance.new("UICorner")
+    categoryDropdownCorner.CornerRadius = UDim.new(0, 6)
+    categoryDropdownCorner.Parent = categoryDropdown
+    categoryDropdown.Parent = positionListFrame
+
+    -- Add category button
+    local addCategoryBtn = Instance.new("TextButton")
+    addCategoryBtn.Size = UDim2.new(0, 30, 0, 35)
+    addCategoryBtn.Position = UDim2.new(0, 340, 0, 55)
+    addCategoryBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+    addCategoryBtn.BackgroundTransparency = 0.2
+    addCategoryBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    addCategoryBtn.TextSize = 16
+    addCategoryBtn.Font = Enum.Font.GothamBold
+    addCategoryBtn.Text = "+"
+    addCategoryBtn.ZIndex = 28
+    local addCategoryCorner = Instance.new("UICorner")
+    addCategoryCorner.CornerRadius = UDim.new(0, 6)
+    addCategoryCorner.Parent = addCategoryBtn
+    addCategoryBtn.MouseButton1Click:Connect(function()
+        -- Create add category dialog
+        local addDialog = Instance.new("Frame")
+        addDialog.Size = UDim2.new(0, 300, 0, 150)
+        addDialog.Position = UDim2.new(0.5, -150, 0.5, -75)
+        addDialog.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        addDialog.BorderSizePixel = 0
+        addDialog.ZIndex = 35
+        local addDialogCorner = Instance.new("UICorner")
+        addDialogCorner.CornerRadius = UDim.new(0, 10)
+        addDialogCorner.Parent = addDialog
+        addDialog.Parent = gui
+        
+        local addTitle = Instance.new("TextLabel")
+        addTitle.Size = UDim2.new(1, 0, 0, 40)
+        addTitle.BackgroundTransparency = 1
+        addTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        addTitle.TextSize = 16
+        addTitle.Font = Enum.Font.GothamBold
+        addTitle.Text = "Add New Category"
+        addTitle.ZIndex = 36
+        addTitle.Parent = addDialog
+        
+        local categoryBox = Instance.new("TextBox")
+        categoryBox.Size = UDim2.new(1, -20, 0, 30)
+        categoryBox.Position = UDim2.new(0, 10, 0, 50)
+        categoryBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        categoryBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+        categoryBox.TextSize = 14
+        categoryBox.Font = Enum.Font.Gotham
+        categoryBox.PlaceholderText = "Enter category name..."
+        categoryBox.ZIndex = 36
+        local boxCorner = Instance.new("UICorner")
+        boxCorner.CornerRadius = UDim.new(0, 5)
+        boxCorner.Parent = categoryBox
+        categoryBox.Parent = addDialog
+        
+        local confirmBtn = Instance.new("TextButton")
+        confirmBtn.Size = UDim2.new(0, 80, 0, 30)
+        confirmBtn.Position = UDim2.new(0, 50, 0, 100)
+        confirmBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+        confirmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        confirmBtn.TextSize = 14
+        confirmBtn.Font = Enum.Font.Gotham
+        confirmBtn.Text = "Add"
+        confirmBtn.ZIndex = 36
+        local confirmCorner = Instance.new("UICorner")
+        confirmCorner.CornerRadius = UDim.new(0, 5)
+        confirmCorner.Parent = confirmBtn
+        confirmBtn.MouseButton1Click:Connect(function()
+            if categoryBox.Text ~= "" then
+                if addNewCategory(categoryBox.Text) then
+                    -- Update dropdown if it exists
+                    if dropdownFrame then
+                        dropdownFrame:Destroy()
+                        dropdownFrame = nil
+                    end
+                end
+            end
+            addDialog:Destroy()
+        end)
+        confirmBtn.Parent = addDialog
+        
+        local cancelBtn = Instance.new("TextButton")
+        cancelBtn.Size = UDim2.new(0, 80, 0, 30)
+        cancelBtn.Position = UDim2.new(0, 170, 0, 100)
+        cancelBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+        cancelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        cancelBtn.TextSize = 14
+        cancelBtn.Font = Enum.Font.Gotham
+        cancelBtn.Text = "Cancel"
+        cancelBtn.ZIndex = 36
+        local cancelCorner = Instance.new("UICorner")
+        cancelCorner.CornerRadius = UDim.new(0, 5)
+        cancelCorner.Parent = cancelBtn
+        cancelBtn.MouseButton1Click:Connect(function()
+            addDialog:Destroy()
+        end)
+        cancelBtn.Parent = addDialog
+    end)
+    addCategoryBtn.Parent = positionListFrame
+
+    -- Category dropdown functionality
+    local dropdownOpen = false
+    local dropdownFrame = nil
+    
+    categoryDropdown.MouseButton1Click:Connect(function()
+        if dropdownOpen then
+            if dropdownFrame then
+                dropdownFrame:Destroy()
+                dropdownFrame = nil
+            end
+            dropdownOpen = false
+        else
+            if dropdownFrame then
+                dropdownFrame:Destroy()
+            end
+            
+            dropdownFrame = Instance.new("Frame")
+            dropdownFrame.Size = UDim2.new(0, 100, 0, 35 * #categories)
+            dropdownFrame.Position = UDim2.new(0, 230, 0, 90)
+            dropdownFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            dropdownFrame.BorderSizePixel = 0
+            dropdownFrame.ZIndex = 30
+            local dropdownFrameCorner = Instance.new("UICorner")
+            dropdownFrameCorner.CornerRadius = UDim.new(0, 6)
+            dropdownFrameCorner.Parent = dropdownFrame
+            dropdownFrame.Parent = positionListFrame
+            
+            local dropdownUIL = Instance.new("UIListLayout")
+            dropdownUIL.FillDirection = Enum.FillDirection.Vertical
+            dropdownUIL.Parent = dropdownFrame
+            
+            for _, category in ipairs(categories) do
+                local categoryBtn = Instance.new("TextButton")
+                categoryBtn.Size = UDim2.new(1, 0, 0, 35)
+                categoryBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                categoryBtn.BackgroundTransparency = 0.3
+                categoryBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                categoryBtn.TextSize = 14
+                categoryBtn.Font = Enum.Font.Gotham
+                categoryBtn.Text = category
+                categoryBtn.ZIndex = 31
+                categoryBtn.MouseButton1Click:Connect(function()
+                    currentCategory = category
+                    categoryDropdown.Text = category
+                    dropdownFrame:Destroy()
+                    dropdownFrame = nil
+                    dropdownOpen = false
+                    saveData()
+                end)
+                categoryBtn.Parent = dropdownFrame
+            end
+            
+            dropdownOpen = true
+        end
+    end)
+
     local posScrollFrame = Instance.new("ScrollingFrame")
     posScrollFrame.Name = "ScrollFrame"
-    posScrollFrame.Size = UDim2.new(1, -20, 1, -70)
-    posScrollFrame.Position = UDim2.new(0, 10, 0, 60)
+    posScrollFrame.Size = UDim2.new(1, -20, 1, -110)
+    posScrollFrame.Position = UDim2.new(0, 10, 0, 100)
     posScrollFrame.BackgroundTransparency = 1
     posScrollFrame.ScrollBarThickness = 8
     posScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
@@ -653,6 +1177,11 @@ local function createPositionListUI()
     closePosCorner.Parent = closePosListBtn
     closePosListBtn.MouseButton1Click:Connect(function()
         positionListFrame.Visible = false
+        if dropdownFrame then
+            dropdownFrame:Destroy()
+            dropdownFrame = nil
+            dropdownOpen = false
+        end
     end)
     closePosListBtn.Parent = positionListFrame
 
@@ -666,10 +1195,10 @@ local function showPositionList()
             updatePositionList()
             local posTitle = positionListFrame:FindFirstChild("TextLabel")
             if posTitle then
-                posTitle.Text = "Saved Positions (" .. #savedPositions .. ")"
+                posTitle.Text = "Saved Checkpoints (" .. #savedPositions .. ")"
             end
         end
-        notify(positionListFrame.Visible and "📍 Position List Opened" or "📍 Position List Closed")
+        notify(positionListFrame.Visible and "📍 Checkpoint List Opened" or "📍 Checkpoint List Closed")
     end
 end
 
@@ -695,16 +1224,22 @@ local function initChar()
         cleanAdornments(char)
         ensureCharacterVisible()
         
-        -- Auto-save spawn position
-        task.wait(1)
-        saveCurrentPosition("Spawn " .. positionCounter)
-        
         -- Connect macro recording to new character
         if macroRecording and humanoid then
             if connections.macroDeath then
                 connections.macroDeath:Disconnect()
             end
             connections.macroDeath = humanoid.Died:Connect(onCharacterDied)
+        end
+        
+        -- Recreate fake stats billboard if enabled
+        if fakeStatsEnabled then
+            task.wait(1) -- Wait for character to fully load
+            createFakeStatsBillboard()
+            if fakeStatsBillboard then
+                fakeStatsBillboard.Enabled = true
+                updateFakeStatsDisplay()
+            end
         end
         
         -- Reapply all active features
@@ -715,8 +1250,7 @@ local function initChar()
         if jumpEnabled then toggleJump() toggleJump() end
         if waterWalk then toggleWaterWalk() toggleWaterWalk() end
         if godMode then toggleGodMode() toggleGodMode() end
-        if recordOnRespawn and macroRecording then toggleRecordMacro() toggleRecordMacro() end
-        if autoPlayOnRespawn and macroPlaying then togglePlayMacro() togglePlayMacro() end
+        -- Macro will be handled separately
     end)
     if not success then
         print("initChar error: " .. tostring(errorMsg))
@@ -742,6 +1276,7 @@ local function toggleFly()
             
             joystickFrame.Visible = true
             cameraControlFrame.Visible = true
+            ensureOverlayOnTop()
             
             local bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -836,6 +1371,7 @@ local function toggleFreecam()
             
             joystickFrame.Visible = true
             cameraControlFrame.Visible = true
+            ensureOverlayOnTop()
             hrCFrame = hr.CFrame
             freecamCFrame = camera.CFrame
             camera.CameraType = Enum.CameraType.Scriptable
@@ -1233,10 +1769,810 @@ local function toggleFreezeMovingParts()
     end
 end
 
--- Practice mode toggle
-local function togglePracticeMode()
-    practiceMode = not practiceMode
-    notify(practiceMode and "🎯 Practice Mode Enabled" or "🎯 Practice Mode Disabled")
+-- Auto-detect when character finishes (for macro)
+local function detectCharacterFinished()
+    -- This can be customized based on the game
+    -- For now, we'll use a simple timer-based approach
+    if macroRecording and practiceMode then
+        task.wait(5) -- Wait 5 seconds after recording starts
+        if macroRecording and not humanoid.Health == 0 then
+            onCharacterFinished()
+        end
+    end
+end
+
+-- Function to ensure overlay is always on top
+local function ensureOverlayOnTop()
+    if joystickFrame then
+        joystickFrame.ZIndex = 100
+        for _, child in pairs(joystickFrame:GetDescendants()) do
+            if child:IsA("GuiObject") then
+                child.ZIndex = 101
+            end
+        end
+    end
+    if cameraControlFrame then
+        cameraControlFrame.ZIndex = 100
+        for _, child in pairs(cameraControlFrame:GetDescendants()) do
+            if child:IsA("GuiObject") then
+                child.ZIndex = 101
+            end
+        end
+    end
+end
+
+-- Admin detection functions
+local function loadAdminList()
+    -- Common admin usernames and patterns
+    adminList = {
+        -- Roblox staff
+        "ROBLOX",
+        "ROBLOX_ADMIN",
+        "ROBLOX_MODERATOR",
+        "ROBLOX_DEVELOPER",
+        "ROBLOX_BUILDER",
+        "ROBLOX_ENGINEER",
+        "ROBLOX_DESIGNER",
+        "ROBLOX_ARTIST",
+        "ROBLOX_ANIMATOR",
+        "ROBLOX_SCRIPTWRITER",
+        "ROBLOX_QA",
+        "ROBLOX_TESTER",
+        "ROBLOX_SUPPORT",
+        "ROBLOX_HELP",
+        "ROBLOX_INFO",
+        "ROBLOX_NEWS",
+        "ROBLOX_BLOG",
+        "ROBLOX_DEV",
+        "ROBLOX_TEAM",
+        "ROBLOX_OFFICIAL",
+        
+        -- Common admin patterns
+        "ADMIN",
+        "MODERATOR", 
+        "MOD",
+        "OWNER",
+        "CREATOR",
+        "DEVELOPER",
+        "DEV",
+        "BUILDER",
+        "MANAGER",
+        "SUPERVISOR",
+        "CONTROLLER",
+        "OPERATOR",
+        "STAFF",
+        "TEAM",
+        "HELPER",
+        "SUPPORT",
+        "GUIDE",
+        "MENTOR",
+        "TUTOR",
+        "ASSISTANT",
+        
+        -- Game-specific admin patterns
+        "GAME_ADMIN",
+        "GAME_MOD",
+        "GAME_OWNER",
+        "GAME_DEV",
+        "GAME_BUILDER",
+        "GAME_MANAGER",
+        "GAME_STAFF",
+        "GAME_TEAM",
+        "GAME_HELPER",
+        "GAME_SUPPORT",
+        
+        -- Security patterns
+        "SECURITY",
+        "ANTI_EXPLOIT",
+        "EXPLOIT_DETECTOR",
+        "HACK_DETECTOR",
+        "CHEAT_DETECTOR",
+        "BAN_HAMMER",
+        "MODERATION_BOT",
+        "AUTO_MOD",
+        "AUTO_BAN",
+        "AUTO_KICK",
+        
+        -- Common admin suffixes
+        "_ADMIN",
+        "_MOD",
+        "_OWNER", 
+        "_DEV",
+        "_STAFF",
+        "_TEAM",
+        "_HELPER",
+        "_SUPPORT",
+        "_MANAGER",
+        "_SUPERVISOR"
+    }
+end
+
+local function isAdminPlayer(playerName)
+    if not adminDetectionEnabled then return false end
+    
+    local playerNameUpper = string.upper(playerName)
+    
+    -- Check exact matches
+    for _, adminName in ipairs(adminList) do
+        if playerNameUpper == string.upper(adminName) then
+            return true, adminName
+        end
+    end
+    
+    -- Check pattern matches
+    for _, adminPattern in ipairs(adminList) do
+        if string.find(playerNameUpper, string.upper(adminPattern)) then
+            return true, adminPattern
+        end
+    end
+    
+    -- Check for admin indicators in display name
+    local adminIndicators = {"ADMIN", "MOD", "OWNER", "DEV", "STAFF", "TEAM", "HELPER"}
+    for _, indicator in ipairs(adminIndicators) do
+        if string.find(playerNameUpper, indicator) then
+            return true, indicator
+        end
+    end
+    
+    return false
+end
+
+local function checkForAdmins()
+    if not adminDetectionEnabled then return end
+    
+    local currentAdmins = {}
+    local newAdmins = {}
+    
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= player then
+            local isAdmin, adminType = isAdminPlayer(plr.Name)
+            if isAdmin then
+                table.insert(currentAdmins, {player = plr, type = adminType})
+                
+                -- Check if this is a newly detected admin
+                local alreadyDetected = false
+                for _, detected in ipairs(detectedAdmins) do
+                    if detected.player == plr then
+                        alreadyDetected = true
+                        break
+                    end
+                end
+                
+                if not alreadyDetected then
+                    table.insert(newAdmins, {player = plr, type = adminType})
+                    table.insert(detectedAdmins, {player = plr, type = adminType})
+                end
+            end
+        end
+    end
+    
+    -- Show warning for new admins
+    for _, adminData in ipairs(newAdmins) do
+        local adminName = adminData.player.Name
+        local adminType = adminData.type
+        local adminDisplayName = adminData.player.DisplayName
+        
+        notify("⚠️ ADMIN DETECTED: " .. adminName .. " (" .. adminType .. ")", Color3.fromRGB(255, 0, 0))
+        notify("🛡️ Display Name: " .. adminDisplayName, Color3.fromRGB(255, 100, 100))
+        notify("🚨 Consider disabling exploits!", Color3.fromRGB(255, 200, 0))
+        
+        -- Show admin warning dialog
+        showAdminWarning(adminData)
+    end
+    
+    -- Update detected admins list (remove disconnected players)
+    detectedAdmins = currentAdmins
+end
+
+local function showAdminWarning(adminData)
+    if adminWarningShown then return end
+    
+    local adminName = adminData.player.Name
+    local adminType = adminData.type
+    local adminDisplayName = adminData.player.DisplayName
+    
+    -- Create admin warning dialog
+    local warningDialog = Instance.new("Frame")
+    warningDialog.Size = UDim2.new(0, 400, 0, 250)
+    warningDialog.Position = UDim2.new(0.5, -200, 0.5, -125)
+    warningDialog.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    warningDialog.BackgroundTransparency = 0.1
+    warningDialog.BorderSizePixel = 0
+    warningDialog.ZIndex = 100
+    local warningCorner = Instance.new("UICorner")
+    warningCorner.CornerRadius = UDim.new(0, 10)
+    warningCorner.Parent = warningDialog
+    warningDialog.Parent = gui
+    
+    local warningTitle = Instance.new("TextLabel")
+    warningTitle.Size = UDim2.new(1, 0, 0, 50)
+    warningTitle.BackgroundTransparency = 1
+    warningTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    warningTitle.TextSize = 20
+    warningTitle.Font = Enum.Font.GothamBold
+    warningTitle.Text = "🚨 ADMIN DETECTED!"
+    warningTitle.ZIndex = 101
+    warningTitle.Parent = warningDialog
+    
+    local adminInfo = Instance.new("TextLabel")
+    adminInfo.Size = UDim2.new(1, -20, 0, 60)
+    adminInfo.Position = UDim2.new(0, 10, 0, 60)
+    adminInfo.BackgroundTransparency = 1
+    adminInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
+    adminInfo.TextSize = 16
+    adminInfo.Font = Enum.Font.Gotham
+    adminInfo.Text = "Name: " .. adminName .. "\nDisplay: " .. adminDisplayName .. "\nType: " .. adminType
+    adminInfo.TextXAlignment = Enum.TextXAlignment.Left
+    adminInfo.ZIndex = 101
+    adminInfo.Parent = warningDialog
+    
+    local warningText = Instance.new("TextLabel")
+    warningText.Size = UDim2.new(1, -20, 0, 60)
+    warningText.Position = UDim2.new(0, 10, 0, 130)
+    warningText.BackgroundTransparency = 1
+    warningText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    warningText.TextSize = 14
+    warningText.Font = Enum.Font.Gotham
+    warningText.Text = "⚠️ An admin has been detected in this server!\nConsider disabling exploits to avoid detection.\nStay cautious and avoid suspicious activities."
+    warningText.TextWrapped = true
+    warningText.TextXAlignment = Enum.TextXAlignment.Left
+    warningText.ZIndex = 101
+    warningText.Parent = warningDialog
+    
+    local disableBtn = Instance.new("TextButton")
+    disableBtn.Size = UDim2.new(0, 120, 0, 35)
+    disableBtn.Position = UDim2.new(0, 20, 0, 200)
+    disableBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    disableBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    disableBtn.TextSize = 14
+    disableBtn.Font = Enum.Font.GothamBold
+    disableBtn.Text = "Disable Exploits"
+    disableBtn.ZIndex = 101
+    local disableCorner = Instance.new("UICorner")
+    disableCorner.CornerRadius = UDim.new(0, 5)
+    disableCorner.Parent = disableBtn
+    disableBtn.MouseButton1Click:Connect(function()
+        -- Disable all active exploits
+        if flying then toggleFly() end
+        if freecam then toggleFreecam() end
+        if noclip then toggleNoclip() end
+        if speedEnabled then toggleSpeed() end
+        if jumpEnabled then toggleJump() end
+        if waterWalk then toggleWaterWalk() end
+        if godMode then toggleGodMode() end
+        if macroRecording then toggleRecordMacro() end
+        if macroPlaying then togglePlayMacro() end
+        if autoSaveEnabled then toggleAutoSave() end
+        if freezeMovingParts then toggleFreezeMovingParts() end
+        
+        notify("🛡️ All exploits disabled for safety", Color3.fromRGB(0, 255, 0))
+        warningDialog:Destroy()
+        adminWarningShown = true
+    end)
+    disableBtn.Parent = warningDialog
+    
+    local ignoreBtn = Instance.new("TextButton")
+    ignoreBtn.Size = UDim2.new(0, 120, 0, 35)
+    ignoreBtn.Position = UDim2.new(0, 160, 0, 200)
+    ignoreBtn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+    ignoreBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ignoreBtn.TextSize = 14
+    ignoreBtn.Font = Enum.Font.GothamBold
+    ignoreBtn.Text = "Ignore"
+    ignoreBtn.ZIndex = 101
+    local ignoreCorner = Instance.new("UICorner")
+    ignoreCorner.CornerRadius = UDim.new(0, 5)
+    ignoreCorner.Parent = ignoreBtn
+    ignoreBtn.MouseButton1Click:Connect(function()
+        warningDialog:Destroy()
+        adminWarningShown = true
+    end)
+    ignoreBtn.Parent = warningDialog
+    
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 120, 0, 35)
+    closeBtn.Position = UDim2.new(0, 300, 0, 200)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Text = "Close"
+    closeBtn.ZIndex = 101
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 5)
+    closeCorner.Parent = closeBtn
+    closeBtn.MouseButton1Click:Connect(function()
+        warningDialog:Destroy()
+    end)
+    closeBtn.Parent = warningDialog
+    
+    -- Auto close after 30 seconds
+    task.spawn(function()
+        task.wait(30)
+        if warningDialog and warningDialog.Parent then
+            warningDialog:Destroy()
+        end
+    end)
+end
+
+local function toggleAdminDetection()
+    adminDetectionEnabled = not adminDetectionEnabled
+    if adminDetectionEnabled then
+        notify("🛡️ Admin Detection Enabled", Color3.fromRGB(0, 255, 0))
+        checkForAdmins() -- Check immediately
+    else
+        notify("🛡️ Admin Detection Disabled", Color3.fromRGB(255, 100, 100))
+    end
+end
+
+-- Auto-detect game and create appropriate fake stats
+local function detectGameAndCreateStats()
+    local gameName = game.Name:lower()
+    local placeId = game.PlaceId
+    
+    -- Reset fake stats data
+    fakeStatsData = {}
+    fakeStatsRotation = {}
+    
+    -- Common game detections
+    if string.find(gameName, "blox fruits") or placeId == 2753915549 or placeId == 4442272183 or placeId == 7449423635 then
+        -- Blox Fruits
+        fakeStatsData = {
+            level = 2550,
+            bounty = 999999999,
+            fruits = "DRAGON V2",
+            race = "GHOUL",
+            fighting_style = "ELECTRIC",
+            sword = "TRUE TRIAL KATANA",
+            gun = "TRUE TRIAL FLINTLOCK",
+            accessory = "TRUE TRIAL CAPE",
+            title = "GOD OF WAR",
+            kills = 999999,
+            deaths = 0,
+            wins = 999999,
+            losses = 0
+        }
+        fakeStatsRotation = {"level", "bounty", "fruits", "race", "fighting_style", "sword", "gun", "accessory", "title", "kills", "wins"}
+        
+    elseif string.find(gameName, "king legacy") or placeId == 4520749081 or placeId == 6381829480 or placeId == 5931540094 then
+        -- King Legacy
+        fakeStatsData = {
+            level = 2550,
+            bounty = 999999999,
+            fruits = "DRAGON V2",
+            race = "GHOUL",
+            fighting_style = "ELECTRIC",
+            sword = "TRUE TRIAL KATANA",
+            gun = "TRUE TRIAL FLINTLOCK",
+            accessory = "TRUE TRIAL CAPE",
+            title = "GOD OF WAR",
+            kills = 999999,
+            deaths = 0,
+            wins = 999999,
+            losses = 0
+        }
+        fakeStatsRotation = {"level", "bounty", "fruits", "race", "fighting_style", "sword", "gun", "accessory", "title", "kills", "wins"}
+        
+    elseif string.find(gameName, "grand piece online") or placeId == 1730877806 or placeId == 189707 or placeId == 132766327 then
+        -- Grand Piece Online
+        fakeStatsData = {
+            level = 2550,
+            bounty = 999999999,
+            fruits = "DRAGON V2",
+            race = "GHOUL",
+            fighting_style = "ELECTRIC",
+            sword = "TRUE TRIAL KATANA",
+            gun = "TRUE TRIAL FLINTLOCK",
+            accessory = "TRUE TRIAL CAPE",
+            title = "GOD OF WAR",
+            kills = 999999,
+            deaths = 0,
+            wins = 999999,
+            losses = 0
+        }
+        fakeStatsRotation = {"level", "bounty", "fruits", "race", "fighting_style", "sword", "gun", "accessory", "title", "kills", "wins"}
+        
+    elseif string.find(gameName, "anime fighting simulator") or placeId == 734159876 then
+        -- Anime Fighting Simulator
+        fakeStatsData = {
+            power = 999999999,
+            chakra = 999999999,
+            strength = 999999999,
+            speed = 999999999,
+            defense = 999999999,
+            rank = "GOD",
+            prestige = 999,
+            mastery = 999999,
+            skill = "MAX",
+            wins = 999999,
+            losses = 0
+        }
+        fakeStatsRotation = {"power", "chakra", "strength", "speed", "defense", "rank", "prestige", "mastery", "skill", "wins"}
+        
+    elseif string.find(gameName, "tower of hell") or placeId == 1962086868 then
+        -- Tower of Hell
+        fakeStatsData = {
+            stage = 999,
+            summit = 999,
+            wins = 999999,
+            losses = 0,
+            time = "00:00:01",
+            rank = "GOD",
+            title = "SPEEDRUNNER",
+            achievement = "PERFECT",
+            skill = "MAX"
+        }
+        fakeStatsRotation = {"stage", "summit", "wins", "time", "rank", "title", "achievement", "skill"}
+        
+    elseif string.find(gameName, "doomspire brickbattle") or placeId == 186884708 then
+        -- Doomspire Brickbattle
+        fakeStatsData = {
+            wins = 999999,
+            losses = 0,
+            kills = 999999,
+            deaths = 0,
+            rank = "GOD",
+            title = "CHAMPION",
+            skill = "MAX",
+            achievement = "UNSTOPPABLE"
+        }
+        fakeStatsRotation = {"wins", "kills", "rank", "title", "skill", "achievement"}
+        
+    elseif string.find(gameName, "adopt me") or placeId == 920587237 then
+        -- Adopt Me
+        fakeStatsData = {
+            money = 999999999,
+            bucks = 999999999,
+            pets = 999999,
+            houses = 999999,
+            vehicles = 999999,
+            rank = "GOD",
+            title = "BILLIONAIRE",
+            achievement = "RICHEST",
+            skill = "MAX"
+        }
+        fakeStatsRotation = {"money", "bucks", "pets", "houses", "vehicles", "rank", "title", "achievement", "skill"}
+        
+    elseif string.find(gameName, "brookhaven") or placeId == 3956818381 then
+        -- Brookhaven
+        fakeStatsData = {
+            money = 999999999,
+            job = "CEO",
+            rank = "GOD",
+            title = "BILLIONAIRE",
+            achievement = "RICHEST",
+            skill = "MAX",
+            houses = 999999,
+            vehicles = 999999
+        }
+        fakeStatsRotation = {"money", "job", "rank", "title", "achievement", "skill", "houses", "vehicles"}
+        
+    elseif string.find(gameName, "murder mystery") or placeId == 142823291 then
+        -- Murder Mystery 2
+        fakeStatsData = {
+            wins = 999999,
+            losses = 0,
+            kills = 999999,
+            deaths = 0,
+            rank = "GOD",
+            title = "ASSASSIN",
+            achievement = "PERFECT",
+            skill = "MAX"
+        }
+        fakeStatsRotation = {"wins", "kills", "rank", "title", "achievement", "skill"}
+        
+    elseif string.find(gameName, "jailbreak") or placeId == 606849621 then
+        -- Jailbreak
+        fakeStatsData = {
+            money = 999999999,
+            rank = "GOD",
+            title = "CRIMINAL MASTERMIND",
+            achievement = "UNSTOPPABLE",
+            skill = "MAX",
+            arrests = 0,
+            escapes = 999999
+        }
+        fakeStatsRotation = {"money", "rank", "title", "achievement", "skill", "escapes"}
+        
+    else
+        -- Generic stats for unknown games
+        fakeStatsData = {
+            level = 999,
+            score = 999999999,
+            power = 999999999,
+            rank = "GOD",
+            title = "LEGEND",
+            achievement = "PERFECT",
+            skill = "MAX",
+            wins = 999999,
+            kills = 999999,
+            money = 999999999,
+            coins = 999999999,
+            gems = 999999,
+            diamonds = 999999,
+            experience = 999999999,
+            prestige = 999,
+            mastery = 999999
+        }
+        fakeStatsRotation = {"level", "score", "power", "rank", "title", "achievement", "skill", "wins", "kills", "money", "coins", "gems", "diamonds", "experience", "prestige", "mastery"}
+    end
+    
+    currentFakeStat = fakeStatsRotation[1] or "level"
+    fakeStatsRotationIndex = 1
+    
+    notify("🎮 Auto-detected: " .. game.Name, Color3.fromRGB(0, 255, 255))
+    notify("📊 Created " .. #fakeStatsRotation .. " fake stats", Color3.fromRGB(0, 255, 255))
+end
+
+-- Function to continuously ensure overlay stays on top
+local function startOverlayProtection()
+    task.spawn(function()
+        while gui and gui.Parent do
+            if (flying or freecam) and (joystickFrame or cameraControlFrame) then
+                ensureOverlayOnTop()
+            end
+            task.wait(0.1) -- Check every 100ms
+        end
+    end)
+end
+
+-- Function to start admin monitoring
+local function startAdminMonitoring()
+    task.spawn(function()
+        while gui and gui.Parent do
+            if adminDetectionEnabled then
+                checkForAdmins()
+            end
+            task.wait(5) -- Check every 5 seconds
+        end
+    end)
+end
+
+-- Create fake stats billboard (visible to all players)
+local function createFakeStatsBillboard()
+    if fakeStatsBillboard then
+        fakeStatsBillboard:Destroy()
+    end
+    
+    if not char or not char:FindFirstChild("Head") then
+        notify("⚠️ Character not loaded for fake stats", Color3.fromRGB(255, 100, 100))
+        return
+    end
+    
+    -- Create BillboardGui that's visible to all players
+    fakeStatsBillboard = Instance.new("BillboardGui")
+    fakeStatsBillboard.Name = "FakeStatsBillboard"
+    fakeStatsBillboard.Size = UDim2.new(0, 200, 0, 50)
+    fakeStatsBillboard.StudsOffset = Vector3.new(0, 3, 0)
+    fakeStatsBillboard.Adornee = char.Head
+    fakeStatsBillboard.AlwaysOnTop = true
+    fakeStatsBillboard.Enabled = false
+    fakeStatsBillboard.Parent = char.Head
+    
+    fakeStatsText = Instance.new("TextLabel")
+    fakeStatsText.Size = UDim2.new(1, 0, 1, 0)
+    fakeStatsText.BackgroundTransparency = 1
+    fakeStatsText.TextColor3 = Color3.fromRGB(255, 255, 0)
+    fakeStatsText.TextSize = 16
+    fakeStatsText.Font = Enum.Font.GothamBold
+    fakeStatsText.Text = ""
+    fakeStatsText.TextStrokeTransparency = 0
+    fakeStatsText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    fakeStatsText.Parent = fakeStatsBillboard
+    
+    -- Create a RemoteEvent to sync with other players (optional)
+    local remoteEvent = Instance.new("RemoteEvent")
+    remoteEvent.Name = "FakeStatsSync"
+    remoteEvent.Parent = char.Head
+    
+    notify("📊 Fake stats billboard created (visible to all)", Color3.fromRGB(0, 255, 255))
+end
+
+-- Update fake stats display
+local function updateFakeStatsDisplay()
+    if not fakeStatsBillboard or not fakeStatsText or not fakeStatsEnabled then return end
+    
+    if #fakeStatsRotation == 0 then
+        fakeStatsText.Text = "No stats available"
+        return
+    end
+    
+    local currentStat = fakeStatsRotation[fakeStatsRotationIndex]
+    local statValue = fakeStatsData[currentStat]
+    
+    if statValue then
+        fakeStatsText.Text = string.upper(currentStat) .. ": " .. tostring(statValue)
+    else
+        fakeStatsText.Text = string.upper(currentStat) .. ": N/A"
+    end
+end
+
+-- Rotate fake stats
+local function rotateFakeStats()
+    if not fakeStatsEnabled or #fakeStatsRotation == 0 then return end
+    
+    fakeStatsRotationIndex = fakeStatsRotationIndex + 1
+    if fakeStatsRotationIndex > #fakeStatsRotation then
+        fakeStatsRotationIndex = 1
+    end
+    
+    currentFakeStat = fakeStatsRotation[fakeStatsRotationIndex]
+    updateFakeStatsDisplay()
+end
+
+-- Start fake stats rotation
+local function startFakeStatsRotation()
+    task.spawn(function()
+        while fakeStatsEnabled and gui and gui.Parent do
+            rotateFakeStats()
+            task.wait(fakeStatsRotationSpeed)
+        end
+    end)
+end
+
+-- Toggle fake stats
+local function toggleFakeStats()
+    fakeStatsEnabled = not fakeStatsEnabled
+    
+    if fakeStatsEnabled then
+        if not fakeStatsBillboard then
+            createFakeStatsBillboard()
+        end
+        
+        if fakeStatsBillboard then
+            fakeStatsBillboard.Enabled = true
+            updateFakeStatsDisplay()
+            startFakeStatsRotation()
+            notify("📊 Fake Stats Enabled", Color3.fromRGB(0, 255, 0))
+        else
+            fakeStatsEnabled = false
+            notify("⚠️ Failed to create fake stats billboard", Color3.fromRGB(255, 100, 100))
+        end
+    else
+        if fakeStatsBillboard then
+            fakeStatsBillboard.Enabled = false
+        end
+        notify("📊 Fake Stats Disabled", Color3.fromRGB(255, 100, 100))
+    end
+end
+
+-- Edit fake stats dialog
+local function showEditFakeStatsDialog()
+    if #fakeStatsRotation == 0 then
+        notify("⚠️ No fake stats available. Auto-detect game first!", Color3.fromRGB(255, 100, 100))
+        return
+    end
+    
+    -- Create edit dialog
+    local editDialog = Instance.new("Frame")
+    editDialog.Size = UDim2.new(0, 400, 0, 300)
+    editDialog.Position = UDim2.new(0.5, -200, 0.5, -150)
+    editDialog.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    editDialog.BorderSizePixel = 0
+    editDialog.ZIndex = 100
+    local editCorner = Instance.new("UICorner")
+    editCorner.CornerRadius = UDim.new(0, 10)
+    editCorner.Parent = editDialog
+    editDialog.Parent = gui
+    
+    local editTitle = Instance.new("TextLabel")
+    editTitle.Size = UDim2.new(1, 0, 0, 40)
+    editTitle.BackgroundTransparency = 1
+    editTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    editTitle.TextSize = 18
+    editTitle.Font = Enum.Font.GothamBold
+    editTitle.Text = "Edit Fake Stats"
+    editTitle.ZIndex = 101
+    editTitle.Parent = editDialog
+    
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, -20, 1, -80)
+    scrollFrame.Position = UDim2.new(0, 10, 0, 50)
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.ScrollBarThickness = 8
+    scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+    scrollFrame.ZIndex = 101
+    scrollFrame.ClipsDescendants = true
+    scrollFrame.ScrollingEnabled = true
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.Parent = editDialog
+    
+    local scrollUIL = Instance.new("UIListLayout")
+    scrollUIL.FillDirection = Enum.FillDirection.Vertical
+    scrollUIL.Padding = UDim.new(0, 5)
+    scrollUIL.Parent = scrollFrame
+    
+    -- Create input fields for each stat
+    for _, statName in ipairs(fakeStatsRotation) do
+        local statFrame = Instance.new("Frame")
+        statFrame.Size = UDim2.new(1, 0, 0, 35)
+        statFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        statFrame.BackgroundTransparency = 0.3
+        statFrame.BorderSizePixel = 0
+        statFrame.ZIndex = 102
+        local statCorner = Instance.new("UICorner")
+        statCorner.CornerRadius = UDim.new(0, 5)
+        statCorner.Parent = statFrame
+        statFrame.Parent = scrollFrame
+        
+        local statLabel = Instance.new("TextLabel")
+        statLabel.Size = UDim2.new(0, 100, 1, 0)
+        statLabel.Position = UDim2.new(0, 10, 0, 0)
+        statLabel.BackgroundTransparency = 1
+        statLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        statLabel.TextSize = 14
+        statLabel.Font = Enum.Font.Gotham
+        statLabel.Text = string.upper(statName) .. ":"
+        statLabel.TextXAlignment = Enum.TextXAlignment.Left
+        statLabel.ZIndex = 103
+        statLabel.Parent = statFrame
+        
+        local statInput = Instance.new("TextBox")
+        statInput.Size = UDim2.new(1, -120, 0, 25)
+        statInput.Position = UDim2.new(0, 110, 0, 5)
+        statInput.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        statInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        statInput.TextSize = 14
+        statInput.Font = Enum.Font.Gotham
+        statInput.Text = tostring(fakeStatsData[statName] or "")
+        statInput.PlaceholderText = "Enter value..."
+        statInput.ZIndex = 103
+        local inputCorner = Instance.new("UICorner")
+        inputCorner.CornerRadius = UDim.new(0, 3)
+        inputCorner.Parent = statInput
+        statInput.Parent = statFrame
+        
+        -- Save value when focus is lost
+        statInput.FocusLost:Connect(function()
+            local newValue = statInput.Text
+            if newValue ~= "" then
+                -- Try to convert to number if possible
+                local numValue = tonumber(newValue)
+                if numValue then
+                    fakeStatsData[statName] = numValue
+                else
+                    fakeStatsData[statName] = newValue
+                end
+                updateFakeStatsDisplay()
+            end
+        end)
+    end
+    
+    local saveBtn = Instance.new("TextButton")
+    saveBtn.Size = UDim2.new(0, 80, 0, 30)
+    saveBtn.Position = UDim2.new(0, 20, 1, -40)
+    saveBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    saveBtn.TextSize = 14
+    saveBtn.Font = Enum.Font.GothamBold
+    saveBtn.Text = "Save"
+    saveBtn.ZIndex = 101
+    local saveCorner = Instance.new("UICorner")
+    saveCorner.CornerRadius = UDim.new(0, 5)
+    saveCorner.Parent = saveBtn
+    saveBtn.MouseButton1Click:Connect(function()
+        notify("💾 Fake stats saved", Color3.fromRGB(0, 255, 0))
+        editDialog:Destroy()
+    end)
+    saveBtn.Parent = editDialog
+    
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 80, 0, 30)
+    closeBtn.Position = UDim2.new(0, 120, 1, -40)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Text = "Close"
+    closeBtn.ZIndex = 101
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 5)
+    closeCorner.Parent = closeBtn
+    closeBtn.MouseButton1Click:Connect(function()
+        editDialog:Destroy()
+    end)
+    closeBtn.Parent = editDialog
 end
 
 -- Create mobile joystick
@@ -1248,10 +2584,10 @@ local function createJoystick()
     joystickFrame = Instance.new("Frame")
     joystickFrame.Size = UDim2.new(0, 120, 0, 120)
     joystickFrame.Position = UDim2.new(0.1, 0, 0.65, 0)
-    joystickFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    joystickFrame.BackgroundTransparency = 0.5
+    joystickFrame.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+    joystickFrame.BackgroundTransparency = 0.3
     joystickFrame.BorderSizePixel = 0
-    joystickFrame.ZIndex = 15
+    joystickFrame.ZIndex = 50 -- Increased Z-Index for better interaction
     joystickFrame.Visible = false
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 60)
@@ -1264,7 +2600,20 @@ local function createJoystick()
     joystickKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     joystickKnob.BackgroundTransparency = 0.2
     joystickKnob.BorderSizePixel = 0
-    joystickKnob.ZIndex = 16
+    joystickKnob.ZIndex = 51 -- Increased Z-Index for better interaction
+    
+    -- Add joystick center indicator
+    local joystickCenter = Instance.new("Frame")
+    joystickCenter.Size = UDim2.new(0, 4, 0, 4)
+    joystickCenter.Position = UDim2.new(0.5, -2, 0.5, -2)
+    joystickCenter.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    joystickCenter.BackgroundTransparency = 0.5
+    joystickCenter.BorderSizePixel = 0
+    joystickCenter.ZIndex = 52
+    local centerCorner = Instance.new("UICorner")
+    centerCorner.CornerRadius = UDim.new(0, 2)
+    centerCorner.Parent = joystickCenter
+    joystickCenter.Parent = joystickFrame
     local knobCorner = Instance.new("UICorner")
     knobCorner.CornerRadius = UDim.new(0, 20)
     knobCorner.Parent = joystickKnob
@@ -1290,6 +2639,13 @@ local function createJoystick()
         if input.UserInputType == Enum.UserInputType.Touch then
             joystickTouch = input
             updateJoystick(input.Position)
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    joystickTouch = nil
+                    joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+                    moveDirection = Vector3.new(0, 0, 0)
+                end
+            end)
         end
     end)
 
@@ -1317,10 +2673,10 @@ local function createCameraControl()
     cameraControlFrame = Instance.new("Frame")
     cameraControlFrame.Size = UDim2.new(0, 200, 0, 120)
     cameraControlFrame.Position = UDim2.new(0.9, -200, 0.65, 0)
-    cameraControlFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    cameraControlFrame.BackgroundTransparency = 0.7
+    cameraControlFrame.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    cameraControlFrame.BackgroundTransparency = 0.3
     cameraControlFrame.BorderSizePixel = 0
-    cameraControlFrame.ZIndex = 15
+    cameraControlFrame.ZIndex = 50 -- Increased Z-Index for better interaction
     cameraControlFrame.Visible = false
     local camCorner = Instance.new("UICorner")
     camCorner.CornerRadius = UDim.new(0, 10)
@@ -1334,18 +2690,37 @@ local function createCameraControl()
     camLabel.TextSize = 14
     camLabel.Font = Enum.Font.Gotham
     camLabel.Text = "Camera Control"
-    camLabel.ZIndex = 16
+    camLabel.ZIndex = 51 -- Increased Z-Index for better interaction
     camLabel.Parent = cameraControlFrame
+    
+    -- Add camera control visual indicator
+    local camIndicator = Instance.new("Frame")
+    camIndicator.Size = UDim2.new(0, 8, 0, 8)
+    camIndicator.Position = UDim2.new(0.5, -4, 0.5, -4)
+    camIndicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    camIndicator.BackgroundTransparency = 0.3
+    camIndicator.BorderSizePixel = 0
+    camIndicator.ZIndex = 52
+    local indicatorCorner = Instance.new("UICorner")
+    indicatorCorner.CornerRadius = UDim.new(0, 4)
+    indicatorCorner.Parent = camIndicator
+    camIndicator.Parent = cameraControlFrame
 
     cameraControlFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch then
             cameraTouch = input
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    cameraTouch = nil
+                    cameraDelta = Vector2.new(0, 0)
+                end
+            end)
         end
     end)
 
     cameraControlFrame.InputChanged:Connect(function(input)
         if input == cameraTouch then
-            cameraDelta = Vector2.new(input.Delta.X, input.Delta.Y) * 0.5
+            cameraDelta = Vector2.new(input.Delta.X, input.Delta.Y) * 1.0 -- Increased sensitivity from 0.5
         end
     end)
 
@@ -1560,6 +2935,12 @@ local function createPlayerListUI()
             updatePlayerList()
             playerTitle.Text = "Player List (" .. (#Players:GetPlayers() - 1) .. " players)"
         end
+        
+        -- Check for admin when new player joins
+        if adminDetectionEnabled then
+            task.wait(1) -- Wait a bit for player to fully load
+            checkForAdmins()
+        end
     end)
     
     Players.PlayerRemoving:Connect(function()
@@ -1747,19 +3128,190 @@ local function createEnhancedGUI()
                 createButton("Open Player List", showPlayerList, function() return false end),
                 createButton("Spectate Selected Player", spectatePlayer, function() return spectatingPlayer ~= nil end),
                 createButton("Stop Spectate", stopSpectate, function() return false end),
-                createButton("Teleport to Selected Player", teleportToPlayer, function() return false end)
+                createButton("Teleport to Selected Player", teleportToPlayer, function() return false end),
+                createButton("Toggle Admin Detection", toggleAdminDetection, function() return adminDetectionEnabled end),
+                createButton("Auto-Detect Game Stats", detectGameAndCreateStats, function() return false end),
+                createButton("Toggle Fake Stats", toggleFakeStats, function() return fakeStatsEnabled end),
+                createButton("Edit Fake Stats", showEditFakeStatsDialog, function() return false end)
             },
             Teleport = {
                 createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
-                createButton("Save Current Position", function() saveCurrentPosition() end, function() return false end),
+                createButton("Save Current Position", function() 
+                    -- Create save checkpoint dialog
+                    local saveDialog = Instance.new("Frame")
+                    saveDialog.Size = UDim2.new(0, 350, 0, 200)
+                    saveDialog.Position = UDim2.new(0.5, -175, 0.5, -100)
+                    saveDialog.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                    saveDialog.BorderSizePixel = 0
+                    saveDialog.ZIndex = 35
+                    local saveDialogCorner = Instance.new("UICorner")
+                    saveDialogCorner.CornerRadius = UDim.new(0, 10)
+                    saveDialogCorner.Parent = saveDialog
+                    saveDialog.Parent = gui
+                    
+                    local saveTitle = Instance.new("TextLabel")
+                    saveTitle.Size = UDim2.new(1, 0, 0, 40)
+                    saveTitle.BackgroundTransparency = 1
+                    saveTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    saveTitle.TextSize = 16
+                    saveTitle.Font = Enum.Font.GothamBold
+                    saveTitle.Text = "Save Checkpoint"
+                    saveTitle.ZIndex = 36
+                    saveTitle.Parent = saveDialog
+                    
+                    local nameLabel = Instance.new("TextLabel")
+                    nameLabel.Size = UDim2.new(0, 80, 0, 25)
+                    nameLabel.Position = UDim2.new(0, 10, 0, 50)
+                    nameLabel.BackgroundTransparency = 1
+                    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    nameLabel.TextSize = 14
+                    nameLabel.Font = Enum.Font.Gotham
+                    nameLabel.Text = "Name:"
+                    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    nameLabel.ZIndex = 36
+                    nameLabel.Parent = saveDialog
+                    
+                    local nameBox = Instance.new("TextBox")
+                    nameBox.Size = UDim2.new(1, -100, 0, 25)
+                    nameBox.Position = UDim2.new(0, 100, 0, 50)
+                    nameBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    nameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    nameBox.TextSize = 14
+                    nameBox.Font = Enum.Font.Gotham
+                    nameBox.PlaceholderText = "Enter checkpoint name..."
+                    nameBox.ZIndex = 36
+                    local nameBoxCorner = Instance.new("UICorner")
+                    nameBoxCorner.CornerRadius = UDim.new(0, 5)
+                    nameBoxCorner.Parent = nameBox
+                    nameBox.Parent = saveDialog
+                    
+                    local categoryLabel = Instance.new("TextLabel")
+                    categoryLabel.Size = UDim2.new(0, 80, 0, 25)
+                    categoryLabel.Position = UDim2.new(0, 10, 0, 85)
+                    categoryLabel.BackgroundTransparency = 1
+                    categoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    categoryLabel.TextSize = 14
+                    categoryLabel.Font = Enum.Font.Gotham
+                    categoryLabel.Text = "Category:"
+                    categoryLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    categoryLabel.ZIndex = 36
+                    categoryLabel.Parent = saveDialog
+                    
+                    local categoryDropdown = Instance.new("TextButton")
+                    categoryDropdown.Size = UDim2.new(1, -100, 0, 25)
+                    categoryDropdown.Position = UDim2.new(0, 100, 0, 85)
+                    categoryDropdown.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    categoryDropdown.BackgroundTransparency = 0.3
+                    categoryDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    categoryDropdown.TextSize = 14
+                    categoryDropdown.Font = Enum.Font.Gotham
+                    categoryDropdown.Text = currentCategory
+                    categoryDropdown.ZIndex = 36
+                    local categoryDropdownCorner = Instance.new("UICorner")
+                    categoryDropdownCorner.CornerRadius = UDim.new(0, 5)
+                    categoryDropdownCorner.Parent = categoryDropdown
+                    categoryDropdown.Parent = saveDialog
+                    
+                    local selectedCategory = currentCategory
+                    local dropdownOpen = false
+                    local dropdownFrame = nil
+                    
+                    categoryDropdown.MouseButton1Click:Connect(function()
+                        if dropdownOpen then
+                            if dropdownFrame then
+                                dropdownFrame:Destroy()
+                                dropdownFrame = nil
+                            end
+                            dropdownOpen = false
+                        else
+                            if dropdownFrame then
+                                dropdownFrame:Destroy()
+                            end
+                            
+                            dropdownFrame = Instance.new("Frame")
+                            dropdownFrame.Size = UDim2.new(1, -100, 0, 25 * #categories)
+                            dropdownFrame.Position = UDim2.new(0, 100, 0, 110)
+                            dropdownFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                            dropdownFrame.BorderSizePixel = 0
+                            dropdownFrame.ZIndex = 38
+                            local dropdownFrameCorner = Instance.new("UICorner")
+                            dropdownFrameCorner.CornerRadius = UDim.new(0, 5)
+                            dropdownFrameCorner.Parent = dropdownFrame
+                            dropdownFrame.Parent = saveDialog
+                            
+                            local dropdownUIL = Instance.new("UIListLayout")
+                            dropdownUIL.FillDirection = Enum.FillDirection.Vertical
+                            dropdownUIL.Parent = dropdownFrame
+                            
+                            for _, category in ipairs(categories) do
+                                local categoryBtn = Instance.new("TextButton")
+                                categoryBtn.Size = UDim2.new(1, 0, 0, 25)
+                                categoryBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                                categoryBtn.BackgroundTransparency = 0.3
+                                categoryBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                                categoryBtn.TextSize = 14
+                                categoryBtn.Font = Enum.Font.Gotham
+                                categoryBtn.Text = category
+                                categoryBtn.ZIndex = 39
+                                categoryBtn.MouseButton1Click:Connect(function()
+                                    selectedCategory = category
+                                    categoryDropdown.Text = category
+                                    dropdownFrame:Destroy()
+                                    dropdownFrame = nil
+                                    dropdownOpen = false
+                                end)
+                                categoryBtn.Parent = dropdownFrame
+                            end
+                            
+                            dropdownOpen = true
+                        end
+                    end)
+                    
+                    local saveBtn = Instance.new("TextButton")
+                    saveBtn.Size = UDim2.new(0, 80, 0, 30)
+                    saveBtn.Position = UDim2.new(0, 50, 0, 150)
+                    saveBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+                    saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    saveBtn.TextSize = 14
+                    saveBtn.Font = Enum.Font.Gotham
+                    saveBtn.Text = "Save"
+                    saveBtn.ZIndex = 36
+                    local saveBtnCorner = Instance.new("UICorner")
+                    saveBtnCorner.CornerRadius = UDim.new(0, 5)
+                    saveBtnCorner.Parent = saveBtn
+                    saveBtn.MouseButton1Click:Connect(function()
+                        local checkpointName = nameBox.Text ~= "" and nameBox.Text or ("Checkpoint " .. (positionCounter + 1))
+                        saveCheckpoint(checkpointName, selectedCategory)
+                        saveDialog:Destroy()
+                    end)
+                    saveBtn.Parent = saveDialog
+                    
+                    local cancelBtn = Instance.new("TextButton")
+                    cancelBtn.Size = UDim2.new(0, 80, 0, 30)
+                    cancelBtn.Position = UDim2.new(0, 220, 0, 150)
+                    cancelBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+                    cancelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    cancelBtn.TextSize = 14
+                    cancelBtn.Font = Enum.Font.Gotham
+                    cancelBtn.Text = "Cancel"
+                    cancelBtn.ZIndex = 36
+                    local cancelBtnCorner = Instance.new("UICorner")
+                    cancelBtnCorner.CornerRadius = UDim.new(0, 5)
+                    cancelBtnCorner.Parent = cancelBtn
+                    cancelBtn.MouseButton1Click:Connect(function()
+                        saveDialog:Destroy()
+                    end)
+                    cancelBtn.Parent = saveDialog
+                    
+                    -- Focus on name box
+                    nameBox:CaptureFocus()
+                end, function() return false end),
                 createButton("Toggle Auto Save", toggleAutoSave, function() return autoSaveEnabled end),
                 createButton("Open Position List", showPositionList, function() return false end)
             },
             Macro = {
-                createButton("Toggle Practice Mode", togglePracticeMode, function() return practiceMode end),
                 createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end),
-                createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end),
-                createButton("Finish Macro Successfully", finishMacroSuccessfully, function() return false end)
+                createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end)
             }
         }
 
@@ -1882,7 +3434,7 @@ local function createEnhancedGUI()
         statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         statusLabel.TextSize = 14
         statusLabel.Font = Enum.Font.Gotham
-        statusLabel.Text = "✅ Enhanced Krnl Mobile v2.0 | Positions: " .. #savedPositions .. " | Attempts: " .. totalAttempts
+        statusLabel.Text = "✅ Enhanced Krnl Mobile v2.0 | Checkpoints: " .. #savedPositions .. " | Attempts: " .. totalAttempts .. (adminDetectionEnabled and " | Admin Detection ON" or "") .. (fakeStatsEnabled and " | Fake Stats ON" or "")
         statusLabel.TextXAlignment = Enum.TextXAlignment.Left
         statusLabel.ZIndex = 12
         statusLabel.Parent = statusFrame
@@ -1893,17 +3445,19 @@ local function createEnhancedGUI()
                 if statusLabel then
                     local macroStatus = ""
                     if macroRecording then
-                        macroStatus = "🔴 Recording"
+                        macroStatus = "🔴 Recording (" .. #macroActions .. " actions)"
                     elseif macroPlaying then
-                        macroStatus = "▶️ Playing"
-                    elseif practiceMode then
-                        macroStatus = "🎯 Practice"
+                        macroStatus = "▶️ Playing (" .. #macroPerfectActions .. " actions)"
+                    elseif #macroPerfectActions > 0 then
+                        macroStatus = "🎯 Perfect Run Ready"
                     end
                     
-                    statusLabel.Text = "✅ Enhanced Krnl Mobile v2.0 | Positions: " .. #savedPositions .. 
+                    statusLabel.Text = "✅ Enhanced Krnl Mobile v2.0 | Checkpoints: " .. #savedPositions .. 
                                      " | Attempts: " .. totalAttempts .. 
                                      (macroStatus ~= "" and " | " .. macroStatus or "") ..
-                                     (autoSaveEnabled and " | Auto Save ON" or "")
+                                     (autoSaveEnabled and " | Auto Save ON" or "") ..
+                                     (adminDetectionEnabled and " | Admin Detection ON" or "") ..
+                                     (fakeStatsEnabled and " | Fake Stats ON" or "")
                 end
                 task.wait(1)
             end
@@ -1937,6 +3491,10 @@ local function main()
         createCameraControl()
         createPlayerListUI()
         createPositionListUI()
+        startOverlayProtection()
+        loadAdminList()
+        startAdminMonitoring()
+        detectGameAndCreateStats()
         initChar()
         
         -- Connect character respawn
