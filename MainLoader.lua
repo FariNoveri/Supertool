@@ -33,7 +33,7 @@ local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
 local customNick = "PemainKeren"
 local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
-local defaultFramePos = UDim2.new(0.5, -175, 0.5, -250)
+local defaultFramePos = UDim2.new(0.5, -400, 0.5, -250)
 
 local connections = {}
 
@@ -45,18 +45,19 @@ local function notify(message, color)
             return
         end
         local notif = Instance.new("TextLabel")
-        notif.Size = UDim2.new(0, 300, 0, 50)
-        notif.Position = UDim2.new(0.5, -150, 0.1, 0)
-        notif.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        notif.BackgroundTransparency = 0.5
+        notif.Size = UDim2.new(0, 350, 0, 60)
+        notif.Position = UDim2.new(0.5, -175, 0.1, 0)
+        notif.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        notif.BackgroundTransparency = 0.4
         notif.TextColor3 = color or Color3.fromRGB(0, 255, 0)
-        notif.TextScaled = true
+        notif.TextSize = 18
         notif.Font = Enum.Font.Gotham
         notif.Text = message
+        notif.TextWrapped = true
         notif.BorderSizePixel = 0
         notif.ZIndex = 20
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
+        corner.CornerRadius = UDim.new(0, 10)
         corner.Parent = notif
         notif.Parent = gui
         task.spawn(function()
@@ -1146,11 +1147,11 @@ local function createGUI()
         gui.Parent = player:WaitForChild("PlayerGui", 20)
 
         local scale = Instance.new("UIScale")
-        scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 720, camera.ViewportSize.Y / 1280))
+        scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 1280, camera.ViewportSize.Y / 720))
         scale.Parent = gui
 
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 50, 0, 50)
+        logo.Size = UDim2.new(0, 60, 0, 60)
         logo.Position = defaultLogoPos
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
         logo.BackgroundTransparency = 0.3
@@ -1158,12 +1159,12 @@ local function createGUI()
         logo.Image = "rbxassetid://3570695787"
         logo.ZIndex = 20
         local logoCorner = Instance.new("UICorner")
-        logoCorner.CornerRadius = UDim.new(0, 8)
+        logoCorner.CornerRadius = UDim.new(0, 12)
         logoCorner.Parent = logo
         logo.Parent = gui
 
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 350, 0, 500)
+        frame.Size = UDim2.new(0, 800, 0, 500)
         frame.Position = defaultFramePos
         frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         frame.BackgroundTransparency = 0.1
@@ -1176,35 +1177,53 @@ local function createGUI()
         frameCorner.Parent = frame
         frame.Parent = gui
 
-        local uil = Instance.new("UIListLayout")
-        uil.FillDirection = Enum.FillDirection.Vertical
-        uil.Padding = UDim.new(0, 10)
-        uil.Parent = frame
+        local sidebar = Instance.new("Frame")
+        sidebar.Size = UDim2.new(0, 200, 1, 0)
+        sidebar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        sidebar.BackgroundTransparency = 0.2
+        sidebar.BorderSizePixel = 0
+        sidebar.ZIndex = 11
+        sidebar.Parent = frame
+
+        local sidebarUIL = Instance.new("UIListLayout")
+        sidebarUIL.FillDirection = Enum.FillDirection.Vertical
+        sidebarUIL.Padding = UDim.new(0, 10)
+        sidebarUIL.Parent = sidebar
+
+        local sidebarPadding = Instance.new("UIPadding")
+        sidebarPadding.PaddingTop = UDim.new(0, 10)
+        sidebarPadding.PaddingLeft = UDim.new(0, 10)
+        sidebarPadding.PaddingRight = UDim.new(0, 10)
+        sidebarPadding.Parent = sidebar
 
         local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, 0, 0, 40)
-        title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        title.BackgroundTransparency = 0.5
+        title.Size = UDim2.new(0, 200, 0, 50)
+        title.BackgroundTransparency = 1
         title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        title.TextScaled = true
+        title.TextSize = 24
         title.Font = Enum.Font.GothamBold
         title.Text = "Krnl UI"
-        title.ZIndex = 11
-        local titleCorner = Instance.new("UICorner")
-        titleCorner.CornerRadius = UDim.new(0, 8)
-        titleCorner.Parent = title
-        title.Parent = frame
+        title.ZIndex = 12
+        title.Parent = sidebar
+
+        local contentFrame = Instance.new("Frame")
+        contentFrame.Size = UDim2.new(0, 580, 1, -10)
+        contentFrame.Position = UDim2.new(0, 210, 0, 5)
+        contentFrame.BackgroundTransparency = 1
+        contentFrame.ZIndex = 11
+        contentFrame.ClipsDescendants = true
+        contentFrame.Parent = frame
 
         local scrollFrame = Instance.new("ScrollingFrame")
-        scrollFrame.Size = UDim2.new(1, -10, 1, -50)
-        scrollFrame.Position = UDim2.new(0, 5, 0, 45)
+        scrollFrame.Size = UDim2.new(1, -10, 1, -10)
+        scrollFrame.Position = UDim2.new(0, 5, 0, 5)
         scrollFrame.BackgroundTransparency = 1
         scrollFrame.ScrollBarThickness = 6
         scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
         scrollFrame.ZIndex = 11
         scrollFrame.ClipsDescendants = true
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-        scrollFrame.Parent = frame
+        scrollFrame.Parent = contentFrame
 
         local scrollUIL = Instance.new("UIListLayout")
         scrollUIL.FillDirection = Enum.FillDirection.Vertical
@@ -1212,24 +1231,32 @@ local function createGUI()
         scrollUIL.Parent = scrollFrame
 
         local scrollPadding = Instance.new("UIPadding")
-        scrollPadding.PaddingTop = UDim.new(0, 5)
+        scrollPadding.PaddingTop = UDim.new(0, 10)
         scrollPadding.PaddingBottom = UDim.new(0, 20)
+        scrollPadding.PaddingLeft = UDim.new(0, 10)
+        scrollPadding.PaddingRight = UDim.new(0, 10)
         scrollPadding.Parent = scrollFrame
 
         local function createButton(text, callback, toggleState)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(0.95, 0, 0, 40)
-            button.Position = UDim2.new(0.025, 0, 0, 0)
+            button.Size = UDim2.new(1, -10, 0, 50)
             button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
             button.BackgroundTransparency = 0.3
             button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextScaled = true
+            button.TextSize = 18
             button.Font = Enum.Font.Gotham
             button.Text = text
+            button.TextWrapped = true
             button.ZIndex = 12
             local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
+            buttonCorner.CornerRadius = UDim.new(0, 10)
             buttonCorner.Parent = button
+            button.MouseEnter:Connect(function()
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(70, 70, 70)
+            end)
+            button.MouseLeave:Connect(function()
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+            end)
             button.MouseButton1Click:Connect(function()
                 local success, err = pcall(callback)
                 if not success then
@@ -1243,30 +1270,30 @@ local function createGUI()
 
         local function createDropdown(text, items, callback)
             local dropdown = Instance.new("TextButton")
-            dropdown.Size = UDim2.new(0.95, 0, 0, 40)
-            dropdown.Position = UDim2.new(0.025, 0, 0, 0)
+            dropdown.Size = UDim2.new(1, -10, 0, 50)
             dropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
             dropdown.BackgroundTransparency = 0.3
             dropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-            dropdown.TextScaled = true
+            dropdown.TextSize = 18
             dropdown.Font = Enum.Font.Gotham
             dropdown.Text = text
+            dropdown.TextWrapped = true
             dropdown.ZIndex = 12
             local dropdownCorner = Instance.new("UICorner")
-            dropdownCorner.CornerRadius = UDim.new(0, 8)
+            dropdownCorner.CornerRadius = UDim.new(0, 10)
             dropdownCorner.Parent = dropdown
 
             local dropdownFrame = Instance.new("Frame")
-            dropdownFrame.Size = UDim2.new(0.95, 0, 0, 0)
-            dropdownFrame.Position = UDim2.new(0.025, 0, 0, 45)
-            dropdownFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-            dropdownFrame.BackgroundTransparency = 0.1
+            dropdownFrame.Size = UDim2.new(1, -10, 0, 0)
+            dropdownFrame.Position = UDim2.new(0, 5, 0, 55)
+            dropdownFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            dropdownFrame.BackgroundTransparency = 0.2
             dropdownFrame.BorderSizePixel = 0
             dropdownFrame.Visible = false
             dropdownFrame.ZIndex = 13
             dropdownFrame.ClipsDescendants = true
             local dropdownFrameCorner = Instance.new("UICorner")
-            dropdownFrameCorner.CornerRadius = UDim.new(0, 8)
+            dropdownFrameCorner.CornerRadius = UDim.new(0, 10)
             dropdownFrameCorner.Parent = dropdownFrame
 
             local dropdownUIL = Instance.new("UIListLayout")
@@ -1274,19 +1301,33 @@ local function createGUI()
             dropdownUIL.Padding = UDim.new(0, 5)
             dropdownUIL.Parent = dropdownFrame
 
+            local dropdownPadding = Instance.new("UIPadding")
+            dropdownPadding.PaddingTop = UDim.new(0, 5)
+            dropdownPadding.PaddingBottom = UDim.new(0, 5)
+            dropdownPadding.PaddingLeft = UDim.new(0, 5)
+            dropdownPadding.PaddingRight = UDim.new(0, 5)
+            dropdownPadding.Parent = dropdownFrame
+
             for _, item in pairs(items) do
                 local itemButton = Instance.new("TextButton")
-                itemButton.Size = UDim2.new(1, 0, 0, 35)
+                itemButton.Size = UDim2.new(1, -10, 0, 40)
                 itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
                 itemButton.BackgroundTransparency = 0.3
                 itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                itemButton.TextScaled = true
+                itemButton.TextSize = 16
                 itemButton.Font = Enum.Font.Gotham
                 itemButton.Text = item
+                itemButton.TextWrapped = true
                 itemButton.ZIndex = 14
                 local itemCorner = Instance.new("UICorner")
                 itemCorner.CornerRadius = UDim.new(0, 8)
                 itemCorner.Parent = itemButton
+                itemButton.MouseEnter:Connect(function()
+                    itemButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+                end)
+                itemButton.MouseLeave:Connect(function()
+                    itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                end)
                 itemButton.Parent = dropdownFrame
                 itemButton.MouseButton1Click:Connect(function()
                     callback(item)
@@ -1297,73 +1338,34 @@ local function createGUI()
 
             dropdown.MouseButton1Click:Connect(function()
                 dropdownFrame.Visible = not dropdownFrame.Visible
-                dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(0.95, 0, 0, #items * 40) or UDim2.new(0.95, 0, 0, 0)
+                dropdownFrame.Size = dropdownFrame.Visible and UDim2.new(1, -10, 0, #items * 45) or UDim2.new(1, -10, 0, 0)
                 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
 
             return dropdown, dropdownFrame
         end
 
-        local function createCategory(titleText, buttons, parent)
-            local categoryFrame = Instance.new("Frame")
-            categoryFrame.Size = UDim2.new(0.95, 0, 0, 40)
-            categoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            categoryFrame.BackgroundTransparency = 0.2
-            categoryFrame.BorderSizePixel = 0
-            categoryFrame.ZIndex = 11
+        local function createCategory(titleText, buttons)
+            local categoryButton = Instance.new("TextButton")
+            categoryButton.Size = UDim2.new(1, -20, 0, 50)
+            categoryButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            categoryButton.BackgroundTransparency = 0.3
+            categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            categoryButton.TextSize = 18
+            categoryButton.Font = Enum.Font.GothamBold
+            categoryButton.Text = titleText
+            categoryButton.TextWrapped = true
+            categoryButton.ZIndex = 12
             local categoryCorner = Instance.new("UICorner")
-            categoryCorner.CornerRadius = UDim.new(0, 8)
-            categoryCorner.Parent = categoryFrame
-            categoryFrame.Parent = parent
-
-            local categoryTitle = Instance.new("TextButton")
-            categoryTitle.Size = UDim2.new(1, 0, 0, 40)
-            categoryTitle.BackgroundTransparency = 1
-            categoryTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-            categoryTitle.TextScaled = true
-            categoryTitle.Font = Enum.Font.GothamBold
-            categoryTitle.Text = titleText .. " ▼"
-            categoryTitle.ZIndex = 12
-            categoryTitle.Parent = categoryFrame
-
-            local buttonFrame = Instance.new("Frame")
-            buttonFrame.Size = UDim2.new(0.95, 0, 0, 0)
-            buttonFrame.Position = UDim2.new(0.025, 0, 0, 45)
-            buttonFrame.BackgroundTransparency = 1
-            buttonFrame.ZIndex = 12
-            buttonFrame.ClipsDescendants = true
-            buttonFrame.Visible = true
-            buttonFrame.Parent = categoryFrame
-
-            local buttonUIL = Instance.new("UIListLayout")
-            buttonUIL.FillDirection = Enum.FillDirection.Vertical
-            buttonUIL.Padding = UDim.new(0, 8)
-            buttonUIL.Parent = buttonFrame
-
-            local buttonPadding = Instance.new("UIPadding")
-            buttonPadding.PaddingTop = UDim.new(0, 5)
-            buttonPadding.PaddingBottom = UDim.new(0, 5)
-            buttonPadding.Parent = buttonFrame
-
-            for _, button in pairs(buttons) do
-                button.Parent = buttonFrame
-            end
-
-            local function updateCategory()
-                buttonFrame.Size = buttonFrame.Visible and UDim2.new(0.95, 0, 0, buttonUIL.AbsoluteContentSize.Y + 10) or UDim2.new(0.95, 0, 0, 0)
-                categoryTitle.Text = titleText .. (buttonFrame.Visible and " ▼" or " ►")
-                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-            end
-
-            categoryTitle.MouseButton1Click:Connect(function()
-                buttonFrame.Visible = not buttonFrame.Visible
-                updateCategory()
+            categoryCorner.CornerRadius = UDim.new(0, 10)
+            categoryCorner.Parent = categoryButton
+            categoryButton.MouseEnter:Connect(function()
+                categoryButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
             end)
-
-            buttonUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCategory)
-            updateCategory()
-
-            return categoryFrame
+            categoryButton.MouseLeave:Connect(function()
+                categoryButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            end)
+            return categoryButton, buttons
         end
 
         local categories = {
@@ -1422,14 +1424,44 @@ local function createGUI()
         table.insert(categories[3].buttons, 2, createButton("Teleport to Player", teleportToPlayer, function() return false end))
         table.insert(categories[3].buttons, 3, playerDropdownFrame)
 
+        local currentCategory = nil
+
         for _, category in pairs(categories) do
-            createCategory(category.name, category.buttons, scrollFrame)
+            local button, buttons = createCategory(category.name, buttons)
+            button.Parent = sidebar
+            button.MouseButton1Click:Connect(function()
+                scrollFrame:ClearAllChildren()
+                scrollUIL = Instance.new("UIListLayout")
+                scrollUIL.FillDirection = Enum.FillDirection.Vertical
+                scrollUIL.Padding = UDim.new(0, 8)
+                scrollUIL.Parent = scrollFrame
+                scrollPadding = Instance.new("UIPadding")
+                scrollPadding.PaddingTop = UDim.new(0, 10)
+                scrollPadding.PaddingBottom = UDim.new(0, 20)
+                scrollPadding.PaddingLeft = UDim.new(0, 10)
+                scrollPadding.PaddingRight = UDim.new(0, 10)
+                scrollPadding.Parent = scrollFrame
+                for _, btn in pairs(buttons) do
+                    btn.Parent = scrollFrame
+                end
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
+                currentCategory = category.name
+                for _, cat in pairs(categories) do
+                    local catButton = sidebar:FindFirstChild(cat.name)
+                    if catButton then
+                        catButton.BackgroundColor3 = cat.name == currentCategory and Color3.fromRGB(70, 70, 70) or Color3.fromRGB(50, 50, 50)
+                    end
+                end
+            end)
         end
 
-        scrollUIL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
-        end)
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
+        -- Select the first category by default
+        if categories[1] then
+            local firstCategoryButton = sidebar:FindFirstChild(categories[1].name)
+            if firstCategoryButton then
+                firstCategoryButton:MouseButton1Click()
+            end
+        end
 
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
@@ -1476,19 +1508,32 @@ local function createGUI()
             dropdownUIL.FillDirection = Enum.FillDirection.Vertical
             dropdownUIL.Padding = UDim.new(0, 5)
             dropdownUIL.Parent = playerDropdownFrame
+            local dropdownPadding = Instance.new("UIPadding")
+            dropdownPadding.PaddingTop = UDim.new(0, 5)
+            dropdownPadding.PaddingBottom = UDim.new(0, 5)
+            dropdownPadding.PaddingLeft = UDim.new(0, 5)
+            dropdownPadding.PaddingRight = UDim.new(0, 5)
+            dropdownPadding.Parent = playerDropdownFrame
             for _, item in pairs(playerNames) do
                 local itemButton = Instance.new("TextButton")
-                itemButton.Size = UDim2.new(1, 0, 0, 35)
+                itemButton.Size = UDim2.new(1, -10, 0, 40)
                 itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
                 itemButton.BackgroundTransparency = 0.3
                 itemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                itemButton.TextScaled = true
+                itemButton.TextSize = 16
                 itemButton.Font = Enum.Font.Gotham
                 itemButton.Text = item
+                itemButton.TextWrapped = true
                 itemButton.ZIndex = 14
                 local itemCorner = Instance.new("UICorner")
                 itemCorner.CornerRadius = UDim.new(0, 8)
                 itemCorner.Parent = itemButton
+                itemButton.MouseEnter:Connect(function()
+                    itemButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+                end)
+                itemButton.MouseLeave:Connect(function()
+                    itemButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                end)
                 itemButton.Parent = playerDropdownFrame
                 itemButton.MouseButton1Click:Connect(function()
                     selectedPlayer = Players:FindFirstChild(item)
@@ -1499,7 +1544,7 @@ local function createGUI()
             end
             playerDropdown.MouseButton1Click:Connect(function()
                 playerDropdownFrame.Visible = not playerDropdownFrame.Visible
-                playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(0.95, 0, 0, #playerNames * 40) or UDim2.new(0.95, 0, 0, 0)
+                playerDropdownFrame.Size = playerDropdownFrame.Visible and UDim2.new(1, -10, 0, #playerNames * 45) or UDim2.new(1, -10, 0, 0)
                 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, scrollUIL.AbsoluteContentSize.Y + 30)
             end)
         end
