@@ -1,3 +1,7 @@
+-- MOBILE-ONLY KRNL UI SCRIPT v2.0
+-- Optimized 100% for Android devices
+-- No PC/Desktop support - Pure Mobile Experience
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -11,98 +15,104 @@ local gui, frame, logo, joystickFrame, cameraControlFrame, playerListFrame, posi
 local selectedPlayer = nil
 local spectatingPlayer = nil
 local flying, freecam, noclip, godMode = false, false, false, false
-local flySpeed = 40
-local freecamSpeed = UserInputService.TouchEnabled and 20 or 30
-local cameraRotationSensitivity = UserInputService.TouchEnabled and 0.01 or 0.005
+local flySpeed = 25 -- Mobile optimized speed
+local freecamSpeed = 20 -- Mobile optimized speed
+local cameraRotationSensitivity = 0.015 -- Mobile optimized sensitivity
 local speedEnabled, jumpEnabled, waterWalk, rocket, spin = false, false, false, false, false
-local moveSpeed = 50
-local jumpPower = 100
-local spinSpeed = 20
+local moveSpeed = 40 -- Mobile optimized
+local jumpPower = 80 -- Mobile optimized
+local spinSpeed = 15 -- Mobile optimized
 
 -- Enhanced position saving system
 local savedPositions = {}
 local positionCounter = 0
-local maxSavedPositions = 50
+local maxSavedPositions = 30 -- Reduced for mobile
 
 -- Enhanced macro system
 local macroRecording, macroPlaying, autoPlayOnRespawn, recordOnRespawn = false, false, false, false
 local macroActions = {}
-local macroSuccessfulActions = {} -- Only successful actions without deaths
+local macroSuccessfulActions = {}
 local macroSuccessfulEndTime = nil
 local currentAttempt = 1
 local totalAttempts = 0
 local practiceMode = false
 
-local isMobile = UserInputService.TouchEnabled
+-- MOBILE ONLY - Force mobile detection
+local isMobile = true -- Always true for this mobile version
 local freecamCFrame = nil
 local hrCFrame = nil
 local joystickTouch = nil
 local cameraTouch = nil
-local joystickRadius = 50
-local joystickDeadzone = 0.15
+local joystickRadius = 60 -- Larger for mobile
+local joystickDeadzone = 0.2 -- Larger deadzone for touch
 local moveDirection = Vector3.new(0, 0, 0)
 local cameraDelta = Vector2.new(0, 0)
 local nickHidden, randomNick = false, false
-local customNick = "PemainKeren"
-local defaultLogoPos = UDim2.new(0.95, -50, 0.05, 10)
-local defaultFramePos = UDim2.new(0.5, -400, 0.5, -250)
+local customNick = "MobileUser"
 local freezeMovingParts = false
 local originalCFrames = {}
 
 local connections = {}
 local currentCategory = "Movement"
 
--- Data persistence key
-local dataKey = "EnhancedKrnlUI_" .. tostring(player.UserId) .. "_" .. game.PlaceId
+-- Mobile-specific UI scaling
+local mobileScale = math.min(camera.ViewportSize.X / 800, camera.ViewportSize.Y / 600)
 
--- Load saved data
-local function loadSavedData()
-    local success, data = pcall(function()
-        return game:GetService("HttpService"):JSONDecode(game:GetService("HttpService"):JSONEncode({}))
-    end)
-    
-    -- For now, we'll use a simple table as persistence isn't available in this environment
-    -- In a real Roblox environment, you could use DataStoreService
-    savedPositions = savedPositions or {}
-    positionCounter = #savedPositions
-end
-
--- Save data
-local function saveData()
-    -- In a real environment, you'd save to DataStore here
-    -- For now, data persists in memory during the session
-end
-
--- Notify function
+-- Enhanced mobile notification system
 local function notify(message, color)
     local success, errorMsg = pcall(function()
         if not gui then
-            print("Notify: " .. message)
+            print("Mobile Notify: " .. message)
             return
         end
+        
         local notif = Instance.new("TextLabel")
-        notif.Size = UDim2.new(0, 350, 0, 60)
-        notif.Position = UDim2.new(0.5, -175, 0.1, 0)
-        notif.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        notif.BackgroundTransparency = 0.4
-        notif.TextColor3 = color or Color3.fromRGB(0, 255, 0)
-        notif.TextSize = 18
-        notif.Font = Enum.Font.Gotham
+        notif.Size = UDim2.new(0, 320, 0, 70) -- Larger for mobile
+        notif.Position = UDim2.new(0.5, -160, 0.15, 0) -- Higher position for mobile
+        notif.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        notif.BackgroundTransparency = 0.2
+        notif.TextColor3 = color or Color3.fromRGB(0, 255, 100)
+        notif.TextSize = 16 -- Larger text for mobile
+        notif.Font = Enum.Font.GothamBold
         notif.Text = message
         notif.TextWrapped = true
         notif.BorderSizePixel = 0
-        notif.ZIndex = 20
+        notif.ZIndex = 50
+        
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 10)
+        corner.CornerRadius = UDim.new(0, 12)
         corner.Parent = notif
+        
+        local shadow = Instance.new("Frame")
+        shadow.Size = UDim2.new(1, 4, 1, 4)
+        shadow.Position = UDim2.new(0, -2, 0, -2)
+        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        shadow.BackgroundTransparency = 0.8
+        shadow.ZIndex = 49
+        local shadowCorner = Instance.new("UICorner")
+        shadowCorner.CornerRadius = UDim.new(0, 12)
+        shadowCorner.Parent = shadow
+        shadow.Parent = notif
+        
         notif.Parent = gui
+        
+        -- Animate in
+        notif.BackgroundTransparency = 1
+        notif.TextTransparency = 1
+        local tween = TweenService:Create(notif, TweenInfo.new(0.3), {BackgroundTransparency = 0.2, TextTransparency = 0})
+        tween:Play()
+        
         task.spawn(function()
-            task.wait(3)
-            notif:Destroy()
+            task.wait(4) -- Longer display time for mobile
+            local fadeOut = TweenService:Create(notif, TweenInfo.new(0.5), {BackgroundTransparency = 1, TextTransparency = 1})
+            fadeOut:Play()
+            fadeOut.Completed:Connect(function()
+                notif:Destroy()
+            end)
         end)
     end)
     if not success then
-        print("Notify error: " .. tostring(errorMsg))
+        print("Mobile Notify error: " .. tostring(errorMsg))
     end
 end
 
@@ -116,670 +126,117 @@ local function clearConnections()
     end
 end
 
--- Validate position
+-- Mobile-optimized position validation
 local function isValidPosition(pos)
-    return pos and not (pos.Y < -1000 or pos.Y > 10000 or math.abs(pos.X) > 10000 or math.abs(pos.Z) > 10000)
+    return pos and not (pos.Y < -500 or pos.Y > 5000 or math.abs(pos.X) > 5000 or math.abs(pos.Z) > 5000)
 end
 
--- Ensure character visibility
-local function ensureCharacterVisible()
-    if char then
-        for _, part in pairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.Transparency = 0
-                part.LocalTransparencyModifier = 0
-            end
-        end
-    end
-end
-
--- Clean adornments
-local function cleanAdornments(character)
-    local success, errorMsg = pcall(function()
-        for _, obj in pairs(character:GetDescendants()) do
-            if obj:IsA("SelectionBox") or obj:IsA("BoxHandleAdornment") or obj:IsA("SurfaceGui") then
-                obj:Destroy()
-            end
-        end
-    end)
-    if not success then
-        print("cleanAdornments error: " .. tostring(errorMsg))
-    end
-end
-
--- Reset character state
-local function resetCharacterState()
-    if hr and humanoid then
-        hr.Velocity = Vector3.new(0, 0, 0)
-        humanoid:ChangeState(Enum.HumanoidStateType.Running)
-        humanoid.Health = humanoid.MaxHealth
-        ensureCharacterVisible()
-        cleanAdornments(char)
-    end
-end
-
--- Enhanced macro system functions
-local function recordMacroAction(actionType, data)
-    if macroRecording then
-        local action = {
-            time = tick(),
-            type = actionType,
-            data = data
-        }
-        table.insert(macroActions, action)
-    end
-end
-
-local function onCharacterDied()
-    if macroRecording and practiceMode then
-        totalAttempts = totalAttempts + 1
-        currentAttempt = currentAttempt + 1
-        notify("💀 Death recorded - Attempt " .. currentAttempt .. " (Total: " .. totalAttempts .. ")", Color3.fromRGB(255, 100, 100))
-        
-        -- Don't add death actions to successful macro
-        -- Just continue recording for practice
-    end
-end
-
-local function finishMacroSuccessfully()
-    if macroRecording then
-        -- Only save successful actions (without deaths)
-        macroSuccessfulActions = {}
-        local lastDeathTime = 0
-        
-        for _, action in ipairs(macroActions) do
-            if action.type ~= "death" and action.time > lastDeathTime then
-                table.insert(macroSuccessfulActions, action)
-            elseif action.type == "death" then
-                lastDeathTime = action.time
-                macroSuccessfulActions = {} -- Clear successful actions after death
-            end
-        end
-        
-        macroSuccessfulEndTime = tick()
-        notify("✅ Macro completed successfully! (" .. #macroSuccessfulActions .. " actions, " .. totalAttempts .. " attempts)", Color3.fromRGB(0, 255, 0))
-    end
-end
-
-local function toggleRecordMacro()
-    macroRecording = not macroRecording
-    if macroRecording then
-        macroActions = {}
-        macroSuccessfulActions = {}
-        currentAttempt = 1
-        totalAttempts = 1
-        practiceMode = true
-        macroSuccessfulEndTime = nil
-        
-        -- Connect death detection
-        if humanoid then
-            connections.macroDeath = humanoid.Died:Connect(onCharacterDied)
-        end
-        
-        notify("🔴 Macro Recording Started (Practice Mode)", Color3.fromRGB(255, 0, 0))
-    else
-        if connections.macroDeath then
-            connections.macroDeath:Disconnect()
-            connections.macroDeath = nil
-        end
-        
-        finishMacroSuccessfully()
-        practiceMode = false
-        notify("⏹️ Macro Recording Stopped", Color3.fromRGB(255, 255, 0))
-    end
-end
-
-local function togglePlayMacro()
-    macroPlaying = not macroPlaying
-    if macroPlaying then
-        if #macroSuccessfulActions == 0 then
-            macroPlaying = false
-            notify("⚠️ No successful macro recorded!", Color3.fromRGB(255, 100, 100))
-            return
-        end
-        
-        notify("▶️ Playing Successful Macro (" .. #macroSuccessfulActions .. " actions)", Color3.fromRGB(0, 255, 0))
-        
-        task.spawn(function()
-            local startTime = tick()
-            local actionIndex = 1
-            
-            while macroPlaying and actionIndex <= #macroSuccessfulActions do
-                local action = macroSuccessfulActions[actionIndex]
-                local targetTime = startTime + (action.time - macroSuccessfulActions[1].time)
-                
-                -- Wait for the right time
-                while tick() < targetTime and macroPlaying do
-                    task.wait(0.01)
-                end
-                
-                if not macroPlaying then break end
-                
-                -- Execute action
-                if action.type == "move" and hr then
-                    hr.CFrame = action.data
-                elseif action.type == "jump" and humanoid then
-                    humanoid.Jump = true
-                elseif action.type == "click" and action.data then
-                    -- Simulate click events
-                    local target = workspace:FindPartOnRay(Ray.new(action.data.origin, action.data.direction))
-                    if target then
-                        target:FireServer(unpack(action.data.args or {}))
-                    end
-                end
-                
-                actionIndex = actionIndex + 1
-            end
-            
-            if macroPlaying then
-                notify("✅ Macro playback completed!", Color3.fromRGB(0, 255, 0))
-                macroPlaying = false
-            end
-        end)
-    else
-        notify("⏹️ Macro Playback Stopped", Color3.fromRGB(255, 255, 0))
-    end
-end
-
--- Enhanced position saving system
-local function autoSavePosition(customName)
-    local success, errorMsg = pcall(function()
-        if hr then
-            positionCounter = positionCounter + 1
-            local positionName = customName or ("Position " .. positionCounter)
-            local positionData = {
-                name = positionName,
-                cframe = hr.CFrame,
-                timestamp = os.time(),
-                id = positionCounter
-            }
-            
-            table.insert(savedPositions, positionData)
-            
-            -- Limit to max positions
-            if #savedPositions > maxSavedPositions then
-                table.remove(savedPositions, 1)
-            end
-            
-            saveData()
-            notify("💾 Auto-saved: " .. positionName)
-            
-            -- Update position list if it's open
-            if positionListFrame and positionListFrame.Visible then
-                updatePositionList()
-            end
-        else
-            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
-        end
-    end)
-    if not success then
-        notify("⚠️ Auto Save Position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
-local function deletePosition(positionId)
-    for i, pos in ipairs(savedPositions) do
-        if pos.id == positionId then
-            table.remove(savedPositions, i)
-            saveData()
-            notify("🗑️ Deleted: " .. pos.name, Color3.fromRGB(255, 100, 100))
-            if positionListFrame and positionListFrame.Visible then
-                updatePositionList()
-            end
-            break
-        end
-    end
-end
-
-local function renamePosition(positionId, newName)
-    for _, pos in ipairs(savedPositions) do
-        if pos.id == positionId then
-            local oldName = pos.name
-            pos.name = newName
-            saveData()
-            notify("✏️ Renamed: " .. oldName .. " → " .. newName)
-            if positionListFrame and positionListFrame.Visible then
-                updatePositionList()
-            end
-            break
-        end
-    end
-end
-
-local function loadPosition(positionId)
-    local success, errorMsg = pcall(function()
-        for _, pos in ipairs(savedPositions) do
-            if pos.id == positionId then
-                if hr and isValidPosition(pos.cframe.Position) then
-                    hr.CFrame = pos.cframe
-                    notify("📍 Teleported to: " .. pos.name)
-                else
-                    notify("⚠️ Invalid position or character not loaded", Color3.fromRGB(255, 100, 100))
-                end
-                return
-            end
-        end
-        notify("⚠️ Position not found", Color3.fromRGB(255, 100, 100))
-    end)
-    if not success then
-        notify("⚠️ Load Position error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
--- Teleport to freecam function
-local function teleportToFreecam()
-    local success, errorMsg = pcall(function()
-        if freecam and freecamCFrame and hr then
-            hr.CFrame = freecamCFrame
-            notify("📷➡️ Teleported to Freecam Position")
-        elseif not freecam then
-            notify("⚠️ Freecam is not active", Color3.fromRGB(255, 100, 100))
-        elseif not freecamCFrame then
-            notify("⚠️ No freecam position available", Color3.fromRGB(255, 100, 100))
-        else
-            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
-        end
-    end)
-    if not success then
-        notify("⚠️ Teleport to Freecam error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
--- Create position list UI
-function updatePositionList()
-    if not positionListFrame then return end
-    
-    local scrollFrame = positionListFrame:FindFirstChild("ScrollFrame")
-    if not scrollFrame then return end
-    
-    -- Clear existing buttons
-    for _, child in pairs(scrollFrame:GetChildren()) do
-        if child:IsA("Frame") and child.Name == "PositionItem" then
-            child:Destroy()
-        end
-    end
-    
-    -- Add position items
-    for i, pos in ipairs(savedPositions) do
-        local itemFrame = Instance.new("Frame")
-        itemFrame.Name = "PositionItem"
-        itemFrame.Size = UDim2.new(1, -10, 0, 80)
-        itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        itemFrame.BackgroundTransparency = 0.3
-        itemFrame.BorderSizePixel = 0
-        itemFrame.ZIndex = 27
-        local itemCorner = Instance.new("UICorner")
-        itemCorner.CornerRadius = UDim.new(0, 8)
-        itemCorner.Parent = itemFrame
-        itemFrame.Parent = scrollFrame
-        
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
-        nameLabel.Position = UDim2.new(0, 10, 0, 5)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextSize = 16
-        nameLabel.Font = Enum.Font.GothamBold
-        nameLabel.Text = pos.name
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.ZIndex = 28
-        nameLabel.Parent = itemFrame
-        
-        local infoLabel = Instance.new("TextLabel")
-        infoLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
-        infoLabel.Position = UDim2.new(0, 10, 0.5, 0)
-        infoLabel.BackgroundTransparency = 1
-        infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        infoLabel.TextSize = 12
-        infoLabel.Font = Enum.Font.Gotham
-        infoLabel.Text = "ID: " .. pos.id .. " | " .. os.date("%H:%M:%S", pos.timestamp)
-        infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-        infoLabel.ZIndex = 28
-        infoLabel.Parent = itemFrame
-        
-        -- Teleport button
-        local teleportBtn = Instance.new("TextButton")
-        teleportBtn.Size = UDim2.new(0, 60, 0, 25)
-        teleportBtn.Position = UDim2.new(1, -190, 0, 5)
-        teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-        teleportBtn.BackgroundTransparency = 0.2
-        teleportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        teleportBtn.TextSize = 12
-        teleportBtn.Font = Enum.Font.Gotham
-        teleportBtn.Text = "Go"
-        teleportBtn.ZIndex = 29
-        local teleportCorner = Instance.new("UICorner")
-        teleportCorner.CornerRadius = UDim.new(0, 4)
-        teleportCorner.Parent = teleportBtn
-        teleportBtn.MouseButton1Click:Connect(function()
-            loadPosition(pos.id)
-        end)
-        teleportBtn.Parent = itemFrame
-        
-        -- Rename button
-        local renameBtn = Instance.new("TextButton")
-        renameBtn.Size = UDim2.new(0, 60, 0, 25)
-        renameBtn.Position = UDim2.new(1, -125, 0, 5)
-        renameBtn.BackgroundColor3 = Color3.fromRGB(200, 120, 0)
-        renameBtn.BackgroundTransparency = 0.2
-        renameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameBtn.TextSize = 12
-        renameBtn.Font = Enum.Font.Gotham
-        renameBtn.Text = "Rename"
-        renameBtn.ZIndex = 29
-        local renameCorner = Instance.new("UICorner")
-        renameCorner.CornerRadius = UDim.new(0, 4)
-        renameCorner.Parent = renameBtn
-        renameBtn.MouseButton1Click:Connect(function()
-            -- Simple rename (in a real implementation, you'd use a TextBox input)
-            local newName = pos.name .. "_renamed"
-            renamePosition(pos.id, newName)
-        end)
-        renameBtn.Parent = itemFrame
-        
-        -- Delete button
-        local deleteBtn = Instance.new("TextButton")
-        deleteBtn.Size = UDim2.new(0, 60, 0, 25)
-        deleteBtn.Position = UDim2.new(1, -60, 0, 5)
-        deleteBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        deleteBtn.BackgroundTransparency = 0.2
-        deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        deleteBtn.TextSize = 12
-        deleteBtn.Font = Enum.Font.Gotham
-        deleteBtn.Text = "Delete"
-        deleteBtn.ZIndex = 29
-        local deleteCorner = Instance.new("UICorner")
-        deleteCorner.CornerRadius = UDim.new(0, 4)
-        deleteCorner.Parent = deleteBtn
-        deleteBtn.MouseButton1Click:Connect(function()
-            deletePosition(pos.id)
-        end)
-        deleteBtn.Parent = itemFrame
-        
-        -- Quick save current position button
-        local saveCurrentBtn = Instance.new("TextButton")
-        saveCurrentBtn.Size = UDim2.new(0, 120, 0, 25)
-        saveCurrentBtn.Position = UDim2.new(1, -190, 0, 35)
-        saveCurrentBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-        saveCurrentBtn.BackgroundTransparency = 0.2
-        saveCurrentBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        saveCurrentBtn.TextSize = 12
-        saveCurrentBtn.Font = Enum.Font.Gotham
-        saveCurrentBtn.Text = "Save Current Pos"
-        saveCurrentBtn.ZIndex = 29
-        local saveCurrentCorner = Instance.new("UICorner")
-        saveCurrentCorner.CornerRadius = UDim.new(0, 4)
-        saveCurrentCorner.Parent = saveCurrentBtn
-        saveCurrentBtn.MouseButton1Click:Connect(function()
-            autoSavePosition()
-        end)
-        saveCurrentBtn.Parent = itemFrame
-    end
-end
-
-local function createPositionListUI()
-    if positionListFrame then
-        positionListFrame:Destroy()
-    end
-    
-    positionListFrame = Instance.new("Frame")
-    positionListFrame.Size = UDim2.new(0, 400, 0, 500)
-    positionListFrame.Position = UDim2.new(0, 20, 0.5, -250)
-    positionListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    positionListFrame.BackgroundTransparency = 0.1
-    positionListFrame.BorderSizePixel = 0
-    positionListFrame.Visible = false
-    positionListFrame.ZIndex = 25
-    local posFrameCorner = Instance.new("UICorner")
-    posFrameCorner.CornerRadius = UDim.new(0, 12)
-    posFrameCorner.Parent = positionListFrame
-    positionListFrame.Parent = gui
-
-    local posTitle = Instance.new("TextLabel")
-    posTitle.Size = UDim2.new(1, 0, 0, 50)
-    posTitle.BackgroundTransparency = 1
-    posTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    posTitle.TextSize = 20
-    posTitle.Font = Enum.Font.GothamBold
-    posTitle.Text = "Saved Positions (" .. #savedPositions .. ")"
-    posTitle.ZIndex = 26
-    posTitle.Parent = positionListFrame
-
-    local posScrollFrame = Instance.new("ScrollingFrame")
-    posScrollFrame.Name = "ScrollFrame"
-    posScrollFrame.Size = UDim2.new(1, -20, 1, -70)
-    posScrollFrame.Position = UDim2.new(0, 10, 0, 60)
-    posScrollFrame.BackgroundTransparency = 1
-    posScrollFrame.ScrollBarThickness = 8
-    posScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-    posScrollFrame.ZIndex = 26
-    posScrollFrame.ClipsDescendants = true
-    posScrollFrame.ScrollingEnabled = true
-    posScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    posScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    posScrollFrame.Parent = positionListFrame
-
-    local posUIL = Instance.new("UIListLayout")
-    posUIL.FillDirection = Enum.FillDirection.Vertical
-    posUIL.Padding = UDim.new(0, 5)
-    posUIL.Parent = posScrollFrame
-
-    local posPadding = Instance.new("UIPadding")
-    posPadding.PaddingTop = UDim.new(0, 5)
-    posPadding.PaddingBottom = UDim.new(0, 5)
-    posPadding.PaddingLeft = UDim.new(0, 5)
-    posPadding.PaddingRight = UDim.new(0, 5)
-    posPadding.Parent = posScrollFrame
-
-    -- Close button
-    local closePosListBtn = Instance.new("TextButton")
-    closePosListBtn.Size = UDim2.new(0, 30, 0, 30)
-    closePosListBtn.Position = UDim2.new(1, -40, 0, 10)
-    closePosListBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    closePosListBtn.BackgroundTransparency = 0.3
-    closePosListBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closePosListBtn.TextSize = 18
-    closePosListBtn.Font = Enum.Font.GothamBold
-    closePosListBtn.Text = "×"
-    closePosListBtn.ZIndex = 28
-    local closePosCorner = Instance.new("UICorner")
-    closePosCorner.CornerRadius = UDim.new(0, 15)
-    closePosCorner.Parent = closePosListBtn
-    closePosListBtn.MouseButton1Click:Connect(function()
-        positionListFrame.Visible = false
-    end)
-    closePosListBtn.Parent = positionListFrame
-
-    updatePositionList()
-end
-
-local function showPositionList()
-    if positionListFrame then
-        positionListFrame.Visible = not positionListFrame.Visible
-        if positionListFrame.Visible then
-            updatePositionList()
-            local posTitle = positionListFrame:FindFirstChild("TextLabel")
-            if posTitle then
-                posTitle.Text = "Saved Positions (" .. #savedPositions .. ")"
-            end
-        end
-        notify(positionListFrame.Visible and "📍 Position List Opened" or "📍 Position List Closed")
-    end
-end
-
--- Initialize character
+-- Mobile character initialization
 local function initChar()
     local success, errorMsg = pcall(function()
         local retryCount = 0
-        while not player.Character and retryCount < 5 do
-            notify("⏳ Waiting for character to spawn... Attempt " .. (retryCount + 1), Color3.fromRGB(255, 255, 0))
+        while not player.Character and retryCount < 3 do
+            notify("📱 Loading character... (" .. (retryCount + 1) .. "/3)", Color3.fromRGB(255, 255, 100))
             player.CharacterAdded:Wait()
-            task.wait(2)
+            task.wait(1.5)
             retryCount = retryCount + 1
         end
+        
         if not player.Character then
-            error("Character failed to load after retries")
+            error("Character failed to load")
         end
+        
         char = player.Character
-        humanoid = char:WaitForChild("Humanoid", 20)
-        hr = char:WaitForChild("HumanoidRootPart", 20)
+        humanoid = char:WaitForChild("Humanoid", 15)
+        hr = char:WaitForChild("HumanoidRootPart", 15)
+        
         if not humanoid or not hr then
-            error("Failed to find Humanoid or HumanoidRootPart after 20s")
-        end
-        cleanAdornments(char)
-        ensureCharacterVisible()
-        
-        -- Auto-save spawn position
-        task.wait(1) -- Wait for character to fully load
-        autoSavePosition("Spawn " .. positionCounter)
-        
-        -- Connect macro recording to new character
-        if macroRecording and humanoid then
-            if connections.macroDeath then
-                connections.macroDeath:Disconnect()
-            end
-            connections.macroDeath = humanoid.Died:Connect(onCharacterDied)
+            error("Failed to find Humanoid or HumanoidRootPart")
         end
         
-        -- Reapply all active features
-        if flying then toggleFly() toggleFly() end
-        if freecam then toggleFreecam() toggleFreecam() end
-        if noclip then toggleNoclip() toggleNoclip() end
-        if speedEnabled then toggleSpeed() toggleSpeed() end
-        if jumpEnabled then toggleJump() toggleJump() end
-        if waterWalk then toggleWaterWalk() toggleWaterWalk() end
-        if spin then toggleSpin() toggleSpin() end
-        if godMode then toggleGodMode() toggleGodMode() end
-        if nickHidden then toggleHideNick() toggleHideNick() end
-        if randomNick then toggleRandomNick() toggleRandomNick() end
-        if recordOnRespawn and macroRecording then toggleRecordMacro() toggleRecordMacro() end
-        if autoPlayOnRespawn and macroPlaying then togglePlayMacro() togglePlayMacro() end
+        -- Mobile-specific character setup
+        humanoid.PlatformStand = false
+        if hr then
+            hr.Anchored = false
+        end
+        
+        task.wait(0.5)
+        notify("📱 Character loaded successfully!", Color3.fromRGB(0, 255, 0))
     end)
+    
     if not success then
-        print("initChar error: " .. tostring(errorMsg))
-        notify("⚠️ Character init failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(5)
+        notify("⚠️ Character load failed: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        task.wait(3)
         initChar()
     end
 end
 
--- All the original toggle functions remain the same...
--- (Including the complete versions from the original script)
-
--- Fly toggle
+-- Mobile-optimized fly function
 local function toggleFly()
     flying = not flying
     local success, errorMsg = pcall(function()
         if flying then
             if freecam then
                 toggleFreecam()
-                notify("📷 Freecam disabled to enable Fly", Color3.fromRGB(255, 100, 100))
+                notify("📷 Freecam disabled for Fly", Color3.fromRGB(255, 150, 0))
             end
+            
             if not hr or not humanoid or not camera then
                 flying = false
-                error("Character or camera not loaded")
+                error("Character not ready")
             end
-            joystickFrame.Visible = isMobile
-            cameraControlFrame.Visible = isMobile
+            
+            joystickFrame.Visible = true
+            cameraControlFrame.Visible = true
+            
             local bv = Instance.new("BodyVelocity")
-            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.MaxForce = Vector3.new(4000, 4000, 4000) -- Mobile optimized
             bv.Velocity = Vector3.new(0, 0, 0)
             bv.Parent = hr
-            connections.flyMouse = UserInputService.InputChanged:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    local inputMag = input.Delta.Magnitude
-                    if inputMag < 2 then
-                        cameraDelta = Vector2.new(0, 0)
-                    else
-                        cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y)
-                    end
-                end
-            end)
-            connections.fly = RunService.RenderStepped:Connect(function()
+            
+            connections.fly = RunService.Heartbeat:Connect(function() -- Changed to Heartbeat for mobile
                 if not hr or not humanoid or not camera then
                     flying = false
-                    connections.fly:Disconnect()
-                    connections.fly = nil
-                    if connections.flyMouse then
-                        connections.flyMouse:Disconnect()
-                        connections.flyMouse = nil
+                    if connections.fly then
+                        connections.fly:Disconnect()
+                        connections.fly = nil
                     end
                     joystickFrame.Visible = false
                     cameraControlFrame.Visible = false
-                    notify("⚠️ Fly failed: Character or camera lost", Color3.fromRGB(255, 100, 100))
+                    notify("⚠️ Fly stopped - character lost", Color3.fromRGB(255, 100, 100))
                     return
-                end
-                
-                -- Record movement for macro
-                if macroRecording then
-                    recordMacroAction("move", hr.CFrame)
                 end
                 
                 local forward = camera.CFrame.LookVector
                 local right = camera.CFrame.RightVector
                 local up = Vector3.new(0, 1, 0)
-                local moveDir = Vector3.new(0, 0, 0)
-                if isMobile then
-                    moveDir = moveDirection.X * right + moveDirection.Z * forward
-                else
-                    local anyKeyPressed = false
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                        moveDir = moveDir + forward
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                        moveDir = moveDir - forward
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                        moveDir = moveDir - right
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                        moveDir = moveDir + right
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                        moveDir = moveDir + up
-                        anyKeyPressed = true
-                        if macroRecording then
-                            recordMacroAction("jump", true)
-                        end
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                        moveDir = moveDir - up
-                        anyKeyPressed = true
-                    end
-                    if not anyKeyPressed then
-                        moveDir = Vector3.new(0, 0, 0)
-                    end
-                end
+                local moveDir = moveDirection.X * right + moveDirection.Z * forward
+                
                 if moveDir.Magnitude > 0 then
                     moveDir = moveDir.Unit * flySpeed
                 else
                     moveDir = Vector3.new(0, 0, 0)
                 end
+                
                 bv.Velocity = moveDir
                 hr.CFrame = CFrame.new(hr.Position) * camera.CFrame.Rotation
-                local yaw = cameraDelta.X * cameraRotationSensitivity
-                local pitch = cameraDelta.Y * cameraRotationSensitivity
-                local currentPitch = math.asin(camera.CFrame.LookVector.Y)
-                pitch = math.clamp(currentPitch + pitch, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
-                local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
-                camera.CFrame = CFrame.new(camera.CFrame.Position) * (camera.CFrame.Rotation * rotation)
-                if not isMobile then
-                    cameraDelta = Vector2.new(0, 0)
+                
+                -- Mobile camera rotation
+                if cameraDelta.Magnitude > 0 then
+                    local yaw = cameraDelta.X * cameraRotationSensitivity
+                    local pitch = cameraDelta.Y * cameraRotationSensitivity
+                    local currentPitch = math.asin(camera.CFrame.LookVector.Y)
+                    pitch = math.clamp(currentPitch + pitch, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
+                    local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
+                    camera.CFrame = CFrame.new(camera.CFrame.Position) * (camera.CFrame.Rotation * rotation)
                 end
             end)
-            notify("🛫 Fly Enabled" .. (isMobile and " (Joystick + Camera Control)" or " (WASD, Space, Shift, Mouse)"))
+            
+            notify("🛫 Mobile Fly Enabled", Color3.fromRGB(0, 255, 100))
         else
             if connections.fly then
                 connections.fly:Disconnect()
                 connections.fly = nil
-            end
-            if connections.flyMouse then
-                connections.flyMouse:Disconnect()
-                connections.flyMouse = nil
             end
             if hr and hr:FindFirstChildOfClass("BodyVelocity") then
                 hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
@@ -788,145 +245,83 @@ local function toggleFly()
             cameraControlFrame.Visible = false
             moveDirection = Vector3.new(0, 0, 0)
             cameraDelta = Vector2.new(0, 0)
-            notify("🛬 Fly Disabled")
+            notify("🛬 Mobile Fly Disabled", Color3.fromRGB(255, 150, 0))
         end
     end)
+    
     if not success then
         flying = false
-        if connections.fly then
-            connections.fly:Disconnect()
-            connections.fly = nil
-        end
-        if connections.flyMouse then
-            connections.flyMouse:Disconnect()
-            connections.flyMouse = nil
-        end
-        if hr and hr:FindFirstChildOfClass("BodyVelocity") then
-            hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
-        end
-        joystickFrame.Visible = false
-        cameraControlFrame.Visible = false
-        moveDirection = Vector3.new(0, 0, 0)
-        cameraDelta = Vector2.new(0, 0)
         notify("⚠️ Fly error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
--- Freecam toggle
+-- Mobile-optimized freecam
 local function toggleFreecam()
     freecam = not freecam
     local success, errorMsg = pcall(function()
         if freecam then
             if flying then
                 toggleFly()
-                notify("🛫 Fly disabled to enable Freecam", Color3.fromRGB(255, 100, 100))
+                notify("🛫 Fly disabled for Freecam", Color3.fromRGB(255, 150, 0))
             end
+            
             if not hr or not humanoid or not camera then
                 freecam = false
-                error("Character or camera not loaded")
+                error("Character not ready")
             end
-            joystickFrame.Visible = isMobile
-            cameraControlFrame.Visible = isMobile
+            
+            joystickFrame.Visible = true
+            cameraControlFrame.Visible = true
             hrCFrame = hr.CFrame
             freecamCFrame = camera.CFrame
             camera.CameraType = Enum.CameraType.Scriptable
             camera.CameraSubject = nil
+            
             local bv = Instance.new("BodyVelocity")
-            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.MaxForce = Vector3.new(4000, 4000, 4000)
             bv.Velocity = Vector3.new(0, 0, 0)
             bv.Parent = hr
-            connections.freecamLock = RunService.Stepped:Connect(function()
+            
+            connections.freecamLock = RunService.Heartbeat:Connect(function()
                 if hr and hrCFrame then
                     hr.CFrame = hrCFrame
-                else
-                    freecam = false
-                    connections.freecamLock:Disconnect()
-                    connections.freecamLock = nil
-                    joystickFrame.Visible = false
-                    cameraControlFrame.Visible = false
-                    notify("⚠️ Character lost, Freecam disabled", Color3.fromRGB(255, 100, 100))
                 end
             end)
-            connections.freecamMouse = UserInputService.InputChanged:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    local inputMag = input.Delta.Magnitude
-                    if inputMag < 2 then
-                        cameraDelta = Vector2.new(0, 0)
-                    else
-                        cameraDelta = Vector2.new(-input.Delta.X, input.Delta.Y)
-                    end
-                end
-            end)
-            connections.freecam = RunService.RenderStepped:Connect(function()
+            
+            connections.freecam = RunService.Heartbeat:Connect(function()
                 if not camera or not freecamCFrame then
                     freecam = false
-                    connections.freecam:Disconnect()
-                    connections.freecam = nil
-                    if connections.freecamLock then
-                        connections.freecamLock:Disconnect()
-                        connections.freecamLock = nil
-                    end
-                    if connections.freecamMouse then
-                        connections.freecamMouse:Disconnect()
-                        connections.freecamMouse = nil
-                    end
+                    if connections.freecam then connections.freecam:Disconnect() end
+                    if connections.freecamLock then connections.freecamLock:Disconnect() end
                     joystickFrame.Visible = false
                     cameraControlFrame.Visible = false
-                    notify("⚠️ Freecam failed: Camera or CFrame lost", Color3.fromRGB(255, 100, 100))
                     return
                 end
+                
                 local forward = freecamCFrame.LookVector
                 local right = freecamCFrame.RightVector
                 local up = Vector3.new(0, 1, 0)
-                local moveDir = Vector3.new(0, 0, 0)
-                if isMobile then
-                    moveDir = moveDirection.X * right + moveDirection.Z * forward
-                else
-                    local anyKeyPressed = false
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                        moveDir = moveDir + forward
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                        moveDir = moveDir - forward
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                        moveDir = moveDir - right
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                        moveDir = moveDir + right
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-                        moveDir = moveDir + up
-                        anyKeyPressed = true
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-                        moveDir = moveDir - up
-                        anyKeyPressed = true
-                    end
-                    if not anyKeyPressed then
-                        moveDir = Vector3.new(0, 0, 0)
-                    end
-                end
+                local moveDir = moveDirection.X * right + moveDirection.Z * forward
+                
                 if moveDir.Magnitude > 0 then
                     moveDir = moveDir * freecamSpeed
-                    freecamCFrame = CFrame.new(freecamCFrame.Position + moveDir) * freecamCFrame.Rotation
+                    freecamCFrame = CFrame.new(freecamCFrame.Position + moveDir * 0.016) * freecamCFrame.Rotation -- Mobile frame timing
                 end
-                local yaw = cameraDelta.X * cameraRotationSensitivity
-                local pitch = cameraDelta.Y * cameraRotationSensitivity
-                local currentPitch = math.asin(freecamCFrame.LookVector.Y)
-                pitch = math.clamp(currentPitch + pitch, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
-                local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
-                freecamCFrame = CFrame.new(freecamCFrame.Position) * (freecamCFrame.Rotation * rotation)
-                if not isMobile then
-                    cameraDelta = Vector2.new(0, 0)
+                
+                -- Mobile camera rotation for freecam
+                if cameraDelta.Magnitude > 0 then
+                    local yaw = cameraDelta.X * cameraRotationSensitivity
+                    local pitch = cameraDelta.Y * cameraRotationSensitivity
+                    local currentPitch = math.asin(freecamCFrame.LookVector.Y)
+                    pitch = math.clamp(currentPitch + pitch, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
+                    local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - currentPitch, 0, 0)
+                    freecamCFrame = CFrame.new(freecamCFrame.Position) * (freecamCFrame.Rotation * rotation)
                 end
+                
                 camera.CFrame = freecamCFrame
             end)
-            notify("📷 Freecam Enabled" .. (isMobile and " (Joystick + Camera Control)" or " (WASD, QE, Mouse)"))
+            
+            notify("📷 Mobile Freecam Enabled", Color3.fromRGB(100, 200, 255))
         else
             if connections.freecam then
                 connections.freecam:Disconnect()
@@ -936,19 +331,12 @@ local function toggleFreecam()
                 connections.freecamLock:Disconnect()
                 connections.freecamLock = nil
             end
-            if connections.freecamMouse then
-                connections.freecamMouse:Disconnect()
-                connections.freecamMouse = nil
-            end
             if hr and hr:FindFirstChildOfClass("BodyVelocity") then
                 hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
             end
             if camera and humanoid then
                 camera.CameraType = Enum.CameraType.Custom
                 camera.CameraSubject = humanoid
-                if hr then
-                    camera.CFrame = CFrame.new(hr.CFrame.Position + Vector3.new(0, 5, 10), hr.CFrame.Position)
-                end
             end
             freecamCFrame = nil
             hrCFrame = nil
@@ -956,476 +344,415 @@ local function toggleFreecam()
             cameraControlFrame.Visible = false
             moveDirection = Vector3.new(0, 0, 0)
             cameraDelta = Vector2.new(0, 0)
-            notify("📷 Freecam Disabled")
+            notify("📷 Mobile Freecam Disabled", Color3.fromRGB(255, 150, 0))
         end
     end)
+    
     if not success then
         freecam = false
-        if connections.freecam then
-            connections.freecam:Disconnect()
-            connections.freecam = nil
-        end
-        if connections.freecamLock then
-            connections.freecamLock:Disconnect()
-            connections.freecamLock = nil
-        end
-        if connections.freecamMouse then
-            connections.freecamMouse:Disconnect()
-            connections.freecamMouse = nil
-        end
-        if hr and hr:FindFirstChildOfClass("BodyVelocity") then
-            hr:FindFirstChildOfClass("BodyVelocity"):Destroy()
-        end
-        joystickFrame.Visible = false
-        cameraControlFrame.Visible = false
-        moveDirection = Vector3.new(0, 0, 0)
-        cameraDelta = Vector2.new(0, 0)
         notify("⚠️ Freecam error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
--- Other essential functions
+-- Other mobile-optimized functions
 local function toggleNoclip()
     noclip = not noclip
-    local success, errorMsg = pcall(function()
-        if noclip then
-            connections.noclip = RunService.Stepped:Connect(function()
-                if char then
-                    for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
-                        end
-                    end
-                end
-            end)
-            notify("🚪 Noclip Enabled")
-        else
-            if connections.noclip then
-                connections.noclip:Disconnect()
-                connections.noclip = nil
-            end
+    if noclip then
+        connections.noclip = RunService.Heartbeat:Connect(function()
             if char then
                 for _, part in pairs(char:GetDescendants()) do
                     if part:IsA("BasePart") then
-                        part.CanCollide = true
+                        part.CanCollide = false
                     end
                 end
             end
-            notify("🚪 Noclip Disabled")
-        end
-    end)
-    if not success then
-        noclip = false
+        end)
+        notify("🚪 Mobile Noclip ON", Color3.fromRGB(150, 0, 255))
+    else
         if connections.noclip then
             connections.noclip:Disconnect()
             connections.noclip = nil
         end
-        notify("⚠️ Noclip error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+        notify("🚪 Mobile Noclip OFF", Color3.fromRGB(255, 150, 0))
     end
 end
 
 local function toggleSpeed()
     speedEnabled = not speedEnabled
-    local success, errorMsg = pcall(function()
-        if speedEnabled then
-            if humanoid then
-                humanoid.WalkSpeed = moveSpeed
-            end
-            notify("🏃 Speed Enabled")
-        else
-            if humanoid then
-                humanoid.WalkSpeed = 16
-            end
-            notify("🏃 Speed Disabled")
+    if speedEnabled then
+        if humanoid then
+            humanoid.WalkSpeed = moveSpeed
         end
-    end)
-    if not success then
-        speedEnabled = false
-        notify("⚠️ Speed error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("🏃 Mobile Speed ON", Color3.fromRGB(255, 200, 0))
+    else
+        if humanoid then
+            humanoid.WalkSpeed = 16
+        end
+        notify("🏃 Mobile Speed OFF", Color3.fromRGB(255, 150, 0))
     end
 end
 
 local function toggleJump()
     jumpEnabled = not jumpEnabled
-    local success, errorMsg = pcall(function()
-        if jumpEnabled then
-            if humanoid then
-                humanoid.JumpPower = jumpPower
-            end
-            notify("🦘 Jump Enabled")
-        else
-            if humanoid then
-                humanoid.JumpPower = 50
-            end
-            notify("🦘 Jump Disabled")
+    if jumpEnabled then
+        if humanoid then
+            humanoid.JumpPower = jumpPower
         end
-    end)
-    if not success then
-        jumpEnabled = false
-        notify("⚠️ Jump error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
-local function toggleWaterWalk()
-    waterWalk = not waterWalk
-    local success, errorMsg = pcall(function()
-        if waterWalk then
-            connections.waterWalk = RunService.Stepped:Connect(function()
-                if humanoid and hr then
-                    local ray = Ray.new(hr.Position, Vector3.new(0, -5, 0))
-                    local hit, pos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
-                    if hit and hit.Name:lower():find("water") then
-                        hr.Position = Vector3.new(hr.Position.X, pos.Y + 1, hr.Position.Z)
-                    end
-                end
-            end)
-            notify("🌊 Water Walk Enabled")
-        else
-            if connections.waterWalk then
-                connections.waterWalk:Disconnect()
-                connections.waterWalk = nil
-            end
-            notify("🌊 Water Walk Disabled")
+        notify("🦘 Mobile Jump ON", Color3.fromRGB(0, 255, 150))
+    else
+        if humanoid then
+            humanoid.JumpPower = 50
         end
-    end)
-    if not success then
-        waterWalk = false
-        if connections.waterWalk then
-            connections.waterWalk:Disconnect()
-            connections.waterWalk = nil
-        end
-        notify("⚠️ Water Walk error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("🦘 Mobile Jump OFF", Color3.fromRGB(255, 150, 0))
     end
 end
 
 local function toggleGodMode()
     godMode = not godMode
-    local success, errorMsg = pcall(function()
-        if godMode then
-            if humanoid then
-                humanoid.MaxHealth = math.huge
+    if godMode then
+        if humanoid then
+            humanoid.MaxHealth = math.huge
+            humanoid.Health = math.huge
+        end
+        connections.godMode = humanoid.HealthChanged:Connect(function(health)
+            if health < math.huge then
                 humanoid.Health = math.huge
             end
-            connections.godMode = humanoid.HealthChanged:Connect(function(health)
-                if health < math.huge then
-                    humanoid.Health = math.huge
-                end
-            end)
-            notify("🛡️ God Mode Enabled")
-        else
-            if connections.godMode then
-                connections.godMode:Disconnect()
-                connections.godMode = nil
-            end
-            if humanoid then
-                humanoid.MaxHealth = 100
-                humanoid.Health = 100
-            end
-            notify("🛡️ God Mode Disabled")
-        end
-    end)
-    if not success then
-        godMode = false
+        end)
+        notify("🛡️ Mobile God Mode ON", Color3.fromRGB(255, 215, 0))
+    else
         if connections.godMode then
             connections.godMode:Disconnect()
             connections.godMode = nil
         end
-        notify("⚠️ God Mode error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
--- Additional utility functions (abbreviated versions of the original functions)
-local function spectatePlayer()
-    local success, errorMsg = pcall(function()
-        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
-            spectatingPlayer = selectedPlayer
-            camera.CameraSubject = selectedPlayer.Character.Humanoid
-            notify("👁️ Spectating " .. selectedPlayer.Name)
-        else
-            notify("⚠️ No player selected or invalid character", Color3.fromRGB(255, 100, 100))
+        if humanoid then
+            humanoid.MaxHealth = 100
+            humanoid.Health = 100
         end
-    end)
-    if not success then
-        notify("⚠️ Spectate error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        notify("🛡️ Mobile God Mode OFF", Color3.fromRGB(255, 150, 0))
     end
 end
 
-local function stopSpectate()
-    local success, errorMsg = pcall(function()
-        if spectatingPlayer then
-            camera.CameraSubject = humanoid
-            spectatingPlayer = nil
-            notify("👁️ Stopped spectating")
-        else
-            notify("⚠️ Not currently spectating", Color3.fromRGB(255, 100, 100))
+-- Mobile position system
+local function autoSavePosition(customName)
+    if hr then
+        positionCounter = positionCounter + 1
+        local positionName = customName or ("Mobile Pos " .. positionCounter)
+        local positionData = {
+            name = positionName,
+            cframe = hr.CFrame,
+            timestamp = os.time(),
+            id = positionCounter
+        }
+        
+        table.insert(savedPositions, positionData)
+        
+        if #savedPositions > maxSavedPositions then
+            table.remove(savedPositions, 1)
         end
-    end)
-    if not success then
-        notify("⚠️ Stop spectate error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        
+        notify("📍 Saved: " .. positionName, Color3.fromRGB(0, 255, 150))
+    else
+        notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
     end
 end
 
-local function teleportToPlayer()
-    local success, errorMsg = pcall(function()
-        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and hr then
-            local targetPos = selectedPlayer.Character.HumanoidRootPart.Position
-            if isValidPosition(targetPos) then
-                hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
-                notify("🚀 Teleported to " .. selectedPlayer.Name)
+local function loadPosition(positionId)
+    for _, pos in ipairs(savedPositions) do
+        if pos.id == positionId then
+            if hr and isValidPosition(pos.cframe.Position) then
+                hr.CFrame = pos.cframe
+                notify("📍 Teleported: " .. pos.name, Color3.fromRGB(0, 255, 100))
             else
-                notify("⚠️ Invalid position for teleport", Color3.fromRGB(255, 100, 100))
+                notify("⚠️ Invalid position", Color3.fromRGB(255, 100, 100))
             end
-        else
-            notify("⚠️ No player selected or invalid character", Color3.fromRGB(255, 100, 100))
+            return
         end
-    end)
-    if not success then
-        notify("⚠️ Teleport error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
     end
 end
 
-local function teleportToSpawn()
-    local success, errorMsg = pcall(function()
-        if hr then
-            local spawnLocation = workspace:FindFirstChildOfClass("SpawnLocation")
-            local targetPos = spawnLocation and spawnLocation.Position or Vector3.new(0, 5, 0)
-            if isValidPosition(targetPos) then
-                hr.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
-                notify("🚪 Teleported to Spawn")
-            else
-                notify("⚠️ Invalid spawn position", Color3.fromRGB(255, 100, 100))
-            end
-        else
-            notify("⚠️ Character not loaded", Color3.fromRGB(255, 100, 100))
-        end
-    end)
-    if not success then
-        notify("⚠️ Teleport to Spawn error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
-local function toggleFreezeMovingParts()
-    freezeMovingParts = not freezeMovingParts
-    local success, errorMsg = pcall(function()
-        if freezeMovingParts then
-            for _, obj in pairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart") and not obj.Anchored and obj.Name ~= "HumanoidRootPart" then
-                    if obj.Name:lower():find("moving") or obj.Name:lower():find("platform") or 
-                       obj.Name:lower():find("obstacle") or obj.Name:lower():find("trap") or
-                       obj.Name:lower():find("block") or obj.Name:lower():find("wood") or
-                       obj.Name:lower():find("step") or obj.Name:lower():find("stair") or
-                       obj.Parent and (obj.Parent.Name:lower():find("moving") or 
-                       obj.Parent.Name:lower():find("obstacle") or obj.Parent.Name:lower():find("trap")) then
-                        originalCFrames[obj] = obj.CFrame
-                        obj.Anchored = true
-                        for _, child in pairs(obj:GetChildren()) do
-                            if child:IsA("BodyVelocity") or child:IsA("BodyPosition") or 
-                               child:IsA("BodyAngularVelocity") or child:IsA("BodyThrust") then
-                                child.MaxForce = Vector3.new(0, 0, 0)
-                            end
-                        end
-                    end
-                end
-            end
-            
-            connections.freezeWatch = RunService.Heartbeat:Connect(function()
-                for part, originalCFrame in pairs(originalCFrames) do
-                    if part and part.Parent then
-                        part.CFrame = originalCFrame
-                        part.Anchored = true
-                    end
-                end
-            end)
-            
-            notify("🧊 Moving Parts Frozen")
-        else
-            if connections.freezeWatch then
-                connections.freezeWatch:Disconnect()
-                connections.freezeWatch = nil
-            end
-            
-            for part, originalCFrame in pairs(originalCFrames) do
-                if part and part.Parent then
-                    part.Anchored = false
-                    for _, child in pairs(part:GetChildren()) do
-                        if child:IsA("BodyVelocity") then
-                            child.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        elseif child:IsA("BodyPosition") then
-                            child.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        end
-                    end
-                end
-            end
-            originalCFrames = {}
-            
-            notify("🧊 Moving Parts Unfrozen")
-        end
-    end)
-    if not success then
-        freezeMovingParts = false
-        if connections.freezeWatch then
-            connections.freezeWatch:Disconnect()
-            connections.freezeWatch = nil
-        end
-        notify("⚠️ Freeze Moving Parts error: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
-    end
-end
-
--- Practice mode toggle
-local function togglePracticeMode()
-    practiceMode = not practiceMode
-    notify(practiceMode and "🎯 Practice Mode Enabled" or "🎯 Practice Mode Disabled")
-end
-
--- Create joystick and other UI elements (abbreviated)
-local function createJoystick()
-    if joystickFrame then
-        joystickFrame:Destroy()
-    end
+-- Mobile-optimized joystick
+local function createMobileJoystick()
+    if joystickFrame then joystickFrame:Destroy() end
+    
     joystickFrame = Instance.new("Frame")
-    joystickFrame.Size = UDim2.new(0, 120, 0, 120)
-    joystickFrame.Position = UDim2.new(0.1, 0, 0.65, 0)
-    joystickFrame.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    joystickFrame.BackgroundTransparency = 0.5
+    joystickFrame.Size = UDim2.new(0, 140, 0, 140) -- Larger for mobile
+    joystickFrame.Position = UDim2.new(0.05, 0, 0.65, 0)
+    joystickFrame.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    joystickFrame.BackgroundTransparency = 0.4
     joystickFrame.BorderSizePixel = 0
-    joystickFrame.ZIndex = 15
+    joystickFrame.ZIndex = 40
     joystickFrame.Visible = false
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 60)
+    corner.CornerRadius = UDim.new(0, 70)
     corner.Parent = joystickFrame
     joystickFrame.Parent = gui
 
-    -- Add joystick knob and controls (abbreviated for space)
     local joystickKnob = Instance.new("Frame")
-    joystickKnob.Size = UDim2.new(0, 40, 0, 40)
-    joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+    joystickKnob.Size = UDim2.new(0, 50, 0, 50) -- Larger knob
+    joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
     joystickKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    joystickKnob.BackgroundTransparency = 0.2
+    joystickKnob.BackgroundTransparency = 0.1
     joystickKnob.BorderSizePixel = 0
-    joystickKnob.ZIndex = 16
+    joystickKnob.ZIndex = 41
     local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(0, 20)
+    knobCorner.CornerRadius = UDim.new(0, 25)
     knobCorner.Parent = joystickKnob
     joystickKnob.Parent = joystickFrame
+
+    -- Mobile joystick controls
+    joystickFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            joystickTouch = input
+        end
+    end)
+
+    joystickFrame.InputChanged:Connect(function(input)
+        if input == joystickTouch and input.UserInputState ~= Enum.UserInputState.End then
+            local center = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize / 2
+            local inputPos = Vector2.new(input.Position.X, input.Position.Y)
+            local delta = inputPos - center
+            local distance = math.min(delta.Magnitude, joystickRadius)
+            local direction = delta.Unit
+            
+            if delta.Magnitude > joystickDeadzone * joystickRadius then
+                moveDirection = Vector3.new(direction.X, 0, -direction.Y) * (distance / joystickRadius)
+            else
+                moveDirection = Vector3.new(0, 0, 0)
+            end
+            
+            local knobPos = direction * distance
+            joystickKnob.Position = UDim2.new(0.5, knobPos.X - 25, 0.5, knobPos.Y - 25)
+        end
+    end)
+
+    joystickFrame.InputEnded:Connect(function(input)
+        if input == joystickTouch then
+            joystickTouch = nil
+            moveDirection = Vector3.new(0, 0, 0)
+            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+        end
+    end)
 end
 
--- Create player list UI (abbreviated)
-local function createPlayerListUI()
-    if playerListFrame then
-        playerListFrame:Destroy()
+-- Mobile camera controls
+local function createMobileCameraControl()
+    if cameraControlFrame then cameraControlFrame:Destroy() end
+    
+    cameraControlFrame = Instance.new("Frame")
+    cameraControlFrame.Size = UDim2.new(0, 140, 0, 140)
+    cameraControlFrame.Position = UDim2.new(0.95, -140, 0.65, 0)
+    cameraControlFrame.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    cameraControlFrame.BackgroundTransparency = 0.4
+    cameraControlFrame.BorderSizePixel = 0
+    cameraControlFrame.ZIndex = 40
+    cameraControlFrame.Visible = false
+    local camCorner = Instance.new("UICorner")
+    camCorner.CornerRadius = UDim.new(0, 70)
+    camCorner.Parent = cameraControlFrame
+    cameraControlFrame.Parent = gui
+
+    local cameraLabel = Instance.new("TextLabel")
+    cameraLabel.Size = UDim2.new(1, 0, 1, 0)
+    cameraLabel.BackgroundTransparency = 1
+    cameraLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cameraLabel.TextSize = 16
+    cameraLabel.Font = Enum.Font.GothamBold
+    cameraLabel.Text = "📷\nCAM"
+    cameraLabel.ZIndex = 41
+    cameraLabel.Parent = cameraControlFrame
+
+    cameraControlFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            cameraTouch = input
+        end
+    end)
+
+    cameraControlFrame.InputChanged:Connect(function(input)
+        if input == cameraTouch and input.UserInputState ~= Enum.UserInputState.End then
+            cameraDelta = Vector2.new(input.Delta.X, input.Delta.Y) * 0.5 -- Mobile sensitivity
+        end
+    end)
+
+    cameraControlFrame.InputEnded:Connect(function(input)
+        if input == cameraTouch then
+            cameraTouch = nil
+            cameraDelta = Vector2.new(0, 0)
+        end
+    end)
+end
+
+-- Mobile floating hotkey buttons
+local function createMobileHotkeys()
+    local hotkeyFrame = Instance.new("Frame")
+    hotkeyFrame.Size = UDim2.new(0, 180, 0, 400)
+    hotkeyFrame.Position = UDim2.new(1, -200, 0.25, 0)
+    hotkeyFrame.BackgroundTransparency = 1
+    hotkeyFrame.ZIndex = 35
+    hotkeyFrame.Parent = gui
+    
+    local function createHotkeyButton(text, emoji, color, callback, yPos)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 60, 0, 60) -- Larger for mobile
+        btn.Position = UDim2.new(0, 0, 0, yPos)
+        btn.BackgroundColor3 = color
+        btn.BackgroundTransparency = 0.2
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.TextSize = 12
+        btn.Font = Enum.Font.GothamBold
+        btn.Text = emoji .. "\n" .. text
+        btn.ZIndex = 36
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 30)
+        corner.Parent = btn
+        
+        btn.MouseButton1Click:Connect(function()
+            callback()
+            -- Visual feedback
+            btn.BackgroundTransparency = 0.5
+            task.wait(0.1)
+            btn.BackgroundTransparency = 0.2
+        end)
+        btn.Parent = hotkeyFrame
+        return btn
     end
     
-    playerListFrame = Instance.new("Frame")
-    playerListFrame.Size = UDim2.new(0, 300, 0, 400)
-    playerListFrame.Position = UDim2.new(0, 20, 0.5, -200)
-    playerListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    playerListFrame.BackgroundTransparency = 0.1
-    playerListFrame.BorderSizePixel = 0
-    playerListFrame.Visible = false
-    playerListFrame.ZIndex = 25
-    local playerFrameCorner = Instance.new("UICorner")
-    playerFrameCorner.CornerRadius = UDim.new(0, 12)
-    playerFrameCorner.Parent = playerListFrame
-    playerListFrame.Parent = gui
+    -- Create mobile hotkey buttons
+    createHotkeyButton("FLY", "🛫", Color3.fromRGB(0, 150, 255), toggleFly, 0)
+    createHotkeyButton("CAM", "📷", Color3.fromRGB(255, 150, 0), toggleFreecam, 70)
+    createHotkeyButton("CLIP", "🚪", Color3.fromRGB(150, 0, 255), toggleNoclip, 140)
+    createHotkeyButton("SPEED", "🏃", Color3.fromRGB(255, 200, 0), toggleSpeed, 210)
+    createHotkeyButton("JUMP", "🦘", Color3.fromRGB(0, 255, 150), toggleJump, 280)
+    createHotkeyButton("GOD", "🛡️", Color3.fromRGB(255, 215, 0), toggleGodMode, 350)
+    
+    -- Toggle hotkeys visibility
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 50, 0, 50)
+    toggleBtn.Position = UDim2.new(1, -70, 0.2, 0)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    toggleBtn.BackgroundTransparency = 0.3
+    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleBtn.TextSize = 20
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.Text = "⚡"
+    toggleBtn.ZIndex = 36
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 25)
+    toggleCorner.Parent = toggleBtn
+    
+    toggleBtn.MouseButton1Click:Connect(function()
+        hotkeyFrame.Visible = not hotkeyFrame.Visible
+        notify(hotkeyFrame.Visible and "⚡ Mobile Hotkeys ON" or "⚡ Mobile Hotkeys OFF")
+    end)
+    toggleBtn.Parent = gui
+    
+    notify("⚡ Mobile Hotkeys Ready! Tap ⚡ to toggle")
 end
 
-local function showPlayerList()
-    if playerListFrame then
-        playerListFrame.Visible = not playerListFrame.Visible
-        notify(playerListFrame.Visible and "👥 Player List Opened" or "👥 Player List Closed")
-    end
-end
-
--- Enhanced GUI creation with all new features
-local function createEnhancedGUI()
+-- Mobile-optimized GUI
+local function createMobileGUI()
     local success, errorMsg = pcall(function()
-        if gui then
-            gui:Destroy()
-            gui = nil
-        end
+        if gui then gui:Destroy() end
 
         gui = Instance.new("ScreenGui")
-        gui.Name = "SimpleUILibrary_Krnl"
+        gui.Name = "MobileKrnlUI"
         gui.ResetOnSpawn = false
         gui.IgnoreGuiInset = true
         gui.Enabled = true
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        gui.Parent = player:WaitForChild("PlayerGui", 20)
+        gui.Parent = player:WaitForChild("PlayerGui", 15)
 
+        -- Mobile-optimized scaling
         local scale = Instance.new("UIScale")
-        scale.Scale = math.min(1, math.min(camera.ViewportSize.X / 1280, camera.ViewportSize.Y / 720))
+        scale.Scale = mobileScale
         scale.Parent = gui
 
+        -- Mobile logo (larger)
         logo = Instance.new("ImageButton")
-        logo.Size = UDim2.new(0, 60, 0, 60)
-        logo.Position = defaultLogoPos
+        logo.Size = UDim2.new(0, 80, 0, 80) -- Larger for mobile
+        logo.Position = UDim2.new(0.9, -80, 0.05, 0)
         logo.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
-        logo.BackgroundTransparency = 0.3
+        logo.BackgroundTransparency = 0.2
         logo.BorderSizePixel = 0
         logo.Image = "rbxassetid://3570695787"
         logo.ZIndex = 20
         local logoCorner = Instance.new("UICorner")
-        logoCorner.CornerRadius = UDim.new(0, 12)
+        logoCorner.CornerRadius = UDim.new(0, 15)
         logoCorner.Parent = logo
         logo.Parent = gui
 
+        -- Mobile main frame (optimized size)
         frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 900, 0, 600)
-        frame.Position = UDim2.new(0.5, -450, 0.5, -300)
-        frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        frame.BackgroundTransparency = 0.1
+        frame.Size = UDim2.new(0, 700, 0, 500) -- Mobile optimized size
+        frame.Position = UDim2.new(0.5, -350, 0.5, -250)
+        frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        frame.BackgroundTransparency = 0.05
         frame.BorderSizePixel = 0
         frame.Visible = false
         frame.ZIndex = 10
         frame.ClipsDescendants = true
         local frameCorner = Instance.new("UICorner")
-        frameCorner.CornerRadius = UDim.new(0, 12)
+        frameCorner.CornerRadius = UDim.new(0, 15)
         frameCorner.Parent = frame
         frame.Parent = gui
 
+        -- Mobile sidebar
         local sidebar = Instance.new("Frame")
-        sidebar.Size = UDim2.new(0, 220, 1, 0)
-        sidebar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        sidebar.BackgroundTransparency = 0.2
+        sidebar.Size = UDim2.new(0, 180, 1, 0) -- Narrower for mobile
+        sidebar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        sidebar.BackgroundTransparency = 0.1
         sidebar.BorderSizePixel = 0
         sidebar.ZIndex = 11
         sidebar.Parent = frame
 
         local sidebarUIL = Instance.new("UIListLayout")
         sidebarUIL.FillDirection = Enum.FillDirection.Vertical
-        sidebarUIL.Padding = UDim.new(0, 8)
+        sidebarUIL.Padding = UDim.new(0, 10) -- More padding for mobile
         sidebarUIL.Parent = sidebar
 
         local sidebarPadding = Instance.new("UIPadding")
-        sidebarPadding.PaddingTop = UDim.new(0, 15)
-        sidebarPadding.PaddingLeft = UDim.new(0, 10)
-        sidebarPadding.PaddingRight = UDim.new(0, 10)
+        sidebarPadding.PaddingTop = UDim.new(0, 20)
+        sidebarPadding.PaddingLeft = UDim.new(0, 15)
+        sidebarPadding.PaddingRight = UDim.new(0, 15)
         sidebarPadding.Parent = sidebar
 
+        -- Mobile title
         local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(1, -20, 0, 50)
+        title.Size = UDim2.new(1, -10, 0, 60) -- Larger for mobile
         title.BackgroundTransparency = 1
         title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        title.TextSize = 22
+        title.TextSize = 18 -- Mobile optimized
         title.Font = Enum.Font.GothamBold
-        title.Text = "Enhanced Krnl UI v2"
+        title.Text = "📱 Mobile Krnl UI\nv2.0"
+        title.TextWrapped = true
         title.ZIndex = 12
         title.Parent = sidebar
 
+        -- Mobile content frame
         local contentFrame = Instance.new("Frame")
-        contentFrame.Size = UDim2.new(0, 660, 1, -10)
-        contentFrame.Position = UDim2.new(0, 230, 0, 5)
+        contentFrame.Size = UDim2.new(0, 510, 1, -10) -- Adjusted for mobile
+        contentFrame.Position = UDim2.new(0, 185, 0, 5)
         contentFrame.BackgroundTransparency = 1
         contentFrame.ZIndex = 11
         contentFrame.ClipsDescendants = true
         contentFrame.Parent = frame
 
+        -- Mobile scroll frame
         local scrollFrame = Instance.new("ScrollingFrame")
         scrollFrame.Size = UDim2.new(1, -10, 1, -10)
         scrollFrame.Position = UDim2.new(0, 5, 0, 5)
         scrollFrame.BackgroundTransparency = 1
-        scrollFrame.ScrollBarThickness = 8
-        scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+        scrollFrame.ScrollBarThickness = 12 -- Thicker for mobile
+        scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(150, 150, 150)
         scrollFrame.ZIndex = 11
         scrollFrame.ClipsDescendants = true
         scrollFrame.ScrollingEnabled = true
@@ -1435,92 +762,125 @@ local function createEnhancedGUI()
 
         local scrollUIL = Instance.new("UIListLayout")
         scrollUIL.FillDirection = Enum.FillDirection.Vertical
-        scrollUIL.Padding = UDim.new(0, 8)
+        scrollUIL.Padding = UDim.new(0, 12) -- More padding for mobile
         scrollUIL.Parent = scrollFrame
 
         local scrollPadding = Instance.new("UIPadding")
-        scrollPadding.PaddingTop = UDim.new(0, 15)
-        scrollPadding.PaddingBottom = UDim.new(0, 20)
-        scrollPadding.PaddingLeft = UDim.new(0, 15)
-        scrollPadding.PaddingRight = UDim.new(0, 15)
+        scrollPadding.PaddingTop = UDim.new(0, 20)
+        scrollPadding.PaddingBottom = UDim.new(0, 25)
+        scrollPadding.PaddingLeft = UDim.new(0, 20)
+        scrollPadding.PaddingRight = UDim.new(0, 20)
         scrollPadding.Parent = scrollFrame
 
-        local function createButton(text, callback, toggleState)
+        -- Mobile button creator
+        local function createMobileButton(text, callback, toggleState)
             local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -10, 0, 45)
-            button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-            button.BackgroundTransparency = 0.2
+            button.Size = UDim2.new(1, -20, 0, 55) -- Larger for mobile touch
+            button.BackgroundColor3 = toggleState() and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(40, 40, 40)
+            button.BackgroundTransparency = 0.1
             button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 16
-            button.Font = Enum.Font.Gotham
+            button.TextSize = 18 -- Larger text for mobile
+            button.Font = Enum.Font.GothamBold
             button.Text = text
             button.TextWrapped = true
             button.ZIndex = 12
             button.Visible = false
+            
             local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 8)
+            buttonCorner.CornerRadius = UDim.new(0, 10)
             buttonCorner.Parent = button
             
-            button.MouseEnter:Connect(function()
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(70, 70, 70)
+            -- Mobile touch feedback
+            button.MouseButton1Down:Connect(function()
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(70, 220, 70) or Color3.fromRGB(60, 60, 60)
+                button.Size = UDim2.new(1, -20, 0, 52) -- Slight shrink effect
             end)
-            button.MouseLeave:Connect(function()
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
-            end)
-            button.MouseButton1Click:Connect(function()
+            
+            button.MouseButton1Up:Connect(function()
                 local success, err = pcall(callback)
                 if not success then
-                    notify("⚠️ Error in " .. text .. ": " .. tostring(err), Color3.fromRGB(255, 100, 100))
+                    notify("⚠️ Error: " .. text .. " - " .. tostring(err), Color3.fromRGB(255, 100, 100))
                 end
-                button.BackgroundColor3 = toggleState() and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(50, 50, 50)
+                button.BackgroundColor3 = toggleState() and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(40, 40, 40)
+                button.Size = UDim2.new(1, -20, 0, 55) -- Back to normal
             end)
+            
             return button
         end
 
-        -- Define all categories with complete enhanced feature set
+        -- Mobile categories with emojis
         local categories = {
-            Movement = {
-                createButton("Toggle Fly", toggleFly, function() return flying end),
-                createButton("Toggle Noclip", toggleNoclip, function() return noclip end),
-                createButton("Toggle Speed", toggleSpeed, function() return speedEnabled end),
-                createButton("Toggle Jump Power", toggleJump, function() return jumpEnabled end),
-                createButton("Toggle Water Walk", toggleWaterWalk, function() return waterWalk end),
-                createButton("Toggle God Mode", toggleGodMode, function() return godMode end)
+            ["🛫 Movement"] = {
+                createMobileButton("🛫 Toggle Mobile Fly", toggleFly, function() return flying end),
+                createMobileButton("🚪 Toggle Mobile Noclip", toggleNoclip, function() return noclip end),
+                createMobileButton("🏃 Toggle Mobile Speed", toggleSpeed, function() return speedEnabled end),
+                createMobileButton("🦘 Toggle Mobile Jump", toggleJump, function() return jumpEnabled end),
+                createMobileButton("🛡️ Toggle Mobile God Mode", toggleGodMode, function() return godMode end)
             },
-            Visual = {
-                createButton("Toggle Freecam", toggleFreecam, function() return freecam end),
-                createButton("Teleport to Freecam", teleportToFreecam, function() return false end)
+            ["📷 Camera"] = {
+                createMobileButton("📷 Toggle Mobile Freecam", toggleFreecam, function() return freecam end),
+                createMobileButton("📍 Teleport to Freecam", function()
+                    if freecam and freecamCFrame and hr then
+                        hr.CFrame = freecamCFrame
+                        notify("📍 Teleported to Mobile Freecam")
+                    else
+                        notify("⚠️ Freecam not active", Color3.fromRGB(255, 100, 100))
+                    end
+                end, function() return false end)
             },
-            World = {
-                createButton("Toggle Freeze Moving Parts", toggleFreezeMovingParts, function() return freezeMovingParts end)
+            ["📍 Positions"] = {
+                createMobileButton("💾 Save Current Position", function() 
+                    autoSavePosition("Mobile " .. os.date("%H:%M"))
+                end, function() return false end),
+                createMobileButton("📋 View Saved Positions", function()
+                    local posText = "📱 Mobile Positions:\n"
+                    for i, pos in ipairs(savedPositions) do
+                        posText = posText .. i .. ". " .. pos.name .. "\n"
+                    end
+                    notify(#savedPositions > 0 and posText or "📍 No positions saved yet")
+                end, function() return false end),
+                createMobileButton("🚀 Teleport to Last Position", function()
+                    if #savedPositions > 0 then
+                        loadPosition(savedPositions[#savedPositions].id)
+                    else
+                        notify("⚠️ No positions saved", Color3.fromRGB(255, 100, 100))
+                    end
+                end, function() return false end)
             },
-            Player = {
-                createButton("Open Player List", showPlayerList, function() return false end),
-                createButton("Spectate Selected Player", spectatePlayer, function() return spectatingPlayer ~= nil end),
-                createButton("Stop Spectate", stopSpectate, function() return false end),
-                createButton("Teleport to Selected Player", teleportToPlayer, function() return false end)
-            },
-            Teleport = {
-                createButton("Teleport to Spawn", teleportToSpawn, function() return false end),
-                createButton("Auto Save Current Position", function() autoSavePosition() end, function() return false end),
-                createButton("Open Position List", showPositionList, function() return false end)
-            },
-            Macro = {
-                createButton("Toggle Practice Mode", togglePracticeMode, function() return practiceMode end),
-                createButton("Toggle Record Macro", toggleRecordMacro, function() return macroRecording end),
-                createButton("Toggle Play Macro", togglePlayMacro, function() return macroPlaying end),
-                createButton("Finish Macro Successfully", finishMacroSuccessfully, function() return false end)
+            ["🎮 Mobile Tools"] = {
+                createMobileButton("📱 Show Mobile Hotkeys", function()
+                    local hotkeyFrame = gui:FindFirstChild("Frame") and gui.Frame:FindFirstChild("Frame")
+                    if hotkeyFrame then
+                        hotkeyFrame.Visible = not hotkeyFrame.Visible
+                        notify(hotkeyFrame.Visible and "⚡ Mobile Hotkeys Shown" or "⚡ Mobile Hotkeys Hidden")
+                    end
+                end, function() return false end),
+                createMobileButton("🔄 Reset Character", function()
+                    if humanoid then
+                        humanoid.Health = 0
+                        notify("🔄 Character Reset")
+                    end
+                end, function() return false end),
+                createMobileButton("🏠 Teleport to Spawn", function()
+                    if hr then
+                        local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
+                        local pos = spawn and spawn.Position or Vector3.new(0, 10, 0)
+                        hr.CFrame = CFrame.new(pos + Vector3.new(0, 5, 0))
+                        notify("🏠 Teleported to Mobile Spawn")
+                    end
+                end, function() return false end)
             }
         }
 
-        -- Add all buttons to scrollFrame
+        -- Add all buttons to scroll frame
         for categoryName, buttons in pairs(categories) do
             for _, button in pairs(buttons) do
                 button.Parent = scrollFrame
             end
         end
 
-        local function updateCategory(categoryName)
+        -- Mobile category switcher
+        local function updateMobileCategory(categoryName)
             for _, buttons in pairs(categories) do
                 for _, button in pairs(buttons) do
                     button.Visible = false
@@ -1535,92 +895,93 @@ local function createEnhancedGUI()
             
             currentCategory = categoryName
             
+            -- Update sidebar buttons
             for _, child in pairs(sidebar:GetChildren()) do
                 if child:IsA("TextButton") and categories[child.Name] then
-                    child.BackgroundColor3 = child.Name == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
+                    child.BackgroundColor3 = child.Name == categoryName and Color3.fromRGB(50, 150, 255) or Color3.fromRGB(40, 40, 40)
                 end
             end
             
             scrollFrame.CanvasPosition = Vector2.new(0, 0)
-            notify("📂 " .. categoryName .. " (" .. #categories[categoryName] .. " features)")
+            notify("📂 " .. categoryName .. " (" .. #categories[categoryName] .. " tools)")
         end
 
-        -- Create sidebar category buttons
+        -- Create mobile sidebar category buttons
         for categoryName, _ in pairs(categories) do
             local categoryButton = Instance.new("TextButton")
-            categoryButton.Size = UDim2.new(1, -20, 0, 45)
-            categoryButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            categoryButton.BackgroundTransparency = 0.2
+            categoryButton.Size = UDim2.new(1, -10, 0, 50) -- Larger for mobile
+            categoryButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            categoryButton.BackgroundTransparency = 0.1
             categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            categoryButton.TextSize = 16
+            categoryButton.TextSize = 14 -- Mobile optimized
             categoryButton.Font = Enum.Font.GothamBold
             categoryButton.Text = categoryName
+            categoryButton.TextWrapped = true
             categoryButton.ZIndex = 12
             categoryButton.Name = categoryName
+            
             local categoryCorner = Instance.new("UICorner")
-            categoryCorner.CornerRadius = UDim.new(0, 8)
+            categoryCorner.CornerRadius = UDim.new(0, 10)
             categoryCorner.Parent = categoryButton
             
-            categoryButton.MouseEnter:Connect(function()
-                if currentCategory ~= categoryName then
-                    categoryButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-                end
+            -- Mobile touch feedback for categories
+            categoryButton.MouseButton1Down:Connect(function()
+                categoryButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
             end)
-            categoryButton.MouseLeave:Connect(function()
-                categoryButton.BackgroundColor3 = currentCategory == categoryName and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(50, 50, 50)
+            
+            categoryButton.MouseButton1Up:Connect(function()
+                updateMobileCategory(categoryName)
             end)
-            categoryButton.MouseButton1Click:Connect(function()
-                updateCategory(categoryName)
-            end)
+            
             categoryButton.Parent = sidebar
         end
 
-        -- Initialize with Movement category
-        updateCategory("Movement")
+        -- Initialize with first category
+        updateMobileCategory("🛫 Movement")
 
+        -- Mobile logo click handler
         logo.MouseButton1Click:Connect(function()
             frame.Visible = not frame.Visible
-            notify(frame.Visible and "🖼️ Enhanced GUI Opened" or "🖼️ Enhanced GUI Closed")
+            notify(frame.Visible and "📱 Mobile GUI Opened" or "📱 Mobile GUI Closed")
         end)
 
-        -- Make frame draggable
-        local dragging, dragInput, dragStart, startPos
-        local function updateDrag(input)
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-        
+        -- Mobile drag functionality (simplified)
+        local dragging = false
+        local dragStart = nil
+        local startPos = nil
+
         title.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
                 dragStart = input.Position
                 startPos = frame.Position
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        dragging = false
-                    end
-                end)
             end
         end)
-        
+
         title.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                dragInput = input
+            if dragging and input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+                frame.Position = UDim2.new(
+                    startPos.X.Scale, 
+                    startPos.X.Offset + delta.X, 
+                    startPos.Y.Scale, 
+                    startPos.Y.Offset + delta.Y
+                )
             end
         end)
-        
-        UserInputService.InputChanged:Connect(function()
-            if dragInput and dragging then
-                updateDrag(dragInput)
+
+        title.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
             end
         end)
-        
-        -- Status display
+
+        -- Mobile status bar
         local statusFrame = Instance.new("Frame")
-        statusFrame.Size = UDim2.new(1, 0, 0, 60)
-        statusFrame.Position = UDim2.new(0, 0, 1, -60)
-        statusFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        statusFrame.BackgroundTransparency = 0.3
+        statusFrame.Size = UDim2.new(1, 0, 0, 50)
+        statusFrame.Position = UDim2.new(0, 0, 1, -50)
+        statusFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        statusFrame.BackgroundTransparency = 0.2
         statusFrame.BorderSizePixel = 0
         statusFrame.ZIndex = 11
         statusFrame.Parent = frame
@@ -1632,118 +993,136 @@ local function createEnhancedGUI()
         statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         statusLabel.TextSize = 14
         statusLabel.Font = Enum.Font.Gotham
-        statusLabel.Text = "✅ Enhanced Krnl UI v2.0 | Positions: " .. #savedPositions .. " | Attempts: " .. totalAttempts
+        statusLabel.Text = "📱 Mobile Krnl UI Active | Positions: " .. #savedPositions
         statusLabel.TextXAlignment = Enum.TextXAlignment.Left
         statusLabel.ZIndex = 12
         statusLabel.Parent = statusFrame
         
+        -- Mobile close button
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Size = UDim2.new(0, 40, 0, 40)
+        closeBtn.Position = UDim2.new(1, -50, 0, 10)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        closeBtn.BackgroundTransparency = 0.2
+        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        closeBtn.TextSize = 20
+        closeBtn.Font = Enum.Font.GothamBold
+        closeBtn.Text = "×"
+        closeBtn.ZIndex = 13
+        
+        local closeCorner = Instance.new("UICorner")
+        closeCorner.CornerRadius = UDim.new(0, 20)
+        closeCorner.Parent = closeBtn
+        
+        closeBtn.MouseButton1Click:Connect(function()
+            frame.Visible = false
+            notify("📱 Mobile GUI Closed")
+        end)
+        closeBtn.Parent = frame
+
         -- Update status periodically
         task.spawn(function()
             while gui and gui.Parent do
                 if statusLabel then
-                    local macroStatus = ""
-                    if macroRecording then
-                        macroStatus = "🔴 Recording"
-                    elseif macroPlaying then
-                        macroStatus = "▶️ Playing"
-                    elseif practiceMode then
-                        macroStatus = "🎯 Practice"
-                    end
+                    local activeFeatures = {}
+                    if flying then table.insert(activeFeatures, "🛫Fly") end
+                    if freecam then table.insert(activeFeatures, "📷Cam") end
+                    if noclip then table.insert(activeFeatures, "🚪Clip") end
+                    if speedEnabled then table.insert(activeFeatures, "🏃Speed") end
+                    if godMode then table.insert(activeFeatures, "🛡️God") end
                     
-                    statusLabel.Text = "✅ Enhanced Krnl UI v2.0 | Positions: " .. #savedPositions .. 
-                                     " | Attempts: " .. totalAttempts .. 
-                                     (macroStatus ~= "" and " | " .. macroStatus or "")
+                    local featuresText = #activeFeatures > 0 and " | Active: " .. table.concat(activeFeatures, " ") or ""
+                    statusLabel.Text = "📱 Mobile Krnl UI | Pos: " .. #savedPositions .. featuresText
                 end
-                task.wait(1)
+                task.wait(2)
             end
         end)
     end)
     
     if not success then
-        notify("⚠️ Enhanced GUI creation failed: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
-        createEnhancedGUI()
+        notify("⚠️ Mobile GUI failed: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        task.wait(3)
+        createMobileGUI()
     end
 end
 
--- Cleanup old instance
-local function cleanupOldInstance()
-    local oldGui = player.PlayerGui:FindFirstChild("SimpleUILibrary_Krnl")
-    if oldGui then
-        oldGui:Destroy()
-        notify("🛠️ Old script instance terminated", Color3.fromRGB(255, 255, 0))
-    end
-end
-
--- Main initialization
-local function main()
+-- Main mobile initialization
+local function mobileMain()
     local success, errorMsg = pcall(function()
-        cleanupOldInstance()
-        loadSavedData()
-        task.wait(1.5)
-        createEnhancedGUI()
-        createJoystick()
-        createPlayerListUI()
-        createPositionListUI()
+        -- Clean old instances
+        local oldGui = player.PlayerGui:FindFirstChild("MobileKrnlUI")
+        if oldGui then
+            oldGui:Destroy()
+            notify("🛠️ Old mobile instance removed", Color3.fromRGB(255, 200, 0))
+        end
+        
+        task.wait(1)
+        
+        -- Initialize mobile components
+        createMobileGUI()
+        createMobileJoystick()
+        createMobileCameraControl()
+        createMobileHotkeys()
         initChar()
         
         -- Connect character respawn
         player.CharacterAdded:Connect(function()
-            task.wait(2) -- Wait for character to fully load
+            task.wait(1.5) -- Mobile loading time
             initChar()
         end)
         
-        -- Auto-save position every 30 seconds if moving
+        -- Mobile auto-save (less frequent for performance)
         task.spawn(function()
             local lastPosition = nil
             while true do
-                task.wait(30)
+                task.wait(45) -- Longer interval for mobile
                 if hr and hr.Position then
-                    if not lastPosition or (hr.Position - lastPosition).Magnitude > 10 then
-                        autoSavePosition("Auto " .. os.date("%H:%M:%S"))
+                    if not lastPosition or (hr.Position - lastPosition).Magnitude > 15 then
+                        autoSavePosition("Auto " .. os.date("%H:%M"))
                         lastPosition = hr.Position
                     end
                 end
             end
         end)
         
-        -- Hotkeys
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            
-            if input.KeyCode == Enum.KeyCode.F then
-                toggleFly()
-            elseif input.KeyCode == Enum.KeyCode.G then
-                toggleFreecam()
-            elseif input.KeyCode == Enum.KeyCode.N then
-                toggleNoclip()
-            elseif input.KeyCode == Enum.KeyCode.T and freecam then
-                teleportToFreecam()
-            elseif input.KeyCode == Enum.KeyCode.P then
-                showPositionList()
-            elseif input.KeyCode == Enum.KeyCode.M then
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                    togglePlayMacro()
+        -- Mobile gesture controls (simplified)
+        local gestureFrame = Instance.new("Frame")
+        gestureFrame.Size = UDim2.new(1, 0, 1, 0)
+        gestureFrame.BackgroundTransparency = 1
+        gestureFrame.ZIndex = 1
+        gestureFrame.Parent = gui
+        
+        local lastTap = 0
+        local tapCount = 0
+        
+        gestureFrame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                local now = tick()
+                if now - lastTap < 0.5 then
+                    tapCount = tapCount + 1
+                    if tapCount == 1 then -- Double tap
+                        toggleFly()
+                    elseif tapCount == 2 then -- Triple tap
+                        toggleNoclip()
+                    end
                 else
-                    toggleRecordMacro()
+                    tapCount = 0
                 end
-            elseif input.KeyCode == Enum.KeyCode.B then
-                autoSavePosition()
-            elseif input.KeyCode == Enum.KeyCode.Insert then
-                if gui and frame then
-                    frame.Visible = not frame.Visible
-                end
+                lastTap = now
             end
         end)
         
-        notify("🚀 Enhanced Krnl UI v2.0 Loaded Successfully!")
-        notify("🎮 Hotkeys: F=Fly, G=Freecam, N=Noclip, T=TP to Freecam, P=Positions, M=Macro, B=Save Pos")
+        notify("🚀 Mobile Krnl UI v2.0 Loaded!", Color3.fromRGB(0, 255, 0))
+        notify("📱 100% Mobile Optimized - Tap logo to open!", Color3.fromRGB(100, 200, 255))
+        notify("👆 Gestures: Double tap = Fly, Triple tap = Noclip", Color3.fromRGB(255, 200, 0))
     end)
+    
     if not success then
-        notify("⚠️ Script failed to load: " .. tostring(errorMsg) .. ", retrying...", Color3.fromRGB(255, 100, 100))
-        task.wait(2)
-        main()
+        notify("⚠️ Mobile script failed: " .. tostring(errorMsg), Color3.fromRGB(255, 100, 100))
+        task.wait(3)
+        mobileMain()
     end
 end
 
-main()
+-- Start mobile script
+mobileMain()
