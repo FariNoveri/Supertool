@@ -1,660 +1,640 @@
--- Minimalist Roblox Script for Android (Fluxus Optimized)
--- Black theme, compact right-aligned rectangular GUI, draggable, scrollable, logo minimize, disables previous script
+-- Roblox Mobile GUI Script with Categories
+-- Compatible with all games, mobile-optimized
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
-local PhysicsService = game:GetService("PhysicsService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Disable previous script
-local function disablePreviousScript()
-    local oldGui = LocalPlayer.PlayerGui:FindFirstChild("MinimalistGUI")
-    if oldGui then
-        oldGui:Destroy()
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local RootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Variables
+local GUI = {}
+local Connections = {}
+local CurrentCategory = "Movement"
+local States = {
+    Flying = false,
+    Noclip = false,
+    SpeedHack = false,
+    JumpPower = false,
+    GodMode = false,
+    Spectating = false,
+    SpiderMan = false,
+    FreeCam = false,
+    AntiAFK = false,
+    Fullbright = false
+}
+
+local Settings = {
+    FlySpeed = 50,
+    WalkSpeed = 50,
+    JumpPower = 120,
+    SpectateIndex = 1,
+    SavedPosition = nil,
+    FreeCamPosition = nil
+}
+
+-- Categories and their features
+local Categories = {
+    Movement = {
+        {name = "Toggle Fly", func = nil},
+        {name = "Toggle Noclip", func = nil},
+        {name = "Toggle Speed", func = nil},
+        {name = "Toggle Jump Power", func = nil},
+        {name = "Toggle SpiderMan", func = nil}
+    },
+    Spectate = {
+        {name = "Toggle Spectate", func = nil},
+        {name = "Next Spectate", func = nil},
+        {name = "Prev Spectate", func = nil},
+        {name = "TP to Spectate", func = nil}
+    },
+    Utility = {
+        {name = "Toggle God Mode", func = nil},
+        {name = "Toggle Fullbright", func = nil},
+        {name = "Toggle Anti AFK", func = nil},
+        {name = "Save Position", func = nil},
+        {name = "TP to Saved Pos", func = nil}
+    }
+}
+
+-- Create Main GUI
+local function CreateGUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "MobileExecutorGUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = PlayerGui
+    
+    -- Main Frame (Rectangle, positioned right)
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 380, 0, 480)
+    MainFrame.Position = UDim2.new(1, -390, 0, 20)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Parent = ScreenGui
+    
+    -- Frame styling
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = MainFrame
+    
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color = Color3.fromRGB(40, 40, 40)
+    Stroke.Thickness = 1
+    Stroke.Parent = MainFrame
+    
+    -- Header with Logo
+    local Header = Instance.new("Frame")
+    Header.Name = "Header"
+    Header.Size = UDim2.new(1, 0, 0, 50)
+    Header.Position = UDim2.new(0, 0, 0, 0)
+    Header.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    Header.BorderSizePixel = 0
+    Header.Parent = MainFrame
+    
+    local HeaderCorner = Instance.new("UICorner")
+    HeaderCorner.CornerRadius = UDim.new(0, 8)
+    HeaderCorner.Parent = Header
+    
+    -- Logo (Draggable)
+    local Logo = Instance.new("TextButton")
+    Logo.Name = "Logo"
+    Logo.Size = UDim2.new(0, 30, 0, 30)
+    Logo.Position = UDim2.new(0, 10, 0, 10)
+    Logo.BackgroundColor3 = Color3.fromRGB(255, 0, 128)
+    Logo.BorderSizePixel = 0
+    Logo.Text = "🎯"
+    Logo.TextScaled = true
+    Logo.Font = Enum.Font.GothamBold
+    Logo.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Logo.Parent = Header
+    
+    local LogoCorner = Instance.new("UICorner")
+    LogoCorner.CornerRadius = UDim.new(0, 4)
+    LogoCorner.Parent = Logo
+    
+    -- Title (also draggable area)
+    local Title = Instance.new("TextButton")
+    Title.Name = "Title"
+    Title.Size = UDim2.new(1, -50, 1, 0)
+    Title.Position = UDim2.new(0, 50, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "Mobile Executor"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.TextScaled = true
+    Title.Font = Enum.Font.GothamBold
+    Title.Parent = Header
+    
+    -- Content Area
+    local ContentFrame = Instance.new("Frame")
+    ContentFrame.Name = "ContentFrame"
+    ContentFrame.Size = UDim2.new(1, -10, 1, -60)
+    ContentFrame.Position = UDim2.new(0, 5, 0, 55)
+    ContentFrame.BackgroundTransparency = 1
+    ContentFrame.BorderSizePixel = 0
+    ContentFrame.Parent = MainFrame
+    
+    -- Category Frame (Left side)
+    local CategoryFrame = Instance.new("Frame")
+    CategoryFrame.Name = "CategoryFrame"
+    CategoryFrame.Size = UDim2.new(0, 100, 1, 0)
+    CategoryFrame.Position = UDim2.new(0, 0, 0, 0)
+    CategoryFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+    CategoryFrame.BorderSizePixel = 0
+    CategoryFrame.Parent = ContentFrame
+    
+    local CategoryCorner = Instance.new("UICorner")
+    CategoryCorner.CornerRadius = UDim.new(0, 4)
+    CategoryCorner.Parent = CategoryFrame
+    
+    local CategoryStroke = Instance.new("UIStroke")
+    CategoryStroke.Color = Color3.fromRGB(30, 30, 30)
+    CategoryStroke.Thickness = 1
+    CategoryStroke.Parent = CategoryFrame
+    
+    -- Category List Layout
+    local CategoryList = Instance.new("UIListLayout")
+    CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
+    CategoryList.Padding = UDim.new(0, 2)
+    CategoryList.Parent = CategoryFrame
+    
+    local CategoryPadding = Instance.new("UIPadding")
+    CategoryPadding.PaddingAll = UDim.new(0, 5)
+    CategoryPadding.Parent = CategoryFrame
+    
+    -- Features Frame (Right side)
+    local FeaturesFrame = Instance.new("ScrollingFrame")
+    FeaturesFrame.Name = "FeaturesFrame"
+    FeaturesFrame.Size = UDim2.new(1, -110, 1, 0)
+    FeaturesFrame.Position = UDim2.new(0, 110, 0, 0)
+    FeaturesFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    FeaturesFrame.BorderSizePixel = 0
+    FeaturesFrame.ScrollBarThickness = 4
+    FeaturesFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    FeaturesFrame.Parent = ContentFrame
+    
+    local FeaturesCorner = Instance.new("UICorner")
+    FeaturesCorner.CornerRadius = UDim.new(0, 4)
+    FeaturesCorner.Parent = FeaturesFrame
+    
+    local FeaturesStroke = Instance.new("UIStroke")
+    FeaturesStroke.Color = Color3.fromRGB(30, 30, 30)
+    FeaturesStroke.Thickness = 1
+    FeaturesStroke.Parent = FeaturesFrame
+    
+    -- Features List Layout
+    local FeaturesList = Instance.new("UIListLayout")
+    FeaturesList.SortOrder = Enum.SortOrder.LayoutOrder
+    FeaturesList.Padding = UDim.new(0, 5)
+    FeaturesList.Parent = FeaturesFrame
+    
+    local FeaturesPadding = Instance.new("UIPadding")
+    FeaturesPadding.PaddingAll = UDim.new(0, 8)
+    FeaturesPadding.Parent = FeaturesFrame
+    
+    GUI.ScreenGui = ScreenGui
+    GUI.MainFrame = MainFrame
+    GUI.CategoryFrame = CategoryFrame
+    GUI.FeaturesFrame = FeaturesFrame
+    GUI.Logo = Logo
+    GUI.Title = Title
+    
+    return GUI
+end
+
+-- Create Category Button
+local function CreateCategoryButton(name, parent)
+    local Button = Instance.new("TextButton")
+    Button.Name = name .. "Category"
+    Button.Size = UDim2.new(1, 0, 0, 35)
+    Button.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    Button.BorderSizePixel = 0
+    Button.Text = name
+    Button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Button.TextScaled = true
+    Button.Font = Enum.Font.GothamSemibold
+    Button.Parent = parent
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(0, 3)
+    ButtonCorner.Parent = Button
+    
+    -- Highlight current category
+    local function UpdateCategoryAppearance()
+        if CurrentCategory == name then
+            Button.BackgroundColor3 = Color3.fromRGB(255, 0, 128)
+            Button.TextColor3 = Color3.fromRGB(0, 0, 0)
+        else
+            Button.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+            Button.TextColor3 = Color3.fromRGB(200, 200, 200)
+        end
     end
-    -- Reset all feature states
-    pcall(function()
-        freecamEnabled = false
-        wallClimbEnabled = false
-        noPlayerCollisionEnabled = false
-        freezeBlocksEnabled = false
-        fakeStatsEnabled = false
-        adminDetectionEnabled = false
-        spectating = false
-        isNoclip = false
-        if LocalPlayer.Character then
-            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = 16
-                humanoid.JumpPower = 50
-                humanoid.MaxHealth = 100
-                humanoid.Health = 100
+    
+    Button.MouseButton1Click:Connect(function()
+        CurrentCategory = name
+        UpdateAllCategories()
+        LoadCategoryFeatures(name)
+    end)
+    
+    Button.TouchTap:Connect(function()
+        CurrentCategory = name
+        UpdateAllCategories()
+        LoadCategoryFeatures(name)
+    end)
+    
+    UpdateCategoryAppearance()
+    return Button, UpdateCategoryAppearance
+end
+
+-- Create Feature Button
+local function CreateFeatureButton(name, callback, parent)
+    local Button = Instance.new("TextButton")
+    Button.Name = name
+    Button.Size = UDim2.new(1, 0, 0, 40)
+    Button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    Button.BorderSizePixel = 0
+    Button.Text = name
+    Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Button.TextScaled = true
+    Button.Font = Enum.Font.Gotham
+    Button.Parent = parent
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(0, 4)
+    ButtonCorner.Parent = Button
+    
+    local ButtonStroke = Instance.new("UIStroke")
+    ButtonStroke.Color = Color3.fromRGB(40, 40, 40)
+    ButtonStroke.Thickness = 1
+    ButtonStroke.Parent = Button
+    
+    Button.MouseButton1Click:Connect(callback)
+    Button.TouchTap:Connect(callback)
+    
+    return Button
+end
+
+-- Update all category appearances
+local CategoryUpdateFunctions = {}
+function UpdateAllCategories()
+    for _, updateFunc in pairs(CategoryUpdateFunctions) do
+        updateFunc()
+    end
+end
+
+-- Load features for selected category
+local function LoadCategoryFeatures(categoryName)
+    -- Clear current features
+    for _, child in pairs(GUI.FeaturesFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- Load new features
+    local categoryFeatures = Categories[categoryName]
+    if categoryFeatures then
+        for _, feature in pairs(categoryFeatures) do
+            CreateFeatureButton(feature.name, feature.func, GUI.FeaturesFrame)
+        end
+    end
+    
+    -- Update canvas size
+    GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 16)
+end
+
+-- Movement Features
+local function ToggleFly()
+    States.Flying = not States.Flying
+    
+    if States.Flying then
+        local BodyVelocity = Instance.new("BodyVelocity")
+        BodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+        BodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        BodyVelocity.Parent = RootPart
+        
+        Connections.Fly = RunService.Heartbeat:Connect(function()
+            if States.Flying then
+                local MoveVector = Humanoid.MoveDirection
+                BodyVelocity.Velocity = (Workspace.CurrentCamera.CFrame.LookVector * MoveVector.Z + Workspace.CurrentCamera.CFrame.RightVector * MoveVector.X) * Settings.FlySpeed
             end
-            for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+        end)
+    else
+        if Connections.Fly then
+            Connections.Fly:Disconnect()
+        end
+        if RootPart:FindFirstChild("BodyVelocity") then
+            RootPart.BodyVelocity:Destroy()
+        end
+    end
+end
+
+local function ToggleNoclip()
+    States.Noclip = not States.Noclip
+    
+    if States.Noclip then
+        Connections.Noclip = RunService.Stepped:Connect(function()
+            for _, part in pairs(Character:GetChildren()) do
                 if part:IsA("BasePart") then
-                    part.CanCollide = true
-                    PhysicsService:SetPartCollisionGroup(part, "Default")
+                    part.CanCollide = false
                 end
             end
-            local billboard = LocalPlayer.Character:FindFirstChild("Head") and LocalPlayer.Character.Head:FindFirstChild("BillboardGui")
-            if billboard then billboard:Destroy() end
+        end)
+    else
+        if Connections.Noclip then
+            Connections.Noclip:Disconnect()
         end
-        for _, block in pairs(frozenBlocks) do
-            if block.part and block.part.Parent then
-                block.part.Anchored = false
-                block.part.Velocity = block.originalVelocity
+        for _, part in pairs(Character:GetChildren()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.CanCollide = true
             end
         end
-        frozenBlocks = {}
-        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        Workspace.CurrentCamera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    end
+end
+
+local function ToggleSpeedHack()
+    States.SpeedHack = not States.SpeedHack
+    
+    if States.SpeedHack then
+        Humanoid.WalkSpeed = Settings.WalkSpeed
+    else
+        Humanoid.WalkSpeed = 16
+    end
+end
+
+local function ToggleJumpPower()
+    States.JumpPower = not States.JumpPower
+    
+    if States.JumpPower then
+        if Humanoid:FindFirstChild("JumpHeight") then
+            Humanoid.JumpHeight = Settings.JumpPower
+        else
+            Humanoid.JumpPower = Settings.JumpPower
+        end
+    else
+        if Humanoid:FindFirstChild("JumpHeight") then
+            Humanoid.JumpHeight = 7.2
+        else
+            Humanoid.JumpPower = 50
+        end
+    end
+end
+
+local function ToggleSpiderMan()
+    States.SpiderMan = not States.SpiderMan
+    
+    if States.SpiderMan then
+        Connections.SpiderMan = RunService.Heartbeat:Connect(function()
+            local ray = Workspace:Raycast(RootPart.Position, RootPart.CFrame.LookVector * 3)
+            if ray and ray.Instance then
+                local BodyVelocity = RootPart:FindFirstChild("SpiderVelocity") or Instance.new("BodyVelocity")
+                BodyVelocity.Name = "SpiderVelocity"
+                BodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                BodyVelocity.Velocity = RootPart.CFrame.LookVector * 20
+                BodyVelocity.Parent = RootPart
+            else
+                if RootPart:FindFirstChild("SpiderVelocity") then
+                    RootPart.SpiderVelocity:Destroy()
+                end
+            end
+        end)
+    else
+        if Connections.SpiderMan then
+            Connections.SpiderMan:Disconnect()
+        end
+        if RootPart:FindFirstChild("SpiderVelocity") then
+            RootPart.SpiderVelocity:Destroy()
+        end
+    end
+end
+
+-- Spectate Features
+local function GetAlivePlayers()
+    local alivePlayers = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(alivePlayers, player)
+        end
+    end
+    return alivePlayers
+end
+
+local function ToggleSpectate()
+    States.Spectating = not States.Spectating
+    local alivePlayers = GetAlivePlayers()
+    
+    if States.Spectating and #alivePlayers > 0 then
+        Settings.SpectateIndex = math.min(Settings.SpectateIndex, #alivePlayers)
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+    else
+        Workspace.CurrentCamera.CameraSubject = Humanoid
+    end
+end
+
+local function NextSpectate()
+    if not States.Spectating then return end
+    local alivePlayers = GetAlivePlayers()
+    if #alivePlayers > 0 then
+        Settings.SpectateIndex = Settings.SpectateIndex % #alivePlayers + 1
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+    end
+end
+
+local function PrevSpectate()
+    if not States.Spectating then return end
+    local alivePlayers = GetAlivePlayers()
+    if #alivePlayers > 0 then
+        Settings.SpectateIndex = Settings.SpectateIndex - 1
+        if Settings.SpectateIndex < 1 then
+            Settings.SpectateIndex = #alivePlayers
+        end
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+    end
+end
+
+local function TeleportToSpectate()
+    if not States.Spectating then return end
+    local alivePlayers = GetAlivePlayers()
+    if #alivePlayers > 0 then
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            RootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame
+        end
+    end
+end
+
+-- Utility Features
+local function ToggleGodMode()
+    States.GodMode = not States.GodMode
+    
+    if States.GodMode then
+        Humanoid.MaxHealth = math.huge
+        Humanoid.Health = math.huge
+    else
+        Humanoid.MaxHealth = 100
+        Humanoid.Health = 100
+    end
+end
+
+local function ToggleFullbright()
+    States.Fullbright = not States.Fullbright
+    
+    if States.Fullbright then
+        game.Lighting.Brightness = 2
+        game.Lighting.ClockTime = 14
+        game.Lighting.FogEnd = 100000
+        game.Lighting.GlobalShadows = false
+        game.Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    else
+        game.Lighting.Brightness = 1
+        game.Lighting.ClockTime = 8
+        game.Lighting.FogEnd = 100000
+        game.Lighting.GlobalShadows = true
+        game.Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 70)
+    end
+end
+
+local function ToggleAntiAFK()
+    States.AntiAFK = not States.AntiAFK
+    
+    if States.AntiAFK then
+        Connections.AntiAFK = RunService.Heartbeat:Connect(function()
+            game:GetService("VirtualUser"):CaptureController()
+            game:GetService("VirtualUser"):ClickButton2(Vector2.new())
+        end)
+    else
+        if Connections.AntiAFK then
+            Connections.AntiAFK:Disconnect()
+        end
+    end
+end
+
+local function SavePosition()
+    Settings.SavedPosition = RootPart.CFrame
+end
+
+local function TeleportToSavedPosition()
+    if Settings.SavedPosition then
+        RootPart.CFrame = Settings.SavedPosition
+    end
+end
+
+-- Assign functions to categories
+Categories.Movement[1].func = ToggleFly
+Categories.Movement[2].func = ToggleNoclip
+Categories.Movement[3].func = ToggleSpeedHack
+Categories.Movement[4].func = ToggleJumpPower
+Categories.Movement[5].func = ToggleSpiderMan
+
+Categories.Spectate[1].func = ToggleSpectate
+Categories.Spectate[2].func = NextSpectate
+Categories.Spectate[3].func = PrevSpectate
+Categories.Spectate[4].func = TeleportToSpectate
+
+Categories.Utility[1].func = ToggleGodMode
+Categories.Utility[2].func = ToggleFullbright
+Categories.Utility[3].func = ToggleAntiAFK
+Categories.Utility[4].func = SavePosition
+Categories.Utility[5].func = TeleportToSavedPosition
+
+-- Make GUI draggable
+local function MakeDraggable(frame, dragButton)
+    local dragToggle = nil
+    local dragStart = nil
+    local startPos = nil
+    
+    local function updateInput(input)
+        local delta = input.Position - dragStart
+        local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        frame.Position = position
+    end
+    
+    dragButton.InputBegan:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragToggle = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragToggle = false
+                end
+            end)
+        end
+    end)
+    
+    dragButton.InputChanged:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            if dragToggle then
+                updateInput(input)
+            end
+        end
     end)
 end
 
-disablePreviousScript()
-
--- Use ScreenGui for Fluxus compatibility
-local gui = Instance.new("ScreenGui")
-gui.Name = "MinimalistGUI"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
--- Main Frame (Compact, Right-Aligned, Rectangular)
-local mainFrame = Instance.new("Frame", gui)
-mainFrame.Size = UDim2.new(0, 300, 0, 200)
-mainFrame.Position = UDim2.new(1, -310, 0.5, -100)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.ZIndex = 10
-
--- Sidebar (Left within Frame)
-local sidebar = Instance.new("Frame", mainFrame)
-sidebar.Size = UDim2.new(0, 80, 1, 0)
-sidebar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-sidebar.BorderSizePixel = 0
-sidebar.ZIndex = 11
-
--- Content Frame (Right within Frame, Scrollable)
-local contentFrame = Instance.new("ScrollingFrame", mainFrame)
-contentFrame.Size = UDim2.new(0, 220, 1, 0)
-contentFrame.Position = UDim2.new(0, 80, 0, 0)
-contentFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-contentFrame.BorderSizePixel = 0
-contentFrame.ZIndex = 11
-contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-contentFrame.ScrollBarThickness = 5
-contentFrame.ScrollBarImageColor3 = Color3.fromRGB(50, 50, 50)
-
--- Watermark with HWID
-local hwid = "Unknown"
-pcall(function()
-    hwid = gethwid and gethwid() or "No HWID"
-end)
-local watermark = Instance.new("TextLabel", mainFrame)
-watermark.Size = UDim2.new(0, 150, 0, 20)
-watermark.Position = UDim2.new(1, -155, 0, 5)
-watermark.BackgroundTransparency = 1
-watermark.Text = "unknown block - farinoveri | " .. hwid
-watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
-watermark.TextSize = 10
-watermark.Font = Enum.Font.SourceSans
-watermark.ZIndex = 12
-
--- Close Button
-local closeButton = Instance.new("TextButton", mainFrame)
-closeButton.Size = UDim2.new(0, 20, 0, 20)
-closeButton.Position = UDim2.new(1, -25, 0, 5)
-closeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-closeButton.Text = "✕"
-closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeButton.TextSize = 14
-closeButton.ZIndex = 12
-closeButton.MouseButton1Click:Connect(function()
-    gui:Destroy()
-    disablePreviousScript()
-end)
-
--- Logo Button (UB, Bottom Right)
-local logoButton = Instance.new("TextButton")
-logoButton.Size = UDim2.new(0, 40, 0, 40)
-logoButton.Position = UDim2.new(1, -50, 1, -50)
-logoButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-logoButton.Text = "UB"
-logoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-logoButton.TextSize = 18
-logoButton.Font = Enum.Font.SourceSansBold
-logoButton.Parent = gui
-logoButton.ZIndex = 10
-logoButton.MouseButton1Click:Connect(function()
-    mainFrame.Visible = not mainFrame.Visible
-end)
-
--- Notification System
-local function notify(message)
-    local notif = Instance.new("TextLabel", gui)
-    notif.Size = UDim2.new(0, 150, 0, 25)
-    notif.Position = UDim2.new(0.5, -75, 0, 10)
-    notif.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    notif.Text = message
-    notif.TextColor3 = Color3.fromRGB(255, 255, 255)
-    notif.TextSize = 12
-    notif.ZIndex = 15
-    wait(3)
-    notif:Destroy()
-end
-
--- Initialize GUI and handle respawn
-local function initializeGui()
-    if not gui.Parent then
-        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        notify("GUI Initialized")
+-- Initialize GUI
+local function InitializeGUI()
+    CreateGUI()
+    
+    -- Create category buttons
+    for categoryName, _ in pairs(Categories) do
+        local button, updateFunc = CreateCategoryButton(categoryName, GUI.CategoryFrame)
+        CategoryUpdateFunctions[categoryName] = updateFunc
     end
+    
+    -- Enable dragging
+    MakeDraggable(GUI.MainFrame, GUI.Logo)
+    MakeDraggable(GUI.MainFrame, GUI.Title)
+    
+    -- Load default category
+    LoadCategoryFeatures(CurrentCategory)
+    UpdateAllCategories()
+    
+    -- Auto-update canvas size when content changes
+    GUI.FeaturesFrame.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 16)
+    end)
 end
 
-initializeGui()
-LocalPlayer.CharacterAdded:Connect(initializeGui)
-Players.PlayerAdded:Connect(function(player)
-    if player == LocalPlayer then
-        initializeGui()
+-- Character respawn handling
+Player.CharacterAdded:Connect(function(newCharacter)
+    Character = newCharacter
+    Humanoid = Character:WaitForChild("Humanoid")
+    RootPart = Character:WaitForChild("HumanoidRootPart")
+    
+    -- Reset states
+    for state, _ in pairs(States) do
+        States[state] = false
     end
-end)
-
--- Category System
-local categories = {"Movement", "Teleport", "Player", "Misc"}
-local currentCategory = "Movement"
-
--- Category Buttons
-local function createCategoryButtons()
-    for i, category in ipairs(categories) do
-        local button = Instance.new("TextButton", sidebar)
-        button.Size = UDim2.new(1, 0, 0, 25)
-        button.Position = UDim2.new(0, 0, 0, (i-1)*25)
-        button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        button.Text = category
-        button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        button.TextSize = 12
-        button.ZIndex = 12
-        button.MouseButton1Click:Connect(function()
-            currentCategory = category
-            contentFrame:ClearAllChildren()
-            contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-            loadCategoryContent(category)
-            notify("Loaded Category: " .. category)
-        end)
-    end
-end
-
--- Saved Positions with Categories
-local savedPositions = {
-    General = {},
-    Spawn = {},
-    Checkpoint = {},
-    Important = {},
-    Custom = {}
-}
-local positionCategory = "General"
-
--- Feature States
-local freecamEnabled = false
-local lastFreecamPos = nil
-local camera = Workspace.CurrentCamera
-local adminList = {}
-local adminDetectionEnabled = false
-local fakeStatsEnabled = false
-local fakeStats = {"Kills: 1000", "Level: 99", "Coins: 99999"}
-local currentStatIndex = 1
-local spectating = false
-local spectateTarget = nil
-local spectateIndex = 0
-local wallClimbEnabled = false
-local freezeBlocksEnabled = false
-local frozenBlocks = {}
-local noPlayerCollisionEnabled = false
-local collisionGroupName = "NoPlayerCollision"
-local isNoclip = false
-local isGodMode = false
-
--- Setup Collision Group
-pcall(function()
-    PhysicsService:CreateCollisionGroup(collisionGroupName)
-    PhysicsService:CollisionGroupSetCollidable(collisionGroupName, "Default", false)
-end)
-
--- Create Button Helper
-local function createButton(parent, text, callback)
-    local button = Instance.new("TextButton", parent)
-    button.Size = UDim2.new(0, 200, 0, 25)
-    button.Position = UDim2.new(0, 10, 0, (#parent:GetChildren() * 30))
-    button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    button.Text = text
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 12
-    button.ZIndex = 12
-    button.MouseButton1Click:Connect(callback)
-    parent.CanvasSize = UDim2.new(0, 0, 0, (#parent:GetChildren() * 30) + 30)
-end
-
--- Spectate Function
-local function updateSpectate(target)
-    if spectating and target and target.Character and target.Character:FindFirstChild("Humanoid") then
-        camera.CameraType = Enum.CameraType.Follow
-        camera.CameraSubject = target.Character.Humanoid
-        spectateTarget = target
-        notify("Spectating " .. target.Name)
+    
+    -- Reset humanoid values
+    Humanoid.WalkSpeed = 16
+    if Humanoid:FindFirstChild("JumpHeight") then
+        Humanoid.JumpHeight = 7.2
     else
-        camera.CameraType = Enum.CameraType.Custom
-        camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        spectating = false
-        spectateTarget = nil
-        notify("Spectate Stopped")
+        Humanoid.JumpPower = 50
     end
-end
-
--- Content Loader
-local function loadCategoryContent(category)
-    contentFrame:ClearAllChildren()
-    contentFrame.CanvasPosition = Vector2.new(0, 0) -- Reset scroll position
-    contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- Reset canvas size
-    if category == "Movement" then
-        createButton(contentFrame, freecamEnabled and "🛫 Fly/Freecam: ON" or "🛫 Fly/Freecam: OFF", function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                freecamEnabled = not freecamEnabled
-                wallClimbEnabled = false
-                noPlayerCollisionEnabled = false
-                isNoclip = false
-                if freecamEnabled then
-                    lastFreecamPos = LocalPlayer.Character.HumanoidRootPart.Position
-                    camera.CameraType = Enum.CameraType.Scriptable
-                    notify("Fly/Freecam Enabled")
-                    RunService.RenderStepped:Connect(function()
-                        if freecamEnabled then
-                            local moveVector = Vector3.new()
-                            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                                moveVector = moveVector + camera.CFrame.LookVector * 50
-                            end
-                            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                                moveVector = moveVector - camera.CFrame.LookVector * 50
-                            end
-                            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                                moveVector = moveVector - camera.CFrame.RightVector * 50
-                            end
-                            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                                moveVector = moveVector + camera.CFrame.RightVector * 50
-                            end
-                            camera.CFrame = camera.CFrame + moveVector * RunService.Heartbeat:Wait()
-                        end
-                    end)
-                else
-                    camera.CameraType = Enum.CameraType.Custom
-                    camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-                    notify("Fly/Freecam Disabled")
-                end
-            end
-            loadCategoryContent("Movement")
-        end)
-        createButton(contentFrame, LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.WalkSpeed == 100 and "🏃 Speed: ON" or "🏃 Speed: OFF", function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                local humanoid = LocalPlayer.Character.Humanoid
-                humanoid.WalkSpeed = humanoid.WalkSpeed == 16 and 100 or 16
-                notify(humanoid.WalkSpeed == 100 and "Speed Enabled" or "Speed Disabled")
-            end
-            loadCategoryContent("Movement")
-        end)
-        createButton(contentFrame, LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.JumpPower == 100 and "🦘 Jump Power: ON" or "🦘 Jump Power: OFF", function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                local humanoid = LocalPlayer.Character.Humanoid
-                humanoid.JumpPower = humanoid.JumpPower == 50 and 100 or 50
-                notify(humanoid.JumpPower == 100 and "Jump Power Enabled" or "Jump Power Disabled")
-            end
-            loadCategoryContent("Movement")
-        end)
-        createButton(contentFrame, isNoclip and "🚪 Noclip: ON" or "🚪 Noclip: OFF", function()
-            isNoclip = not isNoclip
-            wallClimbEnabled = false
-            noPlayerCollisionEnabled = false
-            notify(isNoclip and "Noclip Enabled" or "Noclip Disabled")
-            RunService.Stepped:Connect(function()
-                if isNoclip and LocalPlayer.Character then
-                    for _, part in pairs(LocalPlayer.Character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
-                        end
-                    end
-                end
-            end)
-            loadCategoryContent("Movement")
-        end)
-        createButton(contentFrame, wallClimbEnabled and "🕸️ Wall Climb: ON" or "🕸️ Wall Climb: OFF", function()
-            wallClimbEnabled = not wallClimbEnabled
-            noPlayerCollisionEnabled = false
-            isNoclip = false
-            notify(wallClimbEnabled and "Wall Climb Enabled" or "Wall Climb Disabled")
-            if wallClimbEnabled then
-                RunService.Stepped:Connect(function()
-                    if wallClimbEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        local hrp = LocalPlayer.Character.HumanoidRootPart
-                        local ray = Ray.new(hrp.Position, hrp.CFrame.LookVector * 2)
-                        local hit, pos = Workspace:FindPartOnRay(ray, LocalPlayer.Character)
-                        if hit and UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                            hrp.Velocity = Vector3.new(0, 50, 0)
-                        end
-                    end
-                end)
-            end
-            loadCategoryContent("Movement")
-        end)
-        createButton(contentFrame, noPlayerCollisionEnabled and "👻 No Player Collision: ON" or "👻 No Player Collision: OFF", function()
-            noPlayerCollisionEnabled = not noPlayerCollisionEnabled
-            wallClimbEnabled = false
-            isNoclip = false
-            if noPlayerCollisionEnabled then
-                if LocalPlayer.Character then
-                    for _, part in pairs(LocalPlayer.Character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            pcall(function()
-                                PhysicsService:SetPartCollisionGroup(part, collisionGroupName)
-                            end)
-                        end
-                    end
-                end
-                notify("No Player Collision Enabled")
-            else
-                if LocalPlayer.Character then
-                    for _, part in pairs(LocalPlayer.Character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            pcall(function()
-                                PhysicsService:SetPartCollisionGroup(part, "Default")
-                            end)
-                        end
-                    end
-                end
-                notify("No Player Collision Disabled")
-            end
-            loadCategoryContent("Movement")
-        end)
-    elseif category == "Teleport" then
-        createButton(contentFrame, "🚪 Teleport to Spawn", function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(0, 10, 0)
-                notify("Teleported to Spawn")
-            end
-        end)
-        createButton(contentFrame, "💾 Save Current Position", function()
-            contentFrame:ClearAllChildren()
-            local categoryDropdown = Instance.new("TextButton", contentFrame)
-            categoryDropdown.Size = UDim2.new(0, 200, 0, 25)
-            categoryDropdown.Position = UDim2.new(0, 10, 0, 0)
-            categoryDropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            categoryDropdown.Text = "Category: " .. positionCategory
-            categoryDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-            categoryDropdown.TextSize = 12
-            categoryDropdown.ZIndex = 12
-            categoryDropdown.MouseButton1Click:Connect(function()
-                local catList = {"General", "Spawn", "Checkpoint", "Important", "Custom"}
-                local index = table.find(catList, positionCategory) or 1
-                positionCategory = catList[(index % #catList) + 1]
-                categoryDropdown.Text = "Category: " .. positionCategory
-                loadCategoryContent("Teleport")
-            end)
-            createButton(contentFrame, "Save Position", function()
-                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    local pos = LocalPlayer.Character.HumanoidRootPart.Position
-                    table.insert(savedPositions[positionCategory], {pos = pos, name = "Pos " .. #savedPositions[positionCategory] + 1})
-                    pcall(function()
-                        local saveData = {}
-                        for cat, positions in pairs(savedPositions) do
-                            saveData[cat] = positions
-                        end
-                        writefile("positions.txt", game:GetService("HttpService"):JSONEncode(saveData))
-                    end)
-                    notify("Saved to " .. positionCategory)
-                end
-            end)
-        end)
-        createButton(contentFrame, "📍 Show Position List", function()
-            contentFrame:ClearAllChildren()
-            for cat, positions in pairs(savedPositions) do
-                local collapsed = true
-                local catButton = Instance.new("TextButton", contentFrame)
-                catButton.Size = UDim2.new(0, 200, 0, 25)
-                catButton.Position = UDim2.new(0, 10, 0, #contentFrame:GetChildren() * 30)
-                catButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                catButton.Text = cat .. " (" .. #positions .. ")"
-                catButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                catButton.TextSize = 12
-                catButton.ZIndex = 12
-                catButton.MouseButton1Click:Connect(function()
-                    collapsed = not collapsed
-                    contentFrame:ClearAllChildren()
-                    if not collapsed then
-                        for i, posData in ipairs(positions) do
-                            local posFrame = Instance.new("Frame", contentFrame)
-                            posFrame.Size = UDim2.new(0, 200, 0, 25)
-                            posFrame.Position = UDim2.new(0, 10, 0, #contentFrame:GetChildren() * 30)
-                            posFrame.BackgroundTransparency = 1
-                            posFrame.ZIndex = 12
-                            local goButton = Instance.new("TextButton", posFrame)
-                            goButton.Size = UDim2.new(0, 140, 0, 25)
-                            goButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                            goButton.Text = posData.name
-                            goButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            goButton.TextSize = 12
-                            goButton.ZIndex = 12
-                            goButton.MouseButton1Click:Connect(function()
-                                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                                    LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(posData.pos)
-                                    notify("Teleported to " .. posData.name)
-                                end
-                            end)
-                            local renameButton = Instance.new("TextButton", posFrame)
-                            renameButton.Size = UDim2.new(0, 30, 0, 25)
-                            renameButton.Position = UDim2.new(0, 145, 0, 0)
-                            renameButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-                            renameButton.Text = "Ren"
-                            renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            renameButton.TextSize = 10
-                            renameButton.ZIndex = 12
-                            renameButton.MouseButton1Click:Connect(function()
-                                posData.name = "Renamed Pos " .. i
-                                notify("Renamed to " .. posData.name)
-                            end)
-                            local deleteButton = Instance.new("TextButton", posFrame)
-                            deleteButton.Size = UDim2.new(0, 30, 0, 25)
-                            deleteButton.Position = UDim2.new(0, 180, 0, 0)
-                            deleteButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-                            deleteButton.Text = "Del"
-                            deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            deleteButton.TextSize = 10
-                            deleteButton.ZIndex = 12
-                            deleteButton.MouseButton1Click:Connect(function()
-                                table.remove(positions, i)
-                                notify("Deleted " .. posData.name)
-                                loadCategoryContent("Teleport")
-                            end)
-                        end
-                    else
-                        loadCategoryContent("Teleport")
-                    end
-                end)
-            end
-        end)
-        createButton(contentFrame, "🚀 Auto Teleport All", function()
-            for cat, positions in pairs(savedPositions) do
-                for _, posData in ipairs(positions) do
-                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(posData.pos)
-                        notify("Teleported to " .. posData.name)
-                        wait(1)
-                    end
-                end
-            end
-            notify("Auto Teleport Completed")
-        end)
-        createButton(contentFrame, "📍 Teleport to Last Freecam", function()
-            if lastFreecamPos and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(lastFreecamPos)
-                notify("Teleported to Last Freecam Position")
-            else
-                notify("No Freecam Position Saved")
-            end
-        end)
-    elseif category == "Player" then
-        createButton(contentFrame, "👥 Show Player List", function()
-            contentFrame:ClearAllChildren()
-            for _, player in ipairs(Players:GetPlayers()) do
-                createButton(contentFrame, player.Name, function()
-                    if LocalPlayer.Character and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                        LocalPlayer.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame
-                        notify("Teleported to " .. player.Name)
-                    end
-                end)
-            end
-        end)
-        createButton(contentFrame, adminDetectionEnabled and "🛡️ Admin Detection: ON" or "🛡️ Admin Detection: OFF", function()
-            adminDetectionEnabled = not adminDetectionEnabled
-            notify(adminDetectionEnabled and "Admin Detection Enabled" or "Admin Detection Disabled")
-            if adminDetectionEnabled then
-                Players.PlayerAdded:Connect(function(player)
-                    pcall(function()
-                        local role = player:GetRoleInGroup(game.GroupId)
-                        if role == "Admin" or role == "Moderator" then
-                            if not table.find(adminList, player.Name) then
-                                table.insert(adminList, player.Name)
-                                notify("Admin Detected: " .. player.Name)
-                            end
-                        end
-                    end)
-                end)
-            end
-            loadCategoryContent("Player")
-        end)
-        createButton(contentFrame, "📜 Show Admin List", function()
-            contentFrame:ClearAllChildren()
-            for i, admin in ipairs(adminList) do
-                createButton(contentFrame, "Admin: " .. admin, function() end)
-            end
-        end)
-        createButton(contentFrame, spectating and "👁️ Spectate: ON" or "👁️ Spectate: OFF", function()
-            spectating = not spectating
-            if spectating then
-                local playerList = Players:GetPlayers()
-                spectateIndex = (spectateIndex % #playerList) + 1
-                updateSpectate(playerList[spectateIndex])
-            else
-                updateSpectate(nil)
-            end
-            loadCategoryContent("Player")
-        end)
-        createButton(contentFrame, "⏮️ Previous Player", function()
-            if spectating then
-                local playerList = Players:GetPlayers()
-                spectateIndex = spectateIndex - 1
-                if spectateIndex < 1 then spectateIndex = #playerList end
-                updateSpectate(playerList[spectateIndex])
-            else
-                notify("Spectate not active")
-            end
-        end)
-        createButton(contentFrame, "⏭️ Next Player", function()
-            if spectating then
-                local playerList = Players:GetPlayers()
-                spectateIndex = (spectateIndex % #playerList) + 1
-                updateSpectate(playerList[spectateIndex])
-            else
-                notify("Spectate not active")
-            end
-        end)
-        createButton(contentFrame, "🚀 Teleport to Spectated", function()
-            if spectating and spectateTarget and spectateTarget.Character and spectateTarget.Character:FindFirstChild("HumanoidRootPart") then
-                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    LocalPlayer.Character.HumanoidRootPart.CFrame = spectateTarget.Character.HumanoidRootPart.CFrame
-                    notify("Teleported to " .. spectateTarget.Name)
-                end
-            else
-                notify("No player being spectated")
-            end
-        end)
-    elseif category == "Misc" then
-        createButton(contentFrame, isGodMode and "🛡️ God Mode: ON" or "🛡️ God Mode: OFF", function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                local humanoid = LocalPlayer.Character.Humanoid
-                isGodMode = not isGodMode
-                if isGodMode then
-                    humanoid.MaxHealth = math.huge
-                    humanoid.Health = math.huge
-                    notify("God Mode Enabled")
-                else
-                    humanoid.MaxHealth = 100
-                    humanoid.Health = 100
-                    notify("God Mode Disabled")
-                end
-            end
-            loadCategoryContent("Misc")
-        end)
-        createButton(contentFrame, fakeStatsEnabled and "📊 Fake Stats: ON" or "📊 Fake Stats: OFF", function()
-            fakeStatsEnabled = not fakeStatsEnabled
-            if fakeStatsEnabled then
-                local billboard = Instance.new("BillboardGui", LocalPlayer.Character:FindFirstChild("Head"))
-                billboard.Size = UDim2.new(0, 100, 0, 50)
-                billboard.StudsOffset = Vector3.new(0, 3, 0)
-                billboard.ZIndex = 10
-                local statLabel = Instance.new("TextLabel", billboard)
-                statLabel.Size = UDim2.new(1, 0, 1, 0)
-                statLabel.BackgroundTransparency = 1
-                statLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                statLabel.TextSize = 14
-                statLabel.Text = fakeStats[currentStatIndex]
-                statLabel.ZIndex = 10
-                spawn(function()
-                    while fakeStatsEnabled do
-                        currentStatIndex = (currentStatIndex % #fakeStats) + 1
-                        statLabel.Text = fakeStats[currentStatIndex]
-                        wait(3)
-                    end
-                end)
-                notify("Fake Stats Enabled")
-            else
-                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
-                    local billboard = LocalPlayer.Character.Head:FindFirstChild("BillboardGui")
-                    if billboard then billboard:Destroy() end
-                end
-                notify("Fake Stats Disabled")
-            end
-            loadCategoryContent("Misc")
-        end)
-        createButton(contentFrame, freezeBlocksEnabled and "🧊 Freeze Blocks: ON" or "🧊 Freeze Blocks: OFF", function()
-            freezeBlocksEnabled = not freezeBlocksEnabled
-            if freezeBlocksEnabled then
-                for _, obj in pairs(Workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and not obj.Anchored and obj.Velocity.Magnitude > 0 then
-                        table.insert(frozenBlocks, {part = obj, originalVelocity = obj.Velocity})
-                        obj.Velocity = Vector3.new(0, 0, 0)
-                        obj.Anchored = true
-                    end
-                end
-                notify("Moving Blocks Frozen")
-            else
-                for _, block in pairs(frozenBlocks) do
-                    if block.part and block.part.Parent then
-                        block.part.Anchored = false
-                        block.part.Velocity = block.originalVelocity
-                    end
-                end
-                frozenBlocks = {}
-                notify("Moving Blocks Unfrozen")
-            end
-            loadCategoryContent("Misc")
-        end)
+    
+    -- Disconnect old connections
+    for _, connection in pairs(Connections) do
+        if connection then
+            connection:Disconnect()
+        end
     end
-end
+    Connections = {}
+end)
 
 -- Initialize
-createCategoryButtons()
-loadCategoryContent("Movement")
-notify("Script Initialized")
+InitializeGUI()
+
+print("Mobile Executor GUI with Categories Loaded!")
