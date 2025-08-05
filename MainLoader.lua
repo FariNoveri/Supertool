@@ -260,12 +260,37 @@ local function loadCategoryContent()
                 RootPart.CFrame = savedPositions[selectedPositionIndex].cframe
             end
         end)
-        createButton(ContentFrame, "Rename Position", UDim2.new(0.05, 0, 0.65, 0), function()
+        local renameButton = createButton(ContentFrame, "Rename Position", UDim2.new(0.05, 0, 0.65, 0), function()
             if savedPositions[selectedPositionIndex] then
-                local newName = "Renamed " .. selectedPositionIndex -- Placeholder for mobile input
-                savedPositions[selectedPositionIndex].name = newName
-                pcall(function()
-                    PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
+                local renameFrame = Instance.new("Frame")
+                renameFrame.Size = UDim2.new(0.5, 0, 0.2, 0)
+                renameFrame.Position = UDim2.new(0.25, 0, 0.4, 0)
+                renameFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+                renameFrame.Parent = ContentFrame
+
+                local renameTextBox = Instance.new("TextBox")
+                renameTextBox.Size = UDim2.new(0.8, 0, 0.5, 0)
+                renameTextBox.Position = UDim2.new(0.1, 0, 0.1, 0)
+                renameTextBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                renameTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+                renameTextBox.Text = savedPositions[selectedPositionIndex].name
+                renameTextBox.TextScaled = true
+                renameTextBox.Parent = renameFrame
+
+                local confirmButton = Instance.new("TextButton")
+                confirmButton.Size = UDim2.new(0.4, 0, 0.3, 0)
+                confirmButton.Position = UDim2.new(0.3, 0, 0.6, 0)
+                confirmButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                confirmButton.Text = "Confirm"
+                confirmButton.TextScaled = true
+                confirmButton.Parent = renameFrame
+                confirmButton.MouseButton1Click:Connect(function()
+                    savedPositions[selectedPositionIndex].name = renameTextBox.Text
+                    pcall(function()
+                        PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
+                    end)
+                    renameFrame:Destroy()
                 end)
             end
         end)
