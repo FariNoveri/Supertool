@@ -55,29 +55,39 @@ end
 -- UI Setup
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = guiName
-ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+ScreenGui.Enabled = true
 ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = Player:WaitForChild("PlayerGui", 5) -- Wait up to 5 seconds for PlayerGui
+if not ScreenGui.Parent then
+    warn("Failed to parent ScreenGui to PlayerGui")
+    return
+end
 
 local LogoButton = Instance.new("TextButton")
-LogoButton.Size = UDim2.new(0.05, 0, 0.05, 0)
-LogoButton.Position = UDim2.new(0.95, 0, 0.05, 0)
+LogoButton.Size = UDim2.new(0.1, 0, 0.1, 0) -- Increased size for visibility
+LogoButton.Position = UDim2.new(0.9, 0, 0.05, 0) -- Ensured on-screen
 LogoButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 LogoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 LogoButton.Text = "X"
 LogoButton.TextScaled = true
+LogoButton.ZIndex = 10
 LogoButton.Parent = ScreenGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0.7, 0, 0.5, 0)
-MainFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
+MainFrame.Position = UDim2.new(0.15, 0, 0.25, 0) -- Centered for visibility
 MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 MainFrame.BorderSizePixel = 0
+MainFrame.Visible = true
+MainFrame.ZIndex = 5
 MainFrame.Parent = ScreenGui
 
 local CategoryFrame = Instance.new("Frame")
 CategoryFrame.Size = UDim2.new(0.3, 0, 1, 0)
 CategoryFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 CategoryFrame.BorderSizePixel = 0
+CategoryFrame.ZIndex = 6
 CategoryFrame.Parent = MainFrame
 
 local ContentFrame = Instance.new("Frame")
@@ -85,6 +95,7 @@ ContentFrame.Size = UDim2.new(0.7, 0, 1, 0)
 ContentFrame.Position = UDim2.new(0.3, 0, 0, 0)
 ContentFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 ContentFrame.BorderSizePixel = 0
+ContentFrame.ZIndex = 6
 ContentFrame.Parent = MainFrame
 
 local MinimizeButton = Instance.new("TextButton")
@@ -94,7 +105,11 @@ MinimizeButton.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.Text = "-"
 MinimizeButton.TextScaled = true
+MinimizeButton.ZIndex = 7
 MinimizeButton.Parent = MainFrame
+
+-- Debug message
+print("GUI and Logo initialized successfully")
 
 -- Draggable UI
 local dragging, dragInput, dragStart, startPos
@@ -141,6 +156,7 @@ local function createButton(parent, text, position, callback)
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.Text = text
     button.TextScaled = true
+    button.ZIndex = 7
     button.Parent = parent
     button.MouseButton1Click:Connect(callback)
     return button
@@ -266,6 +282,7 @@ local function loadCategoryContent()
                 renameFrame.Size = UDim2.new(0.5, 0, 0.2, 0)
                 renameFrame.Position = UDim2.new(0.25, 0, 0.4, 0)
                 renameFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+                renameFrame.ZIndex = 8
                 renameFrame.Parent = ContentFrame
 
                 local renameTextBox = Instance.new("TextBox")
@@ -275,6 +292,7 @@ local function loadCategoryContent()
                 renameTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
                 renameTextBox.Text = savedPositions[selectedPositionIndex].name
                 renameTextBox.TextScaled = true
+                renameTextBox.ZIndex = 9
                 renameTextBox.Parent = renameFrame
 
                 local confirmButton = Instance.new("TextButton")
@@ -284,6 +302,7 @@ local function loadCategoryContent()
                 confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 confirmButton.Text = "Confirm"
                 confirmButton.TextScaled = true
+                confirmButton.ZIndex = 9
                 confirmButton.Parent = renameFrame
                 confirmButton.MouseButton1Click:Connect(function()
                     savedPositions[selectedPositionIndex].name = renameTextBox.Text
@@ -398,6 +417,7 @@ local joystickFrame = Instance.new("Frame")
 joystickFrame.Size = UDim2.new(0.3, 0, 0.3, 0)
 joystickFrame.Position = UDim2.new(0.65, 0, 0.65, 0)
 joystickFrame.BackgroundTransparency = 1
+joystickFrame.ZIndex = 5
 joystickFrame.Parent = ScreenGui
 
 local joystickTouchId = nil
