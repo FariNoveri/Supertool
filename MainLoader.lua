@@ -1,5 +1,5 @@
 -- Mobile-Only Roblox Executor GUI Script
--- Optimized for mobile devices, ensures GUI visibility and functionality
+-- Optimized for mobile, minimizes to draggable logo, fixes category issues
 
 -- Prevent multiple instances
 if _G.MobileExecutorGUI then
@@ -309,6 +309,7 @@ local function CreateGUI()
         MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         MainFrame.BorderSizePixel = 0
         MainFrame.Visible = true
+        MainFrame.ZIndex = 10
         MainFrame.Parent = ScreenGui
         
         local Corner = Instance.new("UICorner")
@@ -320,17 +321,6 @@ local function CreateGUI()
         Stroke.Thickness = 2
         Stroke.Parent = MainFrame
         
-        local Header = Instance.new("Frame")
-        Header.Name = "Header"
-        Header.Size = UDim2.new(1, 0, 0, 50)
-        Header.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        Header.BorderSizePixel = 0
-        Header.Parent = MainFrame
-        
-        local HeaderCorner = Instance.new("UICorner")
-        HeaderCorner.CornerRadius = UDim.new(0, 12)
-        HeaderCorner.Parent = Header
-        
         local Logo = Instance.new("TextButton")
         Logo.Name = "Logo"
         Logo.Size = UDim2.new(0, 40, 0, 40)
@@ -341,11 +331,24 @@ local function CreateGUI()
         Logo.TextScaled = true
         Logo.Font = Enum.Font.GothamBold
         Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
-        Logo.Parent = Header
+        Logo.ZIndex = 15
+        Logo.Parent = MainFrame
         
         local LogoCorner = Instance.new("UICorner")
         LogoCorner.CornerRadius = UDim.new(0, 8)
         LogoCorner.Parent = Logo
+        
+        local Header = Instance.new("Frame")
+        Header.Name = "Header"
+        Header.Size = UDim2.new(1, 0, 0, 50)
+        Header.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        Header.BorderSizePixel = 0
+        Header.ZIndex = 12
+        Header.Parent = MainFrame
+        
+        local HeaderCorner = Instance.new("UICorner")
+        HeaderCorner.CornerRadius = UDim.new(0, 12)
+        HeaderCorner.Parent = Header
         
         local Title = Instance.new("TextButton")
         Title.Name = "Title"
@@ -356,6 +359,7 @@ local function CreateGUI()
         Title.TextColor3 = Color3.fromRGB(255, 255, 255)
         Title.TextScaled = true
         Title.Font = Enum.Font.GothamBold
+        Title.ZIndex = 12
         Title.Parent = Header
         
         local MinimizeButton = Instance.new("TextButton")
@@ -368,6 +372,7 @@ local function CreateGUI()
         MinimizeButton.TextScaled = true
         MinimizeButton.Font = Enum.Font.GothamBold
         MinimizeButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        MinimizeButton.ZIndex = 12
         MinimizeButton.Parent = Header
         
         local MinimizeCorner = Instance.new("UICorner")
@@ -381,6 +386,7 @@ local function CreateGUI()
         ContentFrame.BackgroundTransparency = 1
         ContentFrame.BorderSizePixel = 0
         ContentFrame.Visible = true
+        ContentFrame.ZIndex = 10
         ContentFrame.Parent = MainFrame
         
         local CategoryFrame = Instance.new("Frame")
@@ -388,6 +394,7 @@ local function CreateGUI()
         CategoryFrame.Size = UDim2.new(0, 90, 1, 0)
         CategoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         CategoryFrame.BorderSizePixel = 0
+        CategoryFrame.ZIndex = 11
         CategoryFrame.Parent = ContentFrame
         
         local CategoryCorner = Instance.new("UICorner")
@@ -420,6 +427,7 @@ local function CreateGUI()
         FeaturesFrame.ScrollBarThickness = 4
         FeaturesFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
         FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        FeaturesFrame.ZIndex = 11
         FeaturesFrame.Parent = ContentFrame
         
         local FeaturesCorner = Instance.new("UICorner")
@@ -474,6 +482,7 @@ local function CreateCategoryButton(name, parent)
         Button.TextColor3 = Color3.fromRGB(200, 200, 200)
         Button.TextScaled = true
         Button.Font = Enum.Font.GothamSemibold
+        Button.ZIndex = 13
         Button.Parent = parent
         
         local ButtonCorner = Instance.new("UICorner")
@@ -486,7 +495,7 @@ local function CreateCategoryButton(name, parent)
         end
         
         Button.TouchTap:Connect(function()
-            print("Switching to category: " .. name)
+            print("Tapped category: " .. name)
             CurrentCategory = name
             UpdateAllCategories()
             task.spawn(function()
@@ -517,6 +526,7 @@ local function CreateFeatureButton(name, funcName, parent)
         Button.TextColor3 = Color3.fromRGB(255, 255, 255)
         Button.TextScaled = true
         Button.Font = Enum.Font.Gotham
+        Button.ZIndex = 13
         Button.Parent = parent
         
         local ButtonCorner = Instance.new("UICorner")
@@ -529,7 +539,7 @@ local function CreateFeatureButton(name, funcName, parent)
         ButtonStroke.Parent = Button
         
         Button.TouchTap:Connect(function()
-            print("Activating feature: " .. name)
+            print("Tapped feature: " .. name)
             if FeatureFunctions[funcName] then
                 FeatureFunctions[funcName]()
             else
@@ -591,10 +601,11 @@ local function ToggleMinimize()
         local targetSize = IsMinimized and UDim2.new(0, 50, 0, 50) or UDim2.new(0, 300, 0, 400)
         local targetText = IsMinimized and "+" or "−"
         
-        GUI.MinimizeButton.Text = targetText
+        GUI.MainFrame.BackgroundTransparency = IsMinimized and 1 or 0
         GUI.ContentFrame.Visible = not IsMinimized
         GUI.Header.Visible = not IsMinimized
         GUI.Logo.Visible = true
+        GUI.MinimizeButton.Visible = not IsMinimized
         
         local tween = TweenService:Create(
             GUI.MainFrame,
@@ -615,7 +626,7 @@ local function ToggleMinimize()
     end
 end
 
--- Make GUI draggable
+-- Make GUI and Logo draggable
 local function MakeDraggable(frame, dragButton)
     local success, result = pcall(function()
         local dragToggle = false
@@ -643,6 +654,15 @@ local function MakeDraggable(frame, dragButton)
                 dragToggle = false
             end
         end)
+        
+        if dragButton == GUI.Logo then
+            dragButton.TouchTap:Connect(function()
+                if IsMinimized then
+                    print("Logo tapped, maximizing GUI")
+                    ToggleMinimize()
+                end
+            end)
+        end
     end)
     
     if not success then
@@ -670,7 +690,10 @@ local function InitializeGUI()
         MakeDraggable(GUI.MainFrame, GUI.Logo)
         MakeDraggable(GUI.MainFrame, GUI.Title)
         
-        GUI.MinimizeButton.TouchTap:Connect(ToggleMinimize)
+        GUI.MinimizeButton.TouchTap:Connect(function()
+            print("Minimize button tapped")
+            ToggleMinimize()
+        end)
         
         task.spawn(function()
             LoadCategoryFeatures(CurrentCategory)
@@ -781,6 +804,6 @@ else
     print("✅ Mobile Executor GUI Loaded Successfully!")
     print("📱 Optimized for Mobile Only")
     print("🎯 Drag logo or title to move GUI")
-    print("📦 Tap minimize button to hide/show")
+    print("📦 Tap minimize button to hide GUI, tap logo to show")
     print("⚡ All features are mobile-ready!")
 end
