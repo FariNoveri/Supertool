@@ -1,5 +1,5 @@
 -- Mobile-Only Roblox Executor GUI Script
--- Optimized for mobile devices, no PC input support
+-- Optimized for mobile devices, ensures GUI visibility and functionality
 
 -- Prevent multiple instances
 if _G.MobileExecutorGUI then
@@ -14,10 +14,10 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Player = Players.LocalPlayer
-local PlayerGui = Player:WaitForChild("PlayerGui")
+local PlayerGui = Player:WaitForChild("PlayerGui", 10)
 local Character = Player.Character or Player.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
-local RootPart = Character:WaitForChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid", 10)
+local RootPart = Character:WaitForChild("HumanoidRootPart", 10)
 
 -- Variables
 local GUI = {}
@@ -45,7 +45,7 @@ local Settings = {
     SavedPosition = nil
 }
 
--- Categories and features (simplified for mobile reliability)
+-- Categories and features
 local Categories = {
     Movement = {
         {name = "Toggle Fly", func = "ToggleFly"},
@@ -68,7 +68,7 @@ local Categories = {
     }
 }
 
--- Feature Functions (optimized for mobile)
+-- Feature Functions
 local FeatureFunctions = {}
 
 FeatureFunctions.ToggleFly = function()
@@ -81,11 +81,11 @@ FeatureFunctions.ToggleFly = function()
         
         Connections.Fly = RunService.Heartbeat:Connect(function()
             if States.Flying and RootPart and RootPart:FindFirstChild("BodyVelocity") then
-                local MoveVector = Humanoid.MoveDirection -- Mobile joystick input
+                local MoveVector = Humanoid.MoveDirection
                 local Camera = Workspace.CurrentCamera
                 if Camera then
                     local velocity = (Camera.CFrame.LookVector * MoveVector.Z + Camera.CFrame.RightVector * MoveVector.X) * Settings.FlySpeed
-                    if UserInputService.Jump then -- Use jump button for upward movement
+                    if UserInputService.Jump then
                         velocity = velocity + Vector3.new(0, Settings.FlySpeed, 0)
                     end
                     BodyVelocity.Velocity = velocity
@@ -148,7 +148,7 @@ end
 FeatureFunctions.ToggleJumpPower = function()
     States.JumpPower = not States.JumpPower
     if States.JumpPower then
-        Humanoid.JumpPower = Settings.JumpPower -- Use JumpPower for mobile compatibility
+        Humanoid.JumpPower = Settings.JumpPower
         Humanoid.UseJumpPower = true
         print("Jump Power: ON (" .. Settings.JumpPower .. ")")
     else
@@ -164,8 +164,10 @@ FeatureFunctions.ToggleSpectate = function()
     if States.Spectating and #alivePlayers > 0 then
         Settings.SpectateIndex = math.clamp(Settings.SpectateIndex, 1, #alivePlayers)
         local targetPlayer = alivePlayers[Settings.SpectateIndex]
-        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
-        print("Spectating: " .. targetPlayer.Name)
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+            print("Spectating: " .. targetPlayer.Name)
+        end
     else
         Workspace.CurrentCamera.CameraSubject = Humanoid
         print("Spectate: OFF")
@@ -178,8 +180,10 @@ FeatureFunctions.NextSpectate = function()
     if #alivePlayers > 0 then
         Settings.SpectateIndex = (Settings.SpectateIndex % #alivePlayers) + 1
         local targetPlayer = alivePlayers[Settings.SpectateIndex]
-        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
-        print("Spectating: " .. targetPlayer.Name)
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+            print("Spectating: " .. targetPlayer.Name)
+        end
     end
 end
 
@@ -192,8 +196,10 @@ FeatureFunctions.PrevSpectate = function()
             Settings.SpectateIndex = #alivePlayers
         end
         local targetPlayer = alivePlayers[Settings.SpectateIndex]
-        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
-        print("Spectating: " .. targetPlayer.Name)
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+            print("Spectating: " .. targetPlayer.Name)
+        end
     end
 end
 
@@ -286,404 +292,480 @@ end
 
 -- Create Main GUI
 local function CreateGUI()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "MobileExecutorGUI"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ScreenGui.Parent = PlayerGui
+    local success, result = pcall(function()
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "MobileExecutorGUI"
+        ScreenGui.ResetOnSpawn = false
+        ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        ScreenGui.Enabled = true
+        ScreenGui.Parent = PlayerGui
+        
+        _G.MobileExecutorGUI = ScreenGui
+        
+        local MainFrame = Instance.new("Frame")
+        MainFrame.Name = "MainFrame"
+        MainFrame.Size = UDim2.new(0, 300, 0, 400)
+        MainFrame.Position = UDim2.new(1, -310, 0, 20)
+        MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        MainFrame.BorderSizePixel = 0
+        MainFrame.Visible = true
+        MainFrame.Parent = ScreenGui
+        
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(0, 12)
+        Corner.Parent = MainFrame
+        
+        local Stroke = Instance.new("UIStroke")
+        Stroke.Color = Color3.fromRGB(0, 150, 255)
+        Stroke.Thickness = 2
+        Stroke.Parent = MainFrame
+        
+        local Header = Instance.new("Frame")
+        Header.Name = "Header"
+        Header.Size = UDim2.new(1, 0, 0, 50)
+        Header.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        Header.BorderSizePixel = 0
+        Header.Parent = MainFrame
+        
+        local HeaderCorner = Instance.new("UICorner")
+        HeaderCorner.CornerRadius = UDim.new(0, 12)
+        HeaderCorner.Parent = Header
+        
+        local Logo = Instance.new("TextButton")
+        Logo.Name = "Logo"
+        Logo.Size = UDim2.new(0, 40, 0, 40)
+        Logo.Position = UDim2.new(0, 5, 0, 5)
+        Logo.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+        Logo.BorderSizePixel = 0
+        Logo.Text = "⚡"
+        Logo.TextScaled = true
+        Logo.Font = Enum.Font.GothamBold
+        Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Logo.Parent = Header
+        
+        local LogoCorner = Instance.new("UICorner")
+        LogoCorner.CornerRadius = UDim.new(0, 8)
+        LogoCorner.Parent = Logo
+        
+        local Title = Instance.new("TextButton")
+        Title.Name = "Title"
+        Title.Size = UDim2.new(1, -90, 1, 0)
+        Title.Position = UDim2.new(0, 50, 0, 0)
+        Title.BackgroundTransparency = 1
+        Title.Text = "Mobile Executor"
+        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Title.TextScaled = true
+        Title.Font = Enum.Font.GothamBold
+        Title.Parent = Header
+        
+        local MinimizeButton = Instance.new("TextButton")
+        MinimizeButton.Name = "MinimizeButton"
+        MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
+        MinimizeButton.Position = UDim2.new(1, -35, 0, 10)
+        MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
+        MinimizeButton.BorderSizePixel = 0
+        MinimizeButton.Text = "−"
+        MinimizeButton.TextScaled = true
+        MinimizeButton.Font = Enum.Font.GothamBold
+        MinimizeButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        MinimizeButton.Parent = Header
+        
+        local MinimizeCorner = Instance.new("UICorner")
+        MinimizeCorner.CornerRadius = UDim.new(0, 6)
+        MinimizeCorner.Parent = MinimizeButton
+        
+        local ContentFrame = Instance.new("Frame")
+        ContentFrame.Name = "ContentFrame"
+        ContentFrame.Size = UDim2.new(1, -10, 1, -60)
+        ContentFrame.Position = UDim2.new(0, 5, 0, 55)
+        ContentFrame.BackgroundTransparency = 1
+        ContentFrame.BorderSizePixel = 0
+        ContentFrame.Visible = true
+        ContentFrame.Parent = MainFrame
+        
+        local CategoryFrame = Instance.new("Frame")
+        CategoryFrame.Name = "CategoryFrame"
+        CategoryFrame.Size = UDim2.new(0, 90, 1, 0)
+        CategoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        CategoryFrame.BorderSizePixel = 0
+        CategoryFrame.Parent = ContentFrame
+        
+        local CategoryCorner = Instance.new("UICorner")
+        CategoryCorner.CornerRadius = UDim.new(0, 8)
+        CategoryCorner.Parent = CategoryFrame
+        
+        local CategoryStroke = Instance.new("UIStroke")
+        CategoryStroke.Color = Color3.fromRGB(50, 50, 50)
+        CategoryStroke.Thickness = 1
+        CategoryStroke.Parent = CategoryFrame
+        
+        local CategoryList = Instance.new("UIListLayout")
+        CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
+        CategoryList.Padding = UDim.new(0, 5)
+        CategoryList.Parent = CategoryFrame
+        
+        local CategoryPadding = Instance.new("UIPadding")
+        CategoryPadding.PaddingTop = UDim.new(0, 8)
+        CategoryPadding.PaddingBottom = UDim.new(0, 8)
+        CategoryPadding.PaddingLeft = UDim.new(0, 8)
+        CategoryPadding.PaddingRight = UDim.new(0, 8)
+        CategoryPadding.Parent = CategoryFrame
+        
+        local FeaturesFrame = Instance.new("ScrollingFrame")
+        FeaturesFrame.Name = "FeaturesFrame"
+        FeaturesFrame.Size = UDim2.new(1, -100, 1, 0)
+        FeaturesFrame.Position = UDim2.new(0, 100, 0, 0)
+        FeaturesFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        FeaturesFrame.BorderSizePixel = 0
+        FeaturesFrame.ScrollBarThickness = 4
+        FeaturesFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
+        FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        FeaturesFrame.Parent = ContentFrame
+        
+        local FeaturesCorner = Instance.new("UICorner")
+        FeaturesCorner.CornerRadius = UDim.new(0, 8)
+        FeaturesCorner.Parent = FeaturesFrame
+        
+        local FeaturesStroke = Instance.new("UIStroke")
+        FeaturesStroke.Color = Color3.fromRGB(50, 50, 50)
+        FeaturesStroke.Thickness = 1
+        FeaturesStroke.Parent = FeaturesFrame
+        
+        local FeaturesList = Instance.new("UIListLayout")
+        FeaturesList.SortOrder = Enum.SortOrder.LayoutOrder
+        FeaturesList.Padding = UDim.new(0, 8)
+        FeaturesList.Parent = FeaturesFrame
+        
+        local FeaturesPadding = Instance.new("UIPadding")
+        FeaturesPadding.PaddingTop = UDim.new(0, 10)
+        FeaturesPadding.PaddingBottom = UDim.new(0, 10)
+        FeaturesPadding.PaddingLeft = UDim.new(0, 10)
+        FeaturesPadding.PaddingRight = UDim.new(0, 10)
+        FeaturesPadding.Parent = FeaturesFrame
+        
+        GUI.ScreenGui = ScreenGui
+        GUI.MainFrame = MainFrame
+        GUI.CategoryFrame = CategoryFrame
+        GUI.FeaturesFrame = FeaturesFrame
+        GUI.Logo = Logo
+        GUI.Title = Title
+        GUI.MinimizeButton = MinimizeButton
+        GUI.ContentFrame = ContentFrame
+        
+        return GUI
+    end)
     
-    _G.MobileExecutorGUI = ScreenGui
-    
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 300, 0, 400) -- Smaller size for mobile
-    MainFrame.Position = UDim2.new(1, -310, 0, 20)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Parent = ScreenGui
-    
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, 12)
-    Corner.Parent = MainFrame
-    
-    local Stroke = Instance.new("UIStroke")
-    Stroke.Color = Color3.fromRGB(0, 150, 255)
-    Stroke.Thickness = 2
-    Stroke.Parent = MainFrame
-    
-    local Header = Instance.new("Frame")
-    Header.Name = "Header"
-    Header.Size = UDim2.new(1, 0, 0, 50)
-    Header.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    Header.BorderSizePixel = 0
-    Header.Parent = MainFrame
-    
-    local HeaderCorner = Instance.new("UICorner")
-    HeaderCorner.CornerRadius = UDim.new(0, 12)
-    HeaderCorner.Parent = Header
-    
-    local Logo = Instance.new("TextButton")
-    Logo.Name = "Logo"
-    Logo.Size = UDim2.new(0, 40, 0, 40)
-    Logo.Position = UDim2.new(0, 5, 0, 5)
-    Logo.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    Logo.BorderSizePixel = 0
-    Logo.Text = "⚡"
-    Logo.TextScaled = true
-    Logo.Font = Enum.Font.GothamBold
-    Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Logo.Parent = Header
-    
-    local LogoCorner = Instance.new("UICorner")
-    LogoCorner.CornerRadius = UDim.new(0, 8)
-    LogoCorner.Parent = Logo
-    
-    local Title = Instance.new("TextButton")
-    Title.Name = "Title"
-    Title.Size = UDim2.new(1, -90, 1, 0)
-    Title.Position = UDim2.new(0, 50, 0, 0)
-    Title.BackgroundTransparency = 1
-    Title.Text = "Mobile Executor"
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.TextScaled = true
-    Title.Font = Enum.Font.GothamBold
-    Title.Parent = Header
-    
-    local MinimizeButton = Instance.new("TextButton")
-    MinimizeButton.Name = "MinimizeButton"
-    MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
-    MinimizeButton.Position = UDim2.new(1, -35, 0, 10)
-    MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
-    MinimizeButton.BorderSizePixel = 0
-    MinimizeButton.Text = "−"
-    MinimizeButton.TextScaled = true
-    MinimizeButton.Font = Enum.Font.GothamBold
-    MinimizeButton.TextColor3 = Color3.fromRGB(0, 0, 0)
-    MinimizeButton.Parent = Header
-    
-    local MinimizeCorner = Instance.new("UICorner")
-    MinimizeCorner.CornerRadius = UDim.new(0, 6)
-    MinimizeCorner.Parent = MinimizeButton
-    
-    local ContentFrame = Instance.new("Frame")
-    ContentFrame.Name = "ContentFrame"
-    ContentFrame.Size = UDim2.new(1, -10, 1, -60)
-    ContentFrame.Position = UDim2.new(0, 5, 0, 55)
-    ContentFrame.BackgroundTransparency = 1
-    ContentFrame.BorderSizePixel = 0
-    ContentFrame.Visible = true
-    ContentFrame.Parent = MainFrame
-    
-    local CategoryFrame = Instance.new("Frame")
-    CategoryFrame.Name = "CategoryFrame"
-    CategoryFrame.Size = UDim2.new(0, 90, 1, 0)
-    CategoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    CategoryFrame.BorderSizePixel = 0
-    CategoryFrame.Parent = ContentFrame
-    
-    local CategoryCorner = Instance.new("UICorner")
-    CategoryCorner.CornerRadius = UDim.new(0, 8)
-    CategoryCorner.Parent = CategoryFrame
-    
-    local CategoryStroke = Instance.new("UIStroke")
-    CategoryStroke.Color = Color3.fromRGB(50, 50, 50)
-    CategoryStroke.Thickness = 1
-    CategoryStroke.Parent = CategoryFrame
-    
-    local CategoryList = Instance.new("UIListLayout")
-    CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
-    CategoryList.Padding = UDim.new(0, 5)
-    CategoryList.Parent = CategoryFrame
-    
-    local CategoryPadding = Instance.new("UIPadding")
-    CategoryPadding.PaddingTop = UDim.new(0, 8)
-    CategoryPadding.PaddingBottom = UDim.new(0, 8)
-    CategoryPadding.PaddingLeft = UDim.new(0, 8)
-    CategoryPadding.PaddingRight = UDim.new(0, 8)
-    CategoryPadding.Parent = CategoryFrame
-    
-    local FeaturesFrame = Instance.new("ScrollingFrame")
-    FeaturesFrame.Name = "FeaturesFrame"
-    FeaturesFrame.Size = UDim2.new(1, -100, 1, 0)
-    FeaturesFrame.Position = UDim2.new(0, 100, 0, 0)
-    FeaturesFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    FeaturesFrame.BorderSizePixel = 0
-    FeaturesFrame.ScrollBarThickness = 4
-    FeaturesFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
-    FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    FeaturesFrame.Parent = ContentFrame
-    
-    local FeaturesCorner = Instance.new("UICorner")
-    FeaturesCorner.CornerRadius = UDim.new(0, 8)
-    FeaturesCorner.Parent = FeaturesFrame
-    
-    local FeaturesStroke = Instance.new("UIStroke")
-    FeaturesStroke.Color = Color3.fromRGB(50, 50, 50)
-    FeaturesStroke.Thickness = 1
-    FeaturesStroke.Parent = FeaturesFrame
-    
-    local FeaturesList = Instance.new("UIListLayout")
-    FeaturesList.SortOrder = Enum.SortOrder.LayoutOrder
-    FeaturesList.Padding = UDim.new(0, 8)
-    FeaturesList.Parent = FeaturesFrame
-    
-    local FeaturesPadding = Instance.new("UIPadding")
-    FeaturesPadding.PaddingTop = UDim.new(0, 10)
-    FeaturesPadding.PaddingBottom = UDim.new(0, 10)
-    FeaturesPadding.PaddingLeft = UDim.new(0, 10)
-    FeaturesPadding.PaddingRight = UDim.new(0, 10)
-    FeaturesPadding.Parent = FeaturesFrame
-    
-    GUI.ScreenGui = ScreenGui
-    GUI.MainFrame = MainFrame
-    GUI.CategoryFrame = CategoryFrame
-    GUI.FeaturesFrame = FeaturesFrame
-    GUI.Logo = Logo
-    GUI.Title = Title
-    GUI.MinimizeButton = MinimizeButton
-    GUI.ContentFrame = ContentFrame
-    
-    return GUI
+    if not success then
+        warn("Error creating GUI: " .. tostring(result))
+        return nil
+    end
+    return result
 end
 
 -- Create Category Button
 local function CreateCategoryButton(name, parent)
-    local Button = Instance.new("TextButton")
-    Button.Name = name .. "Category"
-    Button.Size = UDim2.new(1, 0, 0, 35)
-    Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Button.BorderSizePixel = 0
-    Button.Text = name
-    Button.TextColor3 = Color3.fromRGB(200, 200, 200)
-    Button.TextScaled = true
-    Button.Font = Enum.Font.GothamSemibold
-    Button.Parent = parent
-    
-    local ButtonCorner = Instance.new("UICorner")
-    ButtonCorner.CornerRadius = UDim.new(0, 6)
-    ButtonCorner.Parent = Button
-    
-    local function UpdateCategoryAppearance()
-        Button.BackgroundColor3 = CurrentCategory == name and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(40, 40, 40)
-        Button.TextColor3 = CurrentCategory == name and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
-    end
-    
-    Button.TouchTap:Connect(function()
-        CurrentCategory = name
-        UpdateAllCategories()
-        task.spawn(function()
-            LoadCategoryFeatures(name)
+    local success, result = pcall(function()
+        local Button = Instance.new("TextButton")
+        Button.Name = name .. "Category"
+        Button.Size = UDim2.new(1, 0, 0, 35)
+        Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Button.BorderSizePixel = 0
+        Button.Text = name
+        Button.TextColor3 = Color3.fromRGB(200, 200, 200)
+        Button.TextScaled = true
+        Button.Font = Enum.Font.GothamSemibold
+        Button.Parent = parent
+        
+        local ButtonCorner = Instance.new("UICorner")
+        ButtonCorner.CornerRadius = UDim.new(0, 6)
+        ButtonCorner.Parent = Button
+        
+        local function UpdateCategoryAppearance()
+            Button.BackgroundColor3 = CurrentCategory == name and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(40, 40, 40)
+            Button.TextColor3 = CurrentCategory == name and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+        end
+        
+        Button.TouchTap:Connect(function()
+            print("Switching to category: " .. name)
+            CurrentCategory = name
+            UpdateAllCategories()
+            task.spawn(function()
+                LoadCategoryFeatures(name)
+            end)
         end)
+        
+        UpdateCategoryAppearance()
+        return Button, UpdateCategoryAppearance
     end)
     
-    UpdateCategoryAppearance()
-    return Button, UpdateCategoryAppearance
+    if not success then
+        warn("Error creating category button: " .. tostring(result))
+        return nil, nil
+    end
+    return result
 end
 
 -- Create Feature Button
 local function CreateFeatureButton(name, funcName, parent)
-    local Button = Instance.new("TextButton")
-    Button.Name = name
-    Button.Size = UDim2.new(1, 0, 0, 40)
-    Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    Button.BorderSizePixel = 0
-    Button.Text = name
-    Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Button.TextScaled = true
-    Button.Font = Enum.Font.Gotham
-    Button.Parent = parent
-    
-    local ButtonCorner = Instance.new("UICorner")
-    ButtonCorner.CornerRadius = UDim.new(0, 8)
-    ButtonCorner.Parent = Button
-    
-    local ButtonStroke = Instance.new("UIStroke")
-    ButtonStroke.Color = Color3.fromRGB(70, 70, 70)
-    ButtonStroke.Thickness = 1
-    ButtonStroke.Parent = Button
-    
-    Button.TouchTap:Connect(function()
-        if FeatureFunctions[funcName] then
-            FeatureFunctions[funcName]()
-        else
-            print("Function not found: " .. tostring(funcName))
-        end
+    local success, result = pcall(function()
+        local Button = Instance.new("TextButton")
+        Button.Name = name
+        Button.Size = UDim2.new(1, 0, 0, 40)
+        Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        Button.BorderSizePixel = 0
+        Button.Text = name
+        Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Button.TextScaled = true
+        Button.Font = Enum.Font.Gotham
+        Button.Parent = parent
+        
+        local ButtonCorner = Instance.new("UICorner")
+        ButtonCorner.CornerRadius = UDim.new(0, 8)
+        ButtonCorner.Parent = Button
+        
+        local ButtonStroke = Instance.new("UIStroke")
+        ButtonStroke.Color = Color3.fromRGB(70, 70, 70)
+        ButtonStroke.Thickness = 1
+        ButtonStroke.Parent = Button
+        
+        Button.TouchTap:Connect(function()
+            print("Activating feature: " .. name)
+            if FeatureFunctions[funcName] then
+                FeatureFunctions[funcName]()
+            else
+                print("Function not found: " .. tostring(funcName))
+            end
+        end)
+        
+        return Button
     end)
     
-    return Button
+    if not success then
+        warn("Error creating feature button: " .. tostring(result))
+        return nil
+    end
+    return result
 end
 
 -- Update all category appearances
 function UpdateAllCategories()
-    for _, updateFunc in pairs(CategoryUpdateFunctions) do
-        updateFunc()
+    local success, result = pcall(function()
+        for _, updateFunc in pairs(CategoryUpdateFunctions) do
+            updateFunc()
+        end
+    end)
+    if not success then
+        warn("Error updating categories: " .. tostring(result))
     end
 end
 
 -- Load features for selected category
 local function LoadCategoryFeatures(categoryName)
-    for _, child in pairs(GUI.FeaturesFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
+    local success, result = pcall(function()
+        for _, child in pairs(GUI.FeaturesFrame:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
         end
-    end
-    
-    local categoryFeatures = Categories[categoryName]
-    if categoryFeatures then
-        for _, feature in pairs(categoryFeatures) do
-            CreateFeatureButton(feature.name, feature.func, GUI.FeaturesFrame)
+        
+        local categoryFeatures = Categories[categoryName]
+        if categoryFeatures then
+            for _, feature in pairs(categoryFeatures) do
+                CreateFeatureButton(feature.name, feature.func, GUI.FeaturesFrame)
+            end
         end
-    end
+        
+        GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
+    end)
     
-    GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
+    if not success then
+        warn("Error loading category features: " .. tostring(result))
+    end
 end
 
 -- Minimize/Maximize functionality
 local function ToggleMinimize()
-    IsMinimized = not IsMinimized
+    local success, result = pcall(function()
+        IsMinimized = not IsMinimized
+        
+        local targetSize = IsMinimized and UDim2.new(0, 50, 0, 50) or UDim2.new(0, 300, 0, 400)
+        local targetText = IsMinimized and "+" or "−"
+        
+        GUI.MinimizeButton.Text = targetText
+        GUI.ContentFrame.Visible = not IsMinimized
+        GUI.Header.Visible = not IsMinimized
+        GUI.Logo.Visible = true
+        
+        local tween = TweenService:Create(
+            GUI.MainFrame,
+            TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Size = targetSize, Position = IsMinimized and UDim2.new(1, -60, 0, 20) or UDim2.new(1, -310, 0, 20)}
+        )
+        tween:Play()
+        
+        if not IsMinimized then
+            task.spawn(function()
+                LoadCategoryFeatures(CurrentCategory)
+            end)
+        end
+    end)
     
-    local targetSize = IsMinimized and UDim2.new(0, 50, 0, 50) or UDim2.new(0, 300, 0, 400)
-    local targetText = IsMinimized and "+" or "−"
-    
-    GUI.MinimizeButton.Text = targetText
-    GUI.ContentFrame.Visible = not IsMinimized
-    GUI.Header.Visible = not IsMinimized
-    GUI.Logo.Visible = true
-    
-    local tween = TweenService:Create(
-        GUI.MainFrame,
-        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {Size = targetSize, Position = IsMinimized and UDim2.new(1, -60, 0, 20) or UDim2.new(1, -310, 0, 20)}
-    )
-    tween:Play()
-    
-    if not IsMinimized then
-        task.spawn(function()
-            LoadCategoryFeatures(CurrentCategory)
-        end)
+    if not success then
+        warn("Error in minimize function: " .. tostring(result))
     end
 end
 
 -- Make GUI draggable
 local function MakeDraggable(frame, dragButton)
-    local dragToggle = false
-    local dragStart = nil
-    local startPos = nil
-    
-    dragButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            dragToggle = true
-            dragStart = input.Position
-            startPos = frame.Position
-        end
+    local success, result = pcall(function()
+        local dragToggle = false
+        local dragStart = nil
+        local startPos = nil
+        
+        dragButton.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                dragToggle = true
+                dragStart = input.Position
+                startPos = frame.Position
+            end
+        end)
+        
+        dragButton.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch and dragToggle then
+                local delta = input.Position - dragStart
+                local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                frame.Position = position
+            end
+        end)
+        
+        dragButton.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                dragToggle = false
+            end
+        end)
     end)
     
-    dragButton.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch and dragToggle then
-            local delta = input.Position - dragStart
-            local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            frame.Position = position
-        end
-    end)
-    
-    dragButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            dragToggle = false
-        end
-    end)
+    if not success then
+        warn("Error setting up draggable: " .. tostring(result))
+    end
 end
 
 -- Initialize GUI
 local function InitializeGUI()
-    GUI = CreateGUI()
+    local success, result = pcall(function()
+        GUI = CreateGUI()
+        if not GUI then
+            error("Failed to create GUI")
+        end
+        
+        for categoryName, _ in pairs(Categories) do
+            local button, updateFunc = CreateCategoryButton(categoryName, GUI.CategoryFrame)
+            if button and updateFunc then
+                CategoryUpdateFunctions[categoryName] = updateFunc
+            else
+                warn("Failed to create category button for: " .. categoryName)
+            end
+        end
+        
+        MakeDraggable(GUI.MainFrame, GUI.Logo)
+        MakeDraggable(GUI.MainFrame, GUI.Title)
+        
+        GUI.MinimizeButton.TouchTap:Connect(ToggleMinimize)
+        
+        task.spawn(function()
+            LoadCategoryFeatures(CurrentCategory)
+        end)
+        UpdateAllCategories()
+        
+        GUI.FeaturesFrame.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
+        end)
+    end)
     
-    for categoryName, _ in pairs(Categories) do
-        local button, updateFunc = CreateCategoryButton(categoryName, GUI.CategoryFrame)
-        CategoryUpdateFunctions[categoryName] = updateFunc
+    if not success then
+        warn("Error initializing GUI: " .. tostring(result))
     end
-    
-    MakeDraggable(GUI.MainFrame, GUI.Logo)
-    MakeDraggable(GUI.MainFrame, GUI.Title)
-    
-    GUI.MinimizeButton.TouchTap:Connect(ToggleMinimize)
-    
-    task.spawn(function()
-        LoadCategoryFeatures(CurrentCategory)
-    end)
-    UpdateAllCategories()
-    
-    GUI.FeaturesFrame.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
-    end)
 end
 
 -- Character respawn handling
 Player.CharacterAdded:Connect(function(newCharacter)
-    Character = newCharacter
-    Humanoid = Character:WaitForChild("Humanoid")
-    RootPart = Character:WaitForChild("HumanoidRootPart")
-    
-    for state, _ in pairs(States) do
-        States[state] = false
-    end
-    
-    Humanoid.WalkSpeed = 16
-    Humanoid.JumpPower = 50
-    Humanoid.UseJumpPower = true
-    Humanoid.MaxHealth = 100
-    Humanoid.Health = 100
-    
-    for _, connection in pairs(Connections) do
-        if connection then
-            connection:Disconnect()
+    local success, result = pcall(function()
+        Character = newCharacter
+        Humanoid = Character:WaitForChild("Humanoid", 10)
+        RootPart = Character:WaitForChild("HumanoidRootPart", 10)
+        
+        for state, _ in pairs(States) do
+            States[state] = false
         end
-    end
-    Connections = {}
-    
-    print("Character respawned - GUI states reset")
-end)
-
--- Cleanup function
-local function Cleanup()
-    for _, connection in pairs(Connections) do
-        if connection then
-            connection:Disconnect()
-        end
-    end
-    
-    if Humanoid then
+        
         Humanoid.WalkSpeed = 16
         Humanoid.JumpPower = 50
         Humanoid.UseJumpPower = true
         Humanoid.MaxHealth = 100
         Humanoid.Health = 100
+        
+        for _, connection in pairs(Connections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        Connections = {}
+        
+        print("Character respawned - GUI states reset")
+    end)
+    
+    if not success then
+        warn("Error in character respawn handling: " .. tostring(result))
     end
-    
-    game.Lighting.Brightness = 1
-    game.Lighting.ClockTime = 8
-    game.Lighting.FogEnd = 100000
-    game.Lighting.GlobalShadows = true
-    game.Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 70)
-    
-    if Workspace.CurrentCamera then
-        Workspace.CurrentCamera.CameraSubject = Humanoid
-    end
-    
-    if RootPart then
-        if RootPart:FindFirstChild("BodyVelocity") then
+end)
+
+-- Cleanup function
+local function Cleanup()
+    local success, result = pcall(function()
+        for _, connection in pairs(Connections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        
+        if Humanoid then
+            Humanoid.WalkSpeed = 16
+            Humanoid.JumpPower = 50
+            Humanoid.UseJumpPower = true
+            Humanoid.MaxHealth = 100
+            Humanoid.Health = 100
+        end
+        
+        game.Lighting.Brightness = 1
+        game.Lighting.ClockTime = 8
+        game.Lighting.FogEnd = 100000
+        game.Lighting.GlobalShadows = true
+        game.Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 70)
+        
+        if Workspace.CurrentCamera then
+            Workspace.CurrentCamera.CameraSubject = Humanoid
+        end
+        
+        if RootPart and RootPart:FindFirstChild("BodyVelocity") then
             RootPart.BodyVelocity:Destroy()
         end
-    end
+        
+        print("Mobile Executor GUI cleaned up")
+    end)
     
-    print("Mobile Executor GUI cleaned up")
+    if not success then
+        warn("Error in cleanup: " .. tostring(result))
+    end
 end
 
 -- Handle script removal
-GUI.ScreenGui.AncestryChanged:Connect(function()
-    if not GUI.ScreenGui.Parent then
-        Cleanup()
-    end
-end)
+if GUI.ScreenGui then
+    GUI.ScreenGui.AncestryChanged:Connect(function()
+        if not GUI.ScreenGui.Parent then
+            Cleanup()
+        end
+    end)
+end
 
 Players.PlayerRemoving:Connect(function(player)
     if player == Player then
@@ -692,10 +774,13 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 -- Initialize
-InitializeGUI()
-
-print("✅ Mobile Executor GUI Loaded Successfully!")
-print("📱 Optimized for Mobile Only")
-print("🎯 Drag logo or title to move GUI")
-print("📦 Tap minimize button to hide/show")
-print("⚡ All features are mobile-ready!")
+local success, result = pcall(InitializeGUI)
+if not success then
+    warn("Error during initialization: " .. tostring(result))
+else
+    print("✅ Mobile Executor GUI Loaded Successfully!")
+    print("📱 Optimized for Mobile Only")
+    print("🎯 Drag logo or title to move GUI")
+    print("📦 Tap minimize button to hide/show")
+    print("⚡ All features are mobile-ready!")
+end
