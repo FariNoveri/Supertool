@@ -1,5 +1,5 @@
 -- Mobile-Only Roblox Executor GUI Script
--- Optimized for mobile, minimizes to draggable logo, fixes category issues
+-- Fixes minimize, category switching, adds Player Noclip feature
 
 -- Prevent multiple instances
 if _G.MobileExecutorGUI then
@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
+local PhysicsService = game:GetService("PhysicsService")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui", 10)
@@ -34,7 +35,8 @@ local States = {
     GodMode = false,
     Spectating = false,
     AntiAFK = false,
-    Fullbright = false
+    Fullbright = false,
+    PlayerNoclip = false
 }
 
 local Settings = {
@@ -63,6 +65,7 @@ local Categories = {
         {name = "Toggle God Mode", func = "ToggleGodMode"},
         {name = "Toggle Fullbright", func = "ToggleFullbright"},
         {name = "Toggle Anti AFK", func = "ToggleAntiAFK"},
+        {name = "Toggle Player Noclip", func = "TogglePlayerNoclip"},
         {name = "Save Position", func = "SavePosition"},
         {name = "TP to Saved Pos", func = "TeleportToSavedPosition"}
     }
@@ -264,6 +267,76 @@ FeatureFunctions.ToggleAntiAFK = function()
     end
 end
 
+FeatureFunctions.TogglePlayerNoclip = function()
+    States.PlayerNoclip = not States.PlayerNoclip
+    if States.PlayerNoclip then
+        -- Set up collision groups
+        pcall(function()
+            PhysicsService:CreateCollisionGroup("NoPlayerCollision")
+            PhysicsService:CreateCollisionGroup("DefaultPlayer")
+            PhysicsService:CollisionGroupSetCollidable("NoPlayerCollision", "DefaultPlayer", false)
+            
+            -- Set local player's parts to NoPlayerCollision
+            if Character then
+                for _, part in pairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        PhysicsService:SetPartCollisionGroup(part, "NoPlayerCollision")
+                    end
+                end
+            end
+            
+            -- Set other players' parts to DefaultPlayer
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= Player and player.Character then
+                    for _, part in pairs(player.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            PhysicsService:SetPartCollisionGroup(part, "DefaultPlayer")
+                        end
+                    end
+                end
+            end
+            
+            -- Handle new players
+            Connections.PlayerNoclip = Players.PlayerAdded:Connect(function(newPlayer)
+                if newPlayer ~= Player and newPlayer.Character then
+                    for _, part in pairs(newPlayer.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            PhysicsService:SetPartCollisionGroup(part, "DefaultPlayer")
+                        end
+                    end
+                end
+            end)
+            
+            print("Player Noclip: ON")
+        end)
+    else
+        if Connections.PlayerNoclip then
+            Connections.PlayerNoclip:Disconnect()
+            Connections.PlayerNoclip = nil
+        end
+        -- Reset collision groups
+        pcall(function()
+            if Character then
+                for _, part in pairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        PhysicsService:SetPartCollisionGroup(part, "Default")
+                    end
+                end
+            end
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= Player and player.Character then
+                    for _, part in pairs(player.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            PhysicsService:SetPartCollisionGroup(part, "Default")
+                        end
+                    end
+                end
+            end
+            print("Player Noclip: OFF")
+        end)
+    end
+end
+
 FeatureFunctions.SavePosition = function()
     if RootPart then
         Settings.SavedPosition = RootPart.CFrame
@@ -317,8 +390,10 @@ local function CreateGUI()
         Corner.Parent = MainFrame
         
         local Stroke = Instance.new("UIStroke")
+        Stroke.Name = "MainStroke"
         Stroke.Color = Color3.fromRGB(0, 150, 255)
         Stroke.Thickness = 2
+        Stroke.Transparency = 0
         Stroke.Parent = MainFrame
         
         local Logo = Instance.new("TextButton")
@@ -403,6 +478,7 @@ local function CreateGUI()
         
         local CategoryStroke = Instance.new("UIStroke")
         CategoryStroke.Color = Color3.fromRGB(50, 50, 50)
+        CategoryStroke.Transparency = 0
         CategoryStroke.Thickness = 1
         CategoryStroke.Parent = CategoryFrame
         
@@ -459,6 +535,7 @@ local function CreateGUI()
         GUI.Title = Title
         GUI.MinimizeButton = MinimizeButton
         GUI.ContentFrame = ContentFrame
+        GUI.MainStroke = Stroke
         
         return GUI
     end)
@@ -560,8 +637,12 @@ end
 -- Update all category appearances
 function UpdateAllCategories()
     local success, result = pcall(function()
-        for _, updateFunc in pairs(CategoryUpdateFunctions) do
-            updateFunc()
+        for categoryName, updateFunc in pairs(CategoryUpdateFunctions) do
+            if updateFunc then
+                updateFunc()
+            else
+                warn("No update function for category: " .. categoryName)
+            end
         end
     end)
     if not success then
@@ -572,19 +653,26 @@ end
 -- Load features for selected category
 local function LoadCategoryFeatures(categoryName)
     local success, result = pcall(function()
+        -- Clear existing feature buttons
         for _, child in pairs(GUI.FeaturesFrame:GetChildren()) do
             if child:IsA("TextButton") then
                 child:Destroy()
             end
         end
         
+        -- Verify category exists
         local categoryFeatures = Categories[categoryName]
-        if categoryFeatures then
-            for _, feature in pairs(categoryFeatures) do
-                CreateFeatureButton(feature.name, feature.func, GUI.FeaturesFrame)
-            end
+        if not categoryFeatures then
+            warn("Category not found: " .. tostring(categoryName))
+            return
         end
         
+        -- Load feature buttons
+        for _, feature in ipairs(categoryFeatures) do
+            CreateFeatureButton(feature.name, feature.func, GUI.FeaturesFrame)
+        end
+        
+        -- Update canvas size
         GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
     end)
     
@@ -602,6 +690,7 @@ local function ToggleMinimize()
         local targetText = IsMinimized and "+" or "−"
         
         GUI.MainFrame.BackgroundTransparency = IsMinimized and 1 or 0
+        GUI.MainStroke.Transparency = IsMinimized and 1 or 0
         GUI.ContentFrame.Visible = not IsMinimized
         GUI.Header.Visible = not IsMinimized
         GUI.Logo.Visible = true
@@ -734,6 +823,12 @@ Player.CharacterAdded:Connect(function(newCharacter)
         end
         Connections = {}
         
+        -- Reapply Player Noclip if active
+        if States.PlayerNoclip then
+            FeatureFunctions.TogglePlayerNoclip()
+            FeatureFunctions.TogglePlayerNoclip()
+        end
+        
         print("Character respawned - GUI states reset")
     end)
     
@@ -772,6 +867,26 @@ local function Cleanup()
         if RootPart and RootPart:FindFirstChild("BodyVelocity") then
             RootPart.BodyVelocity:Destroy()
         end
+        
+        -- Reset collision groups
+        pcall(function()
+            if Character then
+                for _, part in pairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        PhysicsService:SetPartCollisionGroup(part, "Default")
+                    end
+                end
+            end
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= Player and player.Character then
+                    for _, part in pairs(player.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            PhysicsService:SetPartCollisionGroup(part, "Default")
+                        end
+                    end
+                end
+            end
+        end)
         
         print("Mobile Executor GUI cleaned up")
     end)
