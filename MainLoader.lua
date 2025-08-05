@@ -1,5 +1,5 @@
--- Enhanced Mobile Executor GUI Script with Categories
--- Compatible with all games, mobile-optimized with minimize feature and script management
+-- Mobile-Only Roblox Executor GUI Script
+-- Optimized for mobile devices, no PC input support
 
 -- Prevent multiple instances
 if _G.MobileExecutorGUI then
@@ -33,7 +33,6 @@ local States = {
     JumpPower = false,
     GodMode = false,
     Spectating = false,
-    SpiderMan = false,
     AntiAFK = false,
     Fullbright = false
 }
@@ -46,14 +45,13 @@ local Settings = {
     SavedPosition = nil
 }
 
--- Categories and their features
+-- Categories and features (simplified for mobile reliability)
 local Categories = {
     Movement = {
         {name = "Toggle Fly", func = "ToggleFly"},
         {name = "Toggle Noclip", func = "ToggleNoclip"},
         {name = "Toggle Speed", func = "ToggleSpeedHack"},
-        {name = "Toggle Jump Power", func = "ToggleJumpPower"},
-        {name = "Toggle SpiderMan", func = "ToggleSpiderMan"}
+        {name = "Toggle Jump Power", func = "ToggleJumpPower"}
     },
     Spectate = {
         {name = "Toggle Spectate", func = "ToggleSpectate"},
@@ -70,23 +68,27 @@ local Categories = {
     }
 }
 
--- Feature Functions (unchanged for brevity, but ensure all functions are defined correctly)
+-- Feature Functions (optimized for mobile)
 local FeatureFunctions = {}
 
 FeatureFunctions.ToggleFly = function()
     States.Flying = not States.Flying
     if States.Flying then
         local BodyVelocity = Instance.new("BodyVelocity")
-        BodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+        BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         BodyVelocity.Velocity = Vector3.new(0, 0, 0)
         BodyVelocity.Parent = RootPart
         
         Connections.Fly = RunService.Heartbeat:Connect(function()
             if States.Flying and RootPart and RootPart:FindFirstChild("BodyVelocity") then
-                local MoveVector = Humanoid.MoveDirection
+                local MoveVector = Humanoid.MoveDirection -- Mobile joystick input
                 local Camera = Workspace.CurrentCamera
                 if Camera then
-                    BodyVelocity.Velocity = (Camera.CFrame.LookVector * MoveVector.Z + Camera.CFrame.RightVector * MoveVector.X) * Settings.FlySpeed
+                    local velocity = (Camera.CFrame.LookVector * MoveVector.Z + Camera.CFrame.RightVector * MoveVector.X) * Settings.FlySpeed
+                    if UserInputService.Jump then -- Use jump button for upward movement
+                        velocity = velocity + Vector3.new(0, Settings.FlySpeed, 0)
+                    end
+                    BodyVelocity.Velocity = velocity
                 end
             end
         end)
@@ -103,7 +105,184 @@ FeatureFunctions.ToggleFly = function()
     end
 end
 
--- Other feature functions (omitted for brevity, assumed to be correct)
+FeatureFunctions.ToggleNoclip = function()
+    States.Noclip = not States.Noclip
+    if States.Noclip then
+        Connections.Noclip = RunService.Stepped:Connect(function()
+            if Character then
+                for _, part in pairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+        print("Noclip: ON")
+    else
+        if Connections.Noclip then
+            Connections.Noclip:Disconnect()
+            Connections.Noclip = nil
+        end
+        if Character then
+            for _, part in pairs(Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
+            end
+        end
+        print("Noclip: OFF")
+    end
+end
+
+FeatureFunctions.ToggleSpeedHack = function()
+    States.SpeedHack = not States.SpeedHack
+    if States.SpeedHack then
+        Humanoid.WalkSpeed = Settings.WalkSpeed
+        print("Speed Hack: ON (" .. Settings.WalkSpeed .. ")")
+    else
+        Humanoid.WalkSpeed = 16
+        print("Speed Hack: OFF")
+    end
+end
+
+FeatureFunctions.ToggleJumpPower = function()
+    States.JumpPower = not States.JumpPower
+    if States.JumpPower then
+        Humanoid.JumpPower = Settings.JumpPower -- Use JumpPower for mobile compatibility
+        Humanoid.UseJumpPower = true
+        print("Jump Power: ON (" .. Settings.JumpPower .. ")")
+    else
+        Humanoid.JumpPower = 50
+        Humanoid.UseJumpPower = true
+        print("Jump Power: OFF")
+    end
+end
+
+FeatureFunctions.ToggleSpectate = function()
+    States.Spectating = not States.Spectating
+    local alivePlayers = GetAlivePlayers()
+    if States.Spectating and #alivePlayers > 0 then
+        Settings.SpectateIndex = math.clamp(Settings.SpectateIndex, 1, #alivePlayers)
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+        print("Spectating: " .. targetPlayer.Name)
+    else
+        Workspace.CurrentCamera.CameraSubject = Humanoid
+        print("Spectate: OFF")
+    end
+end
+
+FeatureFunctions.NextSpectate = function()
+    if not States.Spectating then return end
+    local alivePlayers = GetAlivePlayers()
+    if #alivePlayers > 0 then
+        Settings.SpectateIndex = (Settings.SpectateIndex % #alivePlayers) + 1
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+        print("Spectating: " .. targetPlayer.Name)
+    end
+end
+
+FeatureFunctions.PrevSpectate = function()
+    if not States.Spectating then return end
+    local alivePlayers = GetAlivePlayers()
+    if #alivePlayers > 0 then
+        Settings.SpectateIndex = Settings.SpectateIndex - 1
+        if Settings.SpectateIndex < 1 then
+            Settings.SpectateIndex = #alivePlayers
+        end
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+        print("Spectating: " .. targetPlayer.Name)
+    end
+end
+
+FeatureFunctions.TeleportToSpectate = function()
+    if not States.Spectating then return end
+    local alivePlayers = GetAlivePlayers()
+    if #alivePlayers > 0 then
+        local targetPlayer = alivePlayers[Settings.SpectateIndex]
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            RootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame
+            print("Teleported to: " .. targetPlayer.Name)
+        end
+    end
+end
+
+FeatureFunctions.ToggleGodMode = function()
+    States.GodMode = not States.GodMode
+    if States.GodMode then
+        Humanoid.MaxHealth = math.huge
+        Humanoid.Health = math.huge
+        print("God Mode: ON")
+    else
+        Humanoid.MaxHealth = 100
+        Humanoid.Health = 100
+        print("God Mode: OFF")
+    end
+end
+
+FeatureFunctions.ToggleFullbright = function()
+    States.Fullbright = not States.Fullbright
+    if States.Fullbright then
+        game.Lighting.Brightness = 2
+        game.Lighting.ClockTime = 14
+        game.Lighting.FogEnd = 100000
+        game.Lighting.GlobalShadows = false
+        game.Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        print("Fullbright: ON")
+    else
+        game.Lighting.Brightness = 1
+        game.Lighting.ClockTime = 8
+        game.Lighting.FogEnd = 100000
+        game.Lighting.GlobalShadows = true
+        game.Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 70)
+        print("Fullbright: OFF")
+    end
+end
+
+FeatureFunctions.ToggleAntiAFK = function()
+    States.AntiAFK = not States.AntiAFK
+    if States.AntiAFK then
+        Connections.AntiAFK = RunService.Heartbeat:Connect(function()
+            game:GetService("VirtualUser"):CaptureController()
+            game:GetService("VirtualUser"):ClickButton2(Vector2.new())
+        end)
+        print("Anti AFK: ON")
+    else
+        if Connections.AntiAFK then
+            Connections.AntiAFK:Disconnect()
+            Connections.AntiAFK = nil
+        end
+        print("Anti AFK: OFF")
+    end
+end
+
+FeatureFunctions.SavePosition = function()
+    if RootPart then
+        Settings.SavedPosition = RootPart.CFrame
+        print("Position Saved!")
+    end
+end
+
+FeatureFunctions.TeleportToSavedPosition = function()
+    if Settings.SavedPosition and RootPart then
+        RootPart.CFrame = Settings.SavedPosition
+        print("Teleported to saved position!")
+    else
+        print("No saved position found!")
+    end
+end
+
+local function GetAlivePlayers()
+    local alivePlayers = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(alivePlayers, player)
+        end
+    end
+    return alivePlayers
+end
 
 -- Create Main GUI
 local function CreateGUI()
@@ -115,11 +294,10 @@ local function CreateGUI()
     
     _G.MobileExecutorGUI = ScreenGui
     
-    -- Main Frame
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 380, 0, 480)
-    MainFrame.Position = UDim2.new(1, -390, 0, 20)
+    MainFrame.Size = UDim2.new(0, 300, 0, 400) -- Smaller size for mobile
+    MainFrame.Position = UDim2.new(1, -310, 0, 20)
     MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     MainFrame.BorderSizePixel = 0
     MainFrame.Parent = ScreenGui
@@ -133,10 +311,9 @@ local function CreateGUI()
     Stroke.Thickness = 2
     Stroke.Parent = MainFrame
     
-    -- Header
     local Header = Instance.new("Frame")
     Header.Name = "Header"
-    Header.Size = UDim2.new(1, 0, 0, 60)
+    Header.Size = UDim2.new(1, 0, 0, 50)
     Header.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     Header.BorderSizePixel = 0
     Header.Parent = MainFrame
@@ -145,11 +322,10 @@ local function CreateGUI()
     HeaderCorner.CornerRadius = UDim.new(0, 12)
     HeaderCorner.Parent = Header
     
-    -- Logo
     local Logo = Instance.new("TextButton")
     Logo.Name = "Logo"
     Logo.Size = UDim2.new(0, 40, 0, 40)
-    Logo.Position = UDim2.new(0, 10, 0, 10)
+    Logo.Position = UDim2.new(0, 5, 0, 5)
     Logo.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
     Logo.BorderSizePixel = 0
     Logo.Text = "⚡"
@@ -162,23 +338,21 @@ local function CreateGUI()
     LogoCorner.CornerRadius = UDim.new(0, 8)
     LogoCorner.Parent = Logo
     
-    -- Title
     local Title = Instance.new("TextButton")
     Title.Name = "Title"
-    Title.Size = UDim2.new(1, -110, 1, 0)
-    Title.Position = UDim2.new(0, 60, 0, 0)
+    Title.Size = UDim2.new(1, -90, 1, 0)
+    Title.Position = UDim2.new(0, 50, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "Mobile Executor Pro"
+    Title.Text = "Mobile Executor"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextScaled = true
     Title.Font = Enum.Font.GothamBold
     Title.Parent = Header
     
-    -- Minimize Button
     local MinimizeButton = Instance.new("TextButton")
     MinimizeButton.Name = "MinimizeButton"
     MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
-    MinimizeButton.Position = UDim2.new(1, -40, 0, 15)
+    MinimizeButton.Position = UDim2.new(1, -35, 0, 10)
     MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
     MinimizeButton.BorderSizePixel = 0
     MinimizeButton.Text = "−"
@@ -191,20 +365,18 @@ local function CreateGUI()
     MinimizeCorner.CornerRadius = UDim.new(0, 6)
     MinimizeCorner.Parent = MinimizeButton
     
-    -- Content Area
     local ContentFrame = Instance.new("Frame")
     ContentFrame.Name = "ContentFrame"
-    ContentFrame.Size = UDim2.new(1, -10, 1, -70)
-    ContentFrame.Position = UDim2.new(0, 5, 0, 65)
+    ContentFrame.Size = UDim2.new(1, -10, 1, -60)
+    ContentFrame.Position = UDim2.new(0, 5, 0, 55)
     ContentFrame.BackgroundTransparency = 1
     ContentFrame.BorderSizePixel = 0
     ContentFrame.Visible = true
     ContentFrame.Parent = MainFrame
     
-    -- Category Frame
     local CategoryFrame = Instance.new("Frame")
     CategoryFrame.Name = "CategoryFrame"
-    CategoryFrame.Size = UDim2.new(0, 110, 1, 0)
+    CategoryFrame.Size = UDim2.new(0, 90, 1, 0)
     CategoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     CategoryFrame.BorderSizePixel = 0
     CategoryFrame.Parent = ContentFrame
@@ -230,14 +402,13 @@ local function CreateGUI()
     CategoryPadding.PaddingRight = UDim.new(0, 8)
     CategoryPadding.Parent = CategoryFrame
     
-    -- Features Frame
     local FeaturesFrame = Instance.new("ScrollingFrame")
     FeaturesFrame.Name = "FeaturesFrame"
-    FeaturesFrame.Size = UDim2.new(1, -120, 1, 0)
-    FeaturesFrame.Position = UDim2.new(0, 120, 0, 0)
+    FeaturesFrame.Size = UDim2.new(1, -100, 1, 0)
+    FeaturesFrame.Position = UDim2.new(0, 100, 0, 0)
     FeaturesFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     FeaturesFrame.BorderSizePixel = 0
-    FeaturesFrame.ScrollBarThickness = 6
+    FeaturesFrame.ScrollBarThickness = 4
     FeaturesFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
     FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     FeaturesFrame.Parent = ContentFrame
@@ -279,7 +450,7 @@ end
 local function CreateCategoryButton(name, parent)
     local Button = Instance.new("TextButton")
     Button.Name = name .. "Category"
-    Button.Size = UDim2.new(1, 0, 0, 40)
+    Button.Size = UDim2.new(1, 0, 0, 35)
     Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     Button.BorderSizePixel = 0
     Button.Text = name
@@ -293,25 +464,16 @@ local function CreateCategoryButton(name, parent)
     ButtonCorner.Parent = Button
     
     local function UpdateCategoryAppearance()
-        if CurrentCategory == name then
-            Button.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-            Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            Button.TextColor3 = Color3.fromRGB(200, 200, 200)
-        end
+        Button.BackgroundColor3 = CurrentCategory == name and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(40, 40, 40)
+        Button.TextColor3 = CurrentCategory == name and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
     end
-    
-    Button.MouseButton1Click:Connect(function()
-        CurrentCategory = name
-        UpdateAllCategories()
-        LoadCategoryFeatures(name)
-    end)
     
     Button.TouchTap:Connect(function()
         CurrentCategory = name
         UpdateAllCategories()
-        LoadCategoryFeatures(name)
+        task.spawn(function()
+            LoadCategoryFeatures(name)
+        end)
     end)
     
     UpdateCategoryAppearance()
@@ -322,7 +484,7 @@ end
 local function CreateFeatureButton(name, funcName, parent)
     local Button = Instance.new("TextButton")
     Button.Name = name
-    Button.Size = UDim2.new(1, 0, 0, 45)
+    Button.Size = UDim2.new(1, 0, 0, 40)
     Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
     Button.BorderSizePixel = 0
     Button.Text = name
@@ -340,24 +502,13 @@ local function CreateFeatureButton(name, funcName, parent)
     ButtonStroke.Thickness = 1
     ButtonStroke.Parent = Button
     
-    Button.MouseEnter:Connect(function()
-        Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    end)
-    
-    Button.MouseLeave:Connect(function()
-        Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    end)
-    
-    local function handleClick()
+    Button.TouchTap:Connect(function()
         if FeatureFunctions[funcName] then
             FeatureFunctions[funcName]()
         else
             print("Function not found: " .. tostring(funcName))
         end
-    end
-    
-    Button.MouseButton1Click:Connect(handleClick)
-    Button.TouchTap:Connect(handleClick)
+    end)
     
     return Button
 end
@@ -371,14 +522,12 @@ end
 
 -- Load features for selected category
 local function LoadCategoryFeatures(categoryName)
-    -- Clear current features
     for _, child in pairs(GUI.FeaturesFrame:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
         end
     end
     
-    -- Load new features
     local categoryFeatures = Categories[categoryName]
     if categoryFeatures then
         for _, feature in pairs(categoryFeatures) do
@@ -386,31 +535,30 @@ local function LoadCategoryFeatures(categoryName)
         end
     end
     
-    -- Update canvas size immediately
-    local layout = GUI.FeaturesFrame.UIListLayout
-    GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
+    GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
 end
 
 -- Minimize/Maximize functionality
 local function ToggleMinimize()
     IsMinimized = not IsMinimized
     
-    local targetSize = IsMinimized and UDim2.new(0, 380, 0, 60) or UDim2.new(0, 380, 0, 480)
+    local targetSize = IsMinimized and UDim2.new(0, 50, 0, 50) or UDim2.new(0, 300, 0, 400)
     local targetText = IsMinimized and "+" or "−"
     
     GUI.MinimizeButton.Text = targetText
     GUI.ContentFrame.Visible = not IsMinimized
+    GUI.Header.Visible = not IsMinimized
+    GUI.Logo.Visible = true
     
     local tween = TweenService:Create(
         GUI.MainFrame,
         TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {Size = targetSize}
+        {Size = targetSize, Position = IsMinimized and UDim2.new(1, -60, 0, 20) or UDim2.new(1, -310, 0, 20)}
     )
     tween:Play()
     
-    -- Ensure canvas size is updated after minimizing/maximizing
     if not IsMinimized then
-        task.defer(function()
+        task.spawn(function()
             LoadCategoryFeatures(CurrentCategory)
         end)
     end
@@ -422,14 +570,8 @@ local function MakeDraggable(frame, dragButton)
     local dragStart = nil
     local startPos = nil
     
-    local function updateInput(input)
-        local delta = input.Position - dragStart
-        local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        frame.Position = position
-    end
-    
     dragButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.Touch then
             dragToggle = true
             dragStart = input.Position
             startPos = frame.Position
@@ -437,15 +579,15 @@ local function MakeDraggable(frame, dragButton)
     end)
     
     dragButton.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            if dragToggle then
-                updateInput(input)
-            end
+        if input.UserInputType == Enum.UserInputType.Touch and dragToggle then
+            local delta = input.Position - dragStart
+            local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            frame.Position = position
         end
     end)
     
     dragButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.Touch then
             dragToggle = false
         end
     end)
@@ -455,25 +597,21 @@ end
 local function InitializeGUI()
     GUI = CreateGUI()
     
-    -- Create category buttons
     for categoryName, _ in pairs(Categories) do
         local button, updateFunc = CreateCategoryButton(categoryName, GUI.CategoryFrame)
         CategoryUpdateFunctions[categoryName] = updateFunc
     end
     
-    -- Enable dragging
     MakeDraggable(GUI.MainFrame, GUI.Logo)
     MakeDraggable(GUI.MainFrame, GUI.Title)
     
-    -- Minimize button functionality
-    GUI.MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
     GUI.MinimizeButton.TouchTap:Connect(ToggleMinimize)
     
-    -- Load default category
-    LoadCategoryFeatures(CurrentCategory)
+    task.spawn(function()
+        LoadCategoryFeatures(CurrentCategory)
+    end)
     UpdateAllCategories()
     
-    -- Auto-update canvas size
     GUI.FeaturesFrame.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
     end)
@@ -490,11 +628,10 @@ Player.CharacterAdded:Connect(function(newCharacter)
     end
     
     Humanoid.WalkSpeed = 16
-    if Humanoid:FindFirstChild("JumpHeight") then
-        Humanoid.JumpHeight = 7.2
-    else
-        Humanoid.JumpPower = 50
-    end
+    Humanoid.JumpPower = 50
+    Humanoid.UseJumpPower = true
+    Humanoid.MaxHealth = 100
+    Humanoid.Health = 100
     
     for _, connection in pairs(Connections) do
         if connection then
@@ -516,11 +653,8 @@ local function Cleanup()
     
     if Humanoid then
         Humanoid.WalkSpeed = 16
-        if Humanoid:FindFirstChild("JumpHeight") then
-            Humanoid.JumpHeight = 7.2
-        else
-            Humanoid.JumpPower = 50
-        end
+        Humanoid.JumpPower = 50
+        Humanoid.UseJumpPower = true
         Humanoid.MaxHealth = 100
         Humanoid.Health = 100
     end
@@ -539,24 +673,18 @@ local function Cleanup()
         if RootPart:FindFirstChild("BodyVelocity") then
             RootPart.BodyVelocity:Destroy()
         end
-        if RootPart:FindFirstChild("SpiderVelocity") then
-            RootPart.SpiderVelocity:Destroy()
-        end
     end
     
     print("Mobile Executor GUI cleaned up")
 end
 
 -- Handle script removal
-if GUI.ScreenGui then
-    GUI.ScreenGui.AncestryChanged:Connect(function()
-        if not GUI.ScreenGui.Parent then
-            Cleanup()
-        end
-    end)
-end
+GUI.ScreenGui.AncestryChanged:Connect(function()
+    if not GUI.ScreenGui.Parent then
+        Cleanup()
+    end
+end)
 
--- Handle player leaving
 Players.PlayerRemoving:Connect(function(player)
     if player == Player then
         Cleanup()
@@ -566,8 +694,8 @@ end)
 -- Initialize
 InitializeGUI()
 
-print("✅ Mobile Executor GUI with Categories Loaded Successfully!")
-print("📱 Features: Movement, Spectate, Utility")
-print("🎯 Click logo or title to drag GUI")
-print("📦 Click minimize button to hide/show")
-print("⚡ All features are working and ready to use!")
+print("✅ Mobile Executor GUI Loaded Successfully!")
+print("📱 Optimized for Mobile Only")
+print("🎯 Drag logo or title to move GUI")
+print("📦 Tap minimize button to hide/show")
+print("⚡ All features are mobile-ready!")
