@@ -4,6 +4,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
+local DataStoreService = game:GetService("DataStoreService")
 
 -- Player
 local Player = Players.LocalPlayer
@@ -22,12 +23,27 @@ local spectating = false
 local godMode = false
 local fullbright = false
 local antiAFK = false
-local savedPosition = nil
+local savedPositions = {}
 local spiderEnabled = false
 local selectedPlayer = nil
 local playersList = Players:GetPlayers()
 local guiVisible = true
 local minimized = false
+local freecamEnabled = false
+local freecamCamera = nil
+local freecamCFrame = nil
+local selectedPositionIndex = 1
+
+-- DataStore for persistent storage
+local PositionStore = DataStoreService:GetDataStore("SavedPositions")
+
+-- Load saved positions
+local success, loadedPositions = pcall(function()
+    return PositionStore:GetAsync(Player.UserId .. "_positions") or {}
+end)
+if success then
+    savedPositions = loadedPositions
+end
 
 -- Disable Previous Script
 local guiName = "MobileCheatGUI"
@@ -80,6 +96,43 @@ MinimizeButton.Text = "-"
 MinimizeButton.TextScaled = true
 MinimizeButton.Parent = MainFrame
 
+-- Draggable UI
+local dragging, dragInput, dragStart, startPos
+local function updateDrag(input, frame)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+local function makeDraggable(frame)
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    frame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input == dragInput then
+        updateDrag(input, LogoButton)
+        updateDrag(input, MainFrame)
+    end
+end)
+
+makeDraggable(LogoButton)
+makeDraggable(MainFrame)
+
 local function createButton(parent, text, position, callback)
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(0.9, 0, 0.1, 0)
@@ -115,7 +168,7 @@ MinimizeButton.MouseButton1Click:Connect(function()
 end)
 
 -- Category Buttons
-local categories = {"Movement", "Visual", "Player", "Teleport"}
+local categories = {"Movement", "Visual", "Player", "Teleport", "Camera"}
 local currentCategory = "Movement"
 local categoryButtons = {}
 
@@ -188,19 +241,59 @@ local function loadCategoryContent()
         end)
     elseif currentCategory == "Teleport" then
         createButton(ContentFrame, "Save Position", UDim2.new(0.05, 0, 0.05, 0), function()
-            savedPosition = RootPart.CFrame
+            local positionName = "Position " .. (#savedPositions + 1)
+            table.insert(savedPositions, {name = positionName, cframe = RootPart.CFrame})
+            pcall(function()
+                PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
+            end)
         end)
-        createButton(ContentFrame, "TP to Saved Pos", UDim2.new(0.05, 0, 0.2, 0), function()
-            if savedPosition then
-                RootPart.CFrame = savedPosition
+        createButton(ContentFrame, "Next Position", UDim2.new(0.05, 0, 0.2, 0), function()
+            selectedPositionIndex = selectedPositionIndex + 1
+            if selectedPositionIndex > #savedPositions then selectedPositionIndex = 1 end
+        end)
+        createButton(ContentFrame, "Prev Position", UDim2.new(0.05, 0, 0.35, 0), function()
+            selectedPositionIndex = selectedPositionIndex - 1
+            if selectedPositionIndex < 1 then selectedPositionIndex = #savedPositions end
+        end)
+        createButton(ContentFrame, "TP to Saved Pos", UDim2.new(0.05, 0, 0.5, 0), function()
+            if savedPositions[selectedPositionIndex] then
+                RootPart.CFrame = savedPositions[selectedPositionIndex].cframe
             end
         end)
-        createButton(ContentFrame, "Select Player", UDim2.new(0.05, 0, 0.35, 0), function()
+        createButton(ContentFrame, "Rename Position", UDim2.new(0.05, 0, 0.65, 0), function()
+            if savedPositions[selectedPositionIndex] then
+                local newName = "Renamed " .. selectedPositionIndex -- Placeholder for mobile input
+                savedPositions[selectedPositionIndex].name = newName
+                pcall(function()
+                    PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
+                end)
+            end
+        end)
+        createButton(ContentFrame, "Delete Position", UDim2.new(0.05, 0, 0.8, 0), function()
+            if savedPositions[selectedPositionIndex] then
+                table.remove(savedPositions, selectedPositionIndex)
+                pcall(function()
+                    PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
+                end)
+                if selectedPositionIndex > #savedPositions then selectedPositionIndex = #savedPositions end
+            end
+        end)
+        createButton(ContentFrame, "Select Player", UDim2.new(0.05, 0, 0.95, 0), function()
             selectedPlayer = playersList[spectateIndex]
         end)
-        createButton(ContentFrame, "TP to Player", UDim2.new(0.05, 0, 0.5, 0), function()
+        createButton(ContentFrame, "TP to Player", UDim2.new(0.05, 0, 1.1, 0), function()
             if selectedPlayer and selectedPlayer.Character then
                 RootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame
+            end
+        end)
+    elseif currentCategory == "Camera" then
+        createButton(ContentFrame, "Toggle Freecam", UDim2.new(0.05, 0, 0.05, 0), function()
+            freecamEnabled = not freecamEnabled
+            toggleFreecam()
+        end)
+        createButton(ContentFrame, "TP to Freecam", UDim2.new(0.05, 0, 0.2, 0), function()
+            if freecamEnabled and freecamCFrame then
+                RootPart.CFrame = freecamCFrame
             end
         end)
     end
@@ -256,6 +349,63 @@ local function toggleSpectate()
         workspace.CurrentCamera.CameraSubject = Humanoid
     end
 end
+
+-- Freecam
+local function toggleFreecam()
+    if freecamEnabled then
+        freecamCamera = workspace.CurrentCamera:Clone()
+        freecamCamera.CameraType = Enum.CameraType.Scriptable
+        freecamCamera.Parent = workspace
+        freecamCFrame = workspace.CurrentCamera.CFrame
+        workspace.CurrentCamera = freecamCamera
+    else
+        if freecamCamera then
+            freecamCamera:Destroy()
+            freecamCamera = nil
+            workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+            workspace.CurrentCamera.CameraSubject = Humanoid
+        end
+    end
+end
+
+-- Freecam Joystick
+local joystickFrame = Instance.new("Frame")
+joystickFrame.Size = UDim2.new(0.3, 0, 0.3, 0)
+joystickFrame.Position = UDim2.new(0.65, 0, 0.65, 0)
+joystickFrame.BackgroundTransparency = 1
+joystickFrame.Parent = ScreenGui
+
+local joystickTouchId = nil
+local joystickStartPos = nil
+UserInputService.InputBegan:Connect(function(input)
+    if freecamEnabled and input.UserInputType == Enum.UserInputType.Touch then
+        local touchPos = input.Position
+        if touchPos.X > joystickFrame.AbsolutePosition.X and touchPos.X < joystickFrame.AbsolutePosition.X + joystickFrame.AbsoluteSize.X and
+           touchPos.Y > joystickFrame.AbsolutePosition.Y and touchPos.Y < joystickFrame.AbsolutePosition.Y + joystickFrame.AbsoluteSize.Y then
+            joystickTouchId = input.UserInputId
+            joystickStartPos = touchPos
+        end
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if freecamEnabled and input.UserInputType == Enum.UserInputType.Touch and input.UserInputId == joystickTouchId then
+        local delta = (input.Position - joystickStartPos) / 100
+        if freecamCamera then
+            local lookVector = freecamCFrame.LookVector
+            local rightVector = freecamCFrame.RightVector
+            freecamCFrame = freecamCFrame * CFrame.new(-delta.X * rightVector + delta.Y * lookVector)
+            freecamCamera.CFrame = freecamCFrame
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch and input.UserInputId == joystickTouchId then
+        joystickTouchId = nil
+        joystickStartPos = nil
+    end
+end)
 
 -- Noclip
 RunService.Stepped:Connect(function()
