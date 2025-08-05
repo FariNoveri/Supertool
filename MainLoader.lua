@@ -1,5 +1,5 @@
 -- Mobile-Only Roblox Executor GUI Script
--- Fixes minimize, category switching, adds Player Noclip feature
+-- Fixes Utility and Spectate category switching, retains minimize and Player Noclip
 
 -- Prevent multiple instances
 if _G.MobileExecutorGUI then
@@ -270,13 +270,11 @@ end
 FeatureFunctions.TogglePlayerNoclip = function()
     States.PlayerNoclip = not States.PlayerNoclip
     if States.PlayerNoclip then
-        -- Set up collision groups
         pcall(function()
             PhysicsService:CreateCollisionGroup("NoPlayerCollision")
             PhysicsService:CreateCollisionGroup("DefaultPlayer")
             PhysicsService:CollisionGroupSetCollidable("NoPlayerCollision", "DefaultPlayer", false)
             
-            -- Set local player's parts to NoPlayerCollision
             if Character then
                 for _, part in pairs(Character:GetChildren()) do
                     if part:IsA("BasePart") then
@@ -285,7 +283,6 @@ FeatureFunctions.TogglePlayerNoclip = function()
                 end
             end
             
-            -- Set other players' parts to DefaultPlayer
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= Player and player.Character then
                     for _, part in pairs(player.Character:GetChildren()) do
@@ -296,7 +293,6 @@ FeatureFunctions.TogglePlayerNoclip = function()
                 end
             end
             
-            -- Handle new players
             Connections.PlayerNoclip = Players.PlayerAdded:Connect(function(newPlayer)
                 if newPlayer ~= Player and newPlayer.Character then
                     for _, part in pairs(newPlayer.Character:GetChildren()) do
@@ -314,7 +310,6 @@ FeatureFunctions.TogglePlayerNoclip = function()
             Connections.PlayerNoclip:Disconnect()
             Connections.PlayerNoclip = nil
         end
-        -- Reset collision groups
         pcall(function()
             if Character then
                 for _, part in pairs(Character:GetChildren()) do
@@ -407,6 +402,8 @@ local function CreateGUI()
         Logo.Font = Enum.Font.GothamBold
         Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
         Logo.ZIndex = 15
+        Logo.Active = true
+        Logo.Selectable = true
         Logo.Parent = MainFrame
         
         local LogoCorner = Instance.new("UICorner")
@@ -435,6 +432,8 @@ local function CreateGUI()
         Title.TextScaled = true
         Title.Font = Enum.Font.GothamBold
         Title.ZIndex = 12
+        Title.Active = true
+        Title.Selectable = true
         Title.Parent = Header
         
         local MinimizeButton = Instance.new("TextButton")
@@ -448,6 +447,8 @@ local function CreateGUI()
         MinimizeButton.Font = Enum.Font.GothamBold
         MinimizeButton.TextColor3 = Color3.fromRGB(0, 0, 0)
         MinimizeButton.ZIndex = 12
+        MinimizeButton.Active = true
+        MinimizeButton.Selectable = true
         MinimizeButton.Parent = Header
         
         local MinimizeCorner = Instance.new("UICorner")
@@ -469,7 +470,8 @@ local function CreateGUI()
         CategoryFrame.Size = UDim2.new(0, 90, 1, 0)
         CategoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         CategoryFrame.BorderSizePixel = 0
-        CategoryFrame.ZIndex = 11
+        CategoryFrame.ZIndex = 12
+        CategoryFrame.ClipsDescendants = false
         CategoryFrame.Parent = ContentFrame
         
         local CategoryCorner = Instance.new("UICorner")
@@ -478,7 +480,6 @@ local function CreateGUI()
         
         local CategoryStroke = Instance.new("UIStroke")
         CategoryStroke.Color = Color3.fromRGB(50, 50, 50)
-        CategoryStroke.Transparency = 0
         CategoryStroke.Thickness = 1
         CategoryStroke.Parent = CategoryFrame
         
@@ -534,7 +535,6 @@ local function CreateGUI()
         GUI.Logo = Logo
         GUI.Title = Title
         GUI.MinimizeButton = MinimizeButton
-        GUI.ContentFrame = ContentFrame
         GUI.MainStroke = Stroke
         
         return GUI
@@ -550,6 +550,7 @@ end
 -- Create Category Button
 local function CreateCategoryButton(name, parent)
     local success, result = pcall(function()
+        print("Creating category button: " .. name)
         local Button = Instance.new("TextButton")
         Button.Name = name .. "Category"
         Button.Size = UDim2.new(1, 0, 0, 35)
@@ -559,7 +560,9 @@ local function CreateCategoryButton(name, parent)
         Button.TextColor3 = Color3.fromRGB(200, 200, 200)
         Button.TextScaled = true
         Button.Font = Enum.Font.GothamSemibold
-        Button.ZIndex = 13
+        Button.ZIndex = 15
+        Button.Active = true
+        Button.Selectable = true
         Button.Parent = parent
         
         local ButtonCorner = Instance.new("UICorner")
@@ -581,6 +584,7 @@ local function CreateCategoryButton(name, parent)
         end)
         
         UpdateCategoryAppearance()
+        print("Category button created: " .. name)
         return Button, UpdateCategoryAppearance
     end)
     
@@ -594,6 +598,7 @@ end
 -- Create Feature Button
 local function CreateFeatureButton(name, funcName, parent)
     local success, result = pcall(function()
+        print("Creating feature button: " .. name)
         local Button = Instance.new("TextButton")
         Button.Name = name
         Button.Size = UDim2.new(1, 0, 0, 40)
@@ -603,7 +608,9 @@ local function CreateFeatureButton(name, funcName, parent)
         Button.TextColor3 = Color3.fromRGB(255, 255, 255)
         Button.TextScaled = true
         Button.Font = Enum.Font.Gotham
-        Button.ZIndex = 13
+        Button.ZIndex = 15
+        Button.Active = true
+        Button.Selectable = true
         Button.Parent = parent
         
         local ButtonCorner = Instance.new("UICorner")
@@ -624,6 +631,7 @@ local function CreateFeatureButton(name, funcName, parent)
             end
         end)
         
+        print("Feature button created: " .. name)
         return Button
     end)
     
@@ -653,6 +661,7 @@ end
 -- Load features for selected category
 local function LoadCategoryFeatures(categoryName)
     local success, result = pcall(function()
+        print("Loading features for category: " .. categoryName)
         -- Clear existing feature buttons
         for _, child in pairs(GUI.FeaturesFrame:GetChildren()) do
             if child:IsA("TextButton") then
@@ -668,12 +677,17 @@ local function LoadCategoryFeatures(categoryName)
         end
         
         -- Load feature buttons
-        for _, feature in ipairs(categoryFeatures) do
-            CreateFeatureButton(feature.name, feature.func, GUI.FeaturesFrame)
+        for i, feature in ipairs(categoryFeatures) do
+            print("Loading feature " .. i .. ": " .. feature.name)
+            local button = CreateFeatureButton(feature.name, feature.func, GUI.FeaturesFrame)
+            if not button then
+                warn("Failed to create feature button: " .. feature.name)
+            end
         end
         
         -- Update canvas size
         GUI.FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, GUI.FeaturesFrame.UIListLayout.AbsoluteContentSize.Y + 20)
+        print("Features loaded for category: " .. categoryName)
     end)
     
     if not success then
@@ -823,7 +837,6 @@ Player.CharacterAdded:Connect(function(newCharacter)
         end
         Connections = {}
         
-        -- Reapply Player Noclip if active
         if States.PlayerNoclip then
             FeatureFunctions.TogglePlayerNoclip()
             FeatureFunctions.TogglePlayerNoclip()
@@ -868,7 +881,6 @@ local function Cleanup()
             RootPart.BodyVelocity:Destroy()
         end
         
-        -- Reset collision groups
         pcall(function()
             if Character then
                 for _, part in pairs(Character:GetChildren()) do
