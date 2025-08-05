@@ -1,5 +1,5 @@
 -- Mobile-Only Roblox Executor GUI Script
--- Fixes Utility and Spectate category switching, retains minimize and Player Noclip
+-- Fixes minimize to circular logo, Utility/Spectate category switching, Delta compatibility
 
 -- Prevent multiple instances
 if _G.MobileExecutorGUI then
@@ -393,7 +393,7 @@ local function CreateGUI()
         
         local Logo = Instance.new("TextButton")
         Logo.Name = "Logo"
-        Logo.Size = UDim2.new(0, 40, 0, 40)
+        Logo.Size = UDim2.new(0, 50, 0, 50)
         Logo.Position = UDim2.new(0, 5, 0, 5)
         Logo.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
         Logo.BorderSizePixel = 0
@@ -401,13 +401,14 @@ local function CreateGUI()
         Logo.TextScaled = true
         Logo.Font = Enum.Font.GothamBold
         Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
-        Logo.ZIndex = 15
+        Logo.ZIndex = 20
         Logo.Active = true
         Logo.Selectable = true
-        Logo.Parent = MainFrame
+        Logo.AutoButtonColor = true
+        Logo.Parent = ScreenGui -- Initially parented to ScreenGui for minimize
         
         local LogoCorner = Instance.new("UICorner")
-        LogoCorner.CornerRadius = UDim.new(0, 8)
+        LogoCorner.CornerRadius = UDim.new(0.5, 0) -- Circular logo
         LogoCorner.Parent = Logo
         
         local Header = Instance.new("Frame")
@@ -434,6 +435,7 @@ local function CreateGUI()
         Title.ZIndex = 12
         Title.Active = true
         Title.Selectable = true
+        Title.AutoButtonColor = true
         Title.Parent = Header
         
         local MinimizeButton = Instance.new("TextButton")
@@ -449,6 +451,7 @@ local function CreateGUI()
         MinimizeButton.ZIndex = 12
         MinimizeButton.Active = true
         MinimizeButton.Selectable = true
+        MinimizeButton.AutoButtonColor = true
         MinimizeButton.Parent = Header
         
         local MinimizeCorner = Instance.new("UICorner")
@@ -470,7 +473,7 @@ local function CreateGUI()
         CategoryFrame.Size = UDim2.new(0, 90, 1, 0)
         CategoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         CategoryFrame.BorderSizePixel = 0
-        CategoryFrame.ZIndex = 12
+        CategoryFrame.ZIndex = 15
         CategoryFrame.ClipsDescendants = false
         CategoryFrame.Parent = ContentFrame
         
@@ -504,7 +507,7 @@ local function CreateGUI()
         FeaturesFrame.ScrollBarThickness = 4
         FeaturesFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
         FeaturesFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-        FeaturesFrame.ZIndex = 11
+        FeaturesFrame.ZIndex = 10
         FeaturesFrame.Parent = ContentFrame
         
         local FeaturesCorner = Instance.new("UICorner")
@@ -560,9 +563,10 @@ local function CreateCategoryButton(name, parent)
         Button.TextColor3 = Color3.fromRGB(200, 200, 200)
         Button.TextScaled = true
         Button.Font = Enum.Font.GothamSemibold
-        Button.ZIndex = 15
+        Button.ZIndex = 20
         Button.Active = true
         Button.Selectable = true
+        Button.AutoButtonColor = true
         Button.Parent = parent
         
         local ButtonCorner = Instance.new("UICorner")
@@ -575,12 +579,24 @@ local function CreateCategoryButton(name, parent)
         end
         
         Button.TouchTap:Connect(function()
-            print("Tapped category: " .. name)
+            print("Tapped category (TouchTap): " .. name)
             CurrentCategory = name
             UpdateAllCategories()
-            task.spawn(function()
+            task.defer(function()
                 LoadCategoryFeatures(name)
             end)
+        end)
+        
+        -- Fallback for Delta: Use InputBegan for touch detection
+        Button.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                print("Tapped category (InputBegan): " .. name)
+                CurrentCategory = name
+                UpdateAllCategories()
+                task.defer(function()
+                    LoadCategoryFeatures(name)
+                end)
+            end
         end)
         
         UpdateCategoryAppearance()
@@ -608,9 +624,10 @@ local function CreateFeatureButton(name, funcName, parent)
         Button.TextColor3 = Color3.fromRGB(255, 255, 255)
         Button.TextScaled = true
         Button.Font = Enum.Font.Gotham
-        Button.ZIndex = 15
+        Button.ZIndex = 20
         Button.Active = true
         Button.Selectable = true
+        Button.AutoButtonColor = true
         Button.Parent = parent
         
         local ButtonCorner = Instance.new("UICorner")
@@ -623,11 +640,23 @@ local function CreateFeatureButton(name, funcName, parent)
         ButtonStroke.Parent = Button
         
         Button.TouchTap:Connect(function()
-            print("Tapped feature: " .. name)
+            print("Tapped feature (TouchTap): " .. name)
             if FeatureFunctions[funcName] then
                 FeatureFunctions[funcName]()
             else
                 print("Function not found: " .. tostring(funcName))
+            end
+        end)
+        
+        -- Fallback for Delta: Use InputBegan for touch detection
+        Button.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                print("Tapped feature (InputBegan): " .. name)
+                if FeatureFunctions[funcName] then
+                    FeatureFunctions[funcName]()
+                else
+                    print("Function not found: " .. tostring(funcName))
+                end
             end
         end)
         
@@ -700,28 +729,31 @@ local function ToggleMinimize()
     local success, result = pcall(function()
         IsMinimized = not IsMinimized
         
-        local targetSize = IsMinimized and UDim2.new(0, 50, 0, 50) or UDim2.new(0, 300, 0, 400)
-        local targetText = IsMinimized and "+" or "−"
-        
-        GUI.MainFrame.BackgroundTransparency = IsMinimized and 1 or 0
-        GUI.MainStroke.Transparency = IsMinimized and 1 or 0
-        GUI.ContentFrame.Visible = not IsMinimized
-        GUI.Header.Visible = not IsMinimized
-        GUI.Logo.Visible = true
-        GUI.MinimizeButton.Visible = not IsMinimized
-        
-        local tween = TweenService:Create(
-            GUI.MainFrame,
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {Size = targetSize, Position = IsMinimized and UDim2.new(1, -60, 0, 20) or UDim2.new(1, -310, 0, 20)}
-        )
-        tween:Play()
-        
-        if not IsMinimized then
-            task.spawn(function()
+        if IsMinimized then
+            -- Hide MainFrame and its children
+            GUI.MainFrame.Visible = false
+            GUI.Logo.Parent = GUI.ScreenGui
+            GUI.Logo.Size = UDim2.new(0, 50, 0, 50)
+            GUI.Logo.Position = UDim2.new(1, -60, 0, 20)
+        else
+            -- Show MainFrame and reparent Logo
+            GUI.MainFrame.Visible = true
+            GUI.Logo.Parent = GUI.MainFrame
+            GUI.Logo.Size = UDim2.new(0, 50, 0, 50)
+            GUI.Logo.Position = UDim2.new(0, 5, 0, 5)
+            task.defer(function()
                 LoadCategoryFeatures(CurrentCategory)
             end)
         end
+        
+        local tween = TweenService:Create(
+            GUI.Logo,
+            TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Size = UDim2.new(0, 50, 0, 50), Position = IsMinimized and UDim2.new(1, -60, 0, 20) or UDim2.new(0, 5, 0, 5)}
+        )
+        tween:Play()
+        
+        print("Minimize state: " .. (IsMinimized and "Minimized" or "Maximized"))
     end)
     
     if not success then
@@ -729,43 +761,49 @@ local function ToggleMinimize()
     end
 end
 
--- Make GUI and Logo draggable
-local function MakeDraggable(frame, dragButton)
+-- Make Logo draggable
+local function MakeDraggable(button)
     local success, result = pcall(function()
         local dragToggle = false
         local dragStart = nil
         local startPos = nil
         
-        dragButton.InputBegan:Connect(function(input)
+        button.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.Touch then
                 dragToggle = true
                 dragStart = input.Position
-                startPos = frame.Position
+                startPos = button.Position
             end
         end)
         
-        dragButton.InputChanged:Connect(function(input)
+        button.InputChanged:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.Touch and dragToggle then
                 local delta = input.Position - dragStart
                 local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-                frame.Position = position
+                button.Position = position
             end
         end)
         
-        dragButton.InputEnded:Connect(function(input)
+        button.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.Touch then
                 dragToggle = false
             end
         end)
         
-        if dragButton == GUI.Logo then
-            dragButton.TouchTap:Connect(function()
-                if IsMinimized then
-                    print("Logo tapped, maximizing GUI")
-                    ToggleMinimize()
-                end
-            end)
-        end
+        button.TouchTap:Connect(function()
+            if IsMinimized then
+                print("Logo tapped, maximizing GUI")
+                ToggleMinimize()
+            end
+        end)
+        
+        -- Fallback for Delta: Use InputBegan for tap detection
+        button.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch and IsMinimized then
+                print("Logo tapped (InputBegan), maximizing GUI")
+                ToggleMinimize()
+            end
+        end)
     end)
     
     if not success then
@@ -790,15 +828,22 @@ local function InitializeGUI()
             end
         end
         
-        MakeDraggable(GUI.MainFrame, GUI.Logo)
-        MakeDraggable(GUI.MainFrame, GUI.Title)
+        MakeDraggable(GUI.Logo)
         
         GUI.MinimizeButton.TouchTap:Connect(function()
-            print("Minimize button tapped")
+            print("Minimize button tapped (TouchTap)")
             ToggleMinimize()
         end)
         
-        task.spawn(function()
+        -- Fallback for Delta: Use InputBegan for minimize button
+        GUI.MinimizeButton.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                print("Minimize button tapped (InputBegan)")
+                ToggleMinimize()
+            end
+        end)
+        
+        task.defer(function()
             LoadCategoryFeatures(CurrentCategory)
         end)
         UpdateAllCategories()
@@ -929,8 +974,8 @@ if not success then
     warn("Error during initialization: " .. tostring(result))
 else
     print("✅ Mobile Executor GUI Loaded Successfully!")
-    print("📱 Optimized for Mobile Only")
-    print("🎯 Drag logo or title to move GUI")
+    print("📱 Optimized for Mobile (Delta Executor)")
+    print("🎯 Drag logo to move GUI")
     print("📦 Tap minimize button to hide GUI, tap logo to show")
     print("⚡ All features are mobile-ready!")
 end
