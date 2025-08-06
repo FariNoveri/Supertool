@@ -14,7 +14,6 @@ local rootPart = character:WaitForChild("HumanoidRootPart")
 for _, gui in pairs(CoreGui:GetChildren()) do
     if gui.Name == "MinimalHackGUI" then
         gui:Destroy()
-        print("Previous MinimalHackGUI removed")
     end
 end
 
@@ -390,7 +389,6 @@ local function togglePlayerPhase(enabled)
         if connections.playerphase then
             connections.playerphase:Disconnect()
         end
-        -- Reset collision untuk semua player
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player and otherPlayer.Character then
                 for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -417,7 +415,6 @@ local function toggleFly(enabled)
                 local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
-                -- Get camera direction
                 local cameraCFrame = camera.CFrame
                 local forwardVector = cameraCFrame.LookVector
                 local rightVector = cameraCFrame.RightVector
@@ -426,15 +423,11 @@ local function toggleFly(enabled)
                 local velocity = Vector3.new(0, 0, 0)
                 local speed = settings.FlySpeed.value
                 
-                -- Movement berdasarkan virtual thumbstick Android
                 if moveVector.Magnitude > 0 then
-                    -- Forward/Backward (thumbstick up/down)
                     velocity = velocity + (forwardVector * -moveVector.Z * speed)
-                    -- Left/Right (thumbstick left/right)  
                     velocity = velocity + (rightVector * moveVector.X * speed)
                 end
                 
-                -- Jump button Android untuk naik
                 if humanoid.Jump then
                     velocity = velocity + (upVector * speed)
                     humanoid.Jump = false
@@ -495,7 +488,7 @@ local function toggleJumpHigh(enabled)
     jumpHighEnabled = enabled
     if enabled then
         humanoid.JumpHeight = settings.JumpHeight.value
-        humanoid.JumpPower = settings.JumpHeight.value * 2.4 -- Adjusted for Roblox physics
+        humanoid.JumpPower = settings.JumpHeight.value * 2.4
         connections.jumphigh = humanoid.Jumping:Connect(function()
             if jumpHighEnabled then
                 rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 2.4, rootPart.Velocity.Z)
@@ -571,17 +564,14 @@ local pitch = 0
 local function toggleFreecam(enabled)
     freecamEnabled = enabled
     if enabled then
-        -- Store the current camera subject
         originalCameraSubject = workspace.CurrentCamera.CameraSubject
         
-        -- Initialize freecam position to character's current position if available, otherwise camera position
         if character and rootPart then
             freecamPosition = rootPart.Position
         else
             freecamPosition = workspace.CurrentCamera.CFrame.Position
         end
         
-        -- Create freecam part
         freecamPart = Instance.new("Part")
         freecamPart.Name = "FreecamPart"
         freecamPart.Anchored = true
@@ -591,29 +581,24 @@ local function toggleFreecam(enabled)
         freecamPart.CFrame = CFrame.new(freecamPosition, freecamPosition + workspace.CurrentCamera.CFrame.LookVector)
         freecamPart.Parent = workspace
         
-        -- Set camera to freecam part
         workspace.CurrentCamera.CameraSubject = freecamPart
         
-        -- Initialize yaw and pitch from current camera orientation
         local lookVector = workspace.CurrentCamera.CFrame.LookVector
         yaw = math.atan2(-lookVector.X, -lookVector.Z)
         pitch = math.asin(lookVector.Y)
         
-        -- Freeze character
         if rootPart then
             rootPart.Anchored = true
         end
         
-        -- Handle camera rotation with touch/mouse input
         connections.freecam_input = UserInputService.InputChanged:Connect(function(input)
             if freecamEnabled and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
                 local delta = input.Delta
-                local sensitivity = 0.005 -- Adjust for smoother rotation
+                local sensitivity = 0.005
                 
                 yaw = yaw - delta.X * sensitivity
                 pitch = math.clamp(pitch - delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
                 
-                -- Update camera rotation
                 local rotationCFrame = CFrame.new(Vector3.new(0, 0, 0)) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
                 freecamPart.CFrame = CFrame.new(freecamPart.Position) * rotationCFrame
             end
@@ -624,24 +609,19 @@ local function toggleFreecam(enabled)
                 local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
-                -- Get camera direction vectors from freecamPart
                 local cameraCFrame = freecamPart.CFrame
                 local forwardVector = cameraCFrame.LookVector
                 local rightVector = cameraCFrame.RightVector
-                local upVector = Vector3.new(0, 1, 0) -- World up vector
+                local upVector = Vector3.new(0, 1, 0)
                 
                 local movement = Vector3.new(0, 0, 0)
                 local speed = settings.FreecamSpeed.value
                 
-                -- Thumbstick movement
                 if moveVector.Magnitude > 0 then
-                    -- Forward/Backward movement (thumbstick up/down)
                     movement = movement + (forwardVector * -moveVector.Z * speed)
-                    -- Left/Right movement (thumbstick left/right)
                     movement = movement + (rightVector * moveVector.X * speed)
                 end
                 
-                -- Jump button untuk naik, crouch (Ctrl) untuk turun
                 if humanoid.Jump then
                     movement = movement + (upVector * speed)
                     humanoid.Jump = false
@@ -650,20 +630,16 @@ local function toggleFreecam(enabled)
                     movement = movement + (upVector * -speed)
                 end
                 
-                -- Apply movement with deltaTime for smooth motion
                 local newPosition = freecamPart.Position + (movement * deltaTime)
                 
-                -- Update freecam part position while maintaining rotation
                 freecamPart.CFrame = CFrame.new(newPosition) * freecamPart.CFrame.Rotation
                 freecamPosition = newPosition
                 
-                -- Update camera
                 camera.CFrame = freecamPart.CFrame
             end
         end)
         
     else
-        -- Disable freecam
         if connections.freecam then
             connections.freecam:Disconnect()
         end
@@ -675,10 +651,8 @@ local function toggleFreecam(enabled)
             freecamPart = nil
         end
         
-        -- Restore camera subject to player's humanoid
         if character and humanoid then
             workspace.CurrentCamera.CameraSubject = humanoid
-            -- Ensure camera aligns with player's position
             if rootPart then
                 workspace.CurrentCamera.CFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 0), rootPart.Position)
             end
@@ -686,17 +660,13 @@ local function toggleFreecam(enabled)
             workspace.CurrentCamera.CameraSubject = originalCameraSubject
         end
         
-        -- Unfreeze character
         if rootPart then
             rootPart.Anchored = false
         end
         
-        -- Reset freecam position to ensure fresh start on next enable
         freecamPosition = nil
         yaw = 0
         pitch = 0
-        
-        print("Freecam disabled, camera restored to player")
     end
 end
 
@@ -735,18 +705,12 @@ end
 -- Teleport to Freecam Position
 local function teleportToFreecam()
     if freecamEnabled and freecamPosition and rootPart then
-        -- Disable freecam first
         toggleFreecam(false)
         buttonStates["Freecam"] = false
-        
-        -- Teleport to freecam position
         rootPart.CFrame = CFrame.new(freecamPosition)
         print("Teleported to freecam position")
-        
-        -- Refresh current category to update button display
         switchCategory(currentCategory)
     elseif freecamPosition and rootPart then
-        -- If freecam was used before but not currently active
         rootPart.CFrame = CFrame.new(freecamPosition)
         print("Teleported to last freecam position")
     else
@@ -843,7 +807,6 @@ local function updatePositionList()
         deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         deleteButton.TextSize = 9
         
-        -- Button events
         tpButton.MouseButton1Click:Connect(function()
             loadPosition(positionName)
         end)
@@ -852,7 +815,6 @@ local function updatePositionList()
             deletePosition(positionName)
         end)
         
-        -- Hover effects
         tpButton.MouseEnter:Connect(function()
             tpButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
         end)
@@ -881,179 +843,182 @@ end
 local function showPlayerSelection()
     playerListVisible = true
     PlayerListFrame.Visible = true
-    print("Opening Player Selection Frame")
-    updatePlayerList() -- Force update when opening
+    updatePlayerList()
 end
 
 local function updatePlayerList()
-    print("Updating Player List")
     for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
+        if child:IsA("Frame") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
-    local itemCount = 0
     local playerCount = 0
+    local players = Players:GetPlayers()
     
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player then -- Explicitly exclude local player
-            playerCount = playerCount + 1
-            print("Adding player to list: " .. p.Name)
-            local playerItem = Instance.new("Frame")
-            playerItem.Name = p.Name .. "Item"
-            playerItem.Parent = PlayerListScrollFrame
-            playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            playerItem.BorderSizePixel = 0
-            playerItem.Size = UDim2.new(1, -5, 0, 90)
-            playerItem.LayoutOrder = itemCount
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Name = "NameLabel"
-            nameLabel.Parent = playerItem
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Position = UDim2.new(0, 5, 0, 5)
-            nameLabel.Size = UDim2.new(1, -10, 0, 20)
-            nameLabel.Font = Enum.Font.GothamBold
-            nameLabel.Text = p.Name
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nameLabel.TextSize = 12
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            local selectButton = Instance.new("TextButton")
-            selectButton.Name = "SelectButton"
-            selectButton.Parent = playerItem
-            selectButton.BackgroundColor3 = selectedPlayer == p and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
-            selectButton.BorderSizePixel = 0
-            selectButton.Position = UDim2.new(0, 5, 0, 30)
-            selectButton.Size = UDim2.new(1, -10, 0, 25)
-            selectButton.Font = Enum.Font.Gotham
-            selectButton.Text = selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
-            selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            selectButton.TextSize = 10
-            
-            local spectateButton = Instance.new("TextButton")
-            spectateButton.Name = "SpectateButton"
-            spectateButton.Parent = playerItem
-            spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-            spectateButton.BorderSizePixel = 0
-            spectateButton.Position = UDim2.new(0, 5, 0, 60)
-            spectateButton.Size = UDim2.new(0, 70, 0, 25)
-            spectateButton.Font = Enum.Font.Gotham
-            spectateButton.Text = "SPECTATE"
-            spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            spectateButton.TextSize = 9
-            
-            local stopSpectateButton = Instance.new("TextButton")
-            stopSpectateButton.Name = "StopSpectateButton"
-            stopSpectateButton.Parent = playerItem
-            stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-            stopSpectateButton.BorderSizePixel = 0
-            stopSpectateButton.Position = UDim2.new(0, 80, 0, 60)
-            stopSpectateButton.Size = UDim2.new(0, 70, 0, 25)
-            stopSpectateButton.Font = Enum.Font.Gotham
-            stopSpectateButton.Text = "STOP"
-            stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            stopSpectateButton.TextSize = 9
-            
-            local teleportButton = Instance.new("TextButton")
-            teleportButton.Name = "TeleportButton"
-            teleportButton.Parent = playerItem
-            teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-            teleportButton.BorderSizePixel = 0
-            teleportButton.Position = UDim2.new(0, 155, 0, 60)
-            teleportButton.Size = UDim2.new(1, -160, 0, 25)
-            teleportButton.Font = Enum.Font.Gotham
-            teleportButton.Text = "TELEPORT"
-            teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            teleportButton.TextSize = 9
-            
-            -- Button events
-            selectButton.MouseButton1Click:Connect(function()
-                selectedPlayer = p
-                SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
-                print("Selected player: " .. p.Name)
+    if #players <= 1 then
+        local noPlayersLabel = Instance.new("TextLabel")
+        noPlayersLabel.Name = "NoPlayersLabel"
+        noPlayersLabel.Parent = PlayerListScrollFrame
+        noPlayersLabel.BackgroundTransparency = 1
+        noPlayersLabel.Size = UDim2.new(1, 0, 0, 30)
+        noPlayersLabel.Font = Enum.Font.Gotham
+        noPlayersLabel.Text = "No other players found"
+        noPlayersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        noPlayersLabel.TextSize = 11
+        noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
+        print("Player List Updated: No other players found")
+    else
+        for _, p in pairs(players) do
+            if p ~= player and p.Character then
+                playerCount = playerCount + 1
+                local playerItem = Instance.new("Frame")
+                playerItem.Name = p.Name .. "Item"
+                playerItem.Parent = PlayerListScrollFrame
+                playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                playerItem.BorderSizePixel = 0
+                playerItem.Size = UDim2.new(1, -5, 0, 90)
+                playerItem.LayoutOrder = playerCount
                 
-                -- Update all select buttons
-                for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
-                    if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
-                        if item.Name == p.Name .. "Item" then
-                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                            item.SelectButton.Text = "SELECTED"
-                        else
-                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                            item.SelectButton.Text = "SELECT PLAYER"
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "NameLabel"
+                nameLabel.Parent = playerItem
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Position = UDim2.new(0, 5, 0, 5)
+                nameLabel.Size = UDim2.new(1, -10, 0, 20)
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = p.Name
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                nameLabel.TextSize = 12
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                
+                local selectButton = Instance.new("TextButton")
+                selectButton.Name = "SelectButton"
+                selectButton.Parent = playerItem
+                selectButton.BackgroundColor3 = selectedPlayer == p and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
+                selectButton.BorderSizePixel = 0
+                selectButton.Position = UDim2.new(0, 5, 0, 30)
+                selectButton.Size = UDim2.new(1, -10, 0, 25)
+                selectButton.Font = Enum.Font.Gotham
+                selectButton.Text = selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
+                selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                selectButton.TextSize = 10
+                
+                local spectateButton = Instance.new("TextButton")
+                spectateButton.Name = "SpectateButton"
+                spectateButton.Parent = playerItem
+                spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+                spectateButton.BorderSizePixel = 0
+                spectateButton.Position = UDim2.new(0, 5, 0, 60)
+                spectateButton.Size = UDim2.new(0, 70, 0, 25)
+                spectateButton.Font = Enum.Font.Gotham
+                spectateButton.Text = "SPECTATE"
+                spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                spectateButton.TextSize = 9
+                
+                local stopSpectateButton = Instance.new("TextButton")
+                stopSpectateButton.Name = "StopSpectateButton"
+                stopSpectateButton.Parent = playerItem
+                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+                stopSpectateButton.BorderSizePixel = 0
+                stopSpectateButton.Position = UDim2.new(0, 80, 0, 60)
+                stopSpectateButton.Size = UDim2.new(0, 70, 0, 25)
+                stopSpectateButton.Font = Enum.Font.Gotham
+                stopSpectateButton.Text = "STOP"
+                stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                stopSpectateButton.TextSize = 9
+                
+                local teleportButton = Instance.new("TextButton")
+                teleportButton.Name = "TeleportButton"
+                teleportButton.Parent = playerItem
+                teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+                teleportButton.BorderSizePixel = 0
+                teleportButton.Position = UDim2.new(0, 155, 0, 60)
+                teleportButton.Size = UDim2.new(1, -160, 0, 25)
+                teleportButton.Font = Enum.Font.Gotham
+                teleportButton.Text = "TELEPORT"
+                teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                teleportButton.TextSize = 9
+                
+                selectButton.MouseButton1Click:Connect(function()
+                    selectedPlayer = p
+                    SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
+                    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                            if item.Name == p.Name .. "Item" then
+                                item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                                item.SelectButton.Text = "SELECTED"
+                            else
+                                item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                                item.SelectButton.Text = "SELECT PLAYER"
+                            end
                         end
                     end
-                end
-            end)
-            
-            spectateButton.MouseButton1Click:Connect(function()
-                if p and p.Character and p.Character:FindFirstChild("Humanoid") then
-                    workspace.CurrentCamera.CameraSubject = p.Character.Humanoid
-                    print("Spectating: " .. p.Name)
-                end
-            end)
-            
-            stopSpectateButton.MouseButton1Click:Connect(function()
-                workspace.CurrentCamera.CameraSubject = humanoid
-                print("Stopped spectating")
-            end)
-            
-            teleportButton.MouseButton1Click:Connect(function()
-                if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and rootPart then
-                    rootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-                    print("Teleported to: " .. p.Name)
-                end
-            end)
-            
-            -- Hover effects
-            selectButton.MouseEnter:Connect(function()
-                if selectedPlayer ~= p then
-                    selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-                end
-            end)
-            
-            selectButton.MouseLeave:Connect(function()
-                if selectedPlayer ~= p then
-                    selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                else
-                    selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                end
-            end)
-            
-            spectateButton.MouseEnter:Connect(function()
-                spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-            end)
-            
-            spectateButton.MouseLeave:Connect(function()
-                spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-            end)
-            
-            stopSpectateButton.MouseEnter:Connect(function()
-                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
-            end)
-            
-            stopSpectateButton.MouseLeave:Connect(function()
-                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-            end)
-            
-            teleportButton.MouseEnter:Connect(function()
-                teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
-            end)
-            
-            teleportButton.MouseLeave:Connect(function()
-                teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-            end)
-            
-            itemCount = itemCount + 1
+                end)
+                
+                spectateButton.MouseButton1Click:Connect(function()
+                    if p and p.Character and p.Character:FindFirstChild("Humanoid") then
+                        workspace.CurrentCamera.CameraSubject = p.Character.Humanoid
+                        print("Spectating: " .. p.Name)
+                    end
+                end)
+                
+                stopSpectateButton.MouseButton1Click:Connect(function()
+                    workspace.CurrentCamera.CameraSubject = humanoid
+                    print("Stopped spectating")
+                end)
+                
+                teleportButton.MouseButton1Click:Connect(function()
+                    if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and rootPart then
+                        rootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                        print("Teleported to: " .. p.Name)
+                    end
+                end)
+                
+                selectButton.MouseEnter:Connect(function()
+                    if selectedPlayer ~= p then
+                        selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+                    end
+                end)
+                
+                selectButton.MouseLeave:Connect(function()
+                    if selectedPlayer ~= p then
+                        selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    else
+                        selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                    end
+                end)
+                
+                spectateButton.MouseEnter:Connect(function()
+                    spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+                end)
+                
+                spectateButton.MouseLeave:Connect(function()
+                    spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+                end)
+                
+                stopSpectateButton.MouseEnter:Connect(function()
+                    stopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+                end)
+                
+                stopSpectateButton.MouseLeave:Connect(function()
+                    stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+                end)
+                
+                teleportButton.MouseEnter:Connect(function()
+                    teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+                end)
+                
+                teleportButton.MouseLeave:Connect(function()
+                    teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+                end)
+            end
         end
     end
     
-    -- Update CanvasSize immediately
+    wait(0.1)
     local contentSize = PlayerListLayout.AbsoluteContentSize
-    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
-    
+    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
     print("Player List Updated: " .. playerCount .. " players listed")
 end
 
@@ -1223,7 +1188,6 @@ local function createSettingInput(settingName, settingData)
                 input.Text = tostring(value)
                 print(string.format("%s set to %d", settingName, value))
                 
-                -- Update feature if active
                 if settingName == "Fly Speed" and flyEnabled then
                     toggleFly(false)
                     toggleFly(true)
@@ -1268,13 +1232,12 @@ end
 
 -- Info Category (Simplified Watermark)
 local function loadInfoButtons()
-    print("Loading Info Category")
     local watermarkLabel = Instance.new("TextLabel")
     watermarkLabel.Name = "WatermarkLabel"
     watermarkLabel.Parent = ScrollFrame
     watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     watermarkLabel.BorderSizePixel = 0
-    watermarkLabel.Size = UDim2.new(1, 0, 0, 300) -- Increased height to accommodate text
+    watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
     watermarkLabel.Font = Enum.Font.Gotham
     watermarkLabel.Text = [[
 --[ NOTICE BEFORE USING ]--
@@ -1310,7 +1273,6 @@ Thank you for reading. Use it wisely.
     watermarkLabel.TextWrapped = true
     watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
     watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
-    print("Info Category Loaded Successfully")
 end
 
 -- Category button loaders
@@ -1419,29 +1381,23 @@ local function maximizeGUI()
     guiMinimized = false
     LogoButton.Visible = false
     MainFrame.Visible = true
-    -- Don't automatically show other frames
 end
 
 -- Event connections
 MinimizeButton.MouseButton1Click:Connect(minimizeGUI)
 LogoButton.MouseButton1Click:Connect(maximizeGUI)
 
--- Player List Close Button
 ClosePlayerListButton.MouseButton1Click:Connect(function()
     PlayerListFrame.Visible = false
     playerListVisible = false
-    print("Player Selection Frame Closed")
 end)
 
--- Position Manager Close Button
 ClosePositionButton.MouseButton1Click:Connect(function()
     PositionFrame.Visible = false
 end)
 
--- Save Position Button Event
 SavePositionButton.MouseButton1Click:Connect(savePosition)
 
--- Create category buttons
 createCategoryButton("Movement")
 createCategoryButton("Player")
 createCategoryButton("Visual")
@@ -1450,17 +1406,14 @@ createCategoryButton("Utility")
 createCategoryButton("Settings")
 createCategoryButton("Info")
 
--- Initialize with Movement category
 wait(0.5)
 switchCategory("Movement")
 
--- Character respawn handling
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     
-    -- Reset all feature states but preserve button states
     flyEnabled = false
     noclipEnabled = false
     speedEnabled = false
@@ -1471,9 +1424,8 @@ player.CharacterAdded:Connect(function(newCharacter)
     playerPhaseEnabled = false
     spiderEnabled = false
     flashlightEnabled = false
-    freecamPosition = nil -- Reset freecam position
+    freecamPosition = nil
     
-    -- Disconnect all connections
     for _, connection in pairs(connections) do
         if connection then
             connection:Disconnect()
@@ -1481,55 +1433,31 @@ player.CharacterAdded:Connect(function(newCharacter)
     end
     connections = {}
     
-    -- Reset button states to OFF
     for featureName, _ in pairs(buttonStates) do
         buttonStates[featureName] = false
     end
     
-    -- Refresh current category to update button displays
     switchCategory(currentCategory)
-    
-    print("Character respawned - features reset")
 end)
 
--- Player cleanup untuk Player Phase
 Players.PlayerRemoving:Connect(function(removedPlayer)
     if removedPlayer == selectedPlayer then
         selectedPlayer = nil
         SelectedPlayerLabel.Text = "SELECTED: NONE"
         print("Selected player left, resetting selection")
     end
-    updatePlayerList() -- Update list even if not visible
+    updatePlayerList()
 end)
 
--- Player joined/left events untuk update player list
 Players.PlayerAdded:Connect(function()
-    updatePlayerList() -- Update list even if not visible
+    wait(0.5)
+    updatePlayerList()
 end)
 
 Players.PlayerRemoving:Connect(function()
-    wait(0.1) -- Small delay to ensure player is removed
-    updatePlayerList() -- Update list even if not visible
+    wait(0.5)
+    updatePlayerList()
 end)
 
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V13) ===")
-print("✓ Auto-disable previous scripts")
-print("✓ State preservation on minimize")
-print("✓ Enhanced player list with individual buttons")
-print("✓ Position manager with save/load/delete")
-print("✓ Flashlight feature added")
-print("✓ Fixed freecam movement and rotation")
-print("✓ Fixed freecam initial position to start at character")
-print("✓ Fixed category switching to preserve toggle states")
-print("✓ Added save freecam position to Position Manager")
-print("✓ Added save player position to Position Manager")
-print("✓ Fixed player list not showing")
-print("✓ Added teleport to freecam feature")
-print("✓ Fixed freecam position bug after teleport and re-enable")
-print("✓ Fixed freecam disable to prevent camera misplacement")
-print("✓ Added Info category with watermark")
-print("✓ Added Settings category with customizable Fly Speed, Freecam Speed, Jump Height, and Walk Speed")
-print("✓ Added Flashlight Brightness, Flashlight Range, and Fullbright Brightness to Settings")
-print("✓ Fixed player list display with dynamic updates")
-print("✓ Simplified Info category text to fix GUI not appearing")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V14) ===")
 print("GUI ready to use!")
