@@ -17,6 +17,16 @@ for _, gui in pairs(CoreGui:GetChildren()) do
     end
 end
 
+-- Memuat AntiAdmin.lua dari URL
+local success, errorMsg = pcall(function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua", true))()
+end)
+if not success then
+    warn("Failed to load AntiAdmin.lua: " .. tostring(errorMsg))
+else
+    print("Anti Admin Loaded - By Fari Noveri")
+end
+
 -- Variabel untuk fitur
 local flyEnabled = false
 local noclipEnabled = false
@@ -352,7 +362,7 @@ LogoButton.Visible = false
 LogoButton.Active = true
 LogoButton.Draggable = true
 
--- Next Spectate Button
+-- Spectate Buttons
 NextSpectateButton.Name = "NextSpectateButton"
 NextSpectateButton.Parent = ScreenGui
 NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
@@ -1489,6 +1499,31 @@ Thank you for reading. Use it wisely.
     watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
 end
 
+-- Anti Admin Category
+local function loadAntiAdminButtons()
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Name = "AntiAdminInfo"
+    infoLabel.Parent = ScrollFrame
+    infoLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    infoLabel.BorderSizePixel = 0
+    infoLabel.Size = UDim2.new(1, 0, 0, 300)
+    infoLabel.Font = Enum.Font.Gotham
+    infoLabel.Text = [[
+ANTI ADMIN PROTECTION
+
+This feature is included to protect you from other admin/exploit attempts (kill, teleport, etc.). Effects will be reversed to the attacker or redirected to unprotected players. It is always active and cannot be disabled for your safety.
+
+Note: Admins can still kick, ban, or perform other server-side actions against you.
+
+Created by Fari Noveri
+]]
+    infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    infoLabel.TextSize = 10
+    infoLabel.TextWrapped = true
+    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+end
+
 -- Category button loaders
 local function loadMovementButtons()
     createToggleButton("Fly", toggleFly)
@@ -1575,6 +1610,8 @@ function switchCategory(categoryName)
         loadSettingsButtons()
     elseif categoryName == "Info" then
         loadInfoButtons()
+    elseif categoryName == "Anti Admin" then
+        loadAntiAdminButtons()
     end
     
     wait(0.1)
@@ -1610,6 +1647,7 @@ createCategoryButton("Teleport")
 createCategoryButton("Utility")
 createCategoryButton("Settings")
 createCategoryButton("Info")
+createCategoryButton("Anti Admin")
 
 -- Event Connections
 MinimizeButton.MouseButton1Click:Connect(function()
@@ -1725,34 +1763,62 @@ spawn(function()
     end
 end)
 
--- Pastikan tombol spectate tetap aktif saat GUI dimunculkan kembali
+-- Lanjutan dari UserInputService.InputBegan
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if input.KeyCode == Enum.KeyCode.LeftControl and input.UserInputType == Enum.UserInputType.Keyboard then
+    if input.KeyCode == Enum.KeyCode.LeftControl and not gameProcessedEvent then
         if guiMinimized then
             maximizeGUI()
         end
     end
 end)
 
--- Pastikan semua koneksi dibersihkan saat GUI dihancurkan
-ScreenGui.AncestryChanged:Connect(function()
-    if not ScreenGui:IsDescendantOf(game) then
-        for _, connection in pairs(connections) do
-            if connection then
-                connection:Disconnect()
-            end
-        end
-        for _, connection in pairs(spectateConnections) do
-            if connection then
-                connection:Disconnect()
-            end
+-- Cleanup saat GUI dihancurkan
+local function cleanup()
+    -- Matikan semua fitur aktif
+    toggleFly(false)
+    toggleNoclip(false)
+    toggleSpeed(false)
+    toggleJumpHigh(false)
+    toggleGodMode(false)
+    toggleFlashlight(false)
+    toggleSpider(false)
+    toggleFreecam(false)
+    togglePlayerPhase(false)
+    toggleAntiAFK(false)
+    toggleFullbright(false)
+    
+    -- Putuskan semua koneksi
+    for _, connection in pairs(connections) do
+        if connection then
+            connection:Disconnect()
         end
     end
-end)
+    for _, connection in pairs(spectateConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    
+    -- Hapus GUI
+    if ScreenGui then
+        ScreenGui:Destroy()
+    end
+end
 
--- Inisialisasi UI
+-- Tangani penutupan game atau script
+game:BindToClose(cleanup)
+
+-- Inisialisasi GUI
+switchCategory("Movement") -- Mulai dengan kategori Movement
+updatePlayerList() -- Inisialisasi daftar pemain
+print("MinimalHackGUI Loaded - By Fari Noveri")
+
+-- Animasi pembukaan GUI
+local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local tween = TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 600, 0, 400)})
+tween:Play()
+
+-- Perbarui ukuran canvas CategoryFrame
 wait(0.1)
 local categoryContentSize = CategoryList.AbsoluteContentSize
 CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
-switchCategory("Movement") -- Load default category
-print("Minimal Hack GUI Loaded - By Fari Noveri")

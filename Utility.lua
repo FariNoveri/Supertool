@@ -1,0 +1,453 @@
+-- Utility.lua
+-- Utility features for MinimalHackGUI by Fari Noveri
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local commandPrefix = ";"
+local commands = {}
+local commandConnections = {}
+local prankConnections = {} -- Track prank effects for cleanup
+local prankDuration = 5 -- Duration for temporary prank effects (seconds)
+
+-- Helper function to find player by name or partial name
+local function findPlayer(name)
+    name = name:lower()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name) or p.DisplayName:lower():find(name) then
+            return p
+        end
+    end
+    return nil
+end
+
+-- Command System Setup
+local function setupCommandSystem()
+    -- Existing commands
+    commands["rejoin"] = {
+        description = "Rejoins the current server",
+        execute = function(args)
+            TeleportService:Teleport(game.PlaceId, player)
+            return "Rejoining server..."
+        end
+    }
+
+    commands["serverhop"] = {
+        description = "Joins a new server",
+        execute = function(args)
+            local success, servers = pcall(function()
+                return game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+            end)
+            if success and servers and servers.data then
+                local server = servers.data[math.random(1, #servers.data)]
+                if server and server.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
+                    return "Hopping to new server..."
+                else
+                    return "No other servers found"
+                end
+            else
+                return "Failed to fetch server list"
+            end
+        end
+    }
+
+    commands["fpscap"] = {
+        description = "Sets FPS cap (30-240)",
+        execute = function(args)
+            local fps = tonumber(args[1])
+            if fps and fps >= 30 and fps <= 240 then
+                setfpscap(fps)
+                return "FPS cap set to " .. fps
+            else
+                return "Invalid FPS value (use 30-240)"
+            end
+        end
+    }
+
+    commands["ping"] = {
+        description = "Displays your ping",
+        execute = function(args)
+            local ping = player:GetNetworkPing() * 1000
+            return string.format("Your ping: %.2f ms", ping)
+        end
+    }
+
+    commands["time"] = {
+        description = "Sets game time (0-24)",
+        execute = function(args)
+            local timeValue = tonumber(args[1])
+            if timeValue and timeValue >= 0 and timeValue <= 24 then
+                Lighting.ClockTime = timeValue
+                return "Game time set to " .. timeValue
+            else
+                return "Invalid time value (use 0-24)"
+            end
+        end
+    }
+
+    -- Jahil (prank) commands
+    commands["spin"] = {
+        description = "Spins a player's character rapidly",
+        execute = function(args)
+            local targetName = args[1]
+            if not targetName then
+                return "Please provide a player name"
+            end
+            local targetPlayer = findPlayer(targetName)
+            if not targetPlayer then
+                return "Player not found: " .. targetName
+            end
+            if targetPlayer == player then
+                return "Cannot prank yourself"
+            end
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                return "Target player has no character"
+            end
+
+            local rootPart = targetPlayer.Character.HumanoidRootPart
+            local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+            bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+            bodyAngularVelocity.AngularVelocity = Vector3.new(0, 20, 0)
+            bodyAngularVelocity.Parent = rootPart
+
+            prankConnections[targetPlayer.UserId] = prankConnections[targetPlayer.UserId] or {}
+            table.insert(prankConnections[targetPlayer.UserId], bodyAngularVelocity)
+
+            task.spawn(function()
+                task.wait(prankDuration)
+                if bodyAngularVelocity then
+                    bodyAngularVelocity:Destroy()
+                end
+                prankConnections[targetPlayer.UserId] = nil
+            end)
+
+            return "Spinning " .. targetPlayer.Name
+        end
+    }
+
+    commands["fling"] = {
+        description = "Flings a player into the air",
+        execute = function(args)
+            local targetName = args[1]
+            if not targetName then
+                return "Please provide a player name"
+            end
+            local targetPlayer = findPlayer(targetName)
+            if not targetPlayer then
+                return "Player not found: " .. targetName
+            end
+            if targetPlayer == player then
+                return "Cannot prank yourself"
+            end
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                return "Target player has no character"
+            end
+
+            local rootPart = targetPlayer.Character.HumanoidRootPart
+            local bodyVelocity = Instance.new("BodyVelocity")
+            bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bodyVelocity.Velocity = Vector3.new(math.random(-50, 50), 100, math.random(-50, 50))
+            bodyVelocity.Parent = rootPart
+
+            prankConnections[targetPlayer.UserId] = prankConnections[targetPlayer.UserId] or {}
+            table.insert(prankConnections[targetPlayer.UserId], bodyVelocity)
+
+            task.spawn(function()
+                task.wait(prankDuration)
+                if bodyVelocity then
+                    bodyVelocity:Destroy()
+                end
+                prankConnections[targetPlayer.UserId] = nil
+            end)
+
+            return "Flinging " .. targetPlayer.Name
+        end
+    }
+
+    commands["blind"] = {
+        description = "Temporarily blinds a player's screen",
+        execute = function(args)
+            local targetName = args[1]
+            if not targetName then
+                return "Please provide a player name"
+            end
+            local targetPlayer = findPlayer(targetName)
+            if not targetPlayer then
+                return "Player not found: " .. targetName
+            end
+            if targetPlayer == player then
+                return "Cannot prank yourself"
+            end
+
+            local screenGui = Instance.new("ScreenGui")
+            screenGui.Name = "BlindPrankGui"
+            screenGui.Parent = CoreGui
+            screenGui.IgnoreGuiInset = true
+
+            local overlay = Instance.new("Frame")
+            overlay.Size = UDim2.new(1, 0, 1, 0)
+            overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            overlay.BackgroundTransparency = 0
+            overlay.Parent = screenGui
+
+            prankConnections[targetPlayer.UserId] = prankConnections[targetPlayer.UserId] or {}
+            table.insert(prankConnections[targetPlayer.UserId], screenGui)
+
+            task.spawn(function()
+                task.wait(prankDuration)
+                if screenGui then
+                    screenGui:Destroy()
+                end
+                prankConnections[targetPlayer.UserId] = nil
+            end)
+
+            -- Attempt to fire client-side effect via RemoteEvent
+            local defaultChatSystem = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+            if defaultChatSystem and defaultChatSystem:FindFirstChild("SayMessageRequest") then
+                pcall(function()
+                    defaultChatSystem.SayMessageRequest:FireServer("You have been blinded!", "All")
+                end)
+            end
+
+            return "Blinding " .. targetPlayer.Name
+        end
+    }
+
+    commands["shake"] = {
+        description = "Shakes a player's character position",
+        execute = function(args)
+            local targetName = args[1]
+            if not targetName then
+                return "Please provide a player name"
+            end
+            local targetPlayer = findPlayer(targetName)
+            if not targetPlayer then
+                return "Player not found: " .. targetName
+            end
+            if targetPlayer == player then
+                return "Cannot prank yourself"
+            end
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                return "Target player has no character"
+            end
+
+            local rootPart = targetPlayer.Character.HumanoidRootPart
+            local connection
+            connection = RunService.Heartbeat:Connect(function()
+                if rootPart then
+                    rootPart.CFrame = rootPart.CFrame + Vector3.new(
+                        math.random(-1, 1) * 0.5,
+                        0,
+                        math.random(-1, 1) * 0.5
+                    )
+                end
+            end)
+
+            prankConnections[targetPlayer.UserId] = prankConnections[targetPlayer.UserId] or {}
+            table.insert(prankConnections[targetPlayer.UserId], connection)
+
+            task.spawn(function()
+                task.wait(prankDuration)
+                if connection then
+                    connection:Disconnect()
+                end
+                prankConnections[targetPlayer.UserId] = nil
+            end)
+
+            return "Shaking " .. targetPlayer.Name
+        end
+    }
+
+    commands["drop"] = {
+        description = "Drops a player by removing their floor",
+        execute = function(args)
+            local targetName = args[1]
+            if not targetName then
+                return "Please provide a player name"
+            end
+            local targetPlayer = findPlayer(targetName)
+            if not targetPlayer then
+                return "Player not found: " .. targetName
+            end
+            if targetPlayer == player then
+                return "Cannot prank yourself"
+            end
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                return "Target player has no character"
+            end
+
+            local rootPart = targetPlayer.Character.HumanoidRootPart
+            local floor = Instance.new("Part")
+            floor.Size = Vector3.new(10, 0.2, 10)
+            floor.Position = rootPart.Position - Vector3.new(0, 2, 0)
+            floor.Anchored = true
+            floor.CanCollide = true
+            floor.Transparency = 1
+            floor.Parent = Workspace
+
+            task.spawn(function()
+                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 5, 0)
+                task.wait(0.5)
+                floor:Destroy()
+            end)
+
+            prankConnections[targetPlayer.UserId] = prankConnections[targetPlayer.UserId] or {}
+            table.insert(prankConnections[targetPlayer.UserId], floor)
+
+            task.spawn(function()
+                task.wait(prankDuration)
+                prankConnections[targetPlayer.UserId] = nil
+            end)
+
+            return "Dropping " .. targetPlayer.Name
+        end
+    }
+
+    -- Spoof chat input
+    local function spoofChat(message)
+        if saymsg then
+            pcall(function()
+                saymsg(message)
+            end)
+        end
+    end
+
+    -- Command parsing and execution
+    local function processCommand(message)
+        if message:sub(1, #commandPrefix) == commandPrefix then
+            local args = message:sub(#commandPrefix + 1):split(" ")
+            local cmdName = args[1]:lower()
+            table.remove(args, 1)
+            
+            if commands[cmdName] then
+                local result = commands[cmdName].execute(args)
+                spoofChat(result)
+            else
+                spoofChat("Unknown command: " .. cmdName)
+            end
+        end
+    end
+
+    -- Connect to chat events
+    if player.Chatted then
+        commandConnections.chat = player.Chatted:Connect(processCommand)
+    end
+
+    -- Spoof chat system to bypass restrictions
+    local function setupChatSpoof()
+        local defaultChatSystem = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+        if defaultChatSystem and defaultChatSystem:FindFirstChild("SayMessageRequest") then
+            local sayMessageRequest = defaultChatSystem.SayMessageRequest
+            for _, connection in pairs(getconnections(sayMessageRequest.OnClientEvent)) do
+                connection:Disable()
+            end
+            commandConnections.sayMessage = sayMessageRequest.OnClientEvent:Connect(function(message, recipient)
+                processCommand(message)
+            end)
+        end
+    end
+
+    pcall(setupChatSpoof)
+end
+
+-- Button creation function
+local function createButton(name, callback)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Button"
+    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, 0, 0, 30)
+    button.Font = Enum.Font.Gotham
+    button.Text = name:upper()
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 11
+    
+    button.MouseButton1Click:Connect(callback)
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    end)
+    
+    return button
+end
+
+-- Load utility buttons into a provided ScrollFrame
+local function loadUtilityButtons(scrollFrame)
+    createButton("Show Commands", function()
+        local commandList = "Available Commands:\n"
+        for cmdName, cmdData in pairs(commands) do
+            commandList = commandList .. commandPrefix .. cmdName .. ": " .. cmdData.description .. "\n"
+        end
+        print(commandList)
+        if saymsg then
+            pcall(function()
+                saymsg(commandList)
+            end)
+        end
+    end).Parent = scrollFrame
+end
+
+-- Initialize Utility
+local function initializeUtility()
+    setupCommandSystem()
+end
+
+-- Cleanup function
+local function cleanup()
+    for _, connection in pairs(commandConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    for userId, pranks in pairs(prankConnections) do
+        for _, prank in pairs(pranks) do
+            if prank then
+                if typeof(prank) == "Instance" then
+                    prank:Destroy()
+                elseif typeof(prank) == "RBXScriptConnection" then
+                    prank:Disconnect()
+                end
+            end
+        end
+    end
+    prankConnections = {}
+end
+
+-- Handle player leaving to clean up their prank effects
+Players.PlayerRemoving:Connect(function(p)
+    if prankConnections[p.UserId] then
+        for _, prank in pairs(prankConnections[p.UserId]) do
+            if prank then
+                if typeof(prank) == "Instance" then
+                    prank:Destroy()
+                elseif typeof(prank) == "RBXScriptConnection" then
+                    prank:Disconnect()
+                end
+            end
+        end
+        prankConnections[p.UserId] = nil
+    end
+end)
+
+-- Bind cleanup to game close
+game:BindToClose(cleanup)
+
+-- Initialize
+initializeUtility()
+
+-- Return functions for external use
+return {
+    loadUtilityButtons = loadUtilityButtons,
+    cleanup = cleanup
+}
