@@ -1308,7 +1308,7 @@ local function createCategoryButton(name)
     local button = Instance.new("TextButton")
     button.Name = name .. "Category"
     button.Parent = CategoryFrame
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BackgroundColor3 = currentCategory == name and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(25, 25, 25)
     button.BorderSizePixel = 0
     button.Size = UDim2.new(1, 0, 0, 35)
     button.Font = Enum.Font.Gotham
@@ -1321,11 +1321,15 @@ local function createCategoryButton(name)
     end)
     
     button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        if currentCategory ~= name then
+            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        end
     end)
     
     button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        if currentCategory ~= name then
+            button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        end
     end)
     
     return button
@@ -1505,6 +1509,8 @@ local function switchCategory(category)
 ANTI ADMIN PROTECTION
 
 This feature is included to protect you from other admin/exploit attempts (kill, teleport, etc.). Effects will be reversed to the attacker or redirected to unprotected players. It is always active and cannot be disabled for your safety.
+
+Note: Admins can still kick, ban, or perform other server-side actions against you.
 
 Created by Fari Noveri
 ]]
