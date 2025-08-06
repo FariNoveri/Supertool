@@ -37,7 +37,7 @@ local playerListVisible = false
 local guiMinimized = false
 local spectatePlayerList = {}
 local currentSpectateIndex = 0
-local spectateConnection = nil -- Connection for spectated player's death
+local spectateConnections = {} -- Table to store multiple connections
 
 -- Settings table
 local settings = {
@@ -87,6 +87,7 @@ local LogoButton = Instance.new("TextButton")
 -- Spectate Buttons
 local NextSpectateButton = Instance.new("TextButton")
 local PrevSpectateButton = Instance.new("TextButton")
+local StopSpectateButton = Instance.new("TextButton")
 
 -- GUI Properties
 ScreenGui.Name = "MinimalHackGUI"
@@ -379,6 +380,21 @@ PrevSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 PrevSpectateButton.TextSize = 10
 PrevSpectateButton.Visible = false
 PrevSpectateButton.Active = true
+
+-- Stop Spectate Button
+StopSpectateButton.Name = "StopSpectateButton"
+StopSpectateButton.Parent = ScreenGui
+StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+StopSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+StopSpectateButton.BorderSizePixel = 1
+StopSpectateButton.Position = UDim2.new(0.5, -30, 0.5, 40)
+StopSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+StopSpectateButton.Font = Enum.Font.Gotham
+StopSpectateButton.Text = "STOP"
+StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+StopSpectateButton.TextSize = 10
+StopSpectateButton.Visible = false
+StopSpectateButton.Active = true
 
 -- Feature Functions
 
@@ -887,18 +903,21 @@ local function updateSpectateButtons()
     local isSpectating = selectedPlayer ~= nil
     NextSpectateButton.Visible = isSpectating and not guiMinimized
     PrevSpectateButton.Visible = isSpectating and not guiMinimized
+    StopSpectateButton.Visible = isSpectating and not guiMinimized
 end
 
 local function stopSpectating()
-    if spectateConnection then
-        spectateConnection:Disconnect()
-        spectateConnection = nil
+    for _, connection in pairs(spectateConnections) do
+        if connection then
+            connection:Disconnect()
+        end
     end
+    spectateConnections = {}
     workspace.CurrentCamera.CameraSubject = humanoid
     selectedPlayer = nil
     currentSpectateIndex = 0
     SelectedPlayerLabel.Text = "SELECTED: NONE"
-    print("Stopped spectating")
+    print("Stopped spectating via Stop Spectate button")
     updateSpectateButtons()
     for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
         if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
@@ -909,10 +928,12 @@ local function stopSpectating()
 end
 
 local function spectatePlayer(targetPlayer)
-    if spectateConnection then
-        spectateConnection:Disconnect()
-        spectateConnection = nil
+    for _, connection in pairs(spectateConnections) do
+        if connection then
+            connection:Disconnect()
+        end
     end
+    spectateConnections = {}
     
     if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
         workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
@@ -922,10 +943,16 @@ local function spectatePlayer(targetPlayer)
         
         -- Connect to detect player death
         local targetHumanoid = targetPlayer.Character.Humanoid
-        spectateConnection = targetHumanoid.AncestryChanged:Connect(function()
-            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") or targetHumanoid.Health <= 0 then
-                print("Spectated player died, stopping spectate")
-                stopSpectating()
+        spectateConnections.died = targetHumanoid.Died:Connect(function()
+            print("Spectated player died, waiting for respawn")
+        end)
+        
+        -- Connect to detect respawn
+        spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
+            local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
+            if newHumanoid then
+                workspace.CurrentCamera.CameraSubject = newHumanoid
+                print("Spectated player respawned, continuing spectate")
             end
         end)
         
@@ -960,7 +987,11 @@ local function spectateNextPlayer()
     end
     
     local targetPlayer = spectatePlayerList[currentSpectateIndex]
-    spectatePlayer(targetPlayer)
+    if targetPlayer then
+        spectatePlayer(targetPlayer)
+    else
+        stopSpectating()
+    end
 end
 
 local function spectatePrevPlayer()
@@ -976,7 +1007,11 @@ local function spectatePrevPlayer()
     end
     
     local targetPlayer = spectatePlayerList[currentSpectateIndex]
-    spectatePlayer(targetPlayer)
+    if targetPlayer then
+        spectatePlayer(targetPlayer)
+    else
+        stopSpectating()
+    end
 end
 
 local function updatePlayerList()
@@ -1153,7 +1188,7 @@ local function updatePlayerList()
     -- Update spectate index if selected player is in the list
     if selectedPlayer then
         currentSpectateIndex = table.find(spectatePlayerList, selectedPlayer) or 0
-        if currentSpectateIndex == 0 then
+        if currentSpectateIndex == 0 and not (selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid")) then
             stopSpectating()
         end
     else
@@ -1520,8 +1555,7 @@ local function minimizeGUI()
     PlayerListFrame.Visible = false
     PositionFrame.Visible = false
     LogoButton.Visible = true
-    NextSpectateButton.Visible = selectedPlayer ~= nil -- Show if spectating
-    PrevSpectateButton.Visible = selectedPlayer ~= nil
+    updateSpectateButtons()
 end
 
 local function maximizeGUI()
@@ -1548,6 +1582,7 @@ SavePositionButton.MouseButton1Click:Connect(savePosition)
 
 NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
 PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
+StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
 
 NextSpectateButton.MouseEnter:Connect(function()
     NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
@@ -1561,6 +1596,13 @@ PrevSpectateButton.MouseEnter:Connect(function()
 end)
 PrevSpectateButton.MouseLeave:Connect(function()
     PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+end)
+
+StopSpectateButton.MouseEnter:Connect(function()
+    StopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+end)
+StopSpectateButton.MouseLeave:Connect(function()
+    StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
 end)
 
 createCategoryButton("Movement")
@@ -1585,49 +1627,82 @@ player.CharacterAdded:Connect(function(newCharacter)
     speedEnabled = false
     jumpHighEnabled = false
     godModeEnabled = false
-    antiAFKEnabled = false
+    flashlightEnabled = false
+    spiderEnabled = false
     freecamEnabled = false
     playerPhaseEnabled = false
-    spiderEnabled = false
-    flashlightEnabled = false
-    freecamPosition = nil
     
-    for _, connection in pairs(connections) do
-        if connection then
-            connection:Disconnect()
+    -- Reset fitur saat karakter respawn
+    toggleFly(false)
+    toggleNoclip(false)
+    toggleSpeed(false)
+    toggleJumpHigh(false)
+    toggleGodMode(false)
+    toggleFlashlight(false)
+    toggleSpider(false)
+    toggleFreecam(false)
+    togglePlayerPhase(false)
+    
+    buttonStates["Fly"] = false
+    buttonStates["Noclip"] = false
+    buttonStates["Speed"] = false
+    buttonStates["Jump High"] = false
+    buttonStates["God Mode"] = false
+    buttonStates["Flashlight"] = false
+    buttonStates["Spider"] = false
+    buttonStates["Freecam"] = false
+    buttonStates["Player Phase"] = false
+    
+    switchCategory(currentCategory) -- Refresh UI untuk update state tombol
+end)
+
+-- Update daftar pemain secara berkala untuk menangani pemain baru atau keluar
+Players.PlayerAdded:Connect(function()
+    updatePlayerList()
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    if p == selectedPlayer then
+        stopSpectating()
+    end
+    updatePlayerList()
+end)
+
+-- Update daftar pemain setiap 5 detik untuk memastikan daftar tetap akurat
+spawn(function()
+    while true do
+        updatePlayerList()
+        wait(5)
+    end
+end)
+
+-- Pastikan tombol spectate tetap aktif saat GUI dimunculkan kembali
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if input.KeyCode == Enum.KeyCode.LeftControl and input.UserInputType == Enum.UserInputType.Keyboard then
+        if guiMinimized then
+            maximizeGUI()
         end
     end
-    connections = {}
-    
-    for featureName, _ in pairs(buttonStates) do
-        buttonStates[featureName] = false
-    end
-    
-    if spectateConnection then
-        spectateConnection:Disconnect()
-        spectateConnection = nil
-    end
-    if selectedPlayer then
-        stopSpectating()
-    end
-    
-    switchCategory(currentCategory)
-    updatePlayerList()
 end)
 
-Players.PlayerRemoving:Connect(function(removedPlayer)
-    if removedPlayer == selectedPlayer then
-        print("Selected player left, stopping spectate")
-        stopSpectating()
+-- Pastikan semua koneksi dibersihkan saat GUI dihancurkan
+ScreenGui.AncestryChanged:Connect(function()
+    if not ScreenGui:IsDescendantOf(game) then
+        for _, connection in pairs(connections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        for _, connection in pairs(spectateConnections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
     end
-    wait(0.5)
-    updatePlayerList()
 end)
 
-Players.PlayerAdded:Connect(function()
-    wait(0.5)
-    updatePlayerList()
-end)
-
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V16) ===")
-print("GUI ready to use!")
+-- Inisialisasi UI
+wait(0.1)
+local categoryContentSize = CategoryList.AbsoluteContentSize
+CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
+print("Minimal Hack GUI Loaded - By Fari Noveri")
