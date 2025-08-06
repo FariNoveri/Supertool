@@ -1,4 +1,4 @@
--- Modern Roblox GUI Script untuk Android dengan Kategori
+-- Modern Roblox GUI Script untuk Android dengan Kategori (KRNL Compatible)
 -- Dibuat dengan desain modern hitam dan fitur lengkap
 
 local Players = game:GetService("Players")
@@ -21,12 +21,10 @@ local jumpHighEnabled = false
 local godModeEnabled = false
 local fullbrightEnabled = false
 local antiAFKEnabled = false
-local playerNoclipEnabled = false
 local spiderEnabled = false
 local freecamEnabled = false
 
 local savedPosition = nil
-local savedPositionName = "Default"
 local spectateIndex = 1
 local selectedPlayer = nil
 local currentCategory = "Movement"
@@ -177,7 +175,7 @@ PlayerListFrame.Parent = ScreenGui
 PlayerListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 PlayerListFrame.BorderColor3 = Color3.fromRGB(0, 162, 255)
 PlayerListFrame.BorderSizePixel = 2
-PlayerListFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
+PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
 PlayerListFrame.Size = UDim2.new(0, 300, 0, 400)
 PlayerListFrame.Visible = false
 PlayerListFrame.Active = true
@@ -271,278 +269,7 @@ local LogoCorner = Instance.new("UICorner")
 LogoCorner.CornerRadius = UDim.new(1, 0)
 LogoCorner.Parent = LogoButton
 
--- Categories dan Buttons
-local categories = {
-    ["Movement"] = {
-        icon = "🏃",
-        buttons = {}
-    },
-    ["Player"] = {
-        icon = "👤", 
-        buttons = {}
-    },
-    ["Visual"] = {
-        icon = "👁️",
-        buttons = {}
-    },
-    ["Teleport"] = {
-        icon = "📍",
-        buttons = {}
-    },
-    ["Utility"] = {
-        icon = "🔧",
-        buttons = {}
-    }
-}
-
--- Function to create category buttons
-local function createCategoryButton(name, icon)
-    local button = Instance.new("TextButton")
-    button.Name = name .. "Category"
-    button.Parent = CategoryFrame
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -10, 0, 40)
-    button.Font = Enum.Font.Gotham
-    button.Text = icon .. " " .. name
-    button.TextColor3 = Color3.fromRGB(200, 200, 200)
-    button.TextSize = 12
-    button.TextXAlignment = Enum.TextXAlignment.Left
-    
-    -- Padding untuk text
-    local padding = Instance.new("UIPadding")
-    padding.PaddingLeft = UDim.new(0, 8)
-    padding.Parent = button
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = button
-    
-    button.MouseButton1Click:Connect(function()
-        switchCategory(name)
-    end)
-    
-    return button
-end
-
--- Function to switch categories
-function switchCategory(categoryName)
-    currentCategory = categoryName
-    
-    -- Update category button colors
-    for _, child in pairs(CategoryFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            if child.Name == categoryName .. "Category" then
-                child.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-                child.TextColor3 = Color3.fromRGB(255, 255, 255)
-            else
-                child.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-                child.TextColor3 = Color3.fromRGB(200, 200, 200)
-            end
-        end
-    end
-    
-    -- Clear current buttons
-    for _, child in pairs(ScrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    
-    -- Show buttons for selected category
-    if categories[categoryName] and categories[categoryName].buttons then
-        for _, buttonData in pairs(categories[categoryName].buttons) do
-            if buttonData.type == "toggle" then
-                createToggleButton(buttonData.name, buttonData.callback)
-            else
-                createButton(buttonData.name, buttonData.callback)
-            end
-        end
-    end
-    
-    -- Force update canvas size
-    wait(0.1)
-    updateCanvasSize()
-end
-
--- Function to create buttons
-local function createButton(name, callback)
-    local button = Instance.new("TextButton")
-    button.Name = name .. "Button"
-    button.Parent = ScrollFrame
-    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    button.BorderColor3 = Color3.fromRGB(0, 162, 255)
-    button.BorderSizePixel = 1
-    button.Size = UDim2.new(1, 0, 0, 35)
-    button.Font = Enum.Font.Gotham
-    button.Text = name
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 14
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = button
-    
-    button.MouseButton1Click:Connect(callback)
-    
-    -- Hover effect
-    button.MouseEnter:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 162, 255)}):Play()
-    end)
-    
-    button.MouseLeave:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
-    end)
-    
-    return button
-end
-
--- Function to create toggle buttons
-local function createToggleButton(name, callback)
-    local button = Instance.new("TextButton")
-    button.Name = name .. "Button"
-    button.Parent = ScrollFrame
-    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    button.BorderColor3 = Color3.fromRGB(0, 162, 255)
-    button.BorderSizePixel = 1
-    button.Size = UDim2.new(1, 0, 0, 35)
-    button.Font = Enum.Font.Gotham
-    button.Text = name .. " [OFF]"
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 14
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = button
-    
-    local isToggled = false
-    
-    local function updateButton()
-        if isToggled then
-            button.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-            button.Text = name .. " [ON]"
-        else
-            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-            button.Text = name .. " [OFF]"
-        end
-    end
-    
-    button.MouseButton1Click:Connect(function()
-        isToggled = not isToggled
-        updateButton()
-        callback(isToggled)
-    end)
-    
-    -- Hover effect (hanya saat OFF)
-    button.MouseEnter:Connect(function()
-        if not isToggled then
-            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 50)}):Play()
-        end
-    end)
-    
-    button.MouseLeave:Connect(function()
-        if not isToggled then
-            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
-        end
-    end)
-    
-    updateButton()
-    return button
-end
-
--- Minimize/Maximize functions
-local function minimizeGUI()
-    MainFrame.Visible = false
-    LogoButton.Visible = true
-end
-
-local function maximizeGUI()
-    LogoButton.Visible = false
-    MainFrame.Visible = true
-end
-
--- Event connections
-MinimizeButton.MouseButton1Click:Connect(minimizeGUI)
-LogoButton.MouseButton1Click:Connect(maximizeGUI)
-
--- Player List Close Button
-ClosePlayerListButton.MouseButton1Click:Connect(function()
-    PlayerListFrame.Visible = false
-    playerListVisible = false
-end)
-
--- Function to update player list
-local function updatePlayerList()
-    -- Clear existing player buttons
-    for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    
-    -- Add players to list
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player then
-            local playerButton = Instance.new("TextButton")
-            playerButton.Name = p.Name .. "Button"
-            playerButton.Parent = PlayerListScrollFrame
-            playerButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-            playerButton.BorderColor3 = Color3.fromRGB(0, 162, 255)
-            playerButton.BorderSizePixel = 1
-            playerButton.Size = UDim2.new(1, 0, 0, 35)
-            playerButton.Font = Enum.Font.Gotham
-            playerButton.Text = p.Name
-            playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            playerButton.TextSize = 14
-            
-            local corner = Instance.new("UICorner")
-            corner.CornerRadius = UDim.new(0, 6)
-            corner.Parent = playerButton
-            
-            -- Player selection
-            playerButton.MouseButton1Click:Connect(function()
-                selectedPlayer = p
-                SelectedPlayerLabel.Text = "Selected: " .. p.Name
-                PlayerListFrame.Visible = false
-                playerListVisible = false
-                
-                -- Update button color to show selection
-                for _, btn in pairs(PlayerListScrollFrame:GetChildren()) do
-                    if btn:IsA("TextButton") then
-                        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-                    end
-                end
-                playerButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-            end)
-            
-            -- Hover effects
-            playerButton.MouseEnter:Connect(function()
-                if playerButton.BackgroundColor3 ~= Color3.fromRGB(0, 162, 255) then
-                    TweenService:Create(playerButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 50)}):Play()
-                end
-            end)
-            
-            playerButton.MouseLeave:Connect(function()
-                if playerButton.BackgroundColor3 ~= Color3.fromRGB(0, 162, 255) then
-                    TweenService:Create(playerButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
-                end
-            end)
-        end
-    end
-    
-    -- Update canvas size
-    local contentSize = PlayerListLayout.AbsoluteContentSize
-    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
-end
-
--- Function to show player selection
-local function showPlayerSelection()
-    playerListVisible = true
-    PlayerListFrame.Visible = true
-    updatePlayerList()
-end
-
--- Feature Functions (sama seperti sebelumnya)
+-- Feature Functions
 
 -- Fly
 local function toggleFly(enabled)
@@ -720,30 +447,98 @@ local function toggleFreecam(enabled)
     end
 end
 
--- Spectate functions
+-- Save/Load Position
+local function savePosition()
+    if rootPart then
+        savedPosition = rootPart.CFrame
+        -- Simple notification
+        print("Position Saved!")
+    end
+end
+
+local function loadPosition()
+    if savedPosition and rootPart then
+        rootPart.CFrame = savedPosition
+        print("Teleported to saved position!")
+    else
+        print("No saved position found!")
+    end
+end
+
+local function tpToFreecam()
+    if freecamPart and rootPart then
+        rootPart.CFrame = freecamPart.CFrame
+        print("Teleported to freecam position!")
+    else
+        print("Freecam not active!")
+    end
+end
+
+-- Player functions
+local function showPlayerSelection()
+    playerListVisible = true
+    PlayerListFrame.Visible = true
+    updatePlayerList()
+end
+
+local function updatePlayerList()
+    -- Clear existing player buttons
+    for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- Add players to list
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player then
+            local playerButton = Instance.new("TextButton")
+            playerButton.Name = p.Name .. "Button"
+            playerButton.Parent = PlayerListScrollFrame
+            playerButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            playerButton.BorderColor3 = Color3.fromRGB(0, 162, 255)
+            playerButton.BorderSizePixel = 1
+            playerButton.Size = UDim2.new(1, 0, 0, 35)
+            playerButton.Font = Enum.Font.Gotham
+            playerButton.Text = p.Name
+            playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            playerButton.TextSize = 14
+            
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 6)
+            corner.Parent = playerButton
+            
+            -- Player selection
+            playerButton.MouseButton1Click:Connect(function()
+                selectedPlayer = p
+                SelectedPlayerLabel.Text = "Selected: " .. p.Name
+                PlayerListFrame.Visible = false
+                playerListVisible = false
+                print("Selected player: " .. p.Name)
+            end)
+        end
+    end
+    
+    -- Update canvas size
+    local contentSize = PlayerListLayout.AbsoluteContentSize
+    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+end
+
 local function spectateSelectedPlayer()
     if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
         workspace.CurrentCamera.CameraSubject = selectedPlayer.Character.Humanoid
+        print("Spectating: " .. selectedPlayer.Name)
     else
-        -- Show notification if no player selected
-        local notification = Instance.new("TextLabel")
-        notification.Parent = ScreenGui
-        notification.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-        notification.Size = UDim2.new(0, 250, 0, 50)
-        notification.Position = UDim2.new(0.5, -125, 0, 50)
-        notification.Text = "Please select a player first!"
-        notification.TextColor3 = Color3.fromRGB(255, 255, 255)
-        notification.Font = Enum.Font.GothamBold
-        notification.TextScaled = true
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = notification
-        
-        spawn(function()
-            wait(2)
-            notification:Destroy()
-        end)
+        print("Please select a player first!")
+    end
+end
+
+local function tpToSelectedPlayer()
+    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
+        rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+        print("Teleported to: " .. selectedPlayer.Name)
+    else
+        print("Please select a player first!")
     end
 end
 
@@ -762,6 +557,7 @@ local function spectatePlayer()
             workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
             selectedPlayer = targetPlayer
             SelectedPlayerLabel.Text = "Selected: " .. targetPlayer.Name
+            print("Auto spectating: " .. targetPlayer.Name)
         end
     end
 end
@@ -778,131 +574,227 @@ end
 
 local function stopSpectate()
     workspace.CurrentCamera.CameraSubject = humanoid
+    print("Stopped spectating")
 end
 
--- Teleport to selected player
-local function tpToSelectedPlayer()
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
-        rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-    else
-        -- Show notification if no player selected
-        local notification = Instance.new("TextLabel")
-        notification.Parent = ScreenGui
-        notification.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-        notification.Size = UDim2.new(0, 250, 0, 50)
-        notification.Position = UDim2.new(0.5, -125, 0, 50)
-        notification.Text = "Please select a player first!"
-        notification.TextColor3 = Color3.fromRGB(255, 255, 255)
-        notification.Font = Enum.Font.GothamBold
-        notification.TextScaled = true
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = notification
-        
-        spawn(function()
-            wait(2)
-            notification:Destroy()
-        end)
-    end
+-- Function to create buttons
+local function createButton(name, callback)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Button"
+    button.Parent = ScrollFrame
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.BorderColor3 = Color3.fromRGB(0, 162, 255)
+    button.BorderSizePixel = 1
+    button.Size = UDim2.new(1, 0, 0, 35)
+    button.Font = Enum.Font.Gotham
+    button.Text = name
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 14
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    button.MouseButton1Click:Connect(callback)
+    
+    return button
 end
 
--- Save/Load Position
-local function savePosition()
-    if rootPart then
-        savedPosition = rootPart.CFrame
-        -- Notification
-        local notification = Instance.new("TextLabel")
-        notification.Parent = ScreenGui
-        notification.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-        notification.Size = UDim2.new(0, 200, 0, 50)
-        notification.Position = UDim2.new(0.5, -100, 0, 50)
-        notification.Text = "Position Saved!"
-        notification.TextColor3 = Color3.fromRGB(255, 255, 255)
-        notification.Font = Enum.Font.GothamBold
-        notification.TextScaled = true
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = notification
-        
-        spawn(function()
-            wait(2)
-            notification:Destroy()
-        end)
-    end
-end
-
-local function loadPosition()
-    if savedPosition and rootPart then
-        rootPart.CFrame = savedPosition
-    end
-end
-
-local function tpToFreecam()
-    if freecamPart and rootPart then
-        rootPart.CFrame = freecamPart.CFrame
-    end
-end
-
--- Setup Categories dan Buttons
--- Movement Category
-table.insert(categories["Movement"].buttons, {name = "Fly", type = "toggle", callback = toggleFly})
-table.insert(categories["Movement"].buttons, {name = "Noclip", type = "toggle", callback = toggleNoclip})
-table.insert(categories["Movement"].buttons, {name = "Speed", type = "toggle", callback = toggleSpeed})
-table.insert(categories["Movement"].buttons, {name = "Jump High", type = "toggle", callback = toggleJumpHigh})
-table.insert(categories["Movement"].buttons, {name = "Spider", type = "toggle", callback = toggleSpider})
-
--- Player Category
-table.insert(categories["Player"].buttons, {name = "Select Player", type = "normal", callback = showPlayerSelection})
-table.insert(categories["Player"].buttons, {name = "God Mode", type = "toggle", callback = toggleGodMode})
-table.insert(categories["Player"].buttons, {name = "Anti AFK", type = "toggle", callback = toggleAntiAFK})
-table.insert(categories["Player"].buttons, {name = "Spectate Selected", type = "normal", callback = spectateSelectedPlayer})
-table.insert(categories["Player"].buttons, {name = "Auto Spectate", type = "normal", callback = spectatePlayer})
-table.insert(categories["Player"].buttons, {name = "Next Spectate", type = "normal", callback = nextSpectate})
-table.insert(categories["Player"].buttons, {name = "Prev Spectate", type = "normal", callback = prevSpectate})
-table.insert(categories["Player"].buttons, {name = "Stop Spectate", type = "normal", callback = stopSpectate})
-
--- Visual Category
-table.insert(categories["Visual"].buttons, {name = "Fullbright", type = "toggle", callback = toggleFullbright})
-table.insert(categories["Visual"].buttons, {name = "Freecam", type = "toggle", callback = toggleFreecam})
-
--- Teleport Category
-table.insert(categories["Teleport"].buttons, {name = "Save Position", type = "normal", callback = savePosition})
-table.insert(categories["Teleport"].buttons, {name = "TP to Saved Position", type = "normal", callback = loadPosition})
-table.insert(categories["Teleport"].buttons, {name = "TP to Selected Player", type = "normal", callback = tpToSelectedPlayer})
-table.insert(categories["Teleport"].buttons, {name = "TP to Freecam", type = "normal", callback = tpToFreecam})
-
--- Utility Category
-table.insert(categories["Utility"].buttons, {name = "Disable Previous Script", type = "normal", callback = function()
-    for _, gui in pairs(CoreGui:GetChildren()) do
-        if gui.Name == "ModernHackGUI" and gui ~= ScreenGui then
-            gui:Destroy()
+-- Function to create toggle buttons
+local function createToggleButton(name, callback)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Button"
+    button.Parent = ScrollFrame
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.BorderColor3 = Color3.fromRGB(0, 162, 255)
+    button.BorderSizePixel = 1
+    button.Size = UDim2.new(1, 0, 0, 35)
+    button.Font = Enum.Font.Gotham
+    button.Text = name .. " [OFF]"
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 14
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    local isToggled = false
+    
+    local function updateButton()
+        if isToggled then
+            button.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+            button.Text = name .. " [ON]"
+        else
+            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            button.Text = name .. " [OFF]"
         end
     end
-end})
-
--- Create category buttons
-for name, data in pairs(categories) do
-    createCategoryButton(name, data.icon)
+    
+    button.MouseButton1Click:Connect(function()
+        isToggled = not isToggled
+        updateButton()
+        callback(isToggled)
+    end)
+    
+    updateButton()
+    return button
 end
 
--- Initialize with Movement category
-spawn(function()
-    wait(0.5) -- Wait for everything to load
-    switchCategory("Movement")
-end)
+-- Function to create category buttons
+local function createCategoryButton(name, icon)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Category"
+    button.Parent = CategoryFrame
+    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, -10, 0, 40)
+    button.Font = Enum.Font.Gotham
+    button.Text = icon .. " " .. name
+    button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    button.TextSize = 12
+    button.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- Padding untuk text
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.Parent = button
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    button.MouseButton1Click:Connect(function()
+        switchCategory(name)
+    end)
+    
+    return button
+end
 
--- Update canvas size
-local function updateCanvasSize()
-    spawn(function()
-        wait(0.1)
-        local contentSize = UIListLayout.AbsoluteContentSize
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+-- Function to clear buttons
+local function clearButtons()
+    for _, child in pairs(ScrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+end
+
+-- Function to load category buttons
+local function loadMovementButtons()
+    createToggleButton("Fly", toggleFly)
+    createToggleButton("Noclip", toggleNoclip)
+    createToggleButton("Speed", toggleSpeed)
+    createToggleButton("Jump High", toggleJumpHigh)
+    createToggleButton("Spider", toggleSpider)
+end
+
+local function loadPlayerButtons()
+    createButton("Select Player", showPlayerSelection)
+    createToggleButton("God Mode", toggleGodMode)
+    createToggleButton("Anti AFK", toggleAntiAFK)
+    createButton("Spectate Selected", spectateSelectedPlayer)
+    createButton("Auto Spectate", spectatePlayer)
+    createButton("Next Spectate", nextSpectate)
+    createButton("Prev Spectate", prevSpectate)
+    createButton("Stop Spectate", stopSpectate)
+end
+
+local function loadVisualButtons()
+    createToggleButton("Fullbright", toggleFullbright)
+    createToggleButton("Freecam", toggleFreecam)
+end
+
+local function loadTeleportButtons()
+    createButton("Save Position", savePosition)
+    createButton("TP to Saved Position", loadPosition)
+    createButton("TP to Selected Player", tpToSelectedPlayer)
+    createButton("TP to Freecam", tpToFreecam)
+end
+
+local function loadUtilityButtons()
+    createButton("Disable Previous Script", function()
+        for _, gui in pairs(CoreGui:GetChildren()) do
+            if gui.Name == "ModernHackGUI" and gui ~= ScreenGui then
+                gui:Destroy()
+            end
+        end
+        print("Disabled previous scripts")
     end)
 end
 
-UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvasSize)
+-- Function to switch categories (KRNL Compatible)
+function switchCategory(categoryName)
+    currentCategory = categoryName
+    print("Switching to category: " .. categoryName)
+    
+    -- Update category button colors
+    for _, child in pairs(CategoryFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            if child.Name == categoryName .. "Category" then
+                child.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+                child.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                child.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                child.TextColor3 = Color3.fromRGB(200, 200, 200)
+            end
+        end
+    end
+    
+    -- Clear current buttons
+    clearButtons()
+    
+    -- Load category-specific buttons
+    if categoryName == "Movement" then
+        loadMovementButtons()
+    elseif categoryName == "Player" then
+        loadPlayerButtons()
+    elseif categoryName == "Visual" then
+        loadVisualButtons()
+    elseif categoryName == "Teleport" then
+        loadTeleportButtons()
+    elseif categoryName == "Utility" then
+        loadUtilityButtons()
+    end
+    
+    -- Update canvas size
+    wait(0.1)
+    local contentSize = UIListLayout.AbsoluteContentSize
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    
+    print("Loaded " .. categoryName .. " buttons")
+end
+
+-- Minimize/Maximize functions
+local function minimizeGUI()
+    MainFrame.Visible = false
+    LogoButton.Visible = true
+end
+
+local function maximizeGUI()
+    LogoButton.Visible = false
+    MainFrame.Visible = true
+end
+
+-- Event connections
+MinimizeButton.MouseButton1Click:Connect(minimizeGUI)
+LogoButton.MouseButton1Click:Connect(maximizeGUI)
+
+-- Player List Close Button
+ClosePlayerListButton.MouseButton1Click:Connect(function()
+    PlayerListFrame.Visible = false
+    playerListVisible = false
+end)
+
+-- Create category buttons
+createCategoryButton("Movement", "🏃")
+createCategoryButton("Player", "👤")
+createCategoryButton("Visual", "👁️")
+createCategoryButton("Teleport", "📍")
+createCategoryButton("Utility", "🔧")
+
+-- Initialize with Movement category
+wait(0.5)
+switchCategory("Movement")
 
 -- Character respawn handling
 player.CharacterAdded:Connect(function(newCharacter)
@@ -927,15 +819,12 @@ player.CharacterAdded:Connect(function(newCharacter)
         end
     end
     connections = {}
+    
+    print("Character respawned - features reset")
 end)
 
-print("Modern Hack GUI dengan Kategori & Player Selection Loaded!")
+print("=== Modern Hack GUI Loaded (KRNL Compatible) ===")
 print("🏃 Movement | 👤 Player | 👁️ Visual | 📍 Teleport | 🔧 Utility")
-print("Klik 'Select Player' untuk memilih target")
-print("Klik kategori di kiri untuk beralih fitur")
-
--- Debug: Print categories to check if they're loaded
-print("Categories loaded:")
-for name, data in pairs(categories) do
-    print("- " .. name .. " (" .. #data.buttons .. " buttons)")
-end
+print("Click categories on the left to switch features")
+print("Click 'Select Player' in Player category to choose targets")
+print("GUI is ready to use!")
