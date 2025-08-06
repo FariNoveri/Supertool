@@ -350,14 +350,18 @@ function switchCategory(categoryName)
     end
     
     -- Show buttons for selected category
-    for _, buttonData in pairs(categories[categoryName].buttons) do
-        if buttonData.type == "toggle" then
-            createToggleButton(buttonData.name, buttonData.callback)
-        else
-            createButton(buttonData.name, buttonData.callback)
+    if categories[categoryName] and categories[categoryName].buttons then
+        for _, buttonData in pairs(categories[categoryName].buttons) do
+            if buttonData.type == "toggle" then
+                createToggleButton(buttonData.name, buttonData.callback)
+            else
+                createButton(buttonData.name, buttonData.callback)
+            end
         end
     end
     
+    -- Force update canvas size
+    wait(0.1)
     updateCanvasSize()
 end
 
@@ -850,9 +854,11 @@ table.insert(categories["Movement"].buttons, {name = "Jump High", type = "toggle
 table.insert(categories["Movement"].buttons, {name = "Spider", type = "toggle", callback = toggleSpider})
 
 -- Player Category
+table.insert(categories["Player"].buttons, {name = "Select Player", type = "normal", callback = showPlayerSelection})
 table.insert(categories["Player"].buttons, {name = "God Mode", type = "toggle", callback = toggleGodMode})
 table.insert(categories["Player"].buttons, {name = "Anti AFK", type = "toggle", callback = toggleAntiAFK})
-table.insert(categories["Player"].buttons, {name = "Spectate", type = "normal", callback = spectatePlayer})
+table.insert(categories["Player"].buttons, {name = "Spectate Selected", type = "normal", callback = spectateSelectedPlayer})
+table.insert(categories["Player"].buttons, {name = "Auto Spectate", type = "normal", callback = spectatePlayer})
 table.insert(categories["Player"].buttons, {name = "Next Spectate", type = "normal", callback = nextSpectate})
 table.insert(categories["Player"].buttons, {name = "Prev Spectate", type = "normal", callback = prevSpectate})
 table.insert(categories["Player"].buttons, {name = "Stop Spectate", type = "normal", callback = stopSpectate})
@@ -864,6 +870,7 @@ table.insert(categories["Visual"].buttons, {name = "Freecam", type = "toggle", c
 -- Teleport Category
 table.insert(categories["Teleport"].buttons, {name = "Save Position", type = "normal", callback = savePosition})
 table.insert(categories["Teleport"].buttons, {name = "TP to Saved Position", type = "normal", callback = loadPosition})
+table.insert(categories["Teleport"].buttons, {name = "TP to Selected Player", type = "normal", callback = tpToSelectedPlayer})
 table.insert(categories["Teleport"].buttons, {name = "TP to Freecam", type = "normal", callback = tpToFreecam})
 
 -- Utility Category
@@ -880,17 +887,22 @@ for name, data in pairs(categories) do
     createCategoryButton(name, data.icon)
 end
 
--- Set default category
-switchCategory("Movement")
+-- Initialize with Movement category
+spawn(function()
+    wait(0.5) -- Wait for everything to load
+    switchCategory("Movement")
+end)
 
 -- Update canvas size
 local function updateCanvasSize()
-    local contentSize = UIListLayout.AbsoluteContentSize
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    spawn(function()
+        wait(0.1)
+        local contentSize = UIListLayout.AbsoluteContentSize
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    end)
 end
 
 UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvasSize)
-updateCanvasSize()
 
 -- Character respawn handling
 player.CharacterAdded:Connect(function(newCharacter)
@@ -917,6 +929,13 @@ player.CharacterAdded:Connect(function(newCharacter)
     connections = {}
 end)
 
-print("Modern Hack GUI dengan Kategori Loaded!")
+print("Modern Hack GUI dengan Kategori & Player Selection Loaded!")
 print("🏃 Movement | 👤 Player | 👁️ Visual | 📍 Teleport | 🔧 Utility")
+print("Klik 'Select Player' untuk memilih target")
 print("Klik kategori di kiri untuk beralih fitur")
+
+-- Debug: Print categories to check if they're loaded
+print("Categories loaded:")
+for name, data in pairs(categories) do
+    print("- " .. name .. " (" .. #data.buttons .. " buttons)")
+end
