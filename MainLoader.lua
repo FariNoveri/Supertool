@@ -17,6 +17,16 @@ for _, gui in pairs(CoreGui:GetChildren()) do
     end
 end
 
+-- Memuat AntiAdmin.lua dari URL
+local success, errorMsg = pcall(function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua", true))()
+end)
+if not success then
+    warn("Failed to load AntiAdmin.lua: " .. tostring(errorMsg))
+else
+    print("Anti Admin Loaded - By Fari Noveri")
+end
+
 -- Variabel untuk fitur
 local flyEnabled = false
 local noclipEnabled = false
@@ -352,7 +362,7 @@ LogoButton.Visible = false
 LogoButton.Active = true
 LogoButton.Draggable = true
 
--- Next Spectate Button
+-- Spectate Buttons
 NextSpectateButton.Name = "NextSpectateButton"
 NextSpectateButton.Parent = ScreenGui
 NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
@@ -1310,6 +1320,14 @@ local function createCategoryButton(name)
         switchCategory(name)
     end)
     
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    end)
+    
     return button
 end
 
@@ -1434,147 +1452,67 @@ local function createSettingInput(settingName, settingData)
     return settingFrame
 end
 
-local function loadSettingsButtons()
-    createSettingInput("Fly Speed", settings.FlySpeed)
-    createSettingInput("Freecam Speed", settings.FreecamSpeed)
-    createSettingInput("Jump Height", settings.JumpHeight)
-    createSettingInput("Walk Speed", settings.WalkSpeed)
-    createSettingInput("Flashlight Brightness", settings.FlashlightBrightness)
-    createSettingInput("Flashlight Range", settings.FlashlightRange)
-    createSettingInput("Fullbright Brightness", settings.FullbrightBrightness)
-end
-
--- Info Category (Simplified Watermark)
-local function loadInfoButtons()
-    local watermarkLabel = Instance.new("TextLabel")
-    watermarkLabel.Name = "WatermarkLabel"
-    watermarkLabel.Parent = ScrollFrame
-    watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    watermarkLabel.BorderSizePixel = 0
-    watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
-    watermarkLabel.Font = Enum.Font.Gotham
-    watermarkLabel.Text = [[
---[ NOTICE BEFORE USING ]--
-
-Created by Fari Noveri for Unknown Block members.
-Not for sale, not for showing off, not for tampering.
-
-- Rules of Use:
-- Do not sell this script. It's not for profit.
-- Keep the creator's name as "by Fari Noveri".
-- Do not re-upload to public platforms without permission.
-- Do not combine with other scripts and claim as your own.
-- Only get updates from the original source to avoid errors.
-
-- If you find this script outside the group:
-It may have been leaked. Please don't share it further.
-
-- Purpose:
-This script is made to help fellow members, not for profit.
-Please use it responsibly and respect its purpose.
-
-- For suggestions, questions, or feedback:
-Contact:
-- Instagram: @fariinoveri
-- TikTok: @fari_noveri
-
-Thank you for reading. Use it wisely.
-
-- Fari Noveri
-]]
-    watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    watermarkLabel.TextSize = 10
-    watermarkLabel.TextWrapped = true
-    watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
-    watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
-end
-
--- Category button loaders
-local function loadMovementButtons()
-    createToggleButton("Fly", toggleFly)
-    createToggleButton("Noclip", toggleNoclip)
-    createToggleButton("Speed", toggleSpeed)
-    createToggleButton("Jump High", toggleJumpHigh)
-    createToggleButton("Spider", toggleSpider)
-    createToggleButton("Player Phase", togglePlayerPhase)
-end
-
-local function loadPlayerButtons()
-    createButton("Select Player", showPlayerSelection)
-    createToggleButton("God Mode", toggleGodMode)
-    createToggleButton("Anti AFK", toggleAntiAFK)
-end
-
-local function loadVisualButtons()
-    createToggleButton("Fullbright", toggleFullbright)
-    createToggleButton("Freecam", toggleFreecam)
-    createToggleButton("Flashlight", toggleFlashlight)
-end
-
-local function loadTeleportButtons()
-    createButton("Position Manager", showPositionManager)
-    createButton("TP to Selected Player", function()
-        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
-            rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-            print("Teleported to: " .. selectedPlayer.Name)
-        else
-            print("Select a player first")
-        end
-    end)
-    createButton("TP to Freecam", teleportToFreecam)
-    createButton("Save Freecam Position", saveFreecamPosition)
-    createButton("Save Player Position", savePlayerPosition)
-end
-
-local function loadUtilityButtons()
-    createButton("Disable Previous Script", function()
-        for _, gui in pairs(CoreGui:GetChildren()) do
-            if gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
-                gui:Destroy()
-            end
-        end
-        print("Previous scripts disabled")
-    end)
+-- Category switch function
+local function switchCategory(category)
+    currentCategory = category
+    clearButtons()
     
-    createButton("Reset Character", function()
-        if humanoid then
-            humanoid.Health = 0
-        end
-    end)
-end
-
--- Category switching function
-function switchCategory(categoryName)
-    currentCategory = categoryName
-    
-    for _, child in pairs(CategoryFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            if child.Name == categoryName .. "Category" then
-                child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                child.TextColor3 = Color3.fromRGB(255, 255, 255)
-            else
-                child.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-                child.TextColor3 = Color3.fromRGB(200, 200, 200)
-            end
+    for _, button in pairs(CategoryFrame:GetChildren()) do
+        if button:IsA("TextButton") then
+            button.BackgroundColor3 = button.Name == category .. "Category" and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(25, 25, 25)
         end
     end
     
-    clearButtons()
-    
-    if categoryName == "Movement" then
-        loadMovementButtons()
-    elseif categoryName == "Player" then
-        loadPlayerButtons()
-    elseif categoryName == "Visual" then
-        loadVisualButtons()
-    elseif categoryName == "Teleport" then
-        loadTeleportButtons()
-    elseif categoryName == "Utility" then
-        loadUtilityButtons()
-    elseif categoryName == "Settings" then
-        loadSettingsButtons()
-    elseif categoryName == "Info" then
-        loadInfoButtons()
+    if category == "Movement" then
+        createToggleButton("Fly", toggleFly)
+        createToggleButton("Noclip", toggleNoclip)
+        createToggleButton("Speed", toggleSpeed)
+        createToggleButton("Jump High", toggleJumpHigh)
+        createToggleButton("Spider", toggleSpider)
+    elseif category == "Player" then
+        createToggleButton("God Mode", toggleGodMode)
+        createToggleButton("Anti AFK", toggleAntiAFK)
+        createToggleButton("Player Phase", togglePlayerPhase)
+    elseif category == "Visual" then
+        createToggleButton("Fullbright", toggleFullbright)
+        createToggleButton("Flashlight", toggleFlashlight)
+        createToggleButton("Freecam", toggleFreecam)
+        createButton("Teleport to Freecam", teleportToFreecam)
+        createButton("Save Freecam Position", saveFreecamPosition)
+    elseif category == "Teleport" then
+        createButton("Show Position Manager", showPositionManager)
+        createButton("Save Current Position", savePosition)
+        createButton("Select Player", showPlayerSelection)
+        createButton("Save Player Position", savePlayerPosition)
+        createButton("Teleport to Player", teleportToSpectatedPlayer)
+    elseif category == "Settings" then
+        createSettingInput("Fly Speed", settings.FlySpeed)
+        createSettingInput("Freecam Speed", settings.FreecamSpeed)
+        createSettingInput("Jump Height", settings.JumpHeight)
+        createSettingInput("Walk Speed", settings.WalkSpeed)
+        createSettingInput("Flashlight Brightness", settings.FlashlightBrightness)
+        createSettingInput("Flashlight Range", settings.FlashlightRange)
+        createSettingInput("Fullbright Brightness", settings.FullbrightBrightness)
+    elseif category == "Anti Admin" then
+        local infoLabel = Instance.new("TextLabel")
+        infoLabel.Name = "AntiAdminInfo"
+        infoLabel.Parent = ScrollFrame
+        infoLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        infoLabel.BorderSizePixel = 0
+        infoLabel.Size = UDim2.new(1, 0, 0, 300)
+        infoLabel.Font = Enum.Font.Gotham
+        infoLabel.Text = [[
+ANTI ADMIN PROTECTION
+
+This feature is included to protect you from other admin/exploit attempts (kill, teleport, etc.). Effects will be reversed to the attacker or redirected to unprotected players. It is always active and cannot be disabled for your safety.
+
+Created by Fari Noveri
+]]
+        infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        infoLabel.TextSize = 10
+        infoLabel.TextWrapped = true
+        infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        infoLabel.TextYAlignment = Enum.TextYAlignment.Top
     end
     
     wait(0.1)
@@ -1582,159 +1520,104 @@ function switchCategory(categoryName)
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
 end
 
--- Minimize/Maximize functions dengan state preservation
-local function minimizeGUI()
-    guiMinimized = true
-    MainFrame.Visible = false
-    PlayerListFrame.Visible = false
-    PositionFrame.Visible = false
-    LogoButton.Visible = true
-    updateSpectateButtons() -- Pastikan tombol spectate tetap sesuai status
+-- Initialize Categories
+local categories = {"Movement", "Player", "Visual", "Teleport", "Settings", "Anti Admin"}
+for _, category in pairs(categories) do
+    createCategoryButton(category)
 end
 
-local function maximizeGUI()
-    guiMinimized = false
-    MainFrame.Visible = true
-    LogoButton.Visible = false
-    if playerListVisible then
-        PlayerListFrame.Visible = true
-    end
-    updateSpectateButtons() -- Pastikan tombol spectate tetap sesuai status
-end
+-- Initialize GUI
+switchCategory("Movement")
 
--- Initialize categories
-createCategoryButton("Movement")
-createCategoryButton("Player")
-createCategoryButton("Visual")
-createCategoryButton("Teleport")
-createCategoryButton("Utility")
-createCategoryButton("Settings")
-createCategoryButton("Info")
-
--- Event Connections
+-- Connections
 MinimizeButton.MouseButton1Click:Connect(function()
-    minimizeGUI()
+    guiMinimized = not guiMinimized
+    MainFrame.Visible = not guiMinimized
+    LogoButton.Visible = guiMinimized
+    if guiMinimized then
+        MinimizeButton.Text = "+"
+    else
+        MinimizeButton.Text = "_"
+    end
 end)
 
 LogoButton.MouseButton1Click:Connect(function()
-    maximizeGUI()
+    guiMinimized = false
+    MainFrame.Visible = true
+    LogoButton.Visible = false
+    MinimizeButton.Text = "_"
 end)
 
 ClosePlayerListButton.MouseButton1Click:Connect(function()
-    playerListVisible = false
     PlayerListFrame.Visible = false
+    playerListVisible = false
 end)
 
 ClosePositionButton.MouseButton1Click:Connect(function()
     PositionFrame.Visible = false
 end)
 
-SavePositionButton.MouseButton1Click:Connect(savePosition)
+SavePositionButton.MouseButton1Click:Connect(function()
+    savePosition()
+end)
 
 NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
 PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
 StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
 TeleportSpectateButton.MouseButton1Click:Connect(teleportToSpectatedPlayer)
 
--- Hover effects untuk tombol spectate
-NextSpectateButton.MouseEnter:Connect(function()
-    NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-end)
-NextSpectateButton.MouseLeave:Connect(function()
-    NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-end)
-
-PrevSpectateButton.MouseEnter:Connect(function()
-    PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-end)
-PrevSpectateButton.MouseLeave:Connect(function()
-    PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-end)
-
-StopSpectateButton.MouseEnter:Connect(function()
-    StopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
-end)
-StopSpectateButton.MouseLeave:Connect(function()
-    StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-end)
-
-TeleportSpectateButton.MouseEnter:Connect(function()
-    TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
-end)
-TeleportSpectateButton.MouseLeave:Connect(function()
-    TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-end)
-
--- Handle character reset
+-- Handle character respawn
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     
-    flyEnabled = false
-    noclipEnabled = false
-    speedEnabled = false
-    jumpHighEnabled = false
-    godModeEnabled = false
-    flashlightEnabled = false
-    spiderEnabled = false
-    freecamEnabled = false
-    playerPhaseEnabled = false
-    
-    -- Reset fitur saat karakter respawn
-    toggleFly(false)
-    toggleNoclip(false)
-    toggleSpeed(false)
-    toggleJumpHigh(false)
-    toggleGodMode(false)
-    toggleFlashlight(false)
-    toggleSpider(false)
-    toggleFreecam(false)
-    togglePlayerPhase(false)
-    
-    buttonStates["Fly"] = false
-    buttonStates["Noclip"] = false
-    buttonStates["Speed"] = false
-    buttonStates["Jump High"] = false
-    buttonStates["God Mode"] = false
-    buttonStates["Flashlight"] = false
-    buttonStates["Spider"] = false
-    buttonStates["Freecam"] = false
-    buttonStates["Player Phase"] = false
-    
-    switchCategory(currentCategory) -- Refresh UI untuk update state tombol
+    if flyEnabled then
+        toggleFly(false)
+        toggleFly(true)
+    end
+    if noclipEnabled then
+        toggleNoclip(false)
+        toggleNoclip(true)
+    end
+    if speedEnabled then
+        toggleSpeed(false)
+        toggleSpeed(true)
+    end
+    if jumpHighEnabled then
+        toggleJumpHigh(false)
+        toggleJumpHigh(true)
+    end
+    if godModeEnabled then
+        toggleGodMode(false)
+        toggleGodMode(true)
+    end
+    if spiderEnabled then
+        toggleSpider(false)
+        toggleSpider(true)
+    end
+    if playerPhaseEnabled then
+        togglePlayerPhase(false)
+        togglePlayerPhase(true)
+    end
+    if flashlightEnabled then
+        toggleFlashlight(false)
+        toggleFlashlight(true)
+    end
 end)
 
--- Update daftar pemain secara berkala untuk menangani pemain baru atau keluar
+-- Handle player join/leave
 Players.PlayerAdded:Connect(function()
     updatePlayerList()
 end)
-
 Players.PlayerRemoving:Connect(function(p)
-    if p == selectedPlayer then
+    if selectedPlayer == p then
         stopSpectating()
     end
     updatePlayerList()
 end)
 
--- Update daftar pemain setiap 5 detik untuk memastikan daftar tetap akurat
-spawn(function()
-    while true do
-        updatePlayerList()
-        wait(5)
-    end
-end)
-
--- Pastikan tombol spectate tetap aktif saat GUI dimunculkan kembali
-UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if input.KeyCode == Enum.KeyCode.LeftControl and input.UserInputType == Enum.UserInputType.Keyboard then
-        if guiMinimized then
-            maximizeGUI()
-        end
-    end
-end)
-
--- Pastikan semua koneksi dibersihkan saat GUI dihancurkan
+-- Cleanup on script destruction
 ScreenGui.AncestryChanged:Connect(function()
     if not ScreenGui:IsDescendantOf(game) then
         for _, connection in pairs(connections) do
@@ -1750,9 +1633,4 @@ ScreenGui.AncestryChanged:Connect(function()
     end
 end)
 
--- Inisialisasi UI
-wait(0.1)
-local categoryContentSize = CategoryList.AbsoluteContentSize
-CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
-switchCategory("Movement") -- Load default category
-print("Minimal Hack GUI Loaded - By Fari Noveri")
+print("MainLoader.lua Initialized - By Fari Noveri")
