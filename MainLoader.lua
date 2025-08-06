@@ -32,14 +32,14 @@ end
 
 -- Module URLs
 local moduleUrls = {
-    Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Movement.lua",
-    Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Player.lua",
-    Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Visual.lua",
-    Teleport = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Teleport.lua",
-    Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Utility.lua",
-    Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Settings.lua",
-    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Info.lua",
-    AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/AntiAdminInfo.lua"
+    Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement.lua",
+    Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Player.lua",
+    Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Visual.lua",
+    Teleport = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Teleport.lua",
+    Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Utility.lua",
+    Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Settings.lua",
+    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua",
+    AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdminInfo.lua"
 }
 
 -- Load modules
