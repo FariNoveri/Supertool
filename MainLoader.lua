@@ -548,7 +548,7 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Freecam (Android Touch Controls) - FIXED V3
+-- Freecam (Android Touch Controls)
 local freecamPart = nil
 local originalCameraSubject = nil
 local freecamPosition = nil
@@ -557,18 +557,27 @@ local pitch = 0
 local function toggleFreecam(enabled)
     freecamEnabled = enabled
     if enabled then
+        -- Store the current camera subject
         originalCameraSubject = workspace.CurrentCamera.CameraSubject
-        freecamPosition = workspace.CurrentCamera.CFrame.Position
         
+        -- Initialize freecam position to character's current position if available, otherwise camera position
+        if character and rootPart then
+            freecamPosition = rootPart.Position
+        else
+            freecamPosition = workspace.CurrentCamera.CFrame.Position
+        end
+        
+        -- Create freecam part
         freecamPart = Instance.new("Part")
         freecamPart.Name = "FreecamPart"
         freecamPart.Anchored = true
         freecamPart.CanCollide = false
         freecamPart.Transparency = 1
         freecamPart.Size = Vector3.new(1, 1, 1)
-        freecamPart.CFrame = workspace.CurrentCamera.CFrame
+        freecamPart.CFrame = CFrame.new(freecamPosition, freecamPosition + workspace.CurrentCamera.CFrame.LookVector)
         freecamPart.Parent = workspace
         
+        -- Set camera to freecam part
         workspace.CurrentCamera.CameraSubject = freecamPart
         
         -- Initialize yaw and pitch from current camera orientation
@@ -583,7 +592,7 @@ local function toggleFreecam(enabled)
         
         -- Handle camera rotation with touch/mouse input
         connections.freecam_input = UserInputService.InputChanged:Connect(function(input)
-            if freecamEnabled and input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+            if freecamEnabled and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
                 local delta = input.Delta
                 local sensitivity = 0.005 -- Adjust for smoother rotation
                 
@@ -610,7 +619,7 @@ local function toggleFreecam(enabled)
                 local movement = Vector3.new(0, 0, 0)
                 local speed = 80
                 
-                -- Thumbstick movement (Fixed directions)
+                -- Thumbstick movement
                 if moveVector.Magnitude > 0 then
                     -- Forward/Backward movement (thumbstick up/down)
                     movement = movement + (forwardVector * -moveVector.Z * speed)
@@ -640,6 +649,7 @@ local function toggleFreecam(enabled)
         end)
         
     else
+        -- Disable freecam
         if connections.freecam then
             connections.freecam:Disconnect()
         end
@@ -651,16 +661,60 @@ local function toggleFreecam(enabled)
             freecamPart = nil
         end
         
-        if originalCameraSubject then
-            workspace.CurrentCamera.CameraSubject = originalCameraSubject
-        else
+        -- Restore camera subject to player's humanoid
+        if character and humanoid then
             workspace.CurrentCamera.CameraSubject = humanoid
+            -- Ensure camera aligns with player's position
+            if rootPart then
+                workspace.CurrentCamera.CFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 0), rootPart.Position)
+            end
+        elseif originalCameraSubject then
+            workspace.CurrentCamera.CameraSubject = originalCameraSubject
         end
         
         -- Unfreeze character
         if rootPart then
             rootPart.Anchored = false
         end
+        
+        -- Reset freecam position to ensure fresh start on next enable
+        freecamPosition = nil
+        yaw = 0
+        pitch = 0
+        
+        print("Freecam disabled, camera restored to player")
+    end
+end
+
+-- Save Freecam Position to Position Manager
+local function saveFreecamPosition()
+    if freecamEnabled and freecamPosition then
+        local positionName = PositionInput.Text
+        if positionName == "" then
+            positionName = "Freecam Position " .. (#savedPositions + 1)
+        end
+        savedPositions[positionName] = CFrame.new(freecamPosition)
+        print("Freecam Position Saved: " .. positionName)
+        PositionInput.Text = ""
+        updatePositionList()
+    else
+        print("Freecam must be enabled to save position")
+    end
+end
+
+-- Save Selected Player Position to Position Manager
+local function savePlayerPosition()
+    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local positionName = PositionInput.Text
+        if positionName == "" then
+            positionName = selectedPlayer.Name .. " Position " .. (#savedPositions + 1)
+        end
+        savedPositions[positionName] = selectedPlayer.Character.HumanoidRootPart.CFrame
+        print("Player Position Saved: " .. positionName)
+        PositionInput.Text = ""
+        updatePositionList()
+    else
+        print("Select a player first to save their position")
     end
 end
 
@@ -813,10 +867,12 @@ end
 local function showPlayerSelection()
     playerListVisible = true
     PlayerListFrame.Visible = true
+    print("Opening Player Selection Frame")
     updatePlayerList()
 end
 
 local function updatePlayerList()
+    print("Updating Player List")
     for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
         if child:IsA("Frame") then
             child:Destroy()
@@ -827,6 +883,7 @@ local function updatePlayerList()
     
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player then
+            print("Adding player to list: " .. p.Name)
             local playerItem = Instance.new("Frame")
             playerItem.Name = p.Name .. "Item"
             playerItem.Parent = PlayerListScrollFrame
@@ -850,12 +907,12 @@ local function updatePlayerList()
             local selectButton = Instance.new("TextButton")
             selectButton.Name = "SelectButton"
             selectButton.Parent = playerItem
-            selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            selectButton.BackgroundColor3 = selectedPlayer == p and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
             selectButton.BorderSizePixel = 0
             selectButton.Position = UDim2.new(0, 5, 0, 30)
             selectButton.Size = UDim2.new(1, -10, 0, 25)
             selectButton.Font = Enum.Font.Gotham
-            selectButton.Text = "SELECT PLAYER"
+            selectButton.Text = selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
             selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             selectButton.TextSize = 10
             
@@ -899,6 +956,7 @@ local function updatePlayerList()
             selectButton.MouseButton1Click:Connect(function()
                 selectedPlayer = p
                 SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
+                print("Selected player: " .. p.Name)
                 
                 -- Update all select buttons
                 for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
@@ -979,6 +1037,7 @@ local function updatePlayerList()
     wait(0.1)
     local contentSize = PlayerListLayout.AbsoluteContentSize
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    print("Player List Updated: " .. itemCount .. " players added")
 end
 
 -- Button creation functions
@@ -1011,29 +1070,18 @@ local function createToggleButton(name, callback)
     local button = Instance.new("TextButton")
     button.Name = name .. "Button"
     button.Parent = ScrollFrame
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
     button.BorderSizePixel = 0
     button.Size = UDim2.new(1, 0, 0, 30)
     button.Font = Enum.Font.Gotham
-    button.Text = name:upper() .. " [OFF]"
+    button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 11
     
-    buttonStates[name] = false
-    
-    local function updateButton()
-        if buttonStates[name] then
-            button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-            button.Text = name:upper() .. " [ON]"
-        else
-            button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            button.Text = name:upper() .. " [OFF]"
-        end
-    end
-    
     button.MouseButton1Click:Connect(function()
         buttonStates[name] = not buttonStates[name]
-        updateButton()
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
+        button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
         callback(buttonStates[name])
     end)
     
@@ -1044,10 +1092,9 @@ local function createToggleButton(name, callback)
     end)
     
     button.MouseLeave:Connect(function()
-        updateButton()
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
     end)
     
-    updateButton()
     return button
 end
 
@@ -1072,7 +1119,7 @@ end
 
 local function clearButtons()
     for _, child in pairs(ScrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
+        if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
@@ -1116,6 +1163,23 @@ local function toggleSpider(enabled)
     end
 end
 
+-- Info Category (Watermark)
+local function loadInfoButtons()
+    local watermarkLabel = Instance.new("TextLabel")
+    watermarkLabel.Name = "WatermarkLabel"
+    watermarkLabel.Parent = ScrollFrame
+    watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    watermarkLabel.BorderSizePixel = 0
+    watermarkLabel.Size = UDim2.new(1, 0, 0, 100)
+    watermarkLabel.Font = Enum.Font.Gotham
+    watermarkLabel.Text = "Created by Fari Noveri for Unknown Block members.\nDo not sell or distribute.\n\nThis script is designed for exclusive use by the Unknown Block community to enhance gameplay experiences in Roblox. Please respect the community by using it responsibly and only within the intended group. Unauthorized sharing or commercial use is strictly prohibited."
+    watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    watermarkLabel.TextSize = 10
+    watermarkLabel.TextWrapped = true
+    watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
+    watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+end
+
 -- Category button loaders
 local function loadMovementButtons()
     createToggleButton("Fly", toggleFly)
@@ -1149,6 +1213,8 @@ local function loadTeleportButtons()
         end
     end)
     createButton("TP to Freecam", teleportToFreecam)
+    createButton("Save Freecam Position", saveFreecamPosition)
+    createButton("Save Player Position", savePlayerPosition)
 end
 
 local function loadUtilityButtons()
@@ -1196,6 +1262,8 @@ function switchCategory(categoryName)
         loadTeleportButtons()
     elseif categoryName == "Utility" then
         loadUtilityButtons()
+    elseif categoryName == "Info" then
+        loadInfoButtons()
     end
     
     wait(0.1)
@@ -1227,6 +1295,7 @@ LogoButton.MouseButton1Click:Connect(maximizeGUI)
 ClosePlayerListButton.MouseButton1Click:Connect(function()
     PlayerListFrame.Visible = false
     playerListVisible = false
+    print("Player Selection Frame Closed")
 end)
 
 -- Position Manager Close Button
@@ -1243,6 +1312,7 @@ createCategoryButton("Player")
 createCategoryButton("Visual")
 createCategoryButton("Teleport")
 createCategoryButton("Utility")
+createCategoryButton("Info")
 
 -- Initialize with Movement category
 wait(0.5)
@@ -1275,11 +1345,6 @@ player.CharacterAdded:Connect(function(newCharacter)
     end
     connections = {}
     
-    -- Reset character properties
-    if rootPart then
-        rootPart.Anchored = false
-    end
-    
     -- Reset button states to OFF
     for featureName, _ in pairs(buttonStates) do
         buttonStates[featureName] = false
@@ -1296,12 +1361,18 @@ Players.PlayerRemoving:Connect(function(removedPlayer)
     if removedPlayer == selectedPlayer then
         selectedPlayer = nil
         SelectedPlayerLabel.Text = "SELECTED: NONE"
+        print("Selected player left, resetting selection")
+    end
+    if playerListVisible then
+        wait(0.1) -- Small delay to ensure player is removed
+        updatePlayerList()
     end
 end)
 
 -- Player joined/left events untuk update player list
 Players.PlayerAdded:Connect(function()
     if playerListVisible then
+        print("Player added, updating player list")
         updatePlayerList()
     end
 end)
@@ -1309,16 +1380,25 @@ end)
 Players.PlayerRemoving:Connect(function()
     if playerListVisible then
         wait(0.1) -- Small delay to ensure player is removed
+        print("Player removed, updating player list")
         updatePlayerList()
     end
 end)
 
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V3) ===")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V8) ===")
 print("✓ Auto-disable previous scripts")
 print("✓ State preservation on minimize")
 print("✓ Enhanced player list with individual buttons")
 print("✓ Position manager with save/load/delete")
 print("✓ Flashlight feature added")
 print("✓ Fixed freecam movement and rotation")
+print("✓ Fixed freecam initial position to start at character")
+print("✓ Fixed category switching to preserve toggle states")
+print("✓ Added save freecam position to Position Manager")
+print("✓ Added save player position to Position Manager")
+print("✓ Fixed player list not showing")
 print("✓ Added teleport to freecam feature")
+print("✓ Fixed freecam position bug after teleport and re-enable")
+print("✓ Fixed freecam disable to prevent camera misplacement")
+print("✓ Added Info category with watermark")
 print("GUI ready to use!")
