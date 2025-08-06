@@ -37,6 +37,14 @@ local currentCategory = "Movement"
 local playerListVisible = false
 local guiMinimized = false
 
+-- Settings table
+local settings = {
+    FlySpeed = { value = 50, default = 50, min = 10, max = 200 },
+    FreecamSpeed = { value = 80, default = 80, min = 20, max = 300 },
+    JumpHeight = { value = 50, default = 50, min = 10, max = 150 },
+    WalkSpeed = { value = 100, default = 100, min = 16, max = 300 }
+}
+
 -- Connections
 local connections = {}
 local buttonStates = {}
@@ -159,10 +167,13 @@ ScrollFrame.Size = UDim2.new(1, -20, 1, -20)
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
 ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
 -- UIListLayout untuk content
 UIListLayout.Parent = ScrollFrame
-UIListLayout.Padding = UDim.new(0, 3)
+UIListLayout.Padding = UDim.new(0, 5) -- Increased padding for better spacing
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 -- Player Selection Frame
@@ -410,7 +421,7 @@ local function toggleFly(enabled)
                 local upVector = Vector3.new(0, 1, 0)
                 
                 local velocity = Vector3.new(0, 0, 0)
-                local speed = 50
+                local speed = settings.FlySpeed.value
                 
                 -- Movement berdasarkan virtual thumbstick Android
                 if moveVector.Magnitude > 0 then
@@ -470,7 +481,7 @@ end
 local function toggleSpeed(enabled)
     speedEnabled = enabled
     if enabled then
-        humanoid.WalkSpeed = 100
+        humanoid.WalkSpeed = settings.WalkSpeed.value
     else
         humanoid.WalkSpeed = 16
     end
@@ -480,11 +491,11 @@ end
 local function toggleJumpHigh(enabled)
     jumpHighEnabled = enabled
     if enabled then
-        humanoid.JumpHeight = 50
-        humanoid.JumpPower = 120
+        humanoid.JumpHeight = settings.JumpHeight.value
+        humanoid.JumpPower = settings.JumpHeight.value * 2.4 -- Adjusted for Roblox physics
         connections.jumphigh = humanoid.Jumping:Connect(function()
             if jumpHighEnabled then
-                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, 120, rootPart.Velocity.Z)
+                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 2.4, rootPart.Velocity.Z)
             end
         end)
     else
@@ -617,7 +628,7 @@ local function toggleFreecam(enabled)
                 local upVector = Vector3.new(0, 1, 0) -- World up vector
                 
                 local movement = Vector3.new(0, 0, 0)
-                local speed = 80
+                local speed = settings.FreecamSpeed.value
                 
                 -- Thumbstick movement
                 if moveVector.Magnitude > 0 then
@@ -1037,7 +1048,6 @@ local function updatePlayerList()
     wait(0.1)
     local contentSize = PlayerListLayout.AbsoluteContentSize
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
-    print("Player List Updated: " .. itemCount .. " players added")
 end
 
 -- Button creation functions
@@ -1119,7 +1129,7 @@ end
 
 local function clearButtons()
     for _, child in pairs(ScrollFrame:GetChildren()) do
-        if child:IsA("TextButton") or child:IsA("TextLabel") then
+        if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
             child:Destroy()
         end
     end
@@ -1161,6 +1171,80 @@ local function toggleSpider(enabled)
             rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
         end
     end
+end
+
+-- Settings Category
+local function createSettingInput(settingName, settingData)
+    local settingFrame = Instance.new("Frame")
+    settingFrame.Name = settingName .. "SettingFrame"
+    settingFrame.Parent = ScrollFrame
+    settingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    settingFrame.BorderSizePixel = 0
+    settingFrame.Size = UDim2.new(1, 0, 0, 60)
+    
+    local label = Instance.new("TextLabel")
+    label.Name = "SettingLabel"
+    label.Parent = settingFrame
+    label.BackgroundTransparency = 1
+    label.Position = UDim2.new(0, 5, 0, 5)
+    label.Size = UDim2.new(1, -10, 0, 20)
+    label.Font = Enum.Font.Gotham
+    label.Text = string.format("%s (Default: %d, Min: %d, Max: %d)", settingName, settingData.default, settingData.min, settingData.max)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 11
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local input = Instance.new("TextBox")
+    input.Name = settingName .. "Input"
+    input.Parent = settingFrame
+    input.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    input.BorderSizePixel = 0
+    input.Position = UDim2.new(0, 5, 0, 30)
+    input.Size = UDim2.new(1, -10, 0, 25)
+    input.Font = Enum.Font.Gotham
+    input.Text = tostring(settingData.value)
+    input.TextColor3 = Color3.fromRGB(255, 255, 255)
+    input.TextSize = 11
+    input.PlaceholderText = "Enter value..."
+    
+    input.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            local value = tonumber(input.Text)
+            if value then
+                value = math.clamp(value, settingData.min, settingData.max)
+                settingData.value = value
+                input.Text = tostring(value)
+                print(string.format("%s set to %d", settingName, value))
+                
+                -- Update feature if active
+                if settingName == "FlySpeed" and flyEnabled then
+                    toggleFly(false)
+                    toggleFly(true)
+                elseif settingName == "FreecamSpeed" and freecamEnabled then
+                    toggleFreecam(false)
+                    toggleFreecam(true)
+                elseif settingName == "JumpHeight" and jumpHighEnabled then
+                    toggleJumpHigh(false)
+                    toggleJumpHigh(true)
+                elseif settingName == "WalkSpeed" and speedEnabled then
+                    toggleSpeed(false)
+                    toggleSpeed(true)
+                end
+            else
+                input.Text = tostring(settingData.value)
+                print(string.format("Invalid input for %s, reverting to %d", settingName, settingData.value))
+            end
+        end
+    end)
+    
+    return settingFrame
+end
+
+local function loadSettingsButtons()
+    createSettingInput("Fly Speed", settings.FlySpeed)
+    createSettingInput("Freecam Speed", settings.FreecamSpeed)
+    createSettingInput("Jump Height", settings.JumpHeight)
+    createSettingInput("Walk Speed", settings.WalkSpeed)
 end
 
 -- Info Category (Watermark)
@@ -1262,13 +1346,15 @@ function switchCategory(categoryName)
         loadTeleportButtons()
     elseif categoryName == "Utility" then
         loadUtilityButtons()
+    elseif categoryName == "Settings" then
+        loadSettingsButtons()
     elseif categoryName == "Info" then
         loadInfoButtons()
     end
     
     wait(0.1)
     local contentSize = UIListLayout.AbsoluteContentSize
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20) -- Increased padding for scroll
 end
 
 -- Minimize/Maximize functions dengan state preservation
@@ -1312,6 +1398,7 @@ createCategoryButton("Player")
 createCategoryButton("Visual")
 createCategoryButton("Teleport")
 createCategoryButton("Utility")
+createCategoryButton("Settings")
 createCategoryButton("Info")
 
 -- Initialize with Movement category
@@ -1385,7 +1472,7 @@ Players.PlayerRemoving:Connect(function()
     end
 end)
 
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V8) ===")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V9) ===")
 print("✓ Auto-disable previous scripts")
 print("✓ State preservation on minimize")
 print("✓ Enhanced player list with individual buttons")
@@ -1401,4 +1488,6 @@ print("✓ Added teleport to freecam feature")
 print("✓ Fixed freecam position bug after teleport and re-enable")
 print("✓ Fixed freecam disable to prevent camera misplacement")
 print("✓ Added Info category with watermark")
+print("✓ Added Settings category with customizable Fly Speed, Freecam Speed, Jump Height, and Walk Speed")
+print("✓ Added scrollable content for all categories")
 print("GUI ready to use!")
