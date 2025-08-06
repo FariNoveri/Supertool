@@ -37,7 +37,7 @@ local playerListVisible = false
 local guiMinimized = false
 local spectatePlayerList = {}
 local currentSpectateIndex = 0
-local spectateConnections = {} -- Table to store multiple connections
+local spectateConnections = {}
 
 -- Settings table
 local settings = {
@@ -88,6 +88,7 @@ local LogoButton = Instance.new("TextButton")
 local NextSpectateButton = Instance.new("TextButton")
 local PrevSpectateButton = Instance.new("TextButton")
 local StopSpectateButton = Instance.new("TextButton")
+local TeleportSpectateButton = Instance.new("TextButton")
 
 -- GUI Properties
 ScreenGui.Name = "MinimalHackGUI"
@@ -395,6 +396,21 @@ StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 StopSpectateButton.TextSize = 10
 StopSpectateButton.Visible = false
 StopSpectateButton.Active = true
+
+-- Teleport Spectate Button
+TeleportSpectateButton.Name = "TeleportSpectateButton"
+TeleportSpectateButton.Parent = ScreenGui
+TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+TeleportSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+TeleportSpectateButton.BorderSizePixel = 1
+TeleportSpectateButton.Position = UDim2.new(0.5, 40, 0.5, 40)
+TeleportSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+TeleportSpectateButton.Font = Enum.Font.Gotham
+TeleportSpectateButton.Text = "TP"
+TeleportSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TeleportSpectateButton.TextSize = 10
+TeleportSpectateButton.Visible = false
+TeleportSpectateButton.Active = true
 
 -- Feature Functions
 
@@ -771,6 +787,16 @@ local function teleportToFreecam()
     end
 end
 
+-- Teleport to Spectated Player
+local function teleportToSpectatedPlayer()
+    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
+        rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+        print("Teleported to spectated player: " .. selectedPlayer.Name)
+    else
+        print("Cannot teleport: No valid spectated player")
+    end
+end
+
 -- Position functions
 local function savePosition()
     local positionName = PositionInput.Text
@@ -901,9 +927,10 @@ end
 
 local function updateSpectateButtons()
     local isSpectating = selectedPlayer ~= nil
-    NextSpectateButton.Visible = isSpectating and not guiMinimized
-    PrevSpectateButton.Visible = isSpectating and not guiMinimized
-    StopSpectateButton.Visible = isSpectating and not guiMinimized
+    NextSpectateButton.Visible = isSpectating
+    PrevSpectateButton.Visible = isSpectating
+    StopSpectateButton.Visible = isSpectating
+    TeleportSpectateButton.Visible = isSpectating
 end
 
 local function stopSpectating()
@@ -938,6 +965,7 @@ local function spectatePlayer(targetPlayer)
     if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
         workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
         selectedPlayer = targetPlayer
+        currentSpectateIndex = table.find(spectatePlayerList, targetPlayer) or 0
         SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
         print("Spectating: " .. targetPlayer.Name)
         
@@ -1021,6 +1049,7 @@ local function updatePlayerList()
         end
     end
     
+    local previousSelectedPlayer = selectedPlayer
     spectatePlayerList = {}
     local playerCount = 0
     local players = Players:GetPlayers()
@@ -1185,12 +1214,17 @@ local function updatePlayerList()
         end
     end
     
-    -- Update spectate index if selected player is in the list
-    if selectedPlayer then
+    -- Preserve selectedPlayer and update currentSpectateIndex
+    if previousSelectedPlayer then
+        selectedPlayer = previousSelectedPlayer
         currentSpectateIndex = table.find(spectatePlayerList, selectedPlayer) or 0
-        if currentSpectateIndex == 0 and not (selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid")) then
-            stopSpectating()
+        if currentSpectateIndex == 0 and selectedPlayer then
+            -- If selectedPlayer is no longer valid, stop spectating
+            if not (selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") and selectedPlayer.Character.Humanoid.Health > 0) then
+                stopSpectating()
+            end
         end
+        SelectedPlayerLabel.Text = selectedPlayer and "SELECTED: " .. selectedPlayer.Name:upper() or "SELECTED: NONE"
     else
         currentSpectateIndex = 0
     end
@@ -1555,23 +1589,40 @@ local function minimizeGUI()
     PlayerListFrame.Visible = false
     PositionFrame.Visible = false
     LogoButton.Visible = true
-    updateSpectateButtons()
+    updateSpectateButtons() -- Pastikan tombol spectate tetap sesuai status
 end
 
 local function maximizeGUI()
     guiMinimized = false
-    LogoButton.Visible = false
     MainFrame.Visible = true
-    updateSpectateButtons()
+    LogoButton.Visible = false
+    if playerListVisible then
+        PlayerListFrame.Visible = true
+    end
+    updateSpectateButtons() -- Pastikan tombol spectate tetap sesuai status
 end
 
--- Event connections
-MinimizeButton.MouseButton1Click:Connect(minimizeGUI)
-LogoButton.MouseButton1Click:Connect(maximizeGUI)
+-- Initialize categories
+createCategoryButton("Movement")
+createCategoryButton("Player")
+createCategoryButton("Visual")
+createCategoryButton("Teleport")
+createCategoryButton("Utility")
+createCategoryButton("Settings")
+createCategoryButton("Info")
+
+-- Event Connections
+MinimizeButton.MouseButton1Click:Connect(function()
+    minimizeGUI()
+end)
+
+LogoButton.MouseButton1Click:Connect(function()
+    maximizeGUI()
+end)
 
 ClosePlayerListButton.MouseButton1Click:Connect(function()
-    PlayerListFrame.Visible = false
     playerListVisible = false
+    PlayerListFrame.Visible = false
 end)
 
 ClosePositionButton.MouseButton1Click:Connect(function()
@@ -1583,7 +1634,9 @@ SavePositionButton.MouseButton1Click:Connect(savePosition)
 NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
 PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
 StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
+TeleportSpectateButton.MouseButton1Click:Connect(teleportToSpectatedPlayer)
 
+-- Hover effects untuk tombol spectate
 NextSpectateButton.MouseEnter:Connect(function()
     NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
 end)
@@ -1605,18 +1658,14 @@ StopSpectateButton.MouseLeave:Connect(function()
     StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
 end)
 
-createCategoryButton("Movement")
-createCategoryButton("Player")
-createCategoryButton("Visual")
-createCategoryButton("Teleport")
-createCategoryButton("Utility")
-createCategoryButton("Settings")
-createCategoryButton("Info")
+TeleportSpectateButton.MouseEnter:Connect(function()
+    TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+end)
+TeleportSpectateButton.MouseLeave:Connect(function()
+    TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+end)
 
-wait(0.5)
-switchCategory("Movement")
-updatePlayerList()
-
+-- Handle character reset
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
@@ -1705,4 +1754,5 @@ end)
 wait(0.1)
 local categoryContentSize = CategoryList.AbsoluteContentSize
 CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
+switchCategory("Movement") -- Load default category
 print("Minimal Hack GUI Loaded - By Fari Noveri")
