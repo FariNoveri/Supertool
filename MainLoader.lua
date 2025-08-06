@@ -551,13 +551,15 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Freecam (Android Touch Controls)
+-- Freecam (Android Touch Controls) - FIXED
 local freecamPart = nil
 local originalCameraSubject = nil
+local freecamPosition = nil
 local function toggleFreecam(enabled)
     freecamEnabled = enabled
     if enabled then
         originalCameraSubject = workspace.CurrentCamera.CameraSubject
+        freecamPosition = workspace.CurrentCamera.CFrame.Position
         
         freecamPart = Instance.new("Part")
         freecamPart.Name = "FreecamPart"
@@ -565,10 +567,11 @@ local function toggleFreecam(enabled)
         freecamPart.CanCollide = false
         freecamPart.Transparency = 1
         freecamPart.Size = Vector3.new(1, 1, 1)
-        freecamPart.CFrame = workspace.CurrentCamera.CFrame
+        freecamPart.CFrame = CFrame.new(freecamPosition)
         freecamPart.Parent = workspace
         
         workspace.CurrentCamera.CameraSubject = freecamPart
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Attach
         
         -- Freeze character
         if rootPart then
@@ -580,20 +583,20 @@ local function toggleFreecam(enabled)
                 local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
-                -- Get camera direction
+                -- Get camera direction (FIXED: proper direction vectors)
                 local cameraCFrame = camera.CFrame
                 local forwardVector = cameraCFrame.LookVector
                 local rightVector = cameraCFrame.RightVector
-                local upVector = Vector3.new(0, 1, 0)
+                local upVector = cameraCFrame.UpVector
                 
                 local velocity = Vector3.new(0, 0, 0)
-                local speed = 2 -- Slower speed untuk Android
+                local speed = 50 -- Faster speed
                 
-                -- Movement dari virtual thumbstick
+                -- Fixed movement calculation
                 if moveVector.Magnitude > 0 then
-                    -- Forward/Backward
-                    velocity = velocity + (forwardVector * -moveVector.Z * speed)
-                    -- Left/Right
+                    -- Forward/Backward (FIXED: correct direction)
+                    velocity = velocity + (forwardVector * moveVector.Z * speed)
+                    -- Left/Right (FIXED: correct direction)
                     velocity = velocity + (rightVector * moveVector.X * speed)
                 end
                 
@@ -603,8 +606,12 @@ local function toggleFreecam(enabled)
                     humanoid.Jump = false
                 end
                 
-                -- Apply movement
-                freecamPart.CFrame = freecamPart.CFrame + velocity
+                -- Update freecam position
+                freecamPosition = freecamPosition + velocity * (1/60) -- Delta time
+                freecamPart.CFrame = CFrame.new(freecamPosition)
+                
+                -- Sync camera position
+                camera.CFrame = CFrame.new(freecamPosition, freecamPosition + camera.CFrame.LookVector)
             end
         end)
         
@@ -616,6 +623,9 @@ local function toggleFreecam(enabled)
             freecamPart:Destroy()
             freecamPart = nil
         end
+        
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        
         if originalCameraSubject then
             workspace.CurrentCamera.CameraSubject = originalCameraSubject
         else
@@ -626,6 +636,30 @@ local function toggleFreecam(enabled)
         if rootPart then
             rootPart.Anchored = false
         end
+        
+        freecamPosition = nil
+    end
+end
+
+-- Teleport to Freecam Position
+local function teleportToFreecam()
+    if freecamEnabled and freecamPosition and rootPart then
+        -- Disable freecam first
+        toggleFreecam(false)
+        buttonStates["Freecam"] = false
+        
+        -- Teleport to freecam position
+        rootPart.CFrame = CFrame.new(freecamPosition)
+        print("Teleported to freecam position")
+        
+        -- Refresh current category to update button display
+        switchCategory(currentCategory)
+    elseif freecamPosition and rootPart then
+        -- If freecam was used before but not currently active
+        rootPart.CFrame = CFrame.new(freecamPosition)
+        print("Teleported to last freecam position")
+    else
+        print("Use freecam first to set a position")
     end
 end
 
@@ -1091,6 +1125,7 @@ local function loadTeleportButtons()
             print("Select a player first")
         end
     end)
+    createButton("TP to Freecam", teleportToFreecam)
 end
 
 local function loadUtilityButtons()
@@ -1207,6 +1242,7 @@ player.CharacterAdded:Connect(function(newCharacter)
     playerPhaseEnabled = false
     spiderEnabled = false
     flashlightEnabled = false
+    freecamPosition = nil -- Reset freecam position
     
     -- Disconnect all connections
     for _, connection in pairs(connections) do
@@ -1260,4 +1296,6 @@ print("✓ State preservation on minimize")
 print("✓ Enhanced player list with individual buttons")
 print("✓ Position manager with save/load/delete")
 print("✓ Flashlight feature added")
+print("✓ Fixed freecam movement directions")
+print("✓ Added teleport to freecam feature")
 print("GUI ready to use!")
