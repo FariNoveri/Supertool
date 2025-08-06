@@ -19,7 +19,7 @@ end
 
 -- Memuat AntiAdmin.lua dari URL
 local success, errorMsg = pcall(function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/antiadmin.lua", true))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua", true))()
 end)
 if not success then
     warn("Failed to load AntiAdmin.lua: " .. tostring(errorMsg))
