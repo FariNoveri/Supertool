@@ -42,7 +42,10 @@ local settings = {
     FlySpeed = { value = 50, default = 50, min = 10, max = 200 },
     FreecamSpeed = { value = 80, default = 80, min = 20, max = 300 },
     JumpHeight = { value = 50, default = 50, min = 10, max = 150 },
-    WalkSpeed = { value = 100, default = 100, min = 16, max = 300 }
+    WalkSpeed = { value = 100, default = 100, min = 16, max = 300 },
+    FlashlightBrightness = { value = 5, default = 5, min = 1, max = 10 },
+    FlashlightRange = { value = 100, default = 100, min = 50, max = 200 },
+    FullbrightBrightness = { value = 2, default = 2, min = 0, max = 5 }
 }
 
 -- Connections
@@ -173,7 +176,7 @@ ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
 -- UIListLayout untuk content
 UIListLayout.Parent = ScrollFrame
-UIListLayout.Padding = UDim.new(0, 5) -- Increased padding for better spacing
+UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 -- Player Selection Frame
@@ -351,8 +354,8 @@ local function toggleFlashlight(enabled)
         if character and character:FindFirstChild("Head") then
             flashlightPart = Instance.new("PointLight")
             flashlightPart.Name = "Flashlight"
-            flashlightPart.Brightness = 5
-            flashlightPart.Range = 100
+            flashlightPart.Brightness = settings.FlashlightBrightness.value
+            flashlightPart.Range = settings.FlashlightRange.value
             flashlightPart.Color = Color3.fromRGB(255, 255, 255)
             flashlightPart.Parent = character.Head
         end
@@ -545,7 +548,7 @@ local function toggleFullbright(enabled)
     fullbrightEnabled = enabled
     local lighting = game:GetService("Lighting")
     if enabled then
-        lighting.Brightness = 2
+        lighting.Brightness = settings.FullbrightBrightness.value
         lighting.ClockTime = 14
         lighting.FogEnd = 100000
         lighting.GlobalShadows = false
@@ -879,7 +882,7 @@ local function showPlayerSelection()
     playerListVisible = true
     PlayerListFrame.Visible = true
     print("Opening Player Selection Frame")
-    updatePlayerList()
+    updatePlayerList() -- Force update when opening
 end
 
 local function updatePlayerList()
@@ -891,9 +894,11 @@ local function updatePlayerList()
     end
     
     local itemCount = 0
+    local playerCount = 0
     
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player then
+        if p ~= player then -- Explicitly exclude local player
+            playerCount = playerCount + 1
             print("Adding player to list: " .. p.Name)
             local playerItem = Instance.new("Frame")
             playerItem.Name = p.Name .. "Item"
@@ -1045,9 +1050,11 @@ local function updatePlayerList()
         end
     end
     
-    wait(0.1)
+    -- Update CanvasSize immediately
     local contentSize = PlayerListLayout.AbsoluteContentSize
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    
+    print("Player List Updated: " .. playerCount .. " players listed")
 end
 
 -- Button creation functions
@@ -1217,18 +1224,27 @@ local function createSettingInput(settingName, settingData)
                 print(string.format("%s set to %d", settingName, value))
                 
                 -- Update feature if active
-                if settingName == "FlySpeed" and flyEnabled then
+                if settingName == "Fly Speed" and flyEnabled then
                     toggleFly(false)
                     toggleFly(true)
-                elseif settingName == "FreecamSpeed" and freecamEnabled then
+                elseif settingName == "Freecam Speed" and freecamEnabled then
                     toggleFreecam(false)
                     toggleFreecam(true)
-                elseif settingName == "JumpHeight" and jumpHighEnabled then
+                elseif settingName == "Jump Height" and jumpHighEnabled then
                     toggleJumpHigh(false)
                     toggleJumpHigh(true)
-                elseif settingName == "WalkSpeed" and speedEnabled then
+                elseif settingName == "Walk Speed" and speedEnabled then
                     toggleSpeed(false)
                     toggleSpeed(true)
+                elseif settingName == "Flashlight Brightness" and flashlightEnabled then
+                    toggleFlashlight(false)
+                    toggleFlashlight(true)
+                elseif settingName == "Flashlight Range" and flashlightEnabled then
+                    toggleFlashlight(false)
+                    toggleFlashlight(true)
+                elseif settingName == "Fullbright Brightness" and fullbrightEnabled then
+                    toggleFullbright(false)
+                    toggleFullbright(true)
                 end
             else
                 input.Text = tostring(settingData.value)
@@ -1245,18 +1261,49 @@ local function loadSettingsButtons()
     createSettingInput("Freecam Speed", settings.FreecamSpeed)
     createSettingInput("Jump Height", settings.JumpHeight)
     createSettingInput("Walk Speed", settings.WalkSpeed)
+    createSettingInput("Flashlight Brightness", settings.FlashlightBrightness)
+    createSettingInput("Flashlight Range", settings.FlashlightRange)
+    createSettingInput("Fullbright Brightness", settings.FullbrightBrightness)
 end
 
--- Info Category (Watermark)
+-- Info Category (Updated Watermark)
 local function loadInfoButtons()
     local watermarkLabel = Instance.new("TextLabel")
     watermarkLabel.Name = "WatermarkLabel"
     watermarkLabel.Parent = ScrollFrame
     watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     watermarkLabel.BorderSizePixel = 0
-    watermarkLabel.Size = UDim2.new(1, 0, 0, 100)
+    watermarkLabel.Size = UDim2.new(1, 0, 0, 300) -- Increased height to accommodate longer text
     watermarkLabel.Font = Enum.Font.Gotham
-    watermarkLabel.Text = "Created by Fari Noveri for Unknown Block members.\nDo not sell or distribute.\n\nThis script is designed for exclusive use by the Unknown Block community to enhance gameplay experiences in Roblox. Please respect the community by using it responsibly and only within the intended group. Unauthorized sharing or commercial use is strictly prohibited."
+    watermarkLabel.Text = [[--[
+  📌 CATET DULU SEBELUM PAKAI 📌
+
+  Dibuat sama Fari Noveri buat member Unknown Block.
+  Bukan buat dijual, bukan buat pamer, bukan buat diacak-acak.
+
+  📎 Aturan pakai:
+  - Gak usah dijual. Ini bukan bahan dagangan.
+  - Nama pembuat jangan diganti. Tetepin aja "by Fari Noveri".
+  - Jangan upload ulang ke tempat publik tanpa izin.
+  - Jangan gabungin sama script lain trus ngaku-ngaku bikin.
+  - Update cuma dari sumber asli, biar gak error sendiri.
+
+  📎 Kalo nemu script ini di luar grup:
+  Bisa jadi udah bocor. Jangan ikut-ikutan nyebar.
+
+  📎 Tujuan:
+  Script ini dibikin buat bantu sesama member, bukan buat cari untung.
+  Tolong dijaga dan dipakai sebagaimana mestinya.
+
+  ✉️ Ada saran, pertanyaan, atau kritik?
+  Boleh hubungi:
+  - Instagram: @fariinoveri
+  - TikTok   : @fari_noveri
+
+  🙏 Makasih udah baca. Pake baik-baik ya.
+
+  - Fari Noveri
+]]]
     watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     watermarkLabel.TextSize = 10
     watermarkLabel.TextWrapped = true
@@ -1354,7 +1401,7 @@ function switchCategory(categoryName)
     
     wait(0.1)
     local contentSize = UIListLayout.AbsoluteContentSize
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20) -- Increased padding for scroll
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
 end
 
 -- Minimize/Maximize functions dengan state preservation
@@ -1450,29 +1497,20 @@ Players.PlayerRemoving:Connect(function(removedPlayer)
         SelectedPlayerLabel.Text = "SELECTED: NONE"
         print("Selected player left, resetting selection")
     end
-    if playerListVisible then
-        wait(0.1) -- Small delay to ensure player is removed
-        updatePlayerList()
-    end
+    updatePlayerList() -- Update list even if not visible
 end)
 
 -- Player joined/left events untuk update player list
 Players.PlayerAdded:Connect(function()
-    if playerListVisible then
-        print("Player added, updating player list")
-        updatePlayerList()
-    end
+    updatePlayerList() -- Update list even if not visible
 end)
 
 Players.PlayerRemoving:Connect(function()
-    if playerListVisible then
-        wait(0.1) -- Small delay to ensure player is removed
-        print("Player removed, updating player list")
-        updatePlayerList()
-    end
+    wait(0.1) -- Small delay to ensure player is removed
+    updatePlayerList() -- Update list even if not visible
 end)
 
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V9) ===")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V12) ===")
 print("✓ Auto-disable previous scripts")
 print("✓ State preservation on minimize")
 print("✓ Enhanced player list with individual buttons")
@@ -1489,5 +1527,7 @@ print("✓ Fixed freecam position bug after teleport and re-enable")
 print("✓ Fixed freecam disable to prevent camera misplacement")
 print("✓ Added Info category with watermark")
 print("✓ Added Settings category with customizable Fly Speed, Freecam Speed, Jump Height, and Walk Speed")
-print("✓ Added scrollable content for all categories")
+print("✓ Added Flashlight Brightness, Flashlight Range, and Fullbright Brightness to Settings")
+print("✓ Fixed player list display with dynamic updates")
+print("✓ Updated Info category watermark text with new header")
 print("GUI ready to use!")
