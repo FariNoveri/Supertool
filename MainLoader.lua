@@ -1256,7 +1256,8 @@ local function loadInfoButtons()
     watermarkLabel.BorderSizePixel = 0
     watermarkLabel.Size = UDim2.new(1, 0, 0, 100)
     watermarkLabel.Font = Enum.Font.Gotham
-    watermarkLabel.Text = "Created by Fari Noveri for Unknown Block members.\nDo not sell or distribute.\n\nThis script is designed for exclusive use by the Unknown Block community to enhance gameplay experiences in Roblox. Please respect the community by using it responsibly and only within the intended group. Unauthorized sharing or commercial use is strictly prohibited."
+    watermarkLabel.Text = "-- Dibuat oleh Fari Noveri buat member Unknown Block.\nBukan buat dijual, bukan buat pamer, bukan buat diacak-acak.\n\n📎 Aturan pakai:\n- Gak usah dijual. Ini bukan bahan dagangan.\n- Nama pembuat jangan diganti. Tetepin aja \"by Fari Noveri\".\n- Jangan upload ulang ke tempat publik tanpa izin.\n- Jangan gabungin sama script lain trus ngaku-ngaku bikin.\n- Update cuma dari sumber asli, biar gak error sendiri.\n\n📎 Kalo nemu script ini di luar grup:\nBisa jadi udah bocor. Jangan ikut-ikutan nyebar.\n\n📎 Tujuan:\nScript ini dibikin buat bantu sesama member, bukan buat cari untung.\nTolong dijaga dan dipakai sebagaimana mestinya.\n\n✉️ Ada saran, pertanyaan, atau kritik?\nBoleh hubungi:\n- Instagram: @fariinoveri\n- TikTok   : @fari_noveri\n\n🙏 Makasih udah baca. Pake baik-baik ya.\n\n- Fari Noveri.
+"
     watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     watermarkLabel.TextSize = 10
     watermarkLabel.TextWrapped = true
