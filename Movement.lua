@@ -374,8 +374,11 @@ end
 game:BindToClose(cleanup)
 
 -- Return functions for external use
+-- Di akhir Movement.lua
 return {
-    loadMovementButtons = loadMovementButtons,
-    loadMovementSettings = loadMovementSettings,
+    loadButtons = function(scrollFrame, options)
+        loadMovementButtons(scrollFrame)
+        loadMovementSettings(scrollFrame)
+    end,
     cleanup = cleanup
 }
