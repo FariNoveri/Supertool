@@ -1259,7 +1259,10 @@ local function createButton(name, callback)
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 11
     
-    button.MouseButton1Click:Connect(callback)
+    button.MouseButton1Click:Connect(function()
+        print("Button clicked: " .. name) -- Debug log
+        callback()
+    end)
     
     button.MouseEnter:Connect(function()
         button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
@@ -1288,6 +1291,7 @@ local function createToggleButton(name, callback)
         buttonStates[name] = not buttonStates[name]
         button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
         button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
+        print("Toggle button clicked: " .. name .. " set to " .. tostring(buttonStates[name])) -- Debug log
         callback(buttonStates[name])
     end)
     
@@ -1313,7 +1317,7 @@ local function createCategoryButton(name)
     button.Size = UDim2.new(1, 0, 0, 35)
     button.Font = Enum.Font.Gotham
     button.Text = name:upper()
-    button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    button.TextColor3 = currentCategory == name and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
     button.TextSize = 10
     button.AutoButtonColor = true
     
@@ -1338,12 +1342,14 @@ local function createCategoryButton(name)
 end
 
 local function clearButtons()
+    print("Clearing ScrollFrame content") -- Debug log
     for _, child in pairs(ScrollFrame:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
             child:Destroy()
         end
     end
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    UIListLayout:ApplyLayout() -- Force layout update
 end
 
 -- Spider function (stick to walls)
@@ -1459,6 +1465,52 @@ local function createSettingInput(settingName, settingData)
     return settingFrame
 end
 
+-- Info Category (Watermark)
+local function loadInfoButtons()
+    print("Loading Info category content") -- Debug log
+    local watermarkLabel = Instance.new("TextLabel")
+    watermarkLabel.Name = "WatermarkLabel"
+    watermarkLabel.Parent = ScrollFrame
+    watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    watermarkLabel.BorderSizePixel = 0
+    watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
+    watermarkLabel.Font = Enum.Font.Gotham
+    watermarkLabel.Text = [[
+--[ NOTICE BEFORE USING ]--
+
+Created by Fari Noveri for Unknown Block members.
+Not for sale, not for showing off, not for tampering.
+
+- Rules of Use:
+- Do not sell this script. It's not for profit.
+- Keep the creator's name as "by Fari Noveri".
+- Do not re-upload to public platforms without permission.
+- Do not combine with other scripts and claim as your own.
+- Only get updates from the original source to avoid errors.
+
+- If you find this script outside the group:
+It may have been leaked. Please don't share it further.
+
+- Purpose:
+This script is made to help fellow members, not for profit.
+Please use it responsibly and respect its purpose.
+
+- For suggestions, questions, or feedback:
+Contact:
+- Instagram: @fariinoveri
+- TikTok: @fari_noveri
+
+Thank you for reading. Use it wisely.
+
+- Fari Noveri
+]]
+    watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    watermarkLabel.TextSize = 10
+    watermarkLabel.TextWrapped = true
+    watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
+    watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+end
+
 -- Category switch function
 local function switchCategory(category)
     if currentCategory == category then
@@ -1480,33 +1532,33 @@ local function switchCategory(category)
     
     -- Populate content for the selected category
     if category == "Movement" then
-        print("Loading Movement category content")
+        print("Loading Movement category content") -- Debug log
         createToggleButton("Fly", toggleFly)
         createToggleButton("Noclip", toggleNoclip)
         createToggleButton("Speed", toggleSpeed)
         createToggleButton("Jump High", toggleJumpHigh)
         createToggleButton("Spider", toggleSpider)
     elseif category == "Player" then
-        print("Loading Player category content")
+        print("Loading Player category content") -- Debug log
         createToggleButton("God Mode", toggleGodMode)
         createToggleButton("Anti AFK", toggleAntiAFK)
         createToggleButton("Player Phase", togglePlayerPhase)
     elseif category == "Visual" then
-        print("Loading Visual category content")
+        print("Loading Visual category content") -- Debug log
         createToggleButton("Fullbright", toggleFullbright)
         createToggleButton("Flashlight", toggleFlashlight)
         createToggleButton("Freecam", toggleFreecam)
         createButton("Teleport to Freecam", teleportToFreecam)
         createButton("Save Freecam Position", saveFreecamPosition)
     elseif category == "Teleport" then
-        print("Loading Teleport category content")
+        print("Loading Teleport category content") -- Debug log
         createButton("Show Position Manager", showPositionManager)
         createButton("Save Current Position", savePosition)
         createButton("Select Player", showPlayerSelection)
         createButton("Save Player Position", savePlayerPosition)
         createButton("Teleport to Player", teleportToSpectatedPlayer)
     elseif category == "Settings" then
-        print("Loading Settings category content")
+        print("Loading Settings category content") -- Debug log
         createSettingInput("Fly Speed", settings.FlySpeed)
         createSettingInput("Freecam Speed", settings.FreecamSpeed)
         createSettingInput("Jump Height", settings.JumpHeight)
@@ -1515,7 +1567,7 @@ local function switchCategory(category)
         createSettingInput("Flashlight Range", settings.FlashlightRange)
         createSettingInput("Fullbright Brightness", settings.FullbrightBrightness)
     elseif category == "Anti Admin" then
-        print("Loading Anti Admin category content")
+        print("Loading Anti Admin category content") -- Debug log
         local infoLabel = Instance.new("TextLabel")
         infoLabel.Name = "AntiAdminInfo"
         infoLabel.Parent = ScrollFrame
@@ -1537,21 +1589,23 @@ Created by Fari Noveri
         infoLabel.TextWrapped = true
         infoLabel.TextXAlignment = Enum.TextXAlignment.Left
         infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+    elseif category == "Info" then
+        loadInfoButtons()
     end
     
     -- Force layout update
     UIListLayout:ApplyLayout()
-    ContentFrame:FindFirstChild("ScrollFrame").CanvasPosition = Vector2.new(0, 0) -- Reset scroll position
+    ScrollFrame.CanvasPosition = Vector2.new(0, 0) -- Reset scroll position
     
     -- Update ScrollFrame CanvasSize
     wait(0.1)
     local contentSize = UIListLayout.AbsoluteContentSize
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
-    print("Category " .. category .. " loaded with canvas size: " .. contentSize.Y)
+    print("Category " .. category .. " loaded with canvas size: " .. contentSize.Y) -- Debug log
 end
 
 -- Initialize Categories
-local categories = {"Movement", "Player", "Visual", "Teleport", "Settings", "Anti Admin"}
+local categories = {"Movement", "Player", "Visual", "Teleport", "Settings", "Anti Admin", "Info"}
 for _, category in pairs(categories) do
     createCategoryButton(category)
 end
