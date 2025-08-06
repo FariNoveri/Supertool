@@ -237,19 +237,23 @@ local SelectedCorner = Instance.new("UICorner")
 SelectedCorner.CornerRadius = UDim.new(0, 6)
 SelectedCorner.Parent = SelectedPlayerLabel
 
--- Player List ScrollFrame
+-- Player List ScrollFrame (Fixed scrolling)
 PlayerListScrollFrame.Name = "PlayerListScrollFrame"
 PlayerListScrollFrame.Parent = PlayerListFrame
 PlayerListScrollFrame.BackgroundTransparency = 1
 PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 90)
 PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -100)
-PlayerListScrollFrame.ScrollBarThickness = 6
+PlayerListScrollFrame.ScrollBarThickness = 8
 PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 162, 255)
+PlayerListScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+PlayerListScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
 -- Player List Layout
 PlayerListLayout.Parent = PlayerListScrollFrame
 PlayerListLayout.Padding = UDim.new(0, 5)
 PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
 
 -- Logo Button (minimized state)
 LogoButton.Name = "LogoButton"
@@ -271,7 +275,7 @@ LogoCorner.Parent = LogoButton
 
 -- Feature Functions
 
--- Fly
+-- Fly (3D Movement dengan kamera)
 local function toggleFly(enabled)
     flyEnabled = enabled
     if enabled then
@@ -280,10 +284,40 @@ local function toggleFly(enabled)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.Parent = rootPart
         
+        local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+        bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+        bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+        bodyAngularVelocity.Parent = rootPart
+        
         connections.fly = RunService.Heartbeat:Connect(function()
             if flyEnabled then
+                local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
-                bodyVelocity.Velocity = moveVector * 50
+                
+                -- Get camera direction
+                local cameraCFrame = camera.CFrame
+                local forwardVector = cameraCFrame.LookVector
+                local rightVector = cameraCFrame.RightVector
+                local upVector = cameraCFrame.UpVector
+                
+                -- Calculate movement based on camera direction and player input
+                local velocity = Vector3.new(0, 0, 0)
+                
+                -- Forward/Backward movement
+                if moveVector.Magnitude > 0 then
+                    velocity = velocity + (forwardVector * moveVector.Z * -50)
+                    velocity = velocity + (rightVector * moveVector.X * 50)
+                end
+                
+                -- Up/Down movement (touch controls for mobile)
+                -- Check for jump button (space on PC, jump button on mobile)
+                if humanoid.Jump then
+                    velocity = velocity + (upVector * 50)
+                    humanoid.Jump = false
+                end
+                
+                -- Apply velocity
+                bodyVelocity.Velocity = velocity
             end
         end)
     else
@@ -292,6 +326,9 @@ local function toggleFly(enabled)
         end
         if rootPart:FindFirstChild("BodyVelocity") then
             rootPart:FindFirstChild("BodyVelocity"):Destroy()
+        end
+        if rootPart:FindFirstChild("BodyAngularVelocity") then
+            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
         end
     end
 end
@@ -333,17 +370,28 @@ local function toggleSpeed(enabled)
     end
 end
 
--- Jump High
+-- Jump High (Fixed untuk mobile)
 local function toggleJumpHigh(enabled)
     jumpHighEnabled = enabled
     if enabled then
-        humanoid.JumpPower = 120
+        humanoid.JumpHeight = 50 -- Untuk R15
+        humanoid.JumpPower = 120  -- Untuk R6
+        -- Backup method
+        connections.jumphigh = humanoid.Jumping:Connect(function()
+            if jumpHighEnabled then
+                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, 120, rootPart.Velocity.Z)
+            end
+        end)
     else
-        humanoid.JumpPower = 50
+        humanoid.JumpHeight = 7.2 -- Default R15
+        humanoid.JumpPower = 50   -- Default R6
+        if connections.jumphigh then
+            connections.jumphigh:Disconnect()
+        end
     end
 end
 
--- Spider
+-- Spider (Wall climbing)
 local function toggleSpider(enabled)
     spiderEnabled = enabled
     if enabled then
@@ -352,12 +400,44 @@ local function toggleSpider(enabled)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.Parent = rootPart
         
+        local bodyPosition = Instance.new("BodyPosition")
+        bodyPosition.MaxForce = Vector3.new(0, 4000, 0)
+        bodyPosition.Parent = rootPart
+        
         connections.spider = RunService.Heartbeat:Connect(function()
             if spiderEnabled then
-                local raycast = workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 3)
-                if raycast then
-                    bodyVelocity.Velocity = rootPart.CFrame.LookVector * 16
+                local camera = workspace.CurrentCamera
+                local moveVector = humanoid.MoveDirection
+                
+                -- Raycast untuk detect wall
+                local rayDirection = camera.CFrame.LookVector * 4
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                raycastParams.FilterDescendantsInstances = {character}
+                
+                local rayResult = workspace:Raycast(rootPart.Position, rayDirection, raycastParams)
+                
+                if rayResult and moveVector.Magnitude > 0 then
+                    -- Ada wall dan player bergerak
+                    local wallNormal = rayResult.Normal
+                    local wallPosition = rayResult.Position
+                    
+                    -- Stick to wall
+                    bodyPosition.Position = wallPosition + (wallNormal * 3)
+                    bodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
+                    
+                    -- Movement along wall
+                    local rightVector = camera.CFrame.RightVector
+                    local upVector = Vector3.new(0, 1, 0)
+                    
+                    local velocity = Vector3.new(0, 0, 0)
+                    velocity = velocity + (rightVector * moveVector.X * 16)
+                    velocity = velocity + (upVector * moveVector.Z * -16)
+                    
+                    bodyVelocity.Velocity = velocity
                 else
+                    -- No wall, normal movement
+                    bodyPosition.MaxForce = Vector3.new(0, 0, 0)
                     bodyVelocity.Velocity = Vector3.new(0, 0, 0)
                 end
             end
@@ -368,6 +448,9 @@ local function toggleSpider(enabled)
         end
         if rootPart:FindFirstChild("BodyVelocity") then
             rootPart:FindFirstChild("BodyVelocity"):Destroy()
+        end
+        if rootPart:FindFirstChild("BodyPosition") then
+            rootPart:FindFirstChild("BodyPosition"):Destroy()
         end
     end
 end
@@ -424,26 +507,76 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Freecam
+-- Freecam (Camera only movement)
 local freecamPart = nil
+local originalCameraSubject = nil
 local function toggleFreecam(enabled)
     freecamEnabled = enabled
     if enabled then
+        originalCameraSubject = workspace.CurrentCamera.CameraSubject
+        
         freecamPart = Instance.new("Part")
         freecamPart.Name = "FreecamPart"
         freecamPart.Anchored = true
         freecamPart.CanCollide = false
         freecamPart.Transparency = 1
-        freecamPart.CFrame = rootPart.CFrame
+        freecamPart.Size = Vector3.new(1, 1, 1)
+        freecamPart.CFrame = workspace.CurrentCamera.CFrame
         freecamPart.Parent = workspace
         
         workspace.CurrentCamera.CameraSubject = freecamPart
+        
+        -- Freeze character
+        if rootPart then
+            rootPart.Anchored = true
+        end
+        
+        connections.freecam = RunService.Heartbeat:Connect(function()
+            if freecamEnabled and freecamPart then
+                local camera = workspace.CurrentCamera
+                local moveVector = humanoid.MoveDirection
+                
+                -- Get input for movement
+                local velocity = Vector3.new(0, 0, 0)
+                local speed = 50
+                
+                if moveVector.Magnitude > 0 then
+                    local forwardVector = camera.CFrame.LookVector
+                    local rightVector = camera.CFrame.RightVector
+                    local upVector = camera.CFrame.UpVector
+                    
+                    velocity = velocity + (forwardVector * moveVector.Z * -speed)
+                    velocity = velocity + (rightVector * moveVector.X * speed)
+                end
+                
+                -- Up/Down movement
+                if humanoid.Jump then
+                    velocity = velocity + Vector3.new(0, speed, 0)
+                    humanoid.Jump = false
+                end
+                
+                -- Apply movement to freecam part
+                freecamPart.CFrame = freecamPart.CFrame + (velocity * RunService.Heartbeat:Wait())
+            end
+        end)
     else
+        if connections.freecam then
+            connections.freecam:Disconnect()
+        end
         if freecamPart then
             freecamPart:Destroy()
             freecamPart = nil
         end
-        workspace.CurrentCamera.CameraSubject = humanoid
+        if originalCameraSubject then
+            workspace.CurrentCamera.CameraSubject = originalCameraSubject
+        else
+            workspace.CurrentCamera.CameraSubject = humanoid
+        end
+        
+        -- Unfreeze character
+        if rootPart then
+            rootPart.Anchored = false
+        end
     end
 end
 
@@ -489,6 +622,8 @@ local function updatePlayerList()
         end
     end
     
+    local buttonCount = 0
+    
     -- Add players to list
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player then
@@ -498,11 +633,12 @@ local function updatePlayerList()
             playerButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
             playerButton.BorderColor3 = Color3.fromRGB(0, 162, 255)
             playerButton.BorderSizePixel = 1
-            playerButton.Size = UDim2.new(1, 0, 0, 35)
+            playerButton.Size = UDim2.new(1, -10, 0, 35)
             playerButton.Font = Enum.Font.Gotham
             playerButton.Text = p.Name
             playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             playerButton.TextSize = 14
+            playerButton.LayoutOrder = buttonCount
             
             local corner = Instance.new("UICorner")
             corner.CornerRadius = UDim.new(0, 6)
@@ -515,13 +651,39 @@ local function updatePlayerList()
                 PlayerListFrame.Visible = false
                 playerListVisible = false
                 print("Selected player: " .. p.Name)
+                
+                -- Visual feedback
+                for _, btn in pairs(PlayerListScrollFrame:GetChildren()) do
+                    if btn:IsA("TextButton") then
+                        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                    end
+                end
+                playerButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
             end)
+            
+            -- Hover effects
+            playerButton.MouseEnter:Connect(function()
+                if playerButton.BackgroundColor3 ~= Color3.fromRGB(0, 162, 255) then
+                    playerButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                end
+            end)
+            
+            playerButton.MouseLeave:Connect(function()
+                if selectedPlayer ~= p then
+                    playerButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                end
+            end)
+            
+            buttonCount = buttonCount + 1
         end
     end
     
-    -- Update canvas size
+    -- Update canvas size for scrolling
+    wait(0.1)
     local contentSize = PlayerListLayout.AbsoluteContentSize
-    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+    
+    print("Updated player list: " .. buttonCount .. " players")
 end
 
 local function spectateSelectedPlayer()
@@ -819,6 +981,11 @@ player.CharacterAdded:Connect(function(newCharacter)
         end
     end
     connections = {}
+    
+    -- Reset character properties
+    if rootPart then
+        rootPart.Anchored = false
+    end
     
     print("Character respawned - features reset")
 end)
