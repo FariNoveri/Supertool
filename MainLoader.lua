@@ -1,6 +1,3 @@
--- Modern Minimal Roblox GUI Script untuk Android dengan Kategori (KRNL Compatible) - FIXED VERSION
--- Redesigned dengan desain hitam minimalis dan fitur Player Phase
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -116,7 +113,7 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.new(0, 45, 0, 0)
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK"
+Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -551,10 +548,12 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Freecam (Android Touch Controls) - FIXED V2
+-- Freecam (Android Touch Controls) - FIXED V3
 local freecamPart = nil
 local originalCameraSubject = nil
 local freecamPosition = nil
+local yaw = 0
+local pitch = 0
 local function toggleFreecam(enabled)
     freecamEnabled = enabled
     if enabled then
@@ -572,18 +571,38 @@ local function toggleFreecam(enabled)
         
         workspace.CurrentCamera.CameraSubject = freecamPart
         
+        -- Initialize yaw and pitch from current camera orientation
+        local lookVector = workspace.CurrentCamera.CFrame.LookVector
+        yaw = math.atan2(-lookVector.X, -lookVector.Z)
+        pitch = math.asin(lookVector.Y)
+        
         -- Freeze character
         if rootPart then
             rootPart.Anchored = true
         end
+        
+        -- Handle camera rotation with touch/mouse input
+        connections.freecam_input = UserInputService.InputChanged:Connect(function(input)
+            if freecamEnabled and input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Delta
+                local sensitivity = 0.005 -- Adjust for smoother rotation
+                
+                yaw = yaw - delta.X * sensitivity
+                pitch = math.clamp(pitch - delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
+                
+                -- Update camera rotation
+                local rotationCFrame = CFrame.new(Vector3.new(0, 0, 0)) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+                freecamPart.CFrame = CFrame.new(freecamPart.Position) * rotationCFrame
+            end
+        end)
         
         connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
             if freecamEnabled and freecamPart then
                 local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
-                -- Get camera direction vectors
-                local cameraCFrame = camera.CFrame
+                -- Get camera direction vectors from freecamPart
+                local cameraCFrame = freecamPart.CFrame
                 local forwardVector = cameraCFrame.LookVector
                 local rightVector = cameraCFrame.RightVector
                 local upVector = Vector3.new(0, 1, 0) -- World up vector
@@ -591,32 +610,41 @@ local function toggleFreecam(enabled)
                 local movement = Vector3.new(0, 0, 0)
                 local speed = 80
                 
-                -- WASD/Thumbstick movement (FIXED: proper directions)
+                -- Thumbstick movement (Fixed directions)
                 if moveVector.Magnitude > 0 then
-                    -- Forward/Backward movement
-                    movement = movement + (forwardVector * moveVector.Z * speed)
-                    -- Left/Right movement
-                    movement = movement + (rightVector * -moveVector.X * speed)
+                    -- Forward/Backward movement (thumbstick up/down)
+                    movement = movement + (forwardVector * -moveVector.Z * speed)
+                    -- Left/Right movement (thumbstick left/right)
+                    movement = movement + (rightVector * moveVector.X * speed)
                 end
                 
-                -- Jump button untuk naik
+                -- Jump button untuk naik, crouch (Ctrl) untuk turun
                 if humanoid.Jump then
                     movement = movement + (upVector * speed)
                     humanoid.Jump = false
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                    movement = movement + (upVector * -speed)
                 end
                 
                 -- Apply movement with deltaTime for smooth motion
                 local newPosition = freecamPart.Position + (movement * deltaTime)
                 
-                -- Update freecam part position while maintaining camera rotation
-                freecamPart.CFrame = CFrame.new(newPosition, newPosition + camera.CFrame.LookVector)
+                -- Update freecam part position while maintaining rotation
+                freecamPart.CFrame = CFrame.new(newPosition) * freecamPart.CFrame.Rotation
                 freecamPosition = newPosition
+                
+                -- Update camera
+                camera.CFrame = freecamPart.CFrame
             end
         end)
         
     else
         if connections.freecam then
             connections.freecam:Disconnect()
+        end
+        if connections.freecam_input then
+            connections.freecam_input:Disconnect()
         end
         if freecamPart then
             freecamPart:Destroy()
@@ -1285,12 +1313,12 @@ Players.PlayerRemoving:Connect(function()
     end
 end)
 
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION) ===")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V3) ===")
 print("✓ Auto-disable previous scripts")
 print("✓ State preservation on minimize")
 print("✓ Enhanced player list with individual buttons")
 print("✓ Position manager with save/load/delete")
 print("✓ Flashlight feature added")
-print("✓ Fixed freecam movement directions")
+print("✓ Fixed freecam movement and rotation")
 print("✓ Added teleport to freecam feature")
 print("GUI ready to use!")
