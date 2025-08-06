@@ -1,509 +1,922 @@
--- Services
+-- Modern Roblox GUI Script untuk Android dengan Kategori
+-- Dibuat dengan desain modern hitam dan fitur lengkap
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
-local StarterGui = game:GetService("StarterGui")
-local DataStoreService = game:GetService("DataStoreService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
 
--- Player
-local Player = Players.LocalPlayer
-local Character = Player.Character or Player.CharacterAdded:Wait()
-local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-local RootPart = Character:FindFirstChild("HumanoidRootPart")
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- Variables
+-- Variabel untuk fitur
 local flyEnabled = false
 local noclipEnabled = false
+local speedEnabled = false
+local jumpHighEnabled = false
+local godModeEnabled = false
+local fullbrightEnabled = false
+local antiAFKEnabled = false
 local playerNoclipEnabled = false
-local speedValue = 16
-local jumpPower = 50
-local spectateIndex = 1
-local spectating = false
-local godMode = false
-local fullbright = false
-local antiAFK = false
-local savedPositions = {}
 local spiderEnabled = false
-local selectedPlayer = nil
-local playersList = Players:GetPlayers()
-local guiVisible = true
-local minimized = false
 local freecamEnabled = false
-local freecamCamera = nil
-local freecamCFrame = nil
-local selectedPositionIndex = 1
 
--- DataStore for persistent storage
-local PositionStore = DataStoreService:GetDataStore("SavedPositions")
+local savedPosition = nil
+local savedPositionName = "Default"
+local spectateIndex = 1
+local selectedPlayer = nil
+local currentCategory = "Movement"
+local playerListVisible = false
 
--- Load saved positions
-local success, loadedPositions = pcall(function()
-    return PositionStore:GetAsync(Player.UserId .. "_positions") or {}
-end)
-if success then
-    savedPositions = loadedPositions
-end
+-- Connections
+local connections = {}
 
--- Disable Previous Script
-local guiName = "MobileCheatGUI"
-local existingGui = Player:WaitForChild("PlayerGui"):FindFirstChild(guiName)
-if existingGui then
-    existingGui:Destroy()
-end
-
--- UI Setup
+-- GUI Creation
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = guiName
-ScreenGui.Enabled = true
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = Player:WaitForChild("PlayerGui", 5) -- Wait up to 5 seconds for PlayerGui
-if not ScreenGui.Parent then
-    warn("Failed to parent ScreenGui to PlayerGui")
-    return
-end
+local MainFrame = Instance.new("Frame")
+local TopBar = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local Logo = Instance.new("TextLabel")
+local MinimizeButton = Instance.new("TextButton")
+
+-- Category System
+local CategoryFrame = Instance.new("Frame")
+local CategoryList = Instance.new("UIListLayout")
+local ContentFrame = Instance.new("Frame")
+local ScrollFrame = Instance.new("ScrollingFrame")
+local UIListLayout = Instance.new("UIListLayout")
+
+-- Player Selection System
+local PlayerListFrame = Instance.new("Frame")
+local PlayerListScrollFrame = Instance.new("ScrollingFrame")
+local PlayerListLayout = Instance.new("UIListLayout")
+local SelectedPlayerLabel = Instance.new("TextLabel")
 
 local LogoButton = Instance.new("TextButton")
-LogoButton.Size = UDim2.new(0.1, 0, 0.1, 0) -- Increased size for visibility
-LogoButton.Position = UDim2.new(0.9, 0, 0.05, 0) -- Ensured on-screen
-LogoButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-LogoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-LogoButton.Text = "X"
-LogoButton.TextScaled = true
-LogoButton.ZIndex = 10
-LogoButton.Parent = ScreenGui
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0.7, 0, 0.5, 0)
-MainFrame.Position = UDim2.new(0.15, 0, 0.25, 0) -- Centered for visibility
-MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-MainFrame.BorderSizePixel = 0
-MainFrame.Visible = true
-MainFrame.ZIndex = 5
+-- GUI Properties
+ScreenGui.Name = "ModernHackGUI"
+ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Main Frame (lebih lebar untuk kategori)
+MainFrame.Name = "MainFrame"
 MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.BorderColor3 = Color3.fromRGB(0, 162, 255)
+MainFrame.BorderSizePixel = 2
+MainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+MainFrame.Size = UDim2.new(0, 450, 0, 500)
+MainFrame.Active = true
+MainFrame.Draggable = true
 
-local CategoryFrame = Instance.new("Frame")
-CategoryFrame.Size = UDim2.new(0.3, 0, 1, 0)
-CategoryFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-CategoryFrame.BorderSizePixel = 0
-CategoryFrame.ZIndex = 6
-CategoryFrame.Parent = MainFrame
+-- Corner untuk Main Frame
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
 
-local ContentFrame = Instance.new("Frame")
-ContentFrame.Size = UDim2.new(0.7, 0, 1, 0)
-ContentFrame.Position = UDim2.new(0.3, 0, 0, 0)
-ContentFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-ContentFrame.BorderSizePixel = 0
-ContentFrame.ZIndex = 6
-ContentFrame.Parent = MainFrame
+-- Top Bar
+TopBar.Name = "TopBar"
+TopBar.Parent = MainFrame
+TopBar.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+TopBar.Position = UDim2.new(0, 0, 0, 0)
+TopBar.Size = UDim2.new(1, 0, 0, 40)
 
-local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Size = UDim2.new(0.1, 0, 0.05, 0)
-MinimizeButton.Position = UDim2.new(0.9, 0, 0, 0)
-MinimizeButton.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+local TopCorner = Instance.new("UICorner")
+TopCorner.CornerRadius = UDim.new(0, 12)
+TopCorner.Parent = TopBar
+
+-- Fix corner untuk bottom
+local TopFix = Instance.new("Frame")
+TopFix.Parent = TopBar
+TopFix.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+TopFix.BorderSizePixel = 0
+TopFix.Position = UDim2.new(0, 0, 0.5, 0)
+TopFix.Size = UDim2.new(1, 0, 0.5, 0)
+
+-- Logo di TopBar
+Logo.Name = "Logo"
+Logo.Parent = TopBar
+Logo.BackgroundTransparency = 1
+Logo.Position = UDim2.new(0, 10, 0, 5)
+Logo.Size = UDim2.new(0, 30, 0, 30)
+Logo.Font = Enum.Font.GothamBold
+Logo.Text = "🔥"
+Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
+Logo.TextScaled = true
+
+-- Title
+Title.Name = "Title"
+Title.Parent = TopBar
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 50, 0, 0)
+Title.Size = UDim2.new(1, -90, 1, 0)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "Modern Hack GUI"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextScaled = true
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Minimize Button
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Parent = TopBar
+MinimizeButton.BackgroundTransparency = 1
+MinimizeButton.Position = UDim2.new(1, -35, 0, 5)
+MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.Text = "−"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeButton.Text = "-"
 MinimizeButton.TextScaled = true
-MinimizeButton.ZIndex = 7
-MinimizeButton.Parent = MainFrame
 
--- Debug message
-print("GUI and Logo initialized successfully")
+-- Category Frame (Panel Kiri)
+CategoryFrame.Name = "CategoryFrame"
+CategoryFrame.Parent = MainFrame
+CategoryFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+CategoryFrame.BorderColor3 = Color3.fromRGB(0, 162, 255)
+CategoryFrame.BorderSizePixel = 1
+CategoryFrame.Position = UDim2.new(0, 10, 0, 50)
+CategoryFrame.Size = UDim2.new(0, 120, 1, -60)
 
--- Draggable UI
-local dragging, dragInput, dragStart, startPos
-local function updateDrag(input, frame)
-    local delta = input.Position - dragStart
-    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
+local CategoryCorner = Instance.new("UICorner")
+CategoryCorner.CornerRadius = UDim.new(0, 8)
+CategoryCorner.Parent = CategoryFrame
 
-local function makeDraggable(frame)
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    frame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-end
+-- Category List Layout
+CategoryList.Parent = CategoryFrame
+CategoryList.Padding = UDim.new(0, 5)
+CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
 
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and input == dragInput then
-        updateDrag(input, LogoButton)
-        updateDrag(input, MainFrame)
-    end
-end)
+-- Content Frame (Panel Kanan)
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Parent = MainFrame
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Position = UDim2.new(0, 140, 0, 50)
+ContentFrame.Size = UDim2.new(1, -150, 1, -60)
 
-makeDraggable(LogoButton)
-makeDraggable(MainFrame)
+-- ScrollFrame di Content
+ScrollFrame.Name = "ScrollFrame"
+ScrollFrame.Parent = ContentFrame
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.Position = UDim2.new(0, 0, 0, 0)
+ScrollFrame.Size = UDim2.new(1, 0, 1, 0)
+ScrollFrame.ScrollBarThickness = 6
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 162, 255)
 
-local function createButton(parent, text, position, callback)
+-- UIListLayout untuk content
+UIListLayout.Parent = ScrollFrame
+UIListLayout.Padding = UDim.new(0, 5)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Player Selection Frame
+PlayerListFrame.Name = "PlayerListFrame"
+PlayerListFrame.Parent = ScreenGui
+PlayerListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+PlayerListFrame.BorderColor3 = Color3.fromRGB(0, 162, 255)
+PlayerListFrame.BorderSizePixel = 2
+PlayerListFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
+PlayerListFrame.Size = UDim2.new(0, 300, 0, 400)
+PlayerListFrame.Visible = false
+PlayerListFrame.Active = true
+PlayerListFrame.Draggable = true
+
+local PlayerListCorner = Instance.new("UICorner")
+PlayerListCorner.CornerRadius = UDim.new(0, 12)
+PlayerListCorner.Parent = PlayerListFrame
+
+-- Player List Title
+local PlayerListTitle = Instance.new("TextLabel")
+PlayerListTitle.Name = "Title"
+PlayerListTitle.Parent = PlayerListFrame
+PlayerListTitle.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+PlayerListTitle.Position = UDim2.new(0, 0, 0, 0)
+PlayerListTitle.Size = UDim2.new(1, 0, 0, 40)
+PlayerListTitle.Font = Enum.Font.GothamBold
+PlayerListTitle.Text = "Select Player"
+PlayerListTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+PlayerListTitle.TextScaled = true
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 12)
+TitleCorner.Parent = PlayerListTitle
+
+local TitleFix = Instance.new("Frame")
+TitleFix.Parent = PlayerListTitle
+TitleFix.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+TitleFix.BorderSizePixel = 0
+TitleFix.Position = UDim2.new(0, 0, 0.5, 0)
+TitleFix.Size = UDim2.new(1, 0, 0.5, 0)
+
+-- Close Button untuk Player List
+local ClosePlayerListButton = Instance.new("TextButton")
+ClosePlayerListButton.Name = "CloseButton"
+ClosePlayerListButton.Parent = PlayerListFrame
+ClosePlayerListButton.BackgroundTransparency = 1
+ClosePlayerListButton.Position = UDim2.new(1, -35, 0, 5)
+ClosePlayerListButton.Size = UDim2.new(0, 30, 0, 30)
+ClosePlayerListButton.Font = Enum.Font.GothamBold
+ClosePlayerListButton.Text = "×"
+ClosePlayerListButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ClosePlayerListButton.TextScaled = true
+
+-- Selected Player Display
+SelectedPlayerLabel.Name = "SelectedPlayerLabel"
+SelectedPlayerLabel.Parent = PlayerListFrame
+SelectedPlayerLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+SelectedPlayerLabel.BorderColor3 = Color3.fromRGB(0, 162, 255)
+SelectedPlayerLabel.BorderSizePixel = 1
+SelectedPlayerLabel.Position = UDim2.new(0, 10, 0, 50)
+SelectedPlayerLabel.Size = UDim2.new(1, -20, 0, 30)
+SelectedPlayerLabel.Font = Enum.Font.Gotham
+SelectedPlayerLabel.Text = "Selected: None"
+SelectedPlayerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+SelectedPlayerLabel.TextSize = 14
+
+local SelectedCorner = Instance.new("UICorner")
+SelectedCorner.CornerRadius = UDim.new(0, 6)
+SelectedCorner.Parent = SelectedPlayerLabel
+
+-- Player List ScrollFrame
+PlayerListScrollFrame.Name = "PlayerListScrollFrame"
+PlayerListScrollFrame.Parent = PlayerListFrame
+PlayerListScrollFrame.BackgroundTransparency = 1
+PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 90)
+PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -100)
+PlayerListScrollFrame.ScrollBarThickness = 6
+PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 162, 255)
+
+-- Player List Layout
+PlayerListLayout.Parent = PlayerListScrollFrame
+PlayerListLayout.Padding = UDim.new(0, 5)
+PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Logo Button (minimized state)
+LogoButton.Name = "LogoButton"
+LogoButton.Parent = ScreenGui
+LogoButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+LogoButton.Position = UDim2.new(0.05, 0, 0.1, 0)
+LogoButton.Size = UDim2.new(0, 50, 0, 50)
+LogoButton.Font = Enum.Font.GothamBold
+LogoButton.Text = "🔥"
+LogoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+LogoButton.TextScaled = true
+LogoButton.Visible = false
+LogoButton.Active = true
+LogoButton.Draggable = true
+
+local LogoCorner = Instance.new("UICorner")
+LogoCorner.CornerRadius = UDim.new(1, 0)
+LogoCorner.Parent = LogoButton
+
+-- Categories dan Buttons
+local categories = {
+    ["Movement"] = {
+        icon = "🏃",
+        buttons = {}
+    },
+    ["Player"] = {
+        icon = "👤", 
+        buttons = {}
+    },
+    ["Visual"] = {
+        icon = "👁️",
+        buttons = {}
+    },
+    ["Teleport"] = {
+        icon = "📍",
+        buttons = {}
+    },
+    ["Utility"] = {
+        icon = "🔧",
+        buttons = {}
+    }
+}
+
+-- Function to create category buttons
+local function createCategoryButton(name, icon)
     local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0.9, 0, 0.1, 0)
-    button.Position = position
-    button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.Text = text
-    button.TextScaled = true
-    button.ZIndex = 7
-    button.Parent = parent
-    button.MouseButton1Click:Connect(callback)
+    button.Name = name .. "Category"
+    button.Parent = CategoryFrame
+    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, -10, 0, 40)
+    button.Font = Enum.Font.Gotham
+    button.Text = icon .. " " .. name
+    button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    button.TextSize = 12
+    button.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- Padding untuk text
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.Parent = button
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    button.MouseButton1Click:Connect(function()
+        switchCategory(name)
+    end)
+    
     return button
 end
 
--- GUI Toggle and Minimize
-LogoButton.MouseButton1Click:Connect(function()
-    guiVisible = not guiVisible
-    MainFrame.Visible = guiVisible
-end)
-
-MinimizeButton.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    if minimized then
-        MainFrame.Size = UDim2.new(0.7, 0, 0.05, 0)
-        CategoryFrame.Visible = false
-        ContentFrame.Visible = false
-        MinimizeButton.Text = "+"
-    else
-        MainFrame.Size = UDim2.new(0.7, 0, 0.5, 0)
-        CategoryFrame.Visible = true
-        ContentFrame.Visible = true
-        MinimizeButton.Text = "-"
-    end
-end)
-
--- Category Buttons
-local categories = {"Movement", "Visual", "Player", "Teleport", "Camera"}
-local currentCategory = "Movement"
-local categoryButtons = {}
-
-for i, category in ipairs(categories) do
-    categoryButtons[category] = createButton(CategoryFrame, category, UDim2.new(0.05, 0, 0.05 + (i-1)*0.15, 0), function()
-        currentCategory = category
-        ContentFrame:ClearAllChildren()
-        loadCategoryContent()
-    end)
-end
-
--- Content Functions
-local function loadCategoryContent()
-    ContentFrame:ClearAllChildren()
-    if currentCategory == "Movement" then
-        createButton(ContentFrame, "Toggle Fly", UDim2.new(0.05, 0, 0.05, 0), function()
-            flyEnabled = not flyEnabled
-            toggleFly()
-        end)
-        createButton(ContentFrame, "Toggle Noclip", UDim2.new(0.05, 0, 0.2, 0), function()
-            noclipEnabled = not noclipEnabled
-        end)
-        createButton(ContentFrame, "Toggle Spider", UDim2.new(0.05, 0, 0.35, 0), function()
-            spiderEnabled = not spiderEnabled
-        end)
-        createButton(ContentFrame, "Set Speed", UDim2.new(0.05, 0, 0.5, 0), function()
-            speedValue = speedValue + 10
-            if speedValue > 100 then speedValue = 16 end
-            Humanoid.WalkSpeed = speedValue
-        end)
-        createButton(ContentFrame, "Set Jump", UDim2.new(0.05, 0, 0.65, 0), function()
-            jumpPower = jumpPower + 10
-            if jumpPower > 100 then jumpPower = 50 end
-            Humanoid.JumpPower = jumpPower
-        end)
-        createButton(ContentFrame, "God Mode", UDim2.new(0.05, 0, 0.8, 0), function()
-            godMode = not godMode
-            toggleGodMode()
-        end)
-    elseif currentCategory == "Visual" then
-        createButton(ContentFrame, "Toggle Fullbright", UDim2.new(0.05, 0, 0.05, 0), function()
-            fullbright = not fullbright
-            toggleFullbright()
-        end)
-        createButton(ContentFrame, "Toggle Anti AFK", UDim2.new(0.05, 0, 0.2, 0), function()
-            antiAFK = not antiAFK
-        end)
-    elseif currentCategory == "Player" then
-        createButton(ContentFrame, "Toggle Spectate", UDim2.new(0.05, 0, 0.05, 0), function()
-            spectating = not spectating
-            toggleSpectate()
-        end)
-        createButton(ContentFrame, "Next Spectate", UDim2.new(0.05, 0, 0.2, 0), function()
-            spectateIndex = spectateIndex + 1
-            if spectateIndex > #playersList then spectateIndex = 1 end
-            toggleSpectate()
-        end)
-        createButton(ContentFrame, "Prev Spectate", UDim2.new(0.05, 0, 0.35, 0), function()
-            spectateIndex = spectateIndex - 1
-            if spectateIndex < 1 then spectateIndex = #playersList end
-            toggleSpectate()
-        end)
-        createButton(ContentFrame, "TP to Spectate", UDim2.new(0.05, 0, 0.5, 0), function()
-            if spectating and playersList[spectateIndex] then
-                RootPart.CFrame = playersList[spectateIndex].Character.HumanoidRootPart.CFrame
+-- Function to switch categories
+function switchCategory(categoryName)
+    currentCategory = categoryName
+    
+    -- Update category button colors
+    for _, child in pairs(CategoryFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            if child.Name == categoryName .. "Category" then
+                child.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+                child.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                child.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                child.TextColor3 = Color3.fromRGB(200, 200, 200)
             end
-        end)
-        createButton(ContentFrame, "Player Noclip", UDim2.new(0.05, 0, 0.65, 0), function()
-            playerNoclipEnabled = not playerNoclipEnabled
-        end)
-    elseif currentCategory == "Teleport" then
-        createButton(ContentFrame, "Save Position", UDim2.new(0.05, 0, 0.05, 0), function()
-            local positionName = "Position " .. (#savedPositions + 1)
-            table.insert(savedPositions, {name = positionName, cframe = RootPart.CFrame})
-            pcall(function()
-                PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
-            end)
-        end)
-        createButton(ContentFrame, "Next Position", UDim2.new(0.05, 0, 0.2, 0), function()
-            selectedPositionIndex = selectedPositionIndex + 1
-            if selectedPositionIndex > #savedPositions then selectedPositionIndex = 1 end
-        end)
-        createButton(ContentFrame, "Prev Position", UDim2.new(0.05, 0, 0.35, 0), function()
-            selectedPositionIndex = selectedPositionIndex - 1
-            if selectedPositionIndex < 1 then selectedPositionIndex = #savedPositions end
-        end)
-        createButton(ContentFrame, "TP to Saved Pos", UDim2.new(0.05, 0, 0.5, 0), function()
-            if savedPositions[selectedPositionIndex] then
-                RootPart.CFrame = savedPositions[selectedPositionIndex].cframe
-            end
-        end)
-        local renameButton = createButton(ContentFrame, "Rename Position", UDim2.new(0.05, 0, 0.65, 0), function()
-            if savedPositions[selectedPositionIndex] then
-                local renameFrame = Instance.new("Frame")
-                renameFrame.Size = UDim2.new(0.5, 0, 0.2, 0)
-                renameFrame.Position = UDim2.new(0.25, 0, 0.4, 0)
-                renameFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-                renameFrame.ZIndex = 8
-                renameFrame.Parent = ContentFrame
-
-                local renameTextBox = Instance.new("TextBox")
-                renameTextBox.Size = UDim2.new(0.8, 0, 0.5, 0)
-                renameTextBox.Position = UDim2.new(0.1, 0, 0.1, 0)
-                renameTextBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-                renameTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-                renameTextBox.Text = savedPositions[selectedPositionIndex].name
-                renameTextBox.TextScaled = true
-                renameTextBox.ZIndex = 9
-                renameTextBox.Parent = renameFrame
-
-                local confirmButton = Instance.new("TextButton")
-                confirmButton.Size = UDim2.new(0.4, 0, 0.3, 0)
-                confirmButton.Position = UDim2.new(0.3, 0, 0.6, 0)
-                confirmButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-                confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                confirmButton.Text = "Confirm"
-                confirmButton.TextScaled = true
-                confirmButton.ZIndex = 9
-                confirmButton.Parent = renameFrame
-                confirmButton.MouseButton1Click:Connect(function()
-                    savedPositions[selectedPositionIndex].name = renameTextBox.Text
-                    pcall(function()
-                        PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
-                    end)
-                    renameFrame:Destroy()
-                end)
-            end
-        end)
-        createButton(ContentFrame, "Delete Position", UDim2.new(0.05, 0, 0.8, 0), function()
-            if savedPositions[selectedPositionIndex] then
-                table.remove(savedPositions, selectedPositionIndex)
-                pcall(function()
-                    PositionStore:SetAsync(Player.UserId .. "_positions", savedPositions)
-                end)
-                if selectedPositionIndex > #savedPositions then selectedPositionIndex = #savedPositions end
-            end
-        end)
-        createButton(ContentFrame, "Select Player", UDim2.new(0.05, 0, 0.95, 0), function()
-            selectedPlayer = playersList[spectateIndex]
-        end)
-        createButton(ContentFrame, "TP to Player", UDim2.new(0.05, 0, 1.1, 0), function()
-            if selectedPlayer and selectedPlayer.Character then
-                RootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame
-            end
-        end)
-    elseif currentCategory == "Camera" then
-        createButton(ContentFrame, "Toggle Freecam", UDim2.new(0.05, 0, 0.05, 0), function()
-            freecamEnabled = not freecamEnabled
-            toggleFreecam()
-        end)
-        createButton(ContentFrame, "TP to Freecam", UDim2.new(0.05, 0, 0.2, 0), function()
-            if freecamEnabled and freecamCFrame then
-                RootPart.CFrame = freecamCFrame
-            end
-        end)
-    end
-end
-
--- Fly Function
-local function toggleFly()
-    if flyEnabled then
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.Parent = RootPart
-        while flyEnabled and RootPart do
-            bodyVelocity.Velocity = UserInputService:GetLastInputType() == Enum.UserInputType.Touch and
-                Vector3.new(0, 10, 0) or Vector3.new(0, 0, 0)
-            RunService.Stepped:Wait()
         end
-        bodyVelocity:Destroy()
+    end
+    
+    -- Clear current buttons
+    for _, child in pairs(ScrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- Show buttons for selected category
+    for _, buttonData in pairs(categories[categoryName].buttons) do
+        if buttonData.type == "toggle" then
+            createToggleButton(buttonData.name, buttonData.callback)
+        else
+            createButton(buttonData.name, buttonData.callback)
+        end
+    end
+    
+    updateCanvasSize()
+end
+
+-- Function to create buttons
+local function createButton(name, callback)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Button"
+    button.Parent = ScrollFrame
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.BorderColor3 = Color3.fromRGB(0, 162, 255)
+    button.BorderSizePixel = 1
+    button.Size = UDim2.new(1, 0, 0, 35)
+    button.Font = Enum.Font.Gotham
+    button.Text = name
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 14
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    button.MouseButton1Click:Connect(callback)
+    
+    -- Hover effect
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 162, 255)}):Play()
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+    end)
+    
+    return button
+end
+
+-- Function to create toggle buttons
+local function createToggleButton(name, callback)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Button"
+    button.Parent = ScrollFrame
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.BorderColor3 = Color3.fromRGB(0, 162, 255)
+    button.BorderSizePixel = 1
+    button.Size = UDim2.new(1, 0, 0, 35)
+    button.Font = Enum.Font.Gotham
+    button.Text = name .. " [OFF]"
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 14
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    local isToggled = false
+    
+    local function updateButton()
+        if isToggled then
+            button.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+            button.Text = name .. " [ON]"
+        else
+            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            button.Text = name .. " [OFF]"
+        end
+    end
+    
+    button.MouseButton1Click:Connect(function()
+        isToggled = not isToggled
+        updateButton()
+        callback(isToggled)
+    end)
+    
+    -- Hover effect (hanya saat OFF)
+    button.MouseEnter:Connect(function()
+        if not isToggled then
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 50)}):Play()
+        end
+    end)
+    
+    button.MouseLeave:Connect(function()
+        if not isToggled then
+            TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+        end
+    end)
+    
+    updateButton()
+    return button
+end
+
+-- Minimize/Maximize functions
+local function minimizeGUI()
+    MainFrame.Visible = false
+    LogoButton.Visible = true
+end
+
+local function maximizeGUI()
+    LogoButton.Visible = false
+    MainFrame.Visible = true
+end
+
+-- Event connections
+MinimizeButton.MouseButton1Click:Connect(minimizeGUI)
+LogoButton.MouseButton1Click:Connect(maximizeGUI)
+
+-- Player List Close Button
+ClosePlayerListButton.MouseButton1Click:Connect(function()
+    PlayerListFrame.Visible = false
+    playerListVisible = false
+end)
+
+-- Function to update player list
+local function updatePlayerList()
+    -- Clear existing player buttons
+    for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- Add players to list
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player then
+            local playerButton = Instance.new("TextButton")
+            playerButton.Name = p.Name .. "Button"
+            playerButton.Parent = PlayerListScrollFrame
+            playerButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            playerButton.BorderColor3 = Color3.fromRGB(0, 162, 255)
+            playerButton.BorderSizePixel = 1
+            playerButton.Size = UDim2.new(1, 0, 0, 35)
+            playerButton.Font = Enum.Font.Gotham
+            playerButton.Text = p.Name
+            playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            playerButton.TextSize = 14
+            
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 6)
+            corner.Parent = playerButton
+            
+            -- Player selection
+            playerButton.MouseButton1Click:Connect(function()
+                selectedPlayer = p
+                SelectedPlayerLabel.Text = "Selected: " .. p.Name
+                PlayerListFrame.Visible = false
+                playerListVisible = false
+                
+                -- Update button color to show selection
+                for _, btn in pairs(PlayerListScrollFrame:GetChildren()) do
+                    if btn:IsA("TextButton") then
+                        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                    end
+                end
+                playerButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+            end)
+            
+            -- Hover effects
+            playerButton.MouseEnter:Connect(function()
+                if playerButton.BackgroundColor3 ~= Color3.fromRGB(0, 162, 255) then
+                    TweenService:Create(playerButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 50)}):Play()
+                end
+            end)
+            
+            playerButton.MouseLeave:Connect(function()
+                if playerButton.BackgroundColor3 ~= Color3.fromRGB(0, 162, 255) then
+                    TweenService:Create(playerButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+                end
+            end)
+        end
+    end
+    
+    -- Update canvas size
+    local contentSize = PlayerListLayout.AbsoluteContentSize
+    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+end
+
+-- Function to show player selection
+local function showPlayerSelection()
+    playerListVisible = true
+    PlayerListFrame.Visible = true
+    updatePlayerList()
+end
+
+-- Feature Functions (sama seperti sebelumnya)
+
+-- Fly
+local function toggleFly(enabled)
+    flyEnabled = enabled
+    if enabled then
+        local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.Parent = rootPart
+        
+        connections.fly = RunService.Heartbeat:Connect(function()
+            if flyEnabled then
+                local moveVector = humanoid.MoveDirection
+                bodyVelocity.Velocity = moveVector * 50
+            end
+        end)
+    else
+        if connections.fly then
+            connections.fly:Disconnect()
+        end
+        if rootPart:FindFirstChild("BodyVelocity") then
+            rootPart:FindFirstChild("BodyVelocity"):Destroy()
+        end
+    end
+end
+
+-- Noclip
+local function toggleNoclip(enabled)
+    noclipEnabled = enabled
+    if enabled then
+        connections.noclip = RunService.Stepped:Connect(function()
+            if noclipEnabled and character then
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        if connections.noclip then
+            connections.noclip:Disconnect()
+        end
+        if character then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end
+
+-- Speed
+local function toggleSpeed(enabled)
+    speedEnabled = enabled
+    if enabled then
+        humanoid.WalkSpeed = 100
+    else
+        humanoid.WalkSpeed = 16
+    end
+end
+
+-- Jump High
+local function toggleJumpHigh(enabled)
+    jumpHighEnabled = enabled
+    if enabled then
+        humanoid.JumpPower = 120
+    else
+        humanoid.JumpPower = 50
+    end
+end
+
+-- Spider
+local function toggleSpider(enabled)
+    spiderEnabled = enabled
+    if enabled then
+        local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.Parent = rootPart
+        
+        connections.spider = RunService.Heartbeat:Connect(function()
+            if spiderEnabled then
+                local raycast = workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 3)
+                if raycast then
+                    bodyVelocity.Velocity = rootPart.CFrame.LookVector * 16
+                else
+                    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end)
+    else
+        if connections.spider then
+            connections.spider:Disconnect()
+        end
+        if rootPart:FindFirstChild("BodyVelocity") then
+            rootPart:FindFirstChild("BodyVelocity"):Destroy()
+        end
     end
 end
 
 -- God Mode
-local function toggleGodMode()
-    if godMode then
-        Humanoid.MaxHealth = math.huge
-        Humanoid.Health = math.huge
-        Humanoid.FallDamageEnabled = false
+local function toggleGodMode(enabled)
+    godModeEnabled = enabled
+    if enabled then
+        connections.godmode = humanoid.HealthChanged:Connect(function()
+            if godModeEnabled then
+                humanoid.Health = humanoid.MaxHealth
+            end
+        end)
     else
-        Humanoid.MaxHealth = 100
-        Humanoid.Health = 100
-        Humanoid.FallDamageEnabled = true
+        if connections.godmode then
+            connections.godmode:Disconnect()
+        end
+    end
+end
+
+-- Anti AFK
+local function toggleAntiAFK(enabled)
+    antiAFKEnabled = enabled
+    if enabled then
+        connections.antiafk = game:GetService("Players").LocalPlayer.Idled:Connect(function()
+            if antiAFKEnabled then
+                game:GetService("VirtualUser"):Button2Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
+                game:GetService("VirtualUser"):Button2Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
+            end
+        end)
+    else
+        if connections.antiafk then
+            connections.antiafk:Disconnect()
+        end
     end
 end
 
 -- Fullbright
-local function toggleFullbright()
-    if fullbright then
-        Lighting.Brightness = 2
-        Lighting.FogEnd = 100000
-        Lighting.GlobalShadows = false
+local function toggleFullbright(enabled)
+    fullbrightEnabled = enabled
+    local lighting = game:GetService("Lighting")
+    if enabled then
+        lighting.Brightness = 2
+        lighting.ClockTime = 14
+        lighting.FogEnd = 100000
+        lighting.GlobalShadows = false
+        lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
     else
-        Lighting.Brightness = 1
-        Lighting.FogEnd = 0
-        Lighting.GlobalShadows = true
-    end
-end
-
--- Spectate
-local function toggleSpectate()
-    if spectating and playersList[spectateIndex] then
-        workspace.CurrentCamera.CameraSubject = playersList[spectateIndex].Character.Humanoid
-    else
-        workspace.CurrentCamera.CameraSubject = Humanoid
+        lighting.Brightness = 1
+        lighting.ClockTime = 14
+        lighting.FogEnd = 100000
+        lighting.GlobalShadows = true
+        lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 70)
     end
 end
 
 -- Freecam
-local function toggleFreecam()
-    if freecamEnabled then
-        freecamCamera = workspace.CurrentCamera:Clone()
-        freecamCamera.CameraType = Enum.CameraType.Scriptable
-        freecamCamera.Parent = workspace
-        freecamCFrame = workspace.CurrentCamera.CFrame
-        workspace.CurrentCamera = freecamCamera
+local freecamPart = nil
+local function toggleFreecam(enabled)
+    freecamEnabled = enabled
+    if enabled then
+        freecamPart = Instance.new("Part")
+        freecamPart.Name = "FreecamPart"
+        freecamPart.Anchored = true
+        freecamPart.CanCollide = false
+        freecamPart.Transparency = 1
+        freecamPart.CFrame = rootPart.CFrame
+        freecamPart.Parent = workspace
+        
+        workspace.CurrentCamera.CameraSubject = freecamPart
     else
-        if freecamCamera then
-            freecamCamera:Destroy()
-            freecamCamera = nil
-            workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-            workspace.CurrentCamera.CameraSubject = Humanoid
+        if freecamPart then
+            freecamPart:Destroy()
+            freecamPart = nil
+        end
+        workspace.CurrentCamera.CameraSubject = humanoid
+    end
+end
+
+-- Spectate functions
+local function spectateSelectedPlayer()
+    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
+        workspace.CurrentCamera.CameraSubject = selectedPlayer.Character.Humanoid
+    else
+        -- Show notification if no player selected
+        local notification = Instance.new("TextLabel")
+        notification.Parent = ScreenGui
+        notification.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        notification.Size = UDim2.new(0, 250, 0, 50)
+        notification.Position = UDim2.new(0.5, -125, 0, 50)
+        notification.Text = "Please select a player first!"
+        notification.TextColor3 = Color3.fromRGB(255, 255, 255)
+        notification.Font = Enum.Font.GothamBold
+        notification.TextScaled = true
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = notification
+        
+        spawn(function()
+            wait(2)
+            notification:Destroy()
+        end)
+    end
+end
+
+local function spectatePlayer()
+    local players = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(players, p)
+        end
+    end
+    
+    if #players > 0 then
+        spectateIndex = ((spectateIndex - 1) % #players) + 1
+        local targetPlayer = players[spectateIndex]
+        if targetPlayer and targetPlayer.Character then
+            workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+            selectedPlayer = targetPlayer
+            SelectedPlayerLabel.Text = "Selected: " .. targetPlayer.Name
         end
     end
 end
 
--- Freecam Joystick
-local joystickFrame = Instance.new("Frame")
-joystickFrame.Size = UDim2.new(0.3, 0, 0.3, 0)
-joystickFrame.Position = UDim2.new(0.65, 0, 0.65, 0)
-joystickFrame.BackgroundTransparency = 1
-joystickFrame.ZIndex = 5
-joystickFrame.Parent = ScreenGui
+local function nextSpectate()
+    spectateIndex = spectateIndex + 1
+    spectatePlayer()
+end
 
-local joystickTouchId = nil
-local joystickStartPos = nil
-UserInputService.InputBegan:Connect(function(input)
-    if freecamEnabled and input.UserInputType == Enum.UserInputType.Touch then
-        local touchPos = input.Position
-        if touchPos.X > joystickFrame.AbsolutePosition.X and touchPos.X < joystickFrame.AbsolutePosition.X + joystickFrame.AbsoluteSize.X and
-           touchPos.Y > joystickFrame.AbsolutePosition.Y and touchPos.Y < joystickFrame.AbsolutePosition.Y + joystickFrame.AbsoluteSize.Y then
-            joystickTouchId = input.UserInputId
-            joystickStartPos = touchPos
+local function prevSpectate()
+    spectateIndex = spectateIndex - 1
+    spectatePlayer()
+end
+
+local function stopSpectate()
+    workspace.CurrentCamera.CameraSubject = humanoid
+end
+
+-- Teleport to selected player
+local function tpToSelectedPlayer()
+    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
+        rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+    else
+        -- Show notification if no player selected
+        local notification = Instance.new("TextLabel")
+        notification.Parent = ScreenGui
+        notification.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+        notification.Size = UDim2.new(0, 250, 0, 50)
+        notification.Position = UDim2.new(0.5, -125, 0, 50)
+        notification.Text = "Please select a player first!"
+        notification.TextColor3 = Color3.fromRGB(255, 255, 255)
+        notification.Font = Enum.Font.GothamBold
+        notification.TextScaled = true
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = notification
+        
+        spawn(function()
+            wait(2)
+            notification:Destroy()
+        end)
+    end
+end
+
+-- Save/Load Position
+local function savePosition()
+    if rootPart then
+        savedPosition = rootPart.CFrame
+        -- Notification
+        local notification = Instance.new("TextLabel")
+        notification.Parent = ScreenGui
+        notification.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+        notification.Size = UDim2.new(0, 200, 0, 50)
+        notification.Position = UDim2.new(0.5, -100, 0, 50)
+        notification.Text = "Position Saved!"
+        notification.TextColor3 = Color3.fromRGB(255, 255, 255)
+        notification.Font = Enum.Font.GothamBold
+        notification.TextScaled = true
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = notification
+        
+        spawn(function()
+            wait(2)
+            notification:Destroy()
+        end)
+    end
+end
+
+local function loadPosition()
+    if savedPosition and rootPart then
+        rootPart.CFrame = savedPosition
+    end
+end
+
+local function tpToFreecam()
+    if freecamPart and rootPart then
+        rootPart.CFrame = freecamPart.CFrame
+    end
+end
+
+-- Setup Categories dan Buttons
+-- Movement Category
+table.insert(categories["Movement"].buttons, {name = "Fly", type = "toggle", callback = toggleFly})
+table.insert(categories["Movement"].buttons, {name = "Noclip", type = "toggle", callback = toggleNoclip})
+table.insert(categories["Movement"].buttons, {name = "Speed", type = "toggle", callback = toggleSpeed})
+table.insert(categories["Movement"].buttons, {name = "Jump High", type = "toggle", callback = toggleJumpHigh})
+table.insert(categories["Movement"].buttons, {name = "Spider", type = "toggle", callback = toggleSpider})
+
+-- Player Category
+table.insert(categories["Player"].buttons, {name = "God Mode", type = "toggle", callback = toggleGodMode})
+table.insert(categories["Player"].buttons, {name = "Anti AFK", type = "toggle", callback = toggleAntiAFK})
+table.insert(categories["Player"].buttons, {name = "Spectate", type = "normal", callback = spectatePlayer})
+table.insert(categories["Player"].buttons, {name = "Next Spectate", type = "normal", callback = nextSpectate})
+table.insert(categories["Player"].buttons, {name = "Prev Spectate", type = "normal", callback = prevSpectate})
+table.insert(categories["Player"].buttons, {name = "Stop Spectate", type = "normal", callback = stopSpectate})
+
+-- Visual Category
+table.insert(categories["Visual"].buttons, {name = "Fullbright", type = "toggle", callback = toggleFullbright})
+table.insert(categories["Visual"].buttons, {name = "Freecam", type = "toggle", callback = toggleFreecam})
+
+-- Teleport Category
+table.insert(categories["Teleport"].buttons, {name = "Save Position", type = "normal", callback = savePosition})
+table.insert(categories["Teleport"].buttons, {name = "TP to Saved Position", type = "normal", callback = loadPosition})
+table.insert(categories["Teleport"].buttons, {name = "TP to Freecam", type = "normal", callback = tpToFreecam})
+
+-- Utility Category
+table.insert(categories["Utility"].buttons, {name = "Disable Previous Script", type = "normal", callback = function()
+    for _, gui in pairs(CoreGui:GetChildren()) do
+        if gui.Name == "ModernHackGUI" and gui ~= ScreenGui then
+            gui:Destroy()
         end
     end
-end)
+end})
 
-UserInputService.InputChanged:Connect(function(input)
-    if freecamEnabled and input.UserInputType == Enum.UserInputType.Touch and input.UserInputId == joystickTouchId then
-        local delta = (input.Position - joystickStartPos) / 100
-        if freecamCamera then
-            local lookVector = freecamCFrame.LookVector
-            local rightVector = freecamCFrame.RightVector
-            freecamCFrame = freecamCFrame * CFrame.new(-delta.X * rightVector + delta.Y * lookVector)
-            freecamCamera.CFrame = freecamCFrame
+-- Create category buttons
+for name, data in pairs(categories) do
+    createCategoryButton(name, data.icon)
+end
+
+-- Set default category
+switchCategory("Movement")
+
+-- Update canvas size
+local function updateCanvasSize()
+    local contentSize = UIListLayout.AbsoluteContentSize
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+end
+
+UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvasSize)
+updateCanvasSize()
+
+-- Character respawn handling
+player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    
+    -- Reset all toggles
+    flyEnabled = false
+    noclipEnabled = false
+    speedEnabled = false
+    jumpHighEnabled = false
+    godModeEnabled = false
+    antiAFKEnabled = false
+    spiderEnabled = false
+    freecamEnabled = false
+    
+    -- Disconnect all connections
+    for _, connection in pairs(connections) do
+        if connection then
+            connection:Disconnect()
         end
     end
+    connections = {}
 end)
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch and input.UserInputId == joystickTouchId then
-        joystickTouchId = nil
-        joystickStartPos = nil
-    end
-end)
-
--- Noclip
-RunService.Stepped:Connect(function()
-    if noclipEnabled or playerNoclipEnabled then
-        for _, part in pairs(Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
--- Spider
-RunService.Stepped:Connect(function()
-    if spiderEnabled and RootPart then
-        local ray = Ray.new(RootPart.Position, RootPart.CFrame.LookVector * 2)
-        local hit, pos = workspace:FindPartOnRay(ray, Character)
-        if hit and not hit:IsDescendantOf(Character) then
-            RootPart.Velocity = Vector3.new(0, 50, 0)
-        end
-    end
-end)
-
--- Anti AFK
-RunService.Stepped:Connect(function()
-    if antiAFK then
-        Player.Idled:Fire()
-    end
-end)
-
--- Player Updates
-Players.PlayerAdded:Connect(function()
-    playersList = Players:GetPlayers()
-end)
-Players.PlayerRemoving:Connect(function()
-    playersList = Players:GetPlayers()
-    if spectateIndex > #playersList then spectateIndex = 1 end
-end)
-
--- Character Reset
-Player.CharacterAdded:Connect(function(char)
-    Character = char
-    Humanoid = char:FindFirstChildOfClass("Humanoid")
-    RootPart = char:FindFirstChild("HumanoidRootPart")
-    Humanoid.WalkSpeed = speedValue
-    Humanoid.JumpPower = jumpPower
-    if godMode then
-        toggleGodMode()
-    end
-end)
-
--- Initial Setup
-Humanoid.WalkSpeed = speedValue
-Humanoid.JumpPower = jumpPower
-StarterGui:SetCore("ChatActive", true)
-loadCategoryContent()
+print("Modern Hack GUI dengan Kategori Loaded!")
+print("🏃 Movement | 👤 Player | 👁️ Visual | 📍 Teleport | 🔧 Utility")
+print("Klik kategori di kiri untuk beralih fitur")
