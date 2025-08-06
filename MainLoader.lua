@@ -887,6 +887,7 @@ local function updateSpectateButtons()
     local isSpectating = selectedPlayer ~= nil
     NextSpectateButton.Visible = isSpectating and not guiMinimized
     PrevSpectateButton.Visible = isSpectating and not guiMinimized
+    StopSpectateButton.Visible = isSpectating and not guiMinimized
 end
 
 local function stopSpectating()
@@ -920,14 +921,32 @@ local function spectatePlayer(targetPlayer)
         SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
         print("Spectating: " .. targetPlayer.Name)
         
-        -- Connect to detect player death
-        local targetHumanoid = targetPlayer.Character.Humanoid
-        spectateConnection = targetHumanoid.AncestryChanged:Connect(function()
-            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") or targetHumanoid.Health <= 0 then
-                print("Spectated player died, stopping spectate")
+        -- Monitor player death and character changes
+        local function onCharacterChange(newCharacter)
+            if not newCharacter then
+                print("Spectated player character removed, waiting for respawn")
+                return
+            end
+            local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
+            if newHumanoid and newHumanoid.Health > 0 then
+                workspace.CurrentCamera.CameraSubject = newHumanoid
+                print("Spectated player respawned, continuing spectate")
+            else
+                print("Spectated player died or no valid humanoid, stopping spectate")
                 stopSpectating()
             end
-        end)
+        end
+        
+        -- Connect to death and character changes
+        spectateConnection = targetPlayer.CharacterAdded:Connect(onCharacterChange)
+        
+        -- Check initial humanoid state
+        local targetHumanoid = targetPlayer.Character.Humanoid
+        if targetHumanoid.Health <= 0 then
+            print("Spectated player is dead, waiting for respawn")
+        else
+            onCharacterChange(targetPlayer.Character)
+        end
         
         -- Update PlayerListFrame buttons to reflect selection
         for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
@@ -1052,17 +1071,30 @@ local function updatePlayerList()
                 spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 spectateButton.TextSize = 9
                 
-                local stopSpectateButton = Instance.new("TextButton")
-                stopSpectateButton.Name = "StopSpectateButton"
-                stopSpectateButton.Parent = playerItem
-                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-                stopSpectateButton.BorderSizePixel = 0
-                stopSpectateButton.Position = UDim2.new(0, 80, 0, 60)
-                stopSpectateButton.Size = UDim2.new(0, 70, 0, 25)
-                stopSpectateButton.Font = Enum.Font.Gotham
-                stopSpectateButton.Text = "STOP"
-                stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                stopSpectateButton.TextSize = 9
+                -- Stop Spectate Button
+local StopSpectateButton = Instance.new("TextButton")
+StopSpectateButton.Name = "StopSpectateButton"
+StopSpectateButton.Parent = ScreenGui
+StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+StopSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+StopSpectateButton.BorderSizePixel = 1
+StopSpectateButton.Position = UDim2.new(0.5, -30, 0.5, 35)
+StopSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+StopSpectateButton.Font = Enum.Font.Gotham
+StopSpectateButton.Text = "STOP"
+StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+StopSpectateButton.TextSize = 10
+StopSpectateButton.Visible = false
+StopSpectateButton.Active = true
+
+StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
+
+StopSpectateButton.MouseEnter:Connect(function()
+    StopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+end)
+StopSpectateButton.MouseLeave:Connect(function()
+    StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+end)
                 
                 local teleportButton = Instance.new("TextButton")
                 teleportButton.Name = "TeleportButton"
