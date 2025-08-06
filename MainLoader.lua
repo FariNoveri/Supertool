@@ -45,15 +45,16 @@ local moduleUrls = {
 -- Load modules
 local modules = {}
 for category, url in pairs(moduleUrls) do
+    print("Loading " .. category .. " from " .. url) -- Log buat debug
     success, errorMsg = pcall(function()
-        return loadstring(game:HttpGet(url, true))()
+        return loadstring(game:HttpGet(url, false))() -- Nonaktifkan caching
     end)
     if success and errorMsg then
         modules[category] = errorMsg
-        print(category .. " module loaded successfully")
+        print(category .. " module loaded successfully, type: " .. type(errorMsg))
     else
         warn("Failed to load " .. category .. " module: " .. tostring(errorMsg))
-        modules[category] = {} -- Fallback empty module
+        modules[category] = {}
     end
 end
 
