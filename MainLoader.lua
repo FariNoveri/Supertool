@@ -1,4 +1,4 @@
--- Modern Minimal Roblox GUI Script untuk Android dengan Kategori (KRNL Compatible)
+-- Modern Minimal Roblox GUI Script untuk Android dengan Kategori (KRNL Compatible) - FIXED VERSION
 -- Redesigned dengan desain hitam minimalis dan fitur Player Phase
 
 local Players = game:GetService("Players")
@@ -13,6 +13,14 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
+-- AUTO-DISABLE PREVIOUS SCRIPTS
+for _, gui in pairs(CoreGui:GetChildren()) do
+    if gui.Name == "MinimalHackGUI" then
+        gui:Destroy()
+        print("Previous MinimalHackGUI removed")
+    end
+end
+
 -- Variabel untuk fitur
 local flyEnabled = false
 local noclipEnabled = false
@@ -24,15 +32,17 @@ local antiAFKEnabled = false
 local spiderEnabled = false
 local freecamEnabled = false
 local playerPhaseEnabled = false
+local flashlightEnabled = false
 
-local savedPosition = nil
-local spectateIndex = 1
+local savedPositions = {}
 local selectedPlayer = nil
 local currentCategory = "Movement"
 local playerListVisible = false
+local guiMinimized = false
 
 -- Connections
 local connections = {}
+local buttonStates = {}
 
 -- GUI Creation
 local ScreenGui = Instance.new("ScreenGui")
@@ -54,6 +64,13 @@ local PlayerListFrame = Instance.new("Frame")
 local PlayerListScrollFrame = Instance.new("ScrollingFrame")
 local PlayerListLayout = Instance.new("UIListLayout")
 local SelectedPlayerLabel = Instance.new("TextLabel")
+
+-- Position Save System
+local PositionFrame = Instance.new("Frame")
+local PositionScrollFrame = Instance.new("ScrollingFrame")
+local PositionLayout = Instance.new("UIListLayout")
+local PositionInput = Instance.new("TextBox")
+local SavePositionButton = Instance.new("TextButton")
 
 local LogoButton = Instance.new("TextButton")
 
@@ -99,7 +116,7 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.new(0, 45, 0, 0)
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK - By Fari Noveri [Unknown BLOCK]"
+Title.Text = "HACK"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -219,6 +236,87 @@ PlayerListLayout.Padding = UDim.new(0, 2)
 PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
 
+-- Position Save Frame
+PositionFrame.Name = "PositionFrame"
+PositionFrame.Parent = ScreenGui
+PositionFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+PositionFrame.BorderSizePixel = 1
+PositionFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
+PositionFrame.Size = UDim2.new(0, 350, 0, 400)
+PositionFrame.Visible = false
+PositionFrame.Active = true
+PositionFrame.Draggable = true
+
+-- Position Frame Title
+local PositionTitle = Instance.new("TextLabel")
+PositionTitle.Name = "Title"
+PositionTitle.Parent = PositionFrame
+PositionTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+PositionTitle.BorderSizePixel = 0
+PositionTitle.Position = UDim2.new(0, 0, 0, 0)
+PositionTitle.Size = UDim2.new(1, 0, 0, 35)
+PositionTitle.Font = Enum.Font.Gotham
+PositionTitle.Text = "SAVED POSITIONS"
+PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+PositionTitle.TextSize = 12
+
+-- Close Position Frame Button
+local ClosePositionButton = Instance.new("TextButton")
+ClosePositionButton.Name = "CloseButton"
+ClosePositionButton.Parent = PositionFrame
+ClosePositionButton.BackgroundTransparency = 1
+ClosePositionButton.Position = UDim2.new(1, -30, 0, 5)
+ClosePositionButton.Size = UDim2.new(0, 25, 0, 25)
+ClosePositionButton.Font = Enum.Font.GothamBold
+ClosePositionButton.Text = "X"
+ClosePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ClosePositionButton.TextSize = 12
+
+-- Position Input
+PositionInput.Name = "PositionInput"
+PositionInput.Parent = PositionFrame
+PositionInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+PositionInput.BorderSizePixel = 0
+PositionInput.Position = UDim2.new(0, 10, 0, 45)
+PositionInput.Size = UDim2.new(1, -90, 0, 30)
+PositionInput.Font = Enum.Font.Gotham
+PositionInput.PlaceholderText = "Enter position name..."
+PositionInput.Text = ""
+PositionInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+PositionInput.TextSize = 11
+
+-- Save Position Button
+SavePositionButton.Name = "SavePositionButton"
+SavePositionButton.Parent = PositionFrame
+SavePositionButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SavePositionButton.BorderSizePixel = 0
+SavePositionButton.Position = UDim2.new(1, -70, 0, 45)
+SavePositionButton.Size = UDim2.new(0, 60, 0, 30)
+SavePositionButton.Font = Enum.Font.Gotham
+SavePositionButton.Text = "SAVE"
+SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SavePositionButton.TextSize = 10
+
+-- Position ScrollFrame
+PositionScrollFrame.Name = "PositionScrollFrame"
+PositionScrollFrame.Parent = PositionFrame
+PositionScrollFrame.BackgroundTransparency = 1
+PositionScrollFrame.Position = UDim2.new(0, 10, 0, 85)
+PositionScrollFrame.Size = UDim2.new(1, -20, 1, -95)
+PositionScrollFrame.ScrollBarThickness = 4
+PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+PositionScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+PositionScrollFrame.BorderSizePixel = 0
+
+-- Position Layout
+PositionLayout.Parent = PositionScrollFrame
+PositionLayout.Padding = UDim.new(0, 2)
+PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+PositionLayout.FillDirection = Enum.FillDirection.Vertical
+
 -- Logo Button (minimized state)
 LogoButton.Name = "LogoButton"
 LogoButton.Parent = ScreenGui
@@ -236,6 +334,29 @@ LogoButton.Active = true
 LogoButton.Draggable = true
 
 -- Feature Functions
+
+-- Flashlight
+local flashlightPart = nil
+local function toggleFlashlight(enabled)
+    flashlightEnabled = enabled
+    if enabled then
+        if character and character:FindFirstChild("Head") then
+            flashlightPart = Instance.new("PointLight")
+            flashlightPart.Name = "Flashlight"
+            flashlightPart.Brightness = 5
+            flashlightPart.Range = 100
+            flashlightPart.Color = Color3.fromRGB(255, 255, 255)
+            flashlightPart.Parent = character.Head
+        end
+    else
+        if flashlightPart then
+            flashlightPart:Destroy()
+            flashlightPart = nil
+        elseif character and character:FindFirstChild("Head") and character.Head:FindFirstChild("Flashlight") then
+            character.Head.Flashlight:Destroy()
+        end
+    end
+end
 
 -- Player Phase (nembus player lain)
 local function togglePlayerPhase(enabled)
@@ -510,19 +631,125 @@ end
 
 -- Position functions
 local function savePosition()
+    local positionName = PositionInput.Text
+    if positionName == "" then
+        positionName = "Position " .. (#savedPositions + 1)
+    end
+    
     if rootPart then
-        savedPosition = rootPart.CFrame
-        print("Position Saved")
+        savedPositions[positionName] = rootPart.CFrame
+        print("Position Saved: " .. positionName)
+        PositionInput.Text = ""
+        updatePositionList()
     end
 end
 
-local function loadPosition()
-    if savedPosition and rootPart then
-        rootPart.CFrame = savedPosition
-        print("Teleported to saved position")
-    else
-        print("No saved position")
+local function loadPosition(positionName)
+    if savedPositions[positionName] and rootPart then
+        rootPart.CFrame = savedPositions[positionName]
+        print("Teleported to: " .. positionName)
     end
+end
+
+local function deletePosition(positionName)
+    if savedPositions[positionName] then
+        savedPositions[positionName] = nil
+        print("Deleted position: " .. positionName)
+        updatePositionList()
+    end
+end
+
+local function showPositionManager()
+    PositionFrame.Visible = true
+    updatePositionList()
+end
+
+local function updatePositionList()
+    for _, child in pairs(PositionScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local itemCount = 0
+    
+    for positionName, _ in pairs(savedPositions) do
+        local positionItem = Instance.new("Frame")
+        positionItem.Name = positionName .. "Item"
+        positionItem.Parent = PositionScrollFrame
+        positionItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        positionItem.BorderSizePixel = 0
+        positionItem.Size = UDim2.new(1, -5, 0, 60)
+        positionItem.LayoutOrder = itemCount
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Parent = positionItem
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Position = UDim2.new(0, 5, 0, 5)
+        nameLabel.Size = UDim2.new(1, -10, 0, 20)
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.Text = positionName
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 11
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local tpButton = Instance.new("TextButton")
+        tpButton.Name = "TeleportButton"
+        tpButton.Parent = positionItem
+        tpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        tpButton.BorderSizePixel = 0
+        tpButton.Position = UDim2.new(0, 5, 0, 30)
+        tpButton.Size = UDim2.new(0, 80, 0, 25)
+        tpButton.Font = Enum.Font.Gotham
+        tpButton.Text = "TELEPORT"
+        tpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        tpButton.TextSize = 9
+        
+        local deleteButton = Instance.new("TextButton")
+        deleteButton.Name = "DeleteButton"
+        deleteButton.Parent = positionItem
+        deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+        deleteButton.BorderSizePixel = 0
+        deleteButton.Position = UDim2.new(0, 90, 0, 30)
+        deleteButton.Size = UDim2.new(0, 60, 0, 25)
+        deleteButton.Font = Enum.Font.Gotham
+        deleteButton.Text = "DELETE"
+        deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        deleteButton.TextSize = 9
+        
+        -- Button events
+        tpButton.MouseButton1Click:Connect(function()
+            loadPosition(positionName)
+        end)
+        
+        deleteButton.MouseButton1Click:Connect(function()
+            deletePosition(positionName)
+        end)
+        
+        -- Hover effects
+        tpButton.MouseEnter:Connect(function()
+            tpButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end)
+        
+        tpButton.MouseLeave:Connect(function()
+            tpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        end)
+        
+        deleteButton.MouseEnter:Connect(function()
+            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+        end)
+        
+        deleteButton.MouseLeave:Connect(function()
+            deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+        end)
+        
+        itemCount = itemCount + 1
+    end
+    
+    wait(0.1)
+    local contentSize = PositionLayout.AbsoluteContentSize
+    PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
 end
 
 -- Player functions
@@ -534,83 +761,167 @@ end
 
 local function updatePlayerList()
     for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
+        if child:IsA("Frame") then
             child:Destroy()
         end
     end
     
-    local buttonCount = 0
+    local itemCount = 0
     
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player then
-            local playerButton = Instance.new("TextButton")
-            playerButton.Name = p.Name .. "Button"
-            playerButton.Parent = PlayerListScrollFrame
-            playerButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            playerButton.BorderSizePixel = 0
-            playerButton.Size = UDim2.new(1, -5, 0, 30)
-            playerButton.Font = Enum.Font.Gotham
-            playerButton.Text = p.Name
-            playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            playerButton.TextSize = 12
-            playerButton.LayoutOrder = buttonCount
+            local playerItem = Instance.new("Frame")
+            playerItem.Name = p.Name .. "Item"
+            playerItem.Parent = PlayerListScrollFrame
+            playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            playerItem.BorderSizePixel = 0
+            playerItem.Size = UDim2.new(1, -5, 0, 90)
+            playerItem.LayoutOrder = itemCount
             
-            playerButton.MouseButton1Click:Connect(function()
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Name = "NameLabel"
+            nameLabel.Parent = playerItem
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Position = UDim2.new(0, 5, 0, 5)
+            nameLabel.Size = UDim2.new(1, -10, 0, 20)
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.Text = p.Name
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextSize = 12
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            
+            local selectButton = Instance.new("TextButton")
+            selectButton.Name = "SelectButton"
+            selectButton.Parent = playerItem
+            selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            selectButton.BorderSizePixel = 0
+            selectButton.Position = UDim2.new(0, 5, 0, 30)
+            selectButton.Size = UDim2.new(1, -10, 0, 25)
+            selectButton.Font = Enum.Font.Gotham
+            selectButton.Text = "SELECT PLAYER"
+            selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            selectButton.TextSize = 10
+            
+            local spectateButton = Instance.new("TextButton")
+            spectateButton.Name = "SpectateButton"
+            spectateButton.Parent = playerItem
+            spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            spectateButton.BorderSizePixel = 0
+            spectateButton.Position = UDim2.new(0, 5, 0, 60)
+            spectateButton.Size = UDim2.new(0, 70, 0, 25)
+            spectateButton.Font = Enum.Font.Gotham
+            spectateButton.Text = "SPECTATE"
+            spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            spectateButton.TextSize = 9
+            
+            local stopSpectateButton = Instance.new("TextButton")
+            stopSpectateButton.Name = "StopSpectateButton"
+            stopSpectateButton.Parent = playerItem
+            stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+            stopSpectateButton.BorderSizePixel = 0
+            stopSpectateButton.Position = UDim2.new(0, 80, 0, 60)
+            stopSpectateButton.Size = UDim2.new(0, 70, 0, 25)
+            stopSpectateButton.Font = Enum.Font.Gotham
+            stopSpectateButton.Text = "STOP"
+            stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            stopSpectateButton.TextSize = 9
+            
+            local teleportButton = Instance.new("TextButton")
+            teleportButton.Name = "TeleportButton"
+            teleportButton.Parent = playerItem
+            teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+            teleportButton.BorderSizePixel = 0
+            teleportButton.Position = UDim2.new(0, 155, 0, 60)
+            teleportButton.Size = UDim2.new(1, -160, 0, 25)
+            teleportButton.Font = Enum.Font.Gotham
+            teleportButton.Text = "TELEPORT"
+            teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            teleportButton.TextSize = 9
+            
+            -- Button events
+            selectButton.MouseButton1Click:Connect(function()
                 selectedPlayer = p
                 SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
-                PlayerListFrame.Visible = false
-                playerListVisible = false
                 
-                for _, btn in pairs(PlayerListScrollFrame:GetChildren()) do
-                    if btn:IsA("TextButton") then
-                        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                -- Update all select buttons
+                for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                    if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                        if item.Name == p.Name .. "Item" then
+                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                            item.SelectButton.Text = "SELECTED"
+                        else
+                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                            item.SelectButton.Text = "SELECT PLAYER"
+                        end
                     end
                 end
-                playerButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
             end)
             
-            playerButton.MouseEnter:Connect(function()
-                if playerButton.BackgroundColor3 ~= Color3.fromRGB(60, 60, 60) then
-                    playerButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            spectateButton.MouseButton1Click:Connect(function()
+                if p and p.Character and p.Character:FindFirstChild("Humanoid") then
+                    workspace.CurrentCamera.CameraSubject = p.Character.Humanoid
+                    print("Spectating: " .. p.Name)
                 end
             end)
             
-            playerButton.MouseLeave:Connect(function()
+            stopSpectateButton.MouseButton1Click:Connect(function()
+                workspace.CurrentCamera.CameraSubject = humanoid
+                print("Stopped spectating")
+            end)
+            
+            teleportButton.MouseButton1Click:Connect(function()
+                if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and rootPart then
+                    rootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                    print("Teleported to: " .. p.Name)
+                end
+            end)
+            
+            -- Hover effects
+            selectButton.MouseEnter:Connect(function()
                 if selectedPlayer ~= p then
-                    playerButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                    selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
                 end
             end)
             
-            buttonCount = buttonCount + 1
+            selectButton.MouseLeave:Connect(function()
+                if selectedPlayer ~= p then
+                    selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                else
+                    selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                end
+            end)
+            
+            spectateButton.MouseEnter:Connect(function()
+                spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+            end)
+            
+            spectateButton.MouseLeave:Connect(function()
+                spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            end)
+            
+            stopSpectateButton.MouseEnter:Connect(function()
+                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+            end)
+            
+            stopSpectateButton.MouseLeave:Connect(function()
+                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+            end)
+            
+            teleportButton.MouseEnter:Connect(function()
+                teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+            end)
+            
+            teleportButton.MouseLeave:Connect(function()
+                teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+            end)
+            
+            itemCount = itemCount + 1
         end
     end
     
     wait(0.1)
     local contentSize = PlayerListLayout.AbsoluteContentSize
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
-end
-
-local function spectateSelectedPlayer()
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("Humanoid") then
-        workspace.CurrentCamera.CameraSubject = selectedPlayer.Character.Humanoid
-        print("Spectating: " .. selectedPlayer.Name)
-    else
-        print("Select a player first")
-    end
-end
-
-local function tpToSelectedPlayer()
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
-        rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-        print("Teleported to: " .. selectedPlayer.Name)
-    else
-        print("Select a player first")
-    end
-end
-
-local function stopSpectate()
-    workspace.CurrentCamera.CameraSubject = humanoid
-    print("Stopped spectating")
 end
 
 -- Button creation functions
@@ -651,10 +962,10 @@ local function createToggleButton(name, callback)
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 11
     
-    local isToggled = false
+    buttonStates[name] = false
     
     local function updateButton()
-        if isToggled then
+        if buttonStates[name] then
             button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
             button.Text = name:upper() .. " [ON]"
         else
@@ -664,13 +975,13 @@ local function createToggleButton(name, callback)
     end
     
     button.MouseButton1Click:Connect(function()
-        isToggled = not isToggled
+        buttonStates[name] = not buttonStates[name]
         updateButton()
-        callback(isToggled)
+        callback(buttonStates[name])
     end)
     
     button.MouseEnter:Connect(function()
-        if not isToggled then
+        if not buttonStates[name] then
             button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         end
     end)
@@ -710,6 +1021,44 @@ local function clearButtons()
     end
 end
 
+-- Spider function (stick to walls)
+local function toggleSpider(enabled)
+    spiderEnabled = enabled
+    if enabled then
+        local bodyPosition = Instance.new("BodyPosition")
+        bodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
+        bodyPosition.Position = rootPart.Position
+        bodyPosition.Parent = rootPart
+        
+        local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+        bodyAngularVelocity.MaxTorque = Vector3.new(4000, 4000, 4000)
+        bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+        bodyAngularVelocity.Parent = rootPart
+        
+        connections.spider = RunService.Heartbeat:Connect(function()
+            if spiderEnabled and rootPart then
+                local ray = workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 10)
+                if ray then
+                    bodyPosition.Position = ray.Position + ray.Normal * 3
+                    local lookDirection = -ray.Normal
+                    bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+                    rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lookDirection)
+                end
+            end
+        end)
+    else
+        if connections.spider then
+            connections.spider:Disconnect()
+        end
+        if rootPart:FindFirstChild("BodyPosition") then
+            rootPart:FindFirstChild("BodyPosition"):Destroy()
+        end
+        if rootPart:FindFirstChild("BodyAngularVelocity") then
+            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
+        end
+    end
+end
+
 -- Category button loaders
 local function loadMovementButtons()
     createToggleButton("Fly", toggleFly)
@@ -724,19 +1073,24 @@ local function loadPlayerButtons()
     createButton("Select Player", showPlayerSelection)
     createToggleButton("God Mode", toggleGodMode)
     createToggleButton("Anti AFK", toggleAntiAFK)
-    createButton("Spectate Selected", spectateSelectedPlayer)
-    createButton("Stop Spectate", stopSpectate)
 end
 
 local function loadVisualButtons()
     createToggleButton("Fullbright", toggleFullbright)
     createToggleButton("Freecam", toggleFreecam)
+    createToggleButton("Flashlight", toggleFlashlight)
 end
 
 local function loadTeleportButtons()
-    createButton("Save Position", savePosition)
-    createButton("Load Position", loadPosition)
-    createButton("TP to Selected Player", tpToSelectedPlayer)
+    createButton("Position Manager", showPositionManager)
+    createButton("TP to Selected Player", function()
+        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
+            rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+            print("Teleported to: " .. selectedPlayer.Name)
+        else
+            print("Select a player first")
+        end
+    end)
 end
 
 local function loadUtilityButtons()
@@ -747,6 +1101,12 @@ local function loadUtilityButtons()
             end
         end
         print("Previous scripts disabled")
+    end)
+    
+    createButton("Reset Character", function()
+        if humanoid then
+            humanoid.Health = 0
+        end
     end)
 end
 
@@ -785,15 +1145,20 @@ function switchCategory(categoryName)
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
 end
 
--- Minimize/Maximize functions
+-- Minimize/Maximize functions dengan state preservation
 local function minimizeGUI()
+    guiMinimized = true
     MainFrame.Visible = false
+    PlayerListFrame.Visible = false
+    PositionFrame.Visible = false
     LogoButton.Visible = true
 end
 
 local function maximizeGUI()
+    guiMinimized = false
     LogoButton.Visible = false
     MainFrame.Visible = true
+    -- Don't automatically show other frames
 end
 
 -- Event connections
@@ -805,6 +1170,14 @@ ClosePlayerListButton.MouseButton1Click:Connect(function()
     PlayerListFrame.Visible = false
     playerListVisible = false
 end)
+
+-- Position Manager Close Button
+ClosePositionButton.MouseButton1Click:Connect(function()
+    PositionFrame.Visible = false
+end)
+
+-- Save Position Button Event
+SavePositionButton.MouseButton1Click:Connect(savePosition)
 
 -- Create category buttons
 createCategoryButton("Movement")
@@ -823,7 +1196,7 @@ player.CharacterAdded:Connect(function(newCharacter)
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     
-    -- Reset all toggles
+    -- Reset all feature states but preserve button states
     flyEnabled = false
     noclipEnabled = false
     speedEnabled = false
@@ -833,6 +1206,7 @@ player.CharacterAdded:Connect(function(newCharacter)
     freecamEnabled = false
     playerPhaseEnabled = false
     spiderEnabled = false
+    flashlightEnabled = false
     
     -- Disconnect all connections
     for _, connection in pairs(connections) do
@@ -847,6 +1221,14 @@ player.CharacterAdded:Connect(function(newCharacter)
         rootPart.Anchored = false
     end
     
+    -- Reset button states to OFF
+    for featureName, _ in pairs(buttonStates) do
+        buttonStates[featureName] = false
+    end
+    
+    -- Refresh current category to update button displays
+    switchCategory(currentCategory)
+    
     print("Character respawned - features reset")
 end)
 
@@ -858,7 +1240,24 @@ Players.PlayerRemoving:Connect(function(removedPlayer)
     end
 end)
 
-print("=== MINIMAL HACK GUI LOADED ===")
-print("Movement | Player | Visual | Teleport | Utility")
-print("Player Phase: Nembus semua player lain")
-print("GUI siap digunakan!")
+-- Player joined/left events untuk update player list
+Players.PlayerAdded:Connect(function()
+    if playerListVisible then
+        updatePlayerList()
+    end
+end)
+
+Players.PlayerRemoving:Connect(function()
+    if playerListVisible then
+        wait(0.1) -- Small delay to ensure player is removed
+        updatePlayerList()
+    end
+end)
+
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION) ===")
+print("✓ Auto-disable previous scripts")
+print("✓ State preservation on minimize")
+print("✓ Enhanced player list with individual buttons")
+print("✓ Position manager with save/load/delete")
+print("✓ Flashlight feature added")
+print("GUI ready to use!")
