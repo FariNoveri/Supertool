@@ -551,7 +551,7 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Freecam (Android Touch Controls) - FIXED
+-- Freecam (Android Touch Controls) - FIXED V2
 local freecamPart = nil
 local originalCameraSubject = nil
 local freecamPosition = nil
@@ -567,51 +567,50 @@ local function toggleFreecam(enabled)
         freecamPart.CanCollide = false
         freecamPart.Transparency = 1
         freecamPart.Size = Vector3.new(1, 1, 1)
-        freecamPart.CFrame = CFrame.new(freecamPosition)
+        freecamPart.CFrame = workspace.CurrentCamera.CFrame
         freecamPart.Parent = workspace
         
         workspace.CurrentCamera.CameraSubject = freecamPart
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Attach
         
         -- Freeze character
         if rootPart then
             rootPart.Anchored = true
         end
         
-        connections.freecam = RunService.Heartbeat:Connect(function()
+        connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
             if freecamEnabled and freecamPart then
                 local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
-                -- Get camera direction (FIXED: proper direction vectors)
+                -- Get camera direction vectors
                 local cameraCFrame = camera.CFrame
                 local forwardVector = cameraCFrame.LookVector
                 local rightVector = cameraCFrame.RightVector
-                local upVector = cameraCFrame.UpVector
+                local upVector = Vector3.new(0, 1, 0) -- World up vector
                 
-                local velocity = Vector3.new(0, 0, 0)
-                local speed = 50 -- Faster speed
+                local movement = Vector3.new(0, 0, 0)
+                local speed = 80
                 
-                -- Fixed movement calculation
+                -- WASD/Thumbstick movement (FIXED: proper directions)
                 if moveVector.Magnitude > 0 then
-                    -- Forward/Backward (FIXED: correct direction)
-                    velocity = velocity + (forwardVector * moveVector.Z * speed)
-                    -- Left/Right (FIXED: correct direction)
-                    velocity = velocity + (rightVector * moveVector.X * speed)
+                    -- Forward/Backward movement
+                    movement = movement + (forwardVector * moveVector.Z * speed)
+                    -- Left/Right movement
+                    movement = movement + (rightVector * -moveVector.X * speed)
                 end
                 
                 -- Jump button untuk naik
                 if humanoid.Jump then
-                    velocity = velocity + (upVector * speed)
+                    movement = movement + (upVector * speed)
                     humanoid.Jump = false
                 end
                 
-                -- Update freecam position
-                freecamPosition = freecamPosition + velocity * (1/60) -- Delta time
-                freecamPart.CFrame = CFrame.new(freecamPosition)
+                -- Apply movement with deltaTime for smooth motion
+                local newPosition = freecamPart.Position + (movement * deltaTime)
                 
-                -- Sync camera position
-                camera.CFrame = CFrame.new(freecamPosition, freecamPosition + camera.CFrame.LookVector)
+                -- Update freecam part position while maintaining camera rotation
+                freecamPart.CFrame = CFrame.new(newPosition, newPosition + camera.CFrame.LookVector)
+                freecamPosition = newPosition
             end
         end)
         
@@ -624,8 +623,6 @@ local function toggleFreecam(enabled)
             freecamPart = nil
         end
         
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        
         if originalCameraSubject then
             workspace.CurrentCamera.CameraSubject = originalCameraSubject
         else
@@ -636,8 +633,6 @@ local function toggleFreecam(enabled)
         if rootPart then
             rootPart.Anchored = false
         end
-        
-        freecamPosition = nil
     end
 end
 
