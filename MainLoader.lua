@@ -35,6 +35,8 @@ local selectedPlayer = nil
 local currentCategory = "Movement"
 local playerListVisible = false
 local guiMinimized = false
+local spectatePlayerList = {}
+local currentSpectateIndex = 0
 
 -- Settings table
 local settings = {
@@ -80,6 +82,10 @@ local PositionInput = Instance.new("TextBox")
 local SavePositionButton = Instance.new("TextButton")
 
 local LogoButton = Instance.new("TextButton")
+
+-- Spectate Buttons
+local NextSpectateButton = Instance.new("TextButton")
+local PrevSpectateButton = Instance.new("TextButton")
 
 -- GUI Properties
 ScreenGui.Name = "MinimalHackGUI"
@@ -342,6 +348,36 @@ LogoButton.TextSize = 16
 LogoButton.Visible = false
 LogoButton.Active = true
 LogoButton.Draggable = true
+
+-- Next Spectate Button
+NextSpectateButton.Name = "NextSpectateButton"
+NextSpectateButton.Parent = ScreenGui
+NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+NextSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+NextSpectateButton.BorderSizePixel = 1
+NextSpectateButton.Position = UDim2.new(1, -80, 1, -50)
+NextSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+NextSpectateButton.Font = Enum.Font.Gotham
+NextSpectateButton.Text = "NEXT >"
+NextSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+NextSpectateButton.TextSize = 10
+NextSpectateButton.Visible = false
+NextSpectateButton.Active = true
+
+-- Previous Spectate Button
+PrevSpectateButton.Name = "PrevSpectateButton"
+PrevSpectateButton.Parent = ScreenGui
+PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+PrevSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+PrevSpectateButton.BorderSizePixel = 1
+PrevSpectateButton.Position = UDim2.new(1, -140, 1, -50)
+PrevSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+PrevSpectateButton.Font = Enum.Font.Gotham
+PrevSpectateButton.Text = "< PREV"
+PrevSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+PrevSpectateButton.TextSize = 10
+PrevSpectateButton.Visible = false
+PrevSpectateButton.Active = true
 
 -- Feature Functions
 
@@ -846,6 +882,69 @@ local function showPlayerSelection()
     updatePlayerList()
 end
 
+local function updateSpectateButtons()
+    local hasPlayers = #spectatePlayerList > 0
+    NextSpectateButton.Visible = hasPlayers and not guiMinimized
+    PrevSpectateButton.Visible = hasPlayers and not guiMinimized
+end
+
+local function spectatePlayer(targetPlayer)
+    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+        workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+        selectedPlayer = targetPlayer
+        SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
+        print("Spectating: " .. targetPlayer.Name)
+        
+        -- Update PlayerListFrame buttons to reflect selection
+        for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+            if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                if item.Name == targetPlayer.Name .. "Item" then
+                    item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                    item.SelectButton.Text = "SELECTED"
+                else
+                    item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    item.SelectButton.Text = "SELECT PLAYER"
+                end
+            end
+        end
+    else
+        workspace.CurrentCamera.CameraSubject = humanoid
+        selectedPlayer = nil
+        SelectedPlayerLabel.Text = "SELECTED: NONE"
+        print("No valid player to spectate")
+    end
+end
+
+local function spectateNextPlayer()
+    if #spectatePlayerList == 0 then
+        print("No players to spectate")
+        return
+    end
+    
+    currentSpectateIndex = currentSpectateIndex + 1
+    if currentSpectateIndex > #spectatePlayerList then
+        currentSpectateIndex = 1
+    end
+    
+    local targetPlayer = spectatePlayerList[currentSpectateIndex]
+    spectatePlayer(targetPlayer)
+end
+
+local function spectatePrevPlayer()
+    if #spectatePlayerList == 0 then
+        print("No players to spectate")
+        return
+    end
+    
+    currentSpectateIndex = currentSpectateIndex - 1
+    if currentSpectateIndex < 1 then
+        currentSpectateIndex = #spectatePlayerList
+    end
+    
+    local targetPlayer = spectatePlayerList[currentSpectateIndex]
+    spectatePlayer(targetPlayer)
+end
+
 local function updatePlayerList()
     for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then
@@ -853,6 +952,7 @@ local function updatePlayerList()
         end
     end
     
+    spectatePlayerList = {}
     local playerCount = 0
     local players = Players:GetPlayers()
     
@@ -870,8 +970,10 @@ local function updatePlayerList()
         print("Player List Updated: No other players found")
     else
         for _, p in pairs(players) do
-            if p ~= player and p.Character then
+            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
                 playerCount = playerCount + 1
+                table.insert(spectatePlayerList, p)
+                
                 local playerItem = Instance.new("Frame")
                 playerItem.Name = p.Name .. "Item"
                 playerItem.Parent = PlayerListScrollFrame
@@ -942,6 +1044,7 @@ local function updatePlayerList()
                 
                 selectButton.MouseButton1Click:Connect(function()
                     selectedPlayer = p
+                    currentSpectateIndex = table.find(spectatePlayerList, p) or 0
                     SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
                     for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
                         if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
@@ -957,15 +1060,22 @@ local function updatePlayerList()
                 end)
                 
                 spectateButton.MouseButton1Click:Connect(function()
-                    if p and p.Character and p.Character:FindFirstChild("Humanoid") then
-                        workspace.CurrentCamera.CameraSubject = p.Character.Humanoid
-                        print("Spectating: " .. p.Name)
-                    end
+                    currentSpectateIndex = table.find(spectatePlayerList, p) or 0
+                    spectatePlayer(p)
                 end)
                 
                 stopSpectateButton.MouseButton1Click:Connect(function()
                     workspace.CurrentCamera.CameraSubject = humanoid
+                    selectedPlayer = nil
+                    currentSpectateIndex = 0
+                    SelectedPlayerLabel.Text = "SELECTED: NONE"
                     print("Stopped spectating")
+                    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                            item.SelectButton.Text = "SELECT PLAYER"
+                        end
+                    end
                 end)
                 
                 teleportButton.MouseButton1Click:Connect(function()
@@ -1016,10 +1126,18 @@ local function updatePlayerList()
         end
     end
     
+    -- Update spectate index if selected player is in the list
+    if selectedPlayer then
+        currentSpectateIndex = table.find(spectatePlayerList, selectedPlayer) or 0
+    else
+        currentSpectateIndex = 0
+    end
+    
     wait(0.1)
     local contentSize = PlayerListLayout.AbsoluteContentSize
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
     print("Player List Updated: " .. playerCount .. " players listed")
+    updateSpectateButtons()
 end
 
 -- Button creation functions
@@ -1375,12 +1493,15 @@ local function minimizeGUI()
     PlayerListFrame.Visible = false
     PositionFrame.Visible = false
     LogoButton.Visible = true
+    NextSpectateButton.Visible = false
+    PrevSpectateButton.Visible = false
 end
 
 local function maximizeGUI()
     guiMinimized = false
     LogoButton.Visible = false
     MainFrame.Visible = true
+    updateSpectateButtons()
 end
 
 -- Event connections
@@ -1398,6 +1519,23 @@ end)
 
 SavePositionButton.MouseButton1Click:Connect(savePosition)
 
+NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
+PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
+
+NextSpectateButton.MouseEnter:Connect(function()
+    NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+end)
+NextSpectateButton.MouseLeave:Connect(function()
+    NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+end)
+
+PrevSpectateButton.MouseEnter:Connect(function()
+    PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+end)
+PrevSpectateButton.MouseLeave:Connect(function()
+    PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+end)
+
 createCategoryButton("Movement")
 createCategoryButton("Player")
 createCategoryButton("Visual")
@@ -1408,6 +1546,7 @@ createCategoryButton("Info")
 
 wait(0.5)
 switchCategory("Movement")
+updatePlayerList()
 
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
@@ -1438,14 +1577,17 @@ player.CharacterAdded:Connect(function(newCharacter)
     end
     
     switchCategory(currentCategory)
+    updatePlayerList()
 end)
 
 Players.PlayerRemoving:Connect(function(removedPlayer)
     if removedPlayer == selectedPlayer then
         selectedPlayer = nil
+        currentSpectateIndex = 0
         SelectedPlayerLabel.Text = "SELECTED: NONE"
         print("Selected player left, resetting selection")
     end
+    wait(0.5)
     updatePlayerList()
 end)
 
@@ -1454,10 +1596,5 @@ Players.PlayerAdded:Connect(function()
     updatePlayerList()
 end)
 
-Players.PlayerRemoving:Connect(function()
-    wait(0.5)
-    updatePlayerList()
-end)
-
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V14) ===")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V15) ===")
 print("GUI ready to use!")
