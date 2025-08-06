@@ -99,7 +99,7 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.new(0, 45, 0, 0)
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK"
+Title.Text = "HACK - By Fari Noveri [Unknown BLOCK]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -271,7 +271,7 @@ local function togglePlayerPhase(enabled)
     end
 end
 
--- Fly (3D Movement dengan kamera)
+-- Fly (Android Touch Controls)
 local function toggleFly(enabled)
     flyEnabled = enabled
     if enabled then
@@ -280,30 +280,31 @@ local function toggleFly(enabled)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.Parent = rootPart
         
-        local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
-        bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
-        bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
-        bodyAngularVelocity.Parent = rootPart
-        
         connections.fly = RunService.Heartbeat:Connect(function()
             if flyEnabled then
                 local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
+                -- Get camera direction
                 local cameraCFrame = camera.CFrame
                 local forwardVector = cameraCFrame.LookVector
                 local rightVector = cameraCFrame.RightVector
-                local upVector = cameraCFrame.UpVector
+                local upVector = Vector3.new(0, 1, 0)
                 
                 local velocity = Vector3.new(0, 0, 0)
+                local speed = 50
                 
+                -- Movement berdasarkan virtual thumbstick Android
                 if moveVector.Magnitude > 0 then
-                    velocity = velocity + (forwardVector * moveVector.Z * -50)
-                    velocity = velocity + (rightVector * moveVector.X * 50)
+                    -- Forward/Backward (thumbstick up/down)
+                    velocity = velocity + (forwardVector * -moveVector.Z * speed)
+                    -- Left/Right (thumbstick left/right)  
+                    velocity = velocity + (rightVector * moveVector.X * speed)
                 end
                 
+                -- Jump button Android untuk naik
                 if humanoid.Jump then
-                    velocity = velocity + (upVector * 50)
+                    velocity = velocity + (upVector * speed)
                     humanoid.Jump = false
                 end
                 
@@ -316,9 +317,6 @@ local function toggleFly(enabled)
         end
         if rootPart:FindFirstChild("BodyVelocity") then
             rootPart:FindFirstChild("BodyVelocity"):Destroy()
-        end
-        if rootPart:FindFirstChild("BodyAngularVelocity") then
-            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
         end
     end
 end
@@ -432,7 +430,7 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Freecam
+-- Freecam (Android Touch Controls)
 local freecamPart = nil
 local originalCameraSubject = nil
 local function toggleFreecam(enabled)
@@ -451,6 +449,7 @@ local function toggleFreecam(enabled)
         
         workspace.CurrentCamera.CameraSubject = freecamPart
         
+        -- Freeze character
         if rootPart then
             rootPart.Anchored = true
         end
@@ -460,26 +459,34 @@ local function toggleFreecam(enabled)
                 local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
-                local velocity = Vector3.new(0, 0, 0)
-                local speed = 50
+                -- Get camera direction
+                local cameraCFrame = camera.CFrame
+                local forwardVector = cameraCFrame.LookVector
+                local rightVector = cameraCFrame.RightVector
+                local upVector = Vector3.new(0, 1, 0)
                 
+                local velocity = Vector3.new(0, 0, 0)
+                local speed = 2 -- Slower speed untuk Android
+                
+                -- Movement dari virtual thumbstick
                 if moveVector.Magnitude > 0 then
-                    local forwardVector = camera.CFrame.LookVector
-                    local rightVector = camera.CFrame.RightVector
-                    local upVector = camera.CFrame.UpVector
-                    
-                    velocity = velocity + (forwardVector * moveVector.Z * -speed)
+                    -- Forward/Backward
+                    velocity = velocity + (forwardVector * -moveVector.Z * speed)
+                    -- Left/Right
                     velocity = velocity + (rightVector * moveVector.X * speed)
                 end
                 
+                -- Jump button untuk naik
                 if humanoid.Jump then
-                    velocity = velocity + Vector3.new(0, speed, 0)
+                    velocity = velocity + (upVector * speed)
                     humanoid.Jump = false
                 end
                 
-                freecamPart.CFrame = freecamPart.CFrame + (velocity * RunService.Heartbeat:Wait())
+                -- Apply movement
+                freecamPart.CFrame = freecamPart.CFrame + velocity
             end
         end)
+        
     else
         if connections.freecam then
             connections.freecam:Disconnect()
@@ -494,6 +501,7 @@ local function toggleFreecam(enabled)
             workspace.CurrentCamera.CameraSubject = humanoid
         end
         
+        -- Unfreeze character
         if rootPart then
             rootPart.Anchored = false
         end
@@ -708,6 +716,7 @@ local function loadMovementButtons()
     createToggleButton("Noclip", toggleNoclip)
     createToggleButton("Speed", toggleSpeed)
     createToggleButton("Jump High", toggleJumpHigh)
+    createToggleButton("Spider", toggleSpider)
     createToggleButton("Player Phase", togglePlayerPhase)
 end
 
@@ -823,6 +832,7 @@ player.CharacterAdded:Connect(function(newCharacter)
     antiAFKEnabled = false
     freecamEnabled = false
     playerPhaseEnabled = false
+    spiderEnabled = false
     
     -- Disconnect all connections
     for _, connection in pairs(connections) do
