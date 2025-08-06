@@ -37,6 +37,7 @@ local playerListVisible = false
 local guiMinimized = false
 local spectatePlayerList = {}
 local currentSpectateIndex = 0
+local spectateConnection = nil -- Connection for spectated player's death
 
 -- Settings table
 local settings = {
@@ -355,7 +356,7 @@ NextSpectateButton.Parent = ScreenGui
 NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
 NextSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
 NextSpectateButton.BorderSizePixel = 1
-NextSpectateButton.Position = UDim2.new(1, -80, 1, -50)
+NextSpectateButton.Position = UDim2.new(0.5, 20, 0.5, 0)
 NextSpectateButton.Size = UDim2.new(0, 60, 0, 30)
 NextSpectateButton.Font = Enum.Font.Gotham
 NextSpectateButton.Text = "NEXT >"
@@ -370,7 +371,7 @@ PrevSpectateButton.Parent = ScreenGui
 PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
 PrevSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
 PrevSpectateButton.BorderSizePixel = 1
-PrevSpectateButton.Position = UDim2.new(1, -140, 1, -50)
+PrevSpectateButton.Position = UDim2.new(0.5, -80, 0.5, 0)
 PrevSpectateButton.Size = UDim2.new(0, 60, 0, 30)
 PrevSpectateButton.Font = Enum.Font.Gotham
 PrevSpectateButton.Text = "< PREV"
@@ -883,17 +884,50 @@ local function showPlayerSelection()
 end
 
 local function updateSpectateButtons()
-    local hasPlayers = #spectatePlayerList > 0
-    NextSpectateButton.Visible = hasPlayers and not guiMinimized
-    PrevSpectateButton.Visible = hasPlayers and not guiMinimized
+    local isSpectating = selectedPlayer ~= nil
+    NextSpectateButton.Visible = isSpectating and not guiMinimized
+    PrevSpectateButton.Visible = isSpectating and not guiMinimized
+end
+
+local function stopSpectating()
+    if spectateConnection then
+        spectateConnection:Disconnect()
+        spectateConnection = nil
+    end
+    workspace.CurrentCamera.CameraSubject = humanoid
+    selectedPlayer = nil
+    currentSpectateIndex = 0
+    SelectedPlayerLabel.Text = "SELECTED: NONE"
+    print("Stopped spectating")
+    updateSpectateButtons()
+    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            item.SelectButton.Text = "SELECT PLAYER"
+        end
+    end
 end
 
 local function spectatePlayer(targetPlayer)
+    if spectateConnection then
+        spectateConnection:Disconnect()
+        spectateConnection = nil
+    end
+    
     if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
         workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
         selectedPlayer = targetPlayer
         SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
         print("Spectating: " .. targetPlayer.Name)
+        
+        -- Connect to detect player death
+        local targetHumanoid = targetPlayer.Character.Humanoid
+        spectateConnection = targetHumanoid.AncestryChanged:Connect(function()
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") or targetHumanoid.Health <= 0 then
+                print("Spectated player died, stopping spectate")
+                stopSpectating()
+            end
+        end)
         
         -- Update PlayerListFrame buttons to reflect selection
         for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
@@ -908,16 +942,15 @@ local function spectatePlayer(targetPlayer)
             end
         end
     else
-        workspace.CurrentCamera.CameraSubject = humanoid
-        selectedPlayer = nil
-        SelectedPlayerLabel.Text = "SELECTED: NONE"
-        print("No valid player to spectate")
+        stopSpectating()
     end
+    updateSpectateButtons()
 end
 
 local function spectateNextPlayer()
     if #spectatePlayerList == 0 then
         print("No players to spectate")
+        stopSpectating()
         return
     end
     
@@ -933,6 +966,7 @@ end
 local function spectatePrevPlayer()
     if #spectatePlayerList == 0 then
         print("No players to spectate")
+        stopSpectating()
         return
     end
     
@@ -970,7 +1004,7 @@ local function updatePlayerList()
         print("Player List Updated: No other players found")
     else
         for _, p in pairs(players) do
-            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
+            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                 playerCount = playerCount + 1
                 table.insert(spectatePlayerList, p)
                 
@@ -1065,17 +1099,7 @@ local function updatePlayerList()
                 end)
                 
                 stopSpectateButton.MouseButton1Click:Connect(function()
-                    workspace.CurrentCamera.CameraSubject = humanoid
-                    selectedPlayer = nil
-                    currentSpectateIndex = 0
-                    SelectedPlayerLabel.Text = "SELECTED: NONE"
-                    print("Stopped spectating")
-                    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
-                        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
-                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                            item.SelectButton.Text = "SELECT PLAYER"
-                        end
-                    end
+                    stopSpectating()
                 end)
                 
                 teleportButton.MouseButton1Click:Connect(function()
@@ -1129,6 +1153,9 @@ local function updatePlayerList()
     -- Update spectate index if selected player is in the list
     if selectedPlayer then
         currentSpectateIndex = table.find(spectatePlayerList, selectedPlayer) or 0
+        if currentSpectateIndex == 0 then
+            stopSpectating()
+        end
     else
         currentSpectateIndex = 0
     end
@@ -1493,8 +1520,8 @@ local function minimizeGUI()
     PlayerListFrame.Visible = false
     PositionFrame.Visible = false
     LogoButton.Visible = true
-    NextSpectateButton.Visible = false
-    PrevSpectateButton.Visible = false
+    NextSpectateButton.Visible = selectedPlayer ~= nil -- Show if spectating
+    PrevSpectateButton.Visible = selectedPlayer ~= nil
 end
 
 local function maximizeGUI()
@@ -1576,16 +1603,22 @@ player.CharacterAdded:Connect(function(newCharacter)
         buttonStates[featureName] = false
     end
     
+    if spectateConnection then
+        spectateConnection:Disconnect()
+        spectateConnection = nil
+    end
+    if selectedPlayer then
+        stopSpectating()
+    end
+    
     switchCategory(currentCategory)
     updatePlayerList()
 end)
 
 Players.PlayerRemoving:Connect(function(removedPlayer)
     if removedPlayer == selectedPlayer then
-        selectedPlayer = nil
-        currentSpectateIndex = 0
-        SelectedPlayerLabel.Text = "SELECTED: NONE"
-        print("Selected player left, resetting selection")
+        print("Selected player left, stopping spectate")
+        stopSpectating()
     end
     wait(0.5)
     updatePlayerList()
@@ -1596,5 +1629,5 @@ Players.PlayerAdded:Connect(function()
     updatePlayerList()
 end)
 
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V15) ===")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V16) ===")
 print("GUI ready to use!")
