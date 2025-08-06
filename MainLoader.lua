@@ -1266,49 +1266,51 @@ local function loadSettingsButtons()
     createSettingInput("Fullbright Brightness", settings.FullbrightBrightness)
 end
 
--- Info Category (Updated Watermark)
+-- Info Category (Simplified Watermark)
 local function loadInfoButtons()
+    print("Loading Info Category")
     local watermarkLabel = Instance.new("TextLabel")
     watermarkLabel.Name = "WatermarkLabel"
     watermarkLabel.Parent = ScrollFrame
     watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     watermarkLabel.BorderSizePixel = 0
-    watermarkLabel.Size = UDim2.new(1, 0, 0, 300) -- Increased height to accommodate longer text
+    watermarkLabel.Size = UDim2.new(1, 0, 0, 300) -- Increased height to accommodate text
     watermarkLabel.Font = Enum.Font.Gotham
-    watermarkLabel.Text = [[--[
-  📌 CATET DULU SEBELUM PAKAI 📌
+    watermarkLabel.Text = [[
+--[ NOTICE BEFORE USING ]--
 
-  Dibuat sama Fari Noveri buat member Unknown Block.
-  Bukan buat dijual, bukan buat pamer, bukan buat diacak-acak.
+Created by Fari Noveri for Unknown Block members.
+Not for sale, not for showing off, not for tampering.
 
-  📎 Aturan pakai:
-  - Gak usah dijual. Ini bukan bahan dagangan.
-  - Nama pembuat jangan diganti. Tetepin aja "by Fari Noveri".
-  - Jangan upload ulang ke tempat publik tanpa izin.
-  - Jangan gabungin sama script lain trus ngaku-ngaku bikin.
-  - Update cuma dari sumber asli, biar gak error sendiri.
+- Rules of Use:
+- Do not sell this script. It's not for profit.
+- Keep the creator's name as "by Fari Noveri".
+- Do not re-upload to public platforms without permission.
+- Do not combine with other scripts and claim as your own.
+- Only get updates from the original source to avoid errors.
 
-  📎 Kalo nemu script ini di luar grup:
-  Bisa jadi udah bocor. Jangan ikut-ikutan nyebar.
+- If you find this script outside the group:
+It may have been leaked. Please don't share it further.
 
-  📎 Tujuan:
-  Script ini dibikin buat bantu sesama member, bukan buat cari untung.
-  Tolong dijaga dan dipakai sebagaimana mestinya.
+- Purpose:
+This script is made to help fellow members, not for profit.
+Please use it responsibly and respect its purpose.
 
-  ✉️ Ada saran, pertanyaan, atau kritik?
-  Boleh hubungi:
-  - Instagram: @fariinoveri
-  - TikTok   : @fari_noveri
+- For suggestions, questions, or feedback:
+Contact:
+- Instagram: @fariinoveri
+- TikTok: @fari_noveri
 
-  🙏 Makasih udah baca. Pake baik-baik ya.
+Thank you for reading. Use it wisely.
 
-  - Fari Noveri
-]]]
+- Fari Noveri
+]]
     watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     watermarkLabel.TextSize = 10
     watermarkLabel.TextWrapped = true
     watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
     watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+    print("Info Category Loaded Successfully")
 end
 
 -- Category button loaders
@@ -1510,7 +1512,7 @@ Players.PlayerRemoving:Connect(function()
     updatePlayerList() -- Update list even if not visible
 end)
 
-print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V12) ===")
+print("=== MINIMAL HACK GUI LOADED (FIXED VERSION V13) ===")
 print("✓ Auto-disable previous scripts")
 print("✓ State preservation on minimize")
 print("✓ Enhanced player list with individual buttons")
@@ -1529,5 +1531,5 @@ print("✓ Added Info category with watermark")
 print("✓ Added Settings category with customizable Fly Speed, Freecam Speed, Jump Height, and Walk Speed")
 print("✓ Added Flashlight Brightness, Flashlight Range, and Fullbright Brightness to Settings")
 print("✓ Fixed player list display with dynamic updates")
-print("✓ Updated Info category watermark text with new header")
+print("✓ Simplified Info category text to fix GUI not appearing")
 print("GUI ready to use!")
