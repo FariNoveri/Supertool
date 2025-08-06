@@ -19,7 +19,7 @@ end
 
 -- Memuat AntiAdmin.lua dari URL
 local success, errorMsg = pcall(function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua", true))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/antiadmin.lua", true))()
 end)
 if not success then
     warn("Failed to load AntiAdmin.lua: " .. tostring(errorMsg))
@@ -1341,6 +1341,7 @@ local function clearButtons()
             child:Destroy()
         end
     end
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 end
 
 -- Spider function (stick to walls)
@@ -1458,15 +1459,20 @@ end
 
 -- Category switch function
 local function switchCategory(category)
+    if currentCategory == category then
+        return -- Prevent redundant category switch
+    end
     currentCategory = category
     clearButtons()
     
+    -- Update all category buttons' appearance
     for _, button in pairs(CategoryFrame:GetChildren()) do
         if button:IsA("TextButton") then
             button.BackgroundColor3 = button.Name == category .. "Category" and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(25, 25, 25)
         end
     end
     
+    -- Populate content for the selected category
     if category == "Movement" then
         createToggleButton("Fly", toggleFly)
         createToggleButton("Noclip", toggleNoclip)
@@ -1521,6 +1527,10 @@ Created by Fari Noveri
         infoLabel.TextYAlignment = Enum.TextYAlignment.Top
     end
     
+    -- Force layout update
+    UIListLayout:ApplyLayout()
+    
+    -- Update ScrollFrame CanvasSize
     wait(0.1)
     local contentSize = UIListLayout.AbsoluteContentSize
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
