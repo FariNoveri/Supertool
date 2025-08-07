@@ -11,13 +11,40 @@ function AntiAdminInfo.loadButtons(scrollFrame, utils)
     infoLabel.Text = [[
 ANTI ADMIN PROTECTION - ULTIMATE SHIELD
 
-This bad boy protects you from admin or exploiter shenanigans (kill, teleport, you name it). Try to mess with us? We'll bounce it right back! If they got their own "anti-anti" shield, we'll keep tossing the effect to other players until it sticks. No one messes with Unknown Block members!
+Sistem deteksi exploit instant yang nggak perlu nunggu lama. Begitu ada yang join langsung ketahuan kalo dia pake exploit atau admin. Deteksi nya cuma butuh 0.1 detik doang dari pas dia spawn.
 
-- Always active, no turning it off.
-- Effects reversed to the attacker or some random unprotected fool.
-- Keeps going until it lands on someone without a shield. Hot potato, baby!
+FITUR DETEKSI OTOMATIS:
+- Langsung scan environment exploit kayak Synapse X, KRNL, ScriptWare
+- Deteksi behavior aneh tanpa nunggu dia terbang atau speed hack
+- Notifikasi real-time di pojok kanan atas pas ada exploit/admin
+- System confidence: YAKIN (90%+), KEMUNGKINAN (70%+), MUNGKIN (50%+)
+- Deep memory scan setiap 10 detik buat mastiin
 
-Created by Fari Noveri - Use it, don't abuse it!
+PERLINDUNGAN LENGKAP:
+- Kill protection (mati dibalik ke penyerang)
+- Teleport protection (nggak bisa dipindah paksa)
+- Fling protection (nggak bisa dilempar)
+- Freeze protection (nggak bisa dibekuin)
+- Speed protection (kecepatan tetep normal)
+- Tool protection (nggak bisa diambil/dikasih tool aneh)
+- Camera protection (kamera nggak bisa dibajak)
+- Noclip protection (nggak bisa tembus tembok)
+
+SYSTEM HOT POTATO:
+Kalo ada yang nyoba jahatin lu, efeknya dibalik ke dia. Kalo dia juga punya anti-admin, efeknya dilempar ke player lain sampe nemu yang nggak ada pelindung.
+
+METODE DETEKSI:
+- Scan environment executor
+- Analisis script mencurigakan
+- Deteksi tool berbahaya
+- Analisis gerakan aneh
+- Memory scanning mendalam
+- Monitor network call
+- Cek properti karakter abnormal
+
+Selalu aktif 24/7, nggak bisa dimatiin. Auto-kick bisa diaktifin pake script.toggleAutoKick(true/false).
+
+Created by Fari Noveri - Nggak ada yang bisa ganggu member Unknown Block!
 ]]
     infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     infoLabel.TextSize = 10

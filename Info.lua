@@ -9,31 +9,31 @@ function Info.loadButtons(scrollFrame, utils)
     watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
     watermarkLabel.Font = Enum.Font.Gotham
     watermarkLabel.Text = [[
---[ NOTICE BEFORE USING ]--
+--[ BACA DULU SEBELUM PAKE ]--
 
-Created by Fari Noveri for Unknown Block members.
-Not for sale, not for showing off, not for tampering.
+Dibuat oleh Fari Noveri khusus untuk member Unknown Block.
+Jangan dijual, jangan buat pamer, jangan diedit sembarangan.
 
-- Rules of Use:
-- Do not sell this script. It's not for profit.
-- Keep the creator's name as "by Fari Noveri".
-- Do not re-upload to public platforms without permission.
-- Do not combine with other scripts and claim as your own.
-- Only get updates from the original source to avoid errors.
+- Aturan Pakai:
+- Jangan jual script ini. Bukan buat cari untung.
+- Tetep tulis nama pembuat "by Fari Noveri".
+- Jangan upload ulang ke platform lain tanpa izin.
+- Jangan digabung sama script lain terus ngaku buatan sendiri.
+- Ambil update cuma dari sumber asli biar nggak error.
 
-- If you find this script outside the group:
-It may have been leaked. Please don't share it further.
+- Kalo ketemu script ini di luar grup:
+Kemungkinan udah bocor. Tolong jangan sebar lagi.
 
-- Purpose:
-This script is made to help fellow members, not for profit.
-Please use it responsibly and respect its purpose.
+- Tujuan:
+Script ini dibuat buat bantu sesama member, bukan buat bisnis.
+Pake dengan bijak dan hormati tujuan awalnya.
 
-- For suggestions, questions, or feedback:
-Contact:
+- Buat saran, pertanyaan, atau feedback:
+Kontak:
 - Instagram: @fariinoveri
 - TikTok: @fari_noveri
 
-Thank you for reading. Use it wisely.
+Makasih udah baca. Pake dengan bijak ya.
 
 - Fari Noveri
 ]]

@@ -80,7 +80,7 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Freecam (Android Touch Controls)
+-- Freecam
 local freecamPart = nil
 local originalCameraSubject = nil
 local freecamPosition = nil
@@ -167,9 +167,11 @@ local function toggleFreecam(enabled)
     else
         if connections.freecam then
             connections.freecam:Disconnect()
+            connections.freecam = nil
         end
         if connections.freecam_input then
             connections.freecam_input:Disconnect()
+            connections.freecam_input = nil
         end
         if freecamPart then
             freecamPart:Destroy()
@@ -200,7 +202,6 @@ local lowDetailSettings = {}
 local function toggleLowDetail(enabled)
     lowDetailEnabled = enabled
     if enabled then
-        -- Store original settings
         lowDetailSettings = {
             GlobalShadows = Lighting.GlobalShadows,
             ShadowSoftness = Lighting.ShadowSoftness,
@@ -209,14 +210,12 @@ local function toggleLowDetail(enabled)
             EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
         }
         
-        -- Apply low detail settings
         Lighting.GlobalShadows = false
         Lighting.ShadowSoftness = 0
         Lighting.FogEnd = 100000
         Lighting.EnvironmentDiffuseScale = 0
         Lighting.EnvironmentSpecularScale = 0
         
-        -- Simplify materials and reduce detail on parts
         for _, descendant in pairs(Workspace:GetDescendants()) do
             if descendant:IsA("BasePart") then
                 descendant.Material = Enum.Material.SmoothPlastic
@@ -230,7 +229,6 @@ local function toggleLowDetail(enabled)
             end
         end
     else
-        -- Restore original settings
         if lowDetailSettings.GlobalShadows ~= nil then
             Lighting.GlobalShadows = lowDetailSettings.GlobalShadows
             Lighting.ShadowSoftness = lowDetailSettings.ShadowSoftness
@@ -239,7 +237,6 @@ local function toggleLowDetail(enabled)
             Lighting.EnvironmentSpecularScale = lowDetailSettings.EnvironmentSpecularScale
         end
         
-        -- Restore materials and details
         for _, descendant in pairs(Workspace:GetDescendants()) do
             if descendant:IsA("BasePart") then
                 descendant.Material = Enum.Material.Plastic
@@ -252,121 +249,24 @@ local function toggleLowDetail(enabled)
     end
 end
 
--- Function to create toggle buttons for visual features
-local function createToggleButton(name, callback)
-    local button = Instance.new("TextButton")
-    button.Name = name .. "Button"
-    button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
-    button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, 0, 0, 30)
-    button.Font = Enum.Font.Gotham
-    button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 11
+-- Cleanup function
+local function cleanup()
+    toggleFullbright(false)
+    toggleFreecam(false)
+    toggleFlashlight(false)
+    toggleLowDetail(false)
     
-    button.MouseButton1Click:Connect(function()
-        buttonStates[name] = not buttonStates[name]
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
-        button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
-        callback(buttonStates[name])
-    end)
-    
-    button.MouseEnter:Connect(function()
-        if not buttonStates[name] then
-            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    for _, connection in pairs(connections) do
+        if connection then
+            connection:Disconnect()
         end
-    end)
-    
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
-    end)
-    
-    return button
-end
-
--- Function to create setting inputs for visual-related settings
-local function createSettingInput(settingName, settingData)
-    local settingFrame = Instance.new("Frame")
-    settingFrame.Name = settingName .. "SettingFrame"
-    settingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    settingFrame.BorderSizePixel = 0
-    settingFrame.Size = UDim2.new(1, 0, 0, 60)
-    
-    local label = Instance.new("TextLabel")
-    label.Name = "SettingLabel"
-    label.Parent = settingFrame
-    label.BackgroundTransparency = 1
-    label.Position = UDim2.new(0, 5, 0, 5)
-    label.Size = UDim2.new(1, -10, 0, 20)
-    label.Font = Enum.Font.Gotham
-    label.Text = string.format("%s (Default: %d, Min: %d, Max: %d)", settingName, settingData.default, settingData.min, settingData.max)
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextSize = 11
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local input = Instance.new("TextBox")
-    input.Name = settingName .. "Input"
-    input.Parent = settingFrame
-    input.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    input.BorderSizePixel = 0
-    input.Position = UDim2.new(0, 5, 0, 30)
-    input.Size = UDim2.new(1, -10, 0, 25)
-    input.Font = Enum.Font.Gotham
-    input.Text = tostring(settingData.value)
-    input.TextColor3 = Color3.fromRGB(255, 255, 255)
-    input.TextSize = 11
-    input.PlaceholderText = "Enter value..."
-    
-    input.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            local value = tonumber(input.Text)
-            if value then
-                value = math.clamp(value, settingData.min, settingData.max)
-                settingData.value = value
-                input.Text = tostring(value)
-                print(string.format("%s set to %d", settingName, value))
-                
-                if settingName == "Freecam Speed" and freecamEnabled then
-                    toggleFreecam(false)
-                    toggleFreecam(true)
-                elseif settingName == "Flashlight Brightness" and flashlightEnabled then
-                    toggleFlashlight(false)
-                    toggleFlashlight(true)
-                elseif settingName == "Flashlight Range" and flashlightEnabled then
-                    toggleFlashlight(false)
-                    toggleFlashlight(true)
-                elseif settingName == "Fullbright Brightness" and fullbrightEnabled then
-                    toggleFullbright(false)
-                    toggleFullbright(true)
-                end
-            else
-                input.Text = tostring(settingData.value)
-                print(string.format("Invalid input for %s, reverting to %d", settingName, settingData.value))
-            end
-        end
-    end)
-    
-    return settingFrame
-end
-
--- Function to load visual buttons into a provided ScrollFrame
-local function loadVisualButtons(scrollFrame)
-    createToggleButton("Fullbright", toggleFullbright).Parent = scrollFrame
-    createToggleButton("Freecam", toggleFreecam).Parent = scrollFrame
-    createToggleButton("Flashlight", toggleFlashlight).Parent = scrollFrame
-    createToggleButton("Low Detail", toggleLowDetail).Parent = scrollFrame
-end
-
--- Function to load visual settings into a provided ScrollFrame
-local function loadVisualSettings(scrollFrame)
-    createSettingInput("Fullbright Brightness", settings.FullbrightBrightness).Parent = scrollFrame
-    createSettingInput("Freecam Speed", settings.FreecamSpeed).Parent = scrollFrame
-    createSettingInput("Flashlight Brightness", settings.FlashlightBrightness).Parent = scrollFrame
-    createSettingInput("Flashlight Range", settings.FlashlightRange).Parent = scrollFrame
+    end
+    connections = {}
 end
 
 -- Handle character reset
-player.CharacterAdded:Connect(function(newCharacter)
+local characterConnection
+characterConnection = player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
@@ -387,27 +287,131 @@ player.CharacterAdded:Connect(function(newCharacter)
     buttonStates["Low Detail"] = false
 end)
 
--- Cleanup function
-local function cleanup()
-    toggleFullbright(false)
-    toggleFreecam(false)
-    toggleFlashlight(false)
-    toggleLowDetail(false)
-    
-    for _, connection in pairs(connections) do
-        if connection then
-            connection:Disconnect()
+-- Load buttons for mainloader.lua
+local function loadButtons(scrollFrame, utils)
+    utils.createToggleButton("Fullbright", function(state)
+        buttonStates["Fullbright"] = state
+        toggleFullbright(state)
+        if utils.notify then
+            utils.notify("Fullbright: " .. (state and "ON" or "OFF"))
         end
+    end).Parent = scrollFrame
+
+    utils.createToggleButton("Freecam", function(state)
+        buttonStates["Freecam"] = state
+        toggleFreecam(state)
+        if utils.notify then
+            utils.notify("Freecam: " .. (state and "ON" or "OFF"))
+        end
+    end).Parent = scrollFrame
+
+    utils.createToggleButton("Flashlight", function(state)
+        buttonStates["Flashlight"] = state
+        toggleFlashlight(state)
+        if utils.notify then
+            utils.notify("Flashlight: " .. (state and "ON" or "OFF"))
+        end
+    end).Parent = scrollFrame
+
+    utils.createToggleButton("Low Detail", function(state)
+        buttonStates["Low Detail"] = state
+        toggleLowDetail(state)
+        if utils.notify then
+            utils.notify("Low Detail: " .. (state and "ON" or "OFF"))
+        end
+    end).Parent = scrollFrame
+
+    -- Setting inputs
+    for settingName, settingData in pairs(settings) do
+        local settingFrame = Instance.new("Frame")
+        settingFrame.Name = settingName .. "SettingFrame"
+        settingFrame.Parent = scrollFrame
+        settingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        settingFrame.BorderSizePixel = 0
+        settingFrame.Size = UDim2.new(1, 0, 0, 60)
+        
+        local label = Instance.new("TextLabel")
+        label.Name = "SettingLabel"
+        label.Parent = settingFrame
+        label.BackgroundTransparency = 1
+        label.Position = UDim2.new(0, 5, 0, 5)
+        label.Size = UDim2.new(1, -10, 0, 20)
+        label.Font = Enum.Font.Gotham
+        label.Text = string.format("%s (Default: %d, Min: %d, Max: %d)", settingName, settingData.default, settingData.min, settingData.max)
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 11
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local input = Instance.new("TextBox")
+        input.Name = settingName .. "Input"
+        input.Parent = settingFrame
+        input.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        input.BorderSizePixel = 0
+        input.Position = UDim2.new(0, 5, 0, 30)
+        input.Size = UDim2.new(1, -10, 0, 25)
+        input.Font = Enum.Font.Gotham
+        input.Text = tostring(settingData.value)
+        input.TextColor3 = Color3.fromRGB(255, 255, 255)
+        input.TextSize = 11
+        input.PlaceholderText = "Enter value..."
+        
+        input.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                local value = tonumber(input.Text)
+                if value then
+                    value = math.clamp(value, settingData.min, settingData.max)
+                    settingData.value = value
+                    input.Text = tostring(value)
+                    if utils.notify then
+                        utils.notify(string.format("%s set to %d", settingName, value))
+                    end
+                    
+                    if settingName == "Freecam Speed" and freecamEnabled then
+                        toggleFreecam(false)
+                        toggleFreecam(true)
+                    elseif settingName == "Flashlight Brightness" and flashlightEnabled then
+                        toggleFlashlight(false)
+                        toggleFlashlight(true)
+                    elseif settingName == "Flashlight Range" and flashlightEnabled then
+                        toggleFlashlight(false)
+                        toggleFlashlight(true)
+                    elseif settingName == "Fullbright Brightness" and fullbrightEnabled then
+                        toggleFullbright(false)
+                        toggleFullbright(true)
+                    end
+                else
+                    input.Text = tostring(settingData.value)
+                    if utils.notify then
+                        utils.notify(string.format("Invalid input for %s, reverting to %d", settingName, settingData.value))
+                    end
+                end
+            end
+        end)
     end
 end
 
--- Bind cleanup to game close
-game:BindToClose(cleanup)
+-- Cleanup on script destruction
+local function onScriptDestroy()
+    cleanup()
+    if characterConnection then
+        characterConnection:Disconnect()
+        characterConnection = nil
+    end
+end
 
--- Return functions for external use
+-- Connect cleanup to GUI destruction
+local screenGui = game:GetService("CoreGui"):FindFirstChild("MinimalHackGUI")
+if screenGui then
+    screenGui.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            onScriptDestroy()
+        end
+    end)
+end
+
+-- Return module
 return {
-    loadVisualButtons = loadVisualButtons,
-    loadVisualSettings = loadVisualSettings,
+    loadButtons = loadButtons,
     cleanup = cleanup,
-    getFreecamPosition = function() return freecamPosition end
+    reset = cleanup -- For character reset in mainloader.lua
 }

@@ -5,6 +5,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local PhysicsService = game:GetService("PhysicsService")
+local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -39,13 +41,20 @@ local buttonStates = {
     ["Player Phase"] = false
 }
 
--- Movement Functions
+-- Setup collision group for Noclip and Player Phase
+local function setupCollisionGroup()
+    pcall(function()
+        PhysicsService:CreateCollisionGroup("Players")
+        PhysicsService:CollisionGroupSetCollidable("Players", "Players", false)
+    end)
+end
 
 -- Fly (Android Touch Controls)
 local function toggleFly(enabled)
     flyEnabled = enabled
     if enabled then
         local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.Name = "FlyBodyVelocity"
         bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.Parent = rootPart
@@ -80,8 +89,8 @@ local function toggleFly(enabled)
         if connections.fly then
             connections.fly:Disconnect()
         end
-        if rootPart:FindFirstChild("BodyVelocity") then
-            rootPart:FindFirstChild("BodyVelocity"):Destroy()
+        if rootPart:FindFirstChild("FlyBodyVelocity") then
+            rootPart:FindFirstChild("FlyBodyVelocity"):Destroy()
         end
     end
 end
@@ -93,8 +102,11 @@ local function toggleNoclip(enabled)
         connections.noclip = RunService.Stepped:Connect(function()
             if noclipEnabled and character then
                 for _, part in pairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
+                    if part:IsA("BasePart") then
                         part.CanCollide = false
+                        pcall(function()
+                            part.CollisionGroup = "Players"
+                        end)
                     end
                 end
             end
@@ -107,6 +119,9 @@ local function toggleNoclip(enabled)
             for _, part in pairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = true
+                    pcall(function()
+                        part.CollisionGroup = "Default"
+                    end)
                 end
             end
         end
@@ -148,11 +163,13 @@ local function toggleSpider(enabled)
     spiderEnabled = enabled
     if enabled then
         local bodyPosition = Instance.new("BodyPosition")
+        bodyPosition.Name = "SpiderBodyPosition"
         bodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
         bodyPosition.Position = rootPart.Position
         bodyPosition.Parent = rootPart
         
         local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+        bodyAngularVelocity.Name = "SpiderBodyAngularVelocity"
         bodyAngularVelocity.MaxTorque = Vector3.new(4000, 4000, 4000)
         bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
         bodyAngularVelocity.Parent = rootPart
@@ -172,11 +189,11 @@ local function toggleSpider(enabled)
         if connections.spider then
             connections.spider:Disconnect()
         end
-        if rootPart:FindFirstChild("BodyPosition") then
-            rootPart:FindFirstChild("BodyPosition"):Destroy()
+        if rootPart:FindFirstChild("SpiderBodyPosition") then
+            rootPart:FindFirstChild("SpiderBodyPosition"):Destroy()
         end
-        if rootPart:FindFirstChild("BodyAngularVelocity") then
-            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
+        if rootPart:FindFirstChild("SpiderBodyAngularVelocity") then
+            rootPart:FindFirstChild("SpiderBodyAngularVelocity"):Destroy()
         end
     end
 end
@@ -191,7 +208,9 @@ local function togglePlayerPhase(enabled)
                     if otherPlayer ~= player and otherPlayer.Character then
                         for _, part in pairs(otherPlayer.Character:GetChildren()) do
                             if part:IsA("BasePart") then
-                                part.CanCollide = false
+                                pcall(function()
+                                    part.CollisionGroup = "Players"
+                                end)
                             end
                         end
                     end
@@ -205,8 +224,10 @@ local function togglePlayerPhase(enabled)
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player and otherPlayer.Character then
                 for _, part in pairs(otherPlayer.Character:GetChildren()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                        part.CanCollide = true
+                    if part:IsA("BasePart") then
+                        pcall(function()
+                            part.CollisionGroup = "Default"
+                        end)
                     end
                 end
             end
@@ -214,124 +235,122 @@ local function togglePlayerPhase(enabled)
     end
 end
 
--- Function to create toggle buttons for movement features
-local function createToggleButton(name, callback)
-    local button = Instance.new("TextButton")
-    button.Name = name .. "Button"
-    button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
-    button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, 0, 0, 30)
-    button.Font = Enum.Font.Gotham
-    button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 11
-    
-    button.MouseButton1Click:Connect(function()
-        buttonStates[name] = not buttonStates[name]
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
-        button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
-        callback(buttonStates[name])
-    end)
-    
-    button.MouseEnter:Connect(function()
-        if not buttonStates[name] then
-            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+-- Initialize Movement
+local function initializeMovement()
+    setupCollisionGroup()
+end
+
+-- Load buttons for mainloader.lua
+local function loadButtons(scrollFrame, utils)
+    initializeMovement()
+
+    utils.createToggle("Fly", buttonStates["Fly"], function(state)
+        buttonStates["Fly"] = state
+        toggleFly(state)
+        if utils.notify then
+            utils.notify("Fly " .. (state and "enabled" or "disabled"))
+        else
+            print("Fly " .. (state and "enabled" or "disabled"))
         end
-    end)
-    
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
-    end)
-    
-    return button
-end
+    end).Parent = scrollFrame
 
--- Function to create setting inputs for movement-related settings
-local function createSettingInput(settingName, settingData)
-    local settingFrame = Instance.new("Frame")
-    settingFrame.Name = settingName .. "SettingFrame"
-    settingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    settingFrame.BorderSizePixel = 0
-    settingFrame.Size = UDim2.new(1, 0, 0, 60)
-    
-    local label = Instance.new("TextLabel")
-    label.Name = "SettingLabel"
-    label.Parent = settingFrame
-    label.BackgroundTransparency = 1
-    label.Position = UDim2.new(0, 5, 0, 5)
-    label.Size = UDim2.new(1, -10, 0, 20)
-    label.Font = Enum.Font.Gotham
-    label.Text = string.format("%s (Default: %d, Min: %d, Max: %d)", settingName, settingData.default, settingData.min, settingData.max)
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextSize = 11
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local input = Instance.new("TextBox")
-    input.Name = settingName .. "Input"
-    input.Parent = settingFrame
-    input.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    input.BorderSizePixel = 0
-    input.Position = UDim2.new(0, 5, 0, 30)
-    input.Size = UDim2.new(1, -10, 0, 25)
-    input.Font = Enum.Font.Gotham
-    input.Text = tostring(settingData.value)
-    input.TextColor3 = Color3.fromRGB(255, 255, 255)
-    input.TextSize = 11
-    input.PlaceholderText = "Enter value..."
-    
-    input.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            local value = tonumber(input.Text)
-            if value then
-                value = math.clamp(value, settingData.min, settingData.max)
-                settingData.value = value
-                input.Text = tostring(value)
-                print(string.format("%s set to %d", settingName, value))
-                
-                if settingName == "Fly Speed" and flyEnabled then
-                    toggleFly(false)
-                    toggleFly(true)
-                elseif settingName == "Jump Height" and jumpHighEnabled then
-                    toggleJumpHigh(false)
-                    toggleJumpHigh(true)
-                elseif settingName == "Walk Speed" and speedEnabled then
-                    toggleSpeed(false)
-                    toggleSpeed(true)
-                end
-            else
-                input.Text = tostring(settingData.value)
-                print(string.format("Invalid input for %s, reverting to %d", settingName, settingData.value))
-            end
+    utils.createToggle("Noclip", buttonStates["Noclip"], function(state)
+        buttonStates["Noclip"] = state
+        toggleNoclip(state)
+        if utils.notify then
+            utils.notify("Noclip " .. (state and "enabled" or "disabled"))
+        else
+            print("Noclip " .. (state and "enabled" or "disabled"))
         end
-    end)
-    
-    return settingFrame
-end
+    end).Parent = scrollFrame
 
--- Function to load movement buttons into a provided ScrollFrame
-local function loadMovementButtons(scrollFrame)
-    createToggleButton("Fly", toggleFly).Parent = scrollFrame
-    createToggleButton("Noclip", toggleNoclip).Parent = scrollFrame
-    createToggleButton("Speed", toggleSpeed).Parent = scrollFrame
-    createToggleButton("Jump High", toggleJumpHigh).Parent = scrollFrame
-    createToggleButton("Spider", toggleSpider).Parent = scrollFrame
-    createToggleButton("Player Phase", togglePlayerPhase).Parent = scrollFrame
-end
+    utils.createToggle("Speed", buttonStates["Speed"], function(state)
+        buttonStates["Speed"] = state
+        toggleSpeed(state)
+        if utils.notify then
+            utils.notify("Speed " .. (state and "enabled" or "disabled"))
+        else
+            print("Speed " .. (state and "enabled" or "disabled"))
+        end
+    end).Parent = scrollFrame
 
--- Function to load movement settings into a provided ScrollFrame
-local function loadMovementSettings(scrollFrame)
-    createSettingInput("Fly Speed", settings.FlySpeed).Parent = scrollFrame
-    createSettingInput("Jump Height", settings.JumpHeight).Parent = scrollFrame
-    createSettingInput("Walk Speed", settings.WalkSpeed).Parent = scrollFrame
+    utils.createToggle("Jump High", buttonStates["Jump High"], function(state)
+        buttonStates["Jump High"] = state
+        toggleJumpHigh(state)
+        if utils.notify then
+            utils.notify("Jump High " .. (state and "enabled" or "disabled"))
+        else
+            print("Jump High " .. (state and "enabled" or "disabled"))
+        end
+    end).Parent = scrollFrame
+
+    utils.createToggle("Spider", buttonStates["Spider"], function(state)
+        buttonStates["Spider"] = state
+        toggleSpider(state)
+        if utils.notify then
+            utils.notify("Spider " .. (state and "enabled" or "disabled"))
+        else
+            print("Spider " .. (state and "enabled" or "disabled"))
+        end
+    end).Parent = scrollFrame
+
+    utils.createToggle("Player Phase", buttonStates["Player Phase"], function(state)
+        buttonStates["Player Phase"] = state
+        togglePlayerPhase(state)
+        if utils.notify then
+            utils.notify("Player Phase " .. (state and "enabled" or "disabled"))
+        else
+            print("Player Phase " .. (state and "enabled" or "disabled"))
+        end
+    end).Parent = scrollFrame
+
+    utils.createSlider("Fly Speed", settings.FlySpeed.min, settings.FlySpeed.max, settings.FlySpeed.value, function(value)
+        settings.FlySpeed.value = value
+        if flyEnabled then
+            toggleFly(false)
+            toggleFly(true)
+        end
+        if utils.notify then
+            utils.notify("Fly Speed set to " .. value)
+        else
+            print("Fly Speed set to " .. value)
+        end
+    end).Parent = scrollFrame
+
+    utils.createSlider("Jump Height", settings.JumpHeight.min, settings.JumpHeight.max, settings.JumpHeight.value, function(value)
+        settings.JumpHeight.value = value
+        if jumpHighEnabled then
+            toggleJumpHigh(false)
+            toggleJumpHigh(true)
+        end
+        if utils.notify then
+            utils.notify("Jump Height set to " .. value)
+        else
+            print("Jump Height set to " .. value)
+        end
+    end).Parent = scrollFrame
+
+    utils.createSlider("Walk Speed", settings.WalkSpeed.min, settings.WalkSpeed.max, settings.WalkSpeed.value, function(value)
+        settings.WalkSpeed.value = value
+        if speedEnabled then
+            toggleSpeed(false)
+            toggleSpeed(true)
+        end
+        if utils.notify then
+            utils.notify("Walk Speed set to " .. value)
+        else
+            print("Walk Speed set to " .. value)
+        end
+    end).Parent = scrollFrame
 end
 
 -- Handle character reset
-player.CharacterAdded:Connect(function(newCharacter)
+local characterConnection
+characterConnection = player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     
-    -- Reset movement features
     flyEnabled = false
     noclipEnabled = false
     speedEnabled = false
@@ -368,17 +387,29 @@ local function cleanup()
             connection:Disconnect()
         end
     end
+    if characterConnection then
+        characterConnection:Disconnect()
+    end
 end
 
--- Bind cleanup to game close
-game:BindToClose(cleanup)
+-- Cleanup on script destruction
+local function onScriptDestroy()
+    cleanup()
+end
 
--- Return functions for external use
--- Di akhir Movement.lua
+-- Connect cleanup to GUI destruction
+local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
+if screenGui then
+    screenGui.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            onScriptDestroy()
+        end
+    end)
+end
+
+-- Return module
 return {
-    loadButtons = function(scrollFrame, options)
-        loadMovementButtons(scrollFrame)
-        loadMovementSettings(scrollFrame)
-    end,
-    cleanup = cleanup
+    loadButtons = loadButtons,
+    cleanup = cleanup,
+    reset = cleanup
 }

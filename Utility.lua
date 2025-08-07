@@ -13,8 +13,8 @@ local player = Players.LocalPlayer
 local commandPrefix = ";"
 local commands = {}
 local commandConnections = {}
-local prankConnections = {} -- Track prank effects for cleanup
-local prankDuration = 5 -- Duration for temporary prank effects (seconds)
+local prankConnections = {}
+local prankDuration = 5
 
 -- Helper function to find player by name or partial name
 local function findPlayer(name)
@@ -28,8 +28,7 @@ local function findPlayer(name)
 end
 
 -- Command System Setup
-local function setupCommandSystem()
-    -- Existing commands
+local function setupCommandSystem(utils)
     commands["rejoin"] = {
         description = "Rejoins the current server",
         execute = function(args)
@@ -92,7 +91,6 @@ local function setupCommandSystem()
         end
     }
 
-    -- Jahil (prank) commands
     commands["spin"] = {
         description = "Spins a player's character rapidly",
         execute = function(args)
@@ -168,55 +166,6 @@ local function setupCommandSystem()
             end)
 
             return "Flinging " .. targetPlayer.Name
-        end
-    }
-
-    commands["blind"] = {
-        description = "Temporarily blinds a player's screen",
-        execute = function(args)
-            local targetName = args[1]
-            if not targetName then
-                return "Please provide a player name"
-            end
-            local targetPlayer = findPlayer(targetName)
-            if not targetPlayer then
-                return "Player not found: " .. targetName
-            end
-            if targetPlayer == player then
-                return "Cannot prank yourself"
-            end
-
-            local screenGui = Instance.new("ScreenGui")
-            screenGui.Name = "BlindPrankGui"
-            screenGui.Parent = CoreGui
-            screenGui.IgnoreGuiInset = true
-
-            local overlay = Instance.new("Frame")
-            overlay.Size = UDim2.new(1, 0, 1, 0)
-            overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-            overlay.BackgroundTransparency = 0
-            overlay.Parent = screenGui
-
-            prankConnections[targetPlayer.UserId] = prankConnections[targetPlayer.UserId] or {}
-            table.insert(prankConnections[targetPlayer.UserId], screenGui)
-
-            task.spawn(function()
-                task.wait(prankDuration)
-                if screenGui then
-                    screenGui:Destroy()
-                end
-                prankConnections[targetPlayer.UserId] = nil
-            end)
-
-            -- Attempt to fire client-side effect via RemoteEvent
-            local defaultChatSystem = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-            if defaultChatSystem and defaultChatSystem:FindFirstChild("SayMessageRequest") then
-                pcall(function()
-                    defaultChatSystem.SayMessageRequest:FireServer("You have been blinded!", "All")
-                end)
-            end
-
-            return "Blinding " .. targetPlayer.Name
         end
     }
 
@@ -310,16 +259,14 @@ local function setupCommandSystem()
         end
     }
 
-    -- Spoof chat input
     local function spoofChat(message)
-        if saymsg then
-            pcall(function()
-                saymsg(message)
-            end)
+        if utils.notify then
+            utils.notify(message)
+        else
+            print(message)
         end
     end
 
-    -- Command parsing and execution
     local function processCommand(message)
         if message:sub(1, #commandPrefix) == commandPrefix then
             local args = message:sub(#commandPrefix + 1):split(" ")
@@ -335,72 +282,9 @@ local function setupCommandSystem()
         end
     end
 
-    -- Connect to chat events
     if player.Chatted then
         commandConnections.chat = player.Chatted:Connect(processCommand)
     end
-
-    -- Spoof chat system to bypass restrictions
-    local function setupChatSpoof()
-        local defaultChatSystem = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-        if defaultChatSystem and defaultChatSystem:FindFirstChild("SayMessageRequest") then
-            local sayMessageRequest = defaultChatSystem.SayMessageRequest
-            for _, connection in pairs(getconnections(sayMessageRequest.OnClientEvent)) do
-                connection:Disable()
-            end
-            commandConnections.sayMessage = sayMessageRequest.OnClientEvent:Connect(function(message, recipient)
-                processCommand(message)
-            end)
-        end
-    end
-
-    pcall(setupChatSpoof)
-end
-
--- Button creation function
-local function createButton(name, callback)
-    local button = Instance.new("TextButton")
-    button.Name = name .. "Button"
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, 0, 0, 30)
-    button.Font = Enum.Font.Gotham
-    button.Text = name:upper()
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 11
-    
-    button.MouseButton1Click:Connect(callback)
-    
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    end)
-    
-    return button
-end
-
--- Load utility buttons into a provided ScrollFrame
-local function loadUtilityButtons(scrollFrame)
-    createButton("Show Commands", function()
-        local commandList = "Available Commands:\n"
-        for cmdName, cmdData in pairs(commands) do
-            commandList = commandList .. commandPrefix .. cmdName .. ": " .. cmdData.description .. "\n"
-        end
-        print(commandList)
-        if saymsg then
-            pcall(function()
-                saymsg(commandList)
-            end)
-        end
-    end).Parent = scrollFrame
-end
-
--- Initialize Utility
-local function initializeUtility()
-    setupCommandSystem()
 end
 
 -- Cleanup function
@@ -424,8 +308,9 @@ local function cleanup()
     prankConnections = {}
 end
 
--- Handle player leaving to clean up their prank effects
-Players.PlayerRemoving:Connect(function(p)
+-- Handle player leaving
+local playerRemovingConnection
+playerRemovingConnection = Players.PlayerRemoving:Connect(function(p)
     if prankConnections[p.UserId] then
         for _, prank in pairs(prankConnections[p.UserId]) do
             if prank then
@@ -440,14 +325,111 @@ Players.PlayerRemoving:Connect(function(p)
     end
 end)
 
--- Bind cleanup to game close
-game:BindToClose(cleanup)
+-- Load buttons for mainloader.lua
+local function loadButtons(scrollFrame, utils)
+    setupCommandSystem(utils)
 
--- Initialize
-initializeUtility()
+    utils.createButton("Show Commands", function()
+        local commandList = "Available Commands:\n"
+        for cmdName, cmdData in pairs(commands) do
+            commandList = commandList .. commandPrefix .. cmdName .. ": " .. cmdData.description .. "\n"
+        end
+        if utils.notify then
+            utils.notify(commandList)
+        else
+            print(commandList)
+        end
+    end).Parent = scrollFrame
 
--- Return functions for external use
+    -- Add input for prank commands
+    local prankFrame = Instance.new("Frame")
+    prankFrame.Name = "PrankFrame"
+    prankFrame.Parent = scrollFrame
+    prankFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    prankFrame.BorderSizePixel = 0
+    prankFrame.Size = UDim2.new(1, 0, 0, 60)
+
+    local prankInput = Instance.new("TextBox")
+    prankInput.Name = "PrankInput"
+    prankInput.Parent = prankFrame
+    prankInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    prankInput.BorderSizePixel = 0
+    prankInput.Position = UDim2.new(0, 5, 0, 5)
+    prankInput.Size = UDim2.new(1, -10, 0, 25)
+    prankInput.Font = Enum.Font.Gotham
+    prankInput.Text = ""
+    prankInput.PlaceholderText = "Enter player name for prank..."
+    prankInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    prankInput.TextSize = 11
+
+    local prankButtonsFrame = Instance.new("Frame")
+    prankButtonsFrame.Name = "PrankButtonsFrame"
+    prankButtonsFrame.Parent = prankFrame
+    prankButtonsFrame.BackgroundTransparency = 1
+    prankButtonsFrame.Position = UDim2.new(0, 5, 0, 35)
+    prankButtonsFrame.Size = UDim2.new(1, -10, 0, 25)
+
+    local prankButtonsLayout = Instance.new("UIListLayout")
+    prankButtonsLayout.Parent = prankButtonsFrame
+    prankButtonsLayout.FillDirection = Enum.FillDirection.Horizontal
+    prankButtonsLayout.Padding = UDim.new(0, 5)
+
+    local prankCommands = {"spin", "fling", "shake", "drop"}
+    for _, cmdName in ipairs(prankCommands) do
+        local button = Instance.new("TextButton")
+        button.Name = cmdName .. "Button"
+        button.Parent = prankButtonsFrame
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        button.BorderSizePixel = 0
+        button.Size = UDim2.new(0, 80, 0, 20)
+        button.Font = Enum.Font.Gotham
+        button.Text = cmdName:upper()
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.TextSize = 10
+        button.MouseButton1Click:Connect(function()
+            local targetName = prankInput.Text
+            if targetName == "" then
+                if utils.notify then
+                    utils.notify("Please enter a player name")
+                end
+                return
+            end
+            local result = commands[cmdName].execute({targetName})
+            if utils.notify then
+                utils.notify(result)
+            end
+        end)
+        button.MouseEnter:Connect(function()
+            button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end)
+        button.MouseLeave:Connect(function()
+            button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        end)
+    end
+end
+
+-- Cleanup on script destruction
+local function onScriptDestroy()
+    cleanup()
+    if playerRemovingConnection then
+        playerRemovingConnection:Disconnect()
+        playerRemovingConnection = nil
+    end
+end
+
+-- Connect cleanup to GUI destruction
+local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
+if screenGui then
+    screenGui.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            onScriptDestroy()
+        end
+    end)
+end
+
+-- Return module
 return {
-    loadUtilityButtons = loadUtilityButtons,
-    cleanup = cleanup
+    loadButtons = loadButtons,
+    cleanup = cleanup,
+    reset = cleanup
 }

@@ -194,39 +194,11 @@ local function createPositionManagerUI()
     PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
     PositionLayout.FillDirection = Enum.FillDirection.Vertical
 
-    ClosePositionButton.MouseButton1Click:Connect(function()
-        positionListVisible = false
-        PositionFrame.Visible = false
-    end)
-
-    SavePositionButton.MouseButton1Click:Connect(function()
-        if rootPart then
-            local positionName = PositionInput.Text
-            if positionName == "" then
-                positionName = "Position " .. (#savedPositions + 1)
-            end
-            positionName = sanitizeFilename(positionName)
-            savedPositions[positionName] = rootPart.CFrame
-            print("Position Saved: " .. positionName)
-            savePositionToFile(positionName, rootPart.CFrame)
-            PositionInput.Text = ""
-            updatePositionList()
-        end
-    end)
-
-    SavePositionButton.MouseEnter:Connect(function()
-        SavePositionButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-    end)
-
-    SavePositionButton.MouseLeave:Connect(function()
-        SavePositionButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-    end)
-
     return PositionFrame, PositionInput, PositionScrollFrame, PositionLayout
 end
 
 -- Update Position List
-local function updatePositionList()
+local function updatePositionList(utils)
     local PositionScrollFrame = CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionScrollFrame")
     local PositionLayout = PositionScrollFrame and PositionScrollFrame:FindFirstChild("UIListLayout")
     if not PositionScrollFrame or not PositionLayout then return end
@@ -248,7 +220,11 @@ local function updatePositionList()
         noPositionsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         noPositionsLabel.TextSize = 11
         noPositionsLabel.TextXAlignment = Enum.TextXAlignment.Center
-        print("Position List Updated: No positions saved")
+        if utils.notify then
+            utils.notify("Position List Updated: No positions saved")
+        else
+            print("Position List Updated: No positions saved")
+        end
     else
         local positionCount = 0
         for positionName, cframe in pairs(savedPositions) do
@@ -317,8 +293,12 @@ local function updatePositionList()
                         savedPositions[newName] = savedPositions[positionName]
                         savedPositions[positionName] = nil
                         renamePositionFile(positionName, newName)
-                        print("Renamed position from " .. positionName .. " to " .. newName)
-                        updatePositionList()
+                        if utils.notify then
+                            utils.notify("Renamed position from " .. positionName .. " to " .. newName)
+                        else
+                            print("Renamed position from " .. positionName .. " to " .. newName)
+                        end
+                        updatePositionList(utils)
                     else
                         nameInput.Text = positionName
                     end
@@ -328,15 +308,23 @@ local function updatePositionList()
             teleportButton.MouseButton1Click:Connect(function()
                 if rootPart then
                     rootPart.CFrame = cframe
-                    print("Teleported to position: " .. positionName)
+                    if utils.notify then
+                        utils.notify("Teleported to position: " .. positionName)
+                    else
+                        print("Teleported to position: " .. positionName)
+                    end
                 end
             end)
 
             deleteButton.MouseButton1Click:Connect(function()
                 savedPositions[positionName] = nil
                 deletePositionFile(positionName)
-                print("Deleted position: " .. positionName)
-                updatePositionList()
+                if utils.notify then
+                    utils.notify("Deleted position: " .. positionName)
+                else
+                    print("Deleted position: " .. positionName)
+                end
+                updatePositionList(utils)
             end)
 
             renameButton.MouseButton1Click:Connect(function()
@@ -367,122 +355,203 @@ local function updatePositionList()
                 renameButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
             end)
         end
-        print("Position List Updated: " .. positionCount .. " positions listed")
+        if utils.notify then
+            utils.notify("Position List Updated: " .. positionCount .. " positions listed")
+        else
+            print("Position List Updated: " .. positionCount .. " positions listed")
+        end
     end
 
-    wait(0.1)
+    task.wait(0.1)
     local contentSize = PositionLayout.AbsoluteContentSize
     PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
 end
 
 -- Show Position Manager
-local function showPositionManager()
+local function showPositionManager(utils)
     positionListVisible = true
     local PositionFrame = CoreGui:FindFirstChild("PositionFrame")
     if PositionFrame then
         PositionFrame.Visible = true
     end
-    updatePositionList()
-end
-
--- Button creation function
-local function createButton(name, callback)
-    local button = Instance.new("TextButton")
-    button.Name = name .. "Button"
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, 0, 0, 30)
-    button.Font = Enum.Font.Gotham
-    button.Text = name:upper()
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 11
-    
-    button.MouseButton1Click:Connect(callback)
-    
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    end)
-    
-    return button
-end
-
--- Load teleport buttons into a provided ScrollFrame
-local function loadTeleportButtons(scrollFrame, playerModule, visualModule)
-    createButton("Position Manager", showPositionManager).Parent = scrollFrame
-    createButton("TP to Selected Player", function()
-        local selectedPlayer = playerModule and playerModule.getSelectedPlayer()
-        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
-            rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-            print("Teleported to: " .. selectedPlayer.Name)
-        else
-            print("Select a player first")
-        end
-    end).Parent = scrollFrame
-    createButton("TP to Freecam", function()
-        local freecamPosition = visualModule and visualModule.getFreecamPosition()
-        if freecamPosition and rootPart then
-            rootPart.CFrame = CFrame.new(freecamPosition)
-            print("Teleported to freecam position")
-        else
-            print("Use freecam first to set a position")
-        end
-    end).Parent = scrollFrame
-    createButton("Save Freecam Position", function()
-        local freecamPosition = visualModule and visualModule.getFreecamPosition()
-        if freecamPosition then
-            local positionName = CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") and CoreGui.PositionFrame.PositionInput.Text
-            if positionName == "" then
-                positionName = "Freecam Position " .. (#savedPositions + 1)
-            end
-            positionName = sanitizeFilename(positionName)
-            savedPositions[positionName] = CFrame.new(freecamPosition)
-            print("Freecam Position Saved: " .. positionName)
-            savePositionToFile(positionName, CFrame.new(freecamPosition))
-            if CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") then
-                CoreGui.PositionFrame.PositionInput.Text = ""
-            end
-            updatePositionList()
-        else
-            print("Freecam must be enabled to save position")
-        end
-    end).Parent = scrollFrame
-    createButton("Save Player Position", function()
-        local selectedPlayer = playerModule and playerModule.getSelectedPlayer()
-        if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local positionName = CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") and CoreGui.PositionFrame.PositionInput.Text
-            if positionName == "" then
-                positionName = selectedPlayer.Name .. " Position " .. (#savedPositions + 1)
-            end
-            positionName = sanitizeFilename(positionName)
-            savedPositions[positionName] = selectedPlayer.Character.HumanoidRootPart.CFrame
-            print("Player Position Saved: " .. positionName)
-            savePositionToFile(positionName, selectedPlayer.Character.HumanoidRootPart.CFrame)
-            if CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") then
-                CoreGui.PositionFrame.PositionInput.Text = ""
-            end
-            updatePositionList()
-        else
-            print("Select a player first to save their position")
-        end
-    end).Parent = scrollFrame
+    updatePositionList(utils)
 end
 
 -- Initialize Teleport UI
 local function initializeTeleportUI()
     local PositionFrame, PositionInput, PositionScrollFrame, PositionLayout = createPositionManagerUI()
-    loadSavedPositions() -- Load saved positions on initialization
-    updatePositionList()
+    
+    ClosePositionButton = PositionFrame.CloseButton
+    SavePositionButton = PositionFrame.SavePositionButton
+    
+    ClosePositionButton.MouseButton1Click:Connect(function()
+        positionListVisible = false
+        PositionFrame.Visible = false
+    end)
+
+    SavePositionButton.MouseButton1Click:Connect(function()
+        if rootPart then
+            local positionName = PositionInput.Text
+            if positionName == "" then
+                positionName = "Position " .. (#savedPositions + 1)
+            end
+            positionName = sanitizeFilename(positionName)
+            savedPositions[positionName] = rootPart.CFrame
+            savePositionToFile(positionName, rootPart.CFrame)
+            PositionInput.Text = ""
+            updatePositionList({ notify = print }) -- Fallback notify
+            if utils and utils.notify then
+                utils.notify("Position Saved: " .. positionName)
+            else
+                print("Position Saved: " .. positionName)
+            end
+        end
+    end)
+
+    SavePositionButton.MouseEnter:Connect(function()
+        SavePositionButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+    end)
+
+    SavePositionButton.MouseLeave:Connect(function()
+        SavePositionButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+    end)
+    
+    loadSavedPositions()
+    updatePositionList({ notify = print }) -- Fallback notify
 end
 
--- Handle character reset
-player.CharacterAdded:Connect(function(newCharacter)
-    character = newCharacter
-    rootPart = character:WaitForChild("HumanoidRootPart")
-end)
+-- Load buttons for mainloader.lua
+local function loadButtons(scrollFrame, utils, playerModule, visualModule)
+    initializeTeleportUI()
+
+    utils.createButton("Position Manager", function()
+        showPositionManager(utils)
+    end).Parent = scrollFrame
+
+    utils.createButton("TP to Selected Player", function()
+        if playerModule and playerModule.getSelectedPlayer then
+            local selectedPlayer = playerModule.getSelectedPlayer()
+            if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
+                rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                if utils.notify then
+                    utils.notify("Teleported to: " .. selectedPlayer.Name)
+                else
+                    print("Teleported to: " .. selectedPlayer.Name)
+                end
+            else
+                if utils.notify then
+                    utils.notify("Select a player first")
+                else
+                    print("Select a player first")
+                end
+            end
+        else
+            if utils.notify then
+                utils.notify("Player module not available")
+            else
+                print("Player module not available")
+            end
+        end
+    end).Parent = scrollFrame
+
+    utils.createButton("TP to Freecam", function()
+        if visualModule and visualModule.getFreecamPosition then
+            local freecamPosition = visualModule.getFreecamPosition()
+            if freecamPosition and rootPart then
+                rootPart.CFrame = CFrame.new(freecamPosition)
+                if utils.notify then
+                    utils.notify("Teleported to freecam position")
+                else
+                    print("Teleported to freecam position")
+                end
+            else
+                if utils.notify then
+                    utils.notify("Use freecam first to set a position")
+                else
+                    print("Use freecam first to set a position")
+                end
+            end
+        else
+            if utils.notify then
+                utils.notify("Visual module not available")
+            else
+                print("Visual module not available")
+            end
+        end
+    end).Parent = scrollFrame
+
+    utils.createButton("Save Freecam Position", function()
+        if visualModule and visualModule.getFreecamPosition then
+            local freecamPosition = visualModule.getFreecamPosition()
+            if freecamPosition then
+                local positionName = CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") and CoreGui.PositionFrame.PositionInput.Text
+                if positionName == "" then
+                    positionName = "Freecam Position " .. (#savedPositions + 1)
+                end
+                positionName = sanitizeFilename(positionName)
+                savedPositions[positionName] = CFrame.new(freecamPosition)
+                savePositionToFile(positionName, CFrame.new(freecamPosition))
+                if CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") then
+                    CoreGui.PositionFrame.PositionInput.Text = ""
+                end
+                updatePositionList(utils)
+                if utils.notify then
+                    utils.notify("Freecam Position Saved: " .. positionName)
+                else
+                    print("Freecam Position Saved: " .. positionName)
+                end
+            else
+                if utils.notify then
+                    utils.notify("Freecam must be enabled to save position")
+                else
+                    print("Freecam must be enabled to save position")
+                end
+            end
+        else
+            if utils.notify then
+                utils.notify("Visual module not available")
+            else
+                print("Visual module not available")
+            end
+        end
+    end).Parent = scrollFrame
+
+    utils.createButton("Save Player Position", function()
+        if playerModule and playerModule.getSelectedPlayer then
+            local selectedPlayer = playerModule.getSelectedPlayer()
+            if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local positionName = CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") and CoreGui.PositionFrame.PositionInput.Text
+                if positionName == "" then
+                    positionName = selectedPlayer.Name .. " Position " .. (#savedPositions + 1)
+                end
+                positionName = sanitizeFilename(positionName)
+                savedPositions[positionName] = selectedPlayer.Character.HumanoidRootPart.CFrame
+                savePositionToFile(positionName, selectedPlayer.Character.HumanoidRootPart.CFrame)
+                if CoreGui:FindFirstChild("PositionFrame") and CoreGui.PositionFrame:FindFirstChild("PositionInput") then
+                    CoreGui.PositionFrame.PositionInput.Text = ""
+                end
+                updatePositionList(utils)
+                if utils.notify then
+                    utils.notify("Player Position Saved: " .. positionName)
+                else
+                    print("Player Position Saved: " .. positionName)
+                end
+            else
+                if utils.notify then
+                    utils.notify("Select a player first to save their position")
+                else
+                    print("Select a player first to save their position")
+                end
+            end
+        else
+            if utils.notify then
+                utils.notify("Player module not available")
+            else
+                print("Player module not available")
+            end
+        end
+    end).Parent = scrollFrame
+end
 
 -- Cleanup function
 local function cleanup()
@@ -492,14 +561,35 @@ local function cleanup()
     end
 end
 
--- Bind cleanup to game close
-game:BindToClose(cleanup)
+-- Handle character reset
+local characterConnection
+characterConnection = player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    rootPart = character:WaitForChild("HumanoidRootPart")
+end)
 
--- Initialize UI
-initializeTeleportUI()
+-- Cleanup on script destruction
+local function onScriptDestroy()
+    cleanup()
+    if characterConnection then
+        characterConnection:Disconnect()
+        characterConnection = nil
+    end
+end
 
--- Return functions for external use
+-- Connect cleanup to GUI destruction
+local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
+if screenGui then
+    screenGui.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            onScriptDestroy()
+        end
+    end)
+end
+
+-- Return module
 return {
-    loadTeleportButtons = loadTeleportButtons,
-    cleanup = cleanup
+    loadButtons = loadButtons,
+    cleanup = cleanup,
+    reset = cleanup
 }
