@@ -37,6 +37,7 @@ DebugCleanup.Visible = true
 local modules = {
     Info = {
         setGuiElements = function(elements)
+            if not elements then return end
             modules.Info.InfoFrame = elements.InfoFrame
             modules.Info.InfoScrollFrame = elements.InfoScrollFrame
             modules.Info.InfoLayout = elements.InfoLayout
@@ -91,7 +92,7 @@ Thank you for reading. Use it wisely.
             watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
             
             wait(0.1)
-            local contentSize = modules.Info.InfoLayout.AbsoluteContentSize
+            local contentSize = modules.Info.InfoLayout and modules.Info.InfoLayout.AbsoluteContentSize or Vector2.new(0, 0)
             modules.Info.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
         end
     }
@@ -101,11 +102,11 @@ Thank you for reading. Use it wisely.
 local DebugModules = Instance.new("TextLabel")
 DebugModules.Name = "DebugModules"
 DebugModules.Parent = CoreGui
-DebugModules.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugModules.BackgroundColor3 = modules.Info and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 DebugModules.Size = UDim2.new(0, 200, 0, 30)
 DebugModules.Position = UDim2.new(0.5, -100, 0.4, -15)
 DebugModules.Font = Enum.Font.Gotham
-DebugModules.Text = "DEBUG: Info Loaded (Embedded)"
+DebugModules.Text = modules.Info and "DEBUG: Info Loaded (Embedded)" or "DEBUG: Info Load Failed"
 DebugModules.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugModules.TextSize = 12
 DebugModules.Visible = true
@@ -185,7 +186,7 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.new(0, 45, 0, 0)
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK] e321321"
+Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -239,6 +240,19 @@ CategoryList.Parent = CategoryFrame
 CategoryList.Padding = UDim.new(0, 2)
 CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
 
+-- Debug Label: CategoryFrame Created
+local DebugCategoryFrame = Instance.new("TextLabel")
+DebugCategoryFrame.Name = "DebugCategoryFrame"
+DebugCategoryFrame.Parent = CoreGui
+DebugCategoryFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugCategoryFrame.Size = UDim2.new(0, 200, 0, 30)
+DebugCategoryFrame.Position = UDim2.new(0.5, -100, 0.6, -15)
+DebugCategoryFrame.Font = Enum.Font.Gotham
+DebugCategoryFrame.Text = "DEBUG: CategoryFrame Created"
+DebugCategoryFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugCategoryFrame.TextSize = 12
+DebugCategoryFrame.Visible = true
+
 -- Create ContentFrame
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
@@ -266,12 +280,42 @@ UIListLayout.Parent = ScrollFrame
 UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
+-- Debug Label: ContentFrame Created
+local DebugContentFrame = Instance.new("TextLabel")
+DebugContentFrame.Name = "DebugContentFrame"
+DebugContentFrame.Parent = CoreGui
+DebugContentFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugContentFrame.Size = UDim2.new(0, 200, 0, 30)
+DebugContentFrame.Position = UDim2.new(0.5, -100, 0.65, -15)
+DebugContentFrame.Font = Enum.Font.Gotham
+DebugContentFrame.Text = "DEBUG: ContentFrame Created"
+DebugContentFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugContentFrame.TextSize = 12
+DebugContentFrame.Visible = true
+
 -- Pass GUI elements to Info module
-modules.Info.setGuiElements({
-    InfoFrame = ContentFrame,
-    InfoScrollFrame = ScrollFrame,
-    InfoLayout = UIListLayout
-})
+if modules.Info then
+    local success, err = pcall(function()
+        modules.Info.setGuiElements({
+            InfoFrame = ContentFrame,
+            InfoScrollFrame = ScrollFrame,
+            InfoLayout = UIListLayout
+        })
+    end)
+    if not success then
+        local DebugError = Instance.new("TextLabel")
+        DebugError.Name = "DebugError"
+        DebugError.Parent = CoreGui
+        DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        DebugError.Size = UDim2.new(0, 200, 0, 30)
+        DebugError.Position = UDim2.new(0.5, -100, 0.7, -15)
+        DebugError.Font = Enum.Font.Gotham
+        DebugError.Text = "DEBUG: Info Error: " .. tostring(err)
+        DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
+        DebugError.TextSize = 12
+        DebugError.Visible = true
+    end
+end
 
 -- Create category button
 local function createCategoryButton(name)
@@ -352,11 +396,10 @@ end
 MinimizeButton.Activated:Connect(function()
     DebugMinimize.Visible = true
     DebugMinimize.Text = "DEBUG: Minimize Clicked"
-    local newVisible = not MainFrame.Visible
-    MainFrame.Visible = newVisible
-    wait(0.2)
+    MainFrame.Visible = not MainFrame.Visible
+    wait(0.3)
     if MainFrame.Parent then
-        MinimizeButton.Text = newVisible and "-" or "+"
+        MinimizeButton.Text = MainFrame.Visible and "-" or "+"
     end
 end)
 
@@ -379,8 +422,23 @@ function switchCategory(categoryName)
     
     clearButtons()
     
-    if categoryName == "Info" then
-        modules.Info.updateGui()
+    if categoryName == "Info" and modules.Info then
+        local success, err = pcall(function()
+            modules.Info.updateGui()
+        end)
+        if not success then
+            local DebugError = Instance.new("TextLabel")
+            DebugError.Name = "DebugErrorUpdate"
+            DebugError.Parent = CoreGui
+            DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+            DebugError.Size = UDim2.new(0, 200, 0, 30)
+            DebugError.Position = UDim2.new(0.5, -100, 0.75, -15)
+            DebugError.Font = Enum.Font.Gotham
+            DebugError.Text = "DEBUG: Info Update Error: " .. tostring(err)
+            DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
+            DebugError.TextSize = 12
+            DebugError.Visible = true
+        end
     else
         loadPlaceholder(categoryName)
     end
@@ -391,12 +449,44 @@ function switchCategory(categoryName)
 end
 
 -- Initialize categories
-for _, category in ipairs({"Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "Info", "Anti Admin"}) do
-    createCategoryButton(category)
+local success, err = pcall(function()
+    for _, category in ipairs({"Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "Info", "Anti Admin"}) do
+        createCategoryButton(category)
+    end
+end)
+if not success then
+    local DebugError = Instance.new("TextLabel")
+    DebugError.Name = "DebugErrorCategories"
+    DebugError.Parent = CoreGui
+    DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    DebugError.Size = UDim2.new(0, 200, 0, 30)
+    DebugError.Position = UDim2.new(0.5, -100, 0.8, -15)
+    DebugError.Font = Enum.Font.Gotham
+    DebugError.Text = "DEBUG: Categories Error: " .. tostring(err)
+    DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DebugError.TextSize = 12
+    DebugError.Visible = true
 end
 
 -- Initialize GUI
-switchCategory("Info")
+if modules.Info then
+    local success, err = pcall(function()
+        switchCategory("Info")
+    end)
+    if not success then
+        local DebugError = Instance.new("TextLabel")
+        DebugError.Name = "DebugErrorInit"
+        DebugError.Parent = CoreGui
+        DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        DebugError.Size = UDim2.new(0, 200, 0, 30)
+        DebugError.Position = UDim2.new(0.5, -100, 0.85, -15)
+        DebugError.Font = Enum.Font.Gotham
+        DebugError.Text = "DEBUG: Init Error: " .. tostring(err)
+        DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
+        DebugError.TextSize = 12
+        DebugError.Visible = true
+    end
+end
 
 -- Update CategoryFrame size
 wait(0.1)
@@ -409,7 +499,7 @@ DebugComplete.Name = "DebugComplete"
 DebugComplete.Parent = CoreGui
 DebugComplete.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 DebugComplete.Size = UDim2.new(0, 200, 0, 30)
-DebugComplete.Position = UDim2.new(0.5, -100, 0.6, -15)
+DebugComplete.Position = UDim2.new(0.5, -100, 0.9, -15)
 DebugComplete.Font = Enum.Font.Gotham
 DebugComplete.Text = "DEBUG: GUI Complete"
 DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)

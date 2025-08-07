@@ -22,7 +22,7 @@ DebugCoreGui.BackgroundColor3 = success and Color3.fromRGB(0, 255, 0) or Color3.
 DebugCoreGui.Size = UDim2.new(0, 200, 0, 30)
 DebugCoreGui.Position = UDim2.new(0.5, -100, 0.35, -15)
 DebugCoreGui.Font = Enum.Font.Gotham
-DebugCoreGui.Text = success and "DEBUG: CoreGui Success" or "DEBUG: CoreGui Failed"
+DebugCoreGui.Text = success and "DEBUG: CoreGui Success" or "DEBUG: CoreGui Failed: " .. tostring(CoreGui)
 DebugCoreGui.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCoreGui.TextSize = 12
 DebugCoreGui.Visible = true
@@ -57,6 +57,7 @@ DebugCleanup.Visible = true
 -- Embedded Info module
 local module = {
     setGuiElements = function(elements)
+        if not elements then return end
         module.InfoFrame = elements.InfoFrame
         module.InfoScrollFrame = elements.InfoScrollFrame
         module.InfoLayout = elements.InfoLayout
@@ -111,7 +112,7 @@ Thank you for reading. Use it wisely.
         watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
         
         wait(0.1)
-        local contentSize = module.InfoLayout.AbsoluteContentSize
+        local contentSize = module.InfoLayout and module.InfoLayout.AbsoluteContentSize or Vector2.new(0, 0)
         module.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
     end
 }
@@ -150,39 +151,54 @@ DebugScreenGui.TextSize = 12
 DebugScreenGui.Visible = true
 
 -- Test module
-if module and module.updateGui then
-    local ContentFrame = Instance.new("Frame")
-    ContentFrame.Name = "ContentFrame"
-    ContentFrame.Parent = ScreenGui
-    ContentFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-    ContentFrame.BorderSizePixel = 0
-    ContentFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-    ContentFrame.Size = UDim2.new(0, 400, 0, 300)
-    
-    local ScrollFrame = Instance.new("ScrollingFrame")
-    ScrollFrame.Name = "ScrollFrame"
-    ScrollFrame.Parent = ContentFrame
-    ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.Position = UDim2.new(0, 10, 0, 10)
-    ScrollFrame.Size = UDim2.new(1, -20, 1, -20)
-    ScrollFrame.ScrollBarThickness = 4
-    ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    ScrollFrame.BorderSizePixel = 0
-    ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    
-    local UIListLayout = Instance.new("UIListLayout")
-    UIListLayout.Parent = ScrollFrame
-    UIListLayout.Padding = UDim.new(0, 5)
-    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    
-    module.setGuiElements({
-        InfoFrame = ContentFrame,
-        InfoScrollFrame = ScrollFrame,
-        InfoLayout = UIListLayout
-    })
-    module.updateGui()
+if module then
+    local success, err = pcall(function()
+        local ContentFrame = Instance.new("Frame")
+        ContentFrame.Name = "ContentFrame"
+        ContentFrame.Parent = ScreenGui
+        ContentFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+        ContentFrame.BorderSizePixel = 0
+        ContentFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+        ContentFrame.Size = UDim2.new(0, 400, 0, 300)
+        
+        local ScrollFrame = Instance.new("ScrollingFrame")
+        ScrollFrame.Name = "ScrollFrame"
+        ScrollFrame.Parent = ContentFrame
+        ScrollFrame.BackgroundTransparency = 1
+        ScrollFrame.Position = UDim2.new(0, 10, 0, 10)
+        ScrollFrame.Size = UDim2.new(1, -20, 1, -20)
+        ScrollFrame.ScrollBarThickness = 4
+        ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+        ScrollFrame.BorderSizePixel = 0
+        ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+        ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        
+        local UIListLayout = Instance.new("UIListLayout")
+        UIListLayout.Parent = ScrollFrame
+        UIListLayout.Padding = UDim.new(0, 5)
+        UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        
+        module.setGuiElements({
+            InfoFrame = ContentFrame,
+            InfoScrollFrame = ScrollFrame,
+            InfoLayout = UIListLayout
+        })
+        module.updateGui()
+    end)
+    if not success then
+        local DebugError = Instance.new("TextLabel")
+        DebugError.Name = "DebugError"
+        DebugError.Parent = CoreGui
+        DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        DebugError.Size = UDim2.new(0, 200, 0, 30)
+        DebugError.Position = UDim2.new(0.5, -100, 0.55, -15)
+        DebugError.Font = Enum.Font.Gotham
+        DebugError.Text = "DEBUG: GUI Error: " .. tostring(err)
+        DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
+        DebugError.TextSize = 12
+        DebugError.Visible = true
+    end
 end
 
 -- Debug Label: GUI Complete
@@ -191,7 +207,7 @@ DebugComplete.Name = "DebugComplete"
 DebugComplete.Parent = CoreGui
 DebugComplete.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 DebugComplete.Size = UDim2.new(0, 200, 0, 30)
-DebugComplete.Position = UDim2.new(0.5, -100, 0.55, -15)
+DebugComplete.Position = UDim2.new(0.5, -100, 0.6, -15)
 DebugComplete.Font = Enum.Font.Gotham
 DebugComplete.Text = "DEBUG: GUI Complete"
 DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)
