@@ -30,7 +30,7 @@ local moduleUrls = {
 -- Utils
 local utils = {
     notify = function(message)
-        print(message) -- Fallback
+        print("[Supertool] " .. message)
         if game.StarterGui and game.StarterGui.SetCore then
             pcall(function()
                 game.StarterGui:SetCore("SendNotification", {
@@ -188,13 +188,15 @@ local function createGUI()
     screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
     if screenGui then
         screenGui:Destroy()
+        print("[Supertool] Existing MinimalHackGUI destroyed")
     end
     
     screenGui = Instance.new("ScreenGui")
     screenGui.Name = "MinimalHackGUI"
-    screenGui.Parent = CoreGui
+    screenGui.Parent = player.PlayerGui -- Changed to PlayerGui for testing
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    print("[Supertool] ScreenGui created and parented to PlayerGui")
     
     local uiScale = Instance.new("UIScale")
     uiScale.Name = "UIScale"
@@ -209,7 +211,9 @@ local function createGUI()
     mainFrame.BorderSizePixel = 1
     mainFrame.Active = true
     mainFrame.Draggable = true
+    mainFrame.Visible = true
     mainFrame.Parent = screenGui
+    print("[Supertool] MainFrame created and set to visible")
     
     local topBar = Instance.new("Frame")
     topBar.Name = "TopBar"
@@ -403,8 +407,8 @@ local function loadModules()
     for name, url in pairs(moduleUrls) do
         local success, result = pcall(function()
             local response = game:HttpGet(url)
-            if not response then
-                error("Failed to fetch module from " .. url)
+            if not response or response == "" then
+                error("Empty or no response from " .. url)
             end
             local module = loadstring(response)()
             if type(module) ~= "table" or not module.loadButtons then
@@ -417,8 +421,8 @@ local function loadModules()
             modules[name].utils = utils
             utils.notify("Loaded module: " .. name)
         else
-            warn("Failed to load module " .. name .. ": " .. tostring(result))
-            utils.notify("Failed to load module: " .. name)
+            warn("[Supertool] Failed to load module " .. name .. ": " .. tostring(result))
+            utils.notify("Failed to load module: " .. name .. " - Error: " .. tostring(result))
             modules[name] = {
                 loadButtons = function(scrollFrame, _)
                     local errorLabel = Instance.new("TextLabel")
@@ -439,11 +443,13 @@ end
 
 -- Minimize/Maximize
 local function minimizeGUI()
+    print("[Supertool] Minimizing GUI")
     screenGui.MainFrame.Visible = false
     screenGui.LogoButton.Visible = true
 end
 
 local function maximizeGUI()
+    print("[Supertool] Maximizing GUI")
     screenGui.MainFrame.Visible = true
     screenGui.LogoButton.Visible = false
 end
@@ -506,6 +512,7 @@ local function cleanup()
         screenGui:Destroy()
         screenGui = nil
     end
+    print("[Supertool] Cleanup completed")
 end
 
 -- Handle script destruction
@@ -520,6 +527,7 @@ if screenGui then
 end
 
 -- Run
+print("[Supertool] Initializing GUI")
 initialize()
 
 -- Return
