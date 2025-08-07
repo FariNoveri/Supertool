@@ -16,7 +16,7 @@ DebugStart.Visible = true
 
 -- Clean up existing GUIs
 for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" then
+    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name == "DebugStart" or gui.Name == "DebugCleanup" or gui.Name == "DebugModules" or gui.Name == "DebugScreenGui" or gui.Name == "DebugMainFrame" or gui.Name == "DebugComplete" then
         gui:Destroy()
     end
 end
@@ -34,24 +34,27 @@ DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCleanup.TextSize = 12
 DebugCleanup.Visible = true
 
--- Load Info module only
+-- Load modules
 local modules = {}
-local success, result = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Info.lua", true))()
-end)
-if success and result then
-    modules.Info = result
+local moduleNames = {"Info", "Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "AntiAdmin", "AntiAdminInfo"}
+for _, moduleName in ipairs(moduleNames) do
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/" .. moduleName .. ".lua", true))()
+    end)
+    if success and result then
+        modules[moduleName] = result
+    end
 end
 
 -- Debug Label: Modules Loaded
 local DebugModules = Instance.new("TextLabel")
 DebugModules.Name = "DebugModules"
 DebugModules.Parent = CoreGui
-DebugModules.BackgroundColor3 = success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+DebugModules.BackgroundColor3 = modules.Info and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 DebugModules.Size = UDim2.new(0, 200, 0, 30)
 DebugModules.Position = UDim2.new(0.5, -100, 0.4, -15)
 DebugModules.Font = Enum.Font.Gotham
-DebugModules.Text = success and "DEBUG: Info Loaded" or "DEBUG: Info Load Failed"
+DebugModules.Text = modules.Info and "DEBUG: Info Loaded" or "DEBUG: Info Load Failed"
 DebugModules.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugModules.TextSize = 12
 DebugModules.Visible = true
@@ -135,6 +138,19 @@ Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Create Minimize Button
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Parent = TopBar
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Position = UDim2.new(1, -30, 0, 5)
+MinimizeButton.Size = UDim2.new(0, 25, 0, 25)
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.Text = "-"
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.TextSize = 14
 
 -- Create CategoryFrame
 local CategoryFrame = Instance.new("Frame")
@@ -264,6 +280,33 @@ Thank you for reading. Use it wisely.
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
 end
 
+-- Placeholder for other categories
+local function loadPlaceholder(category)
+    local placeholderLabel = Instance.new("TextLabel")
+    placeholderLabel.Name = category .. "Placeholder"
+    placeholderLabel.Parent = ScrollFrame
+    placeholderLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    placeholderLabel.BorderSizePixel = 0
+    placeholderLabel.Size = UDim2.new(1, 0, 0, 50)
+    placeholderLabel.Font = Enum.Font.Gotham
+    placeholderLabel.Text = category .. " category not yet implemented."
+    placeholderLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    placeholderLabel.TextSize = 10
+    placeholderLabel.TextWrapped = true
+    placeholderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    placeholderLabel.TextYAlignment = Enum.TextYAlignment.Top
+    
+    wait(0.1)
+    local contentSize = UIListLayout.AbsoluteContentSize
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+end
+
+-- Minimize button logic
+MinimizeButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+    MinimizeButton.Text = MainFrame.Visible and "-" or "+"
+end)
+
 -- Category switching
 local currentCategory = "Info"
 function switchCategory(categoryName)
@@ -288,6 +331,48 @@ function switchCategory(categoryName)
             modules.Info.updateGui()
         else
             loadFallbackInfo()
+        end
+    elseif categoryName == "Movement" then
+        if modules.Movement then
+            modules.Movement.updateGui()
+        else
+            loadPlaceholder("Movement")
+        end
+    elseif categoryName == "Player" then
+        if modules.Player then
+            modules.Player.updateGui()
+        else
+            loadPlaceholder("Player")
+        end
+    elseif categoryName == "Visual" then
+        if modules.Visual then
+            modules.Visual.updateGui()
+        else
+            loadPlaceholder("Visual")
+        end
+    elseif categoryName == "Teleport" then
+        if modules.Teleport then
+            modules.Teleport.updateGui()
+        else
+            loadPlaceholder("Teleport")
+        end
+    elseif categoryName == "Utility" then
+        if modules.Utility then
+            modules.Utility.updateGui()
+        else
+            loadPlaceholder("Utility")
+        end
+    elseif categoryName == "Settings" then
+        if modules.Settings then
+            modules.Settings.updateGui()
+        else
+            loadPlaceholder("Settings")
+        end
+    elseif categoryName == "Anti Admin" then
+        if modules.AntiAdminInfo then
+            modules.AntiAdminInfo.updateGui()
+        else
+            loadPlaceholder("Anti Admin")
         end
     end
     
