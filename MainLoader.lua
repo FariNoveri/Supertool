@@ -23,7 +23,12 @@ end
 
 -- Load AntiAdmin.lua (protection logic only)
 local success, errorMsg = pcall(function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua", true))()
+    local response = game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua", true)
+    if response then
+        return loadstring(response)()
+    else
+        error("Failed to fetch AntiAdmin.lua")
+    end
 end)
 if not success then
     warn("Failed to load AntiAdmin.lua: " .. tostring(errorMsg))
@@ -43,21 +48,19 @@ local moduleUrls = {
     AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdminInfo.lua"
 }
 
--- Load modules with better error handling
+-- Load modules with detailed error handling
 local modules = {}
 for category, url in pairs(moduleUrls) do
     success, errorMsg = pcall(function()
         local response = game:HttpGet(url, true)
-        if response then
-            local module = loadstring(response)()
-            if type(module) == "table" and module.loadButtons then
-                return module
-            else
-                error("Invalid module structure for " .. category)
-            end
-        else
-            error("Failed to fetch module from URL")
+        if not response then
+            error("Failed to fetch module from " .. url)
         end
+        local module = loadstring(response)()
+        if type(module) ~= "table" or not module.loadButtons then
+            error("Invalid module structure for " .. category .. ": Expected table with loadButtons")
+        end
+        return module
     end)
     if success and errorMsg then
         modules[category] = errorMsg
@@ -72,7 +75,7 @@ for category, url in pairs(moduleUrls) do
                 errorLabel.BackgroundTransparency = 1
                 errorLabel.Size = UDim2.new(1, 0, 0, 30)
                 errorLabel.Font = Enum.Font.Gotham
-                errorLabel.Text = "Module " .. category .. " failed to load"
+                errorLabel.Text = "Failed to load " .. category .. " module: " .. tostring(errorMsg)
                 errorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
                 errorLabel.TextSize = 11
                 errorLabel.TextXAlignment = Enum.TextXAlignment.Center
