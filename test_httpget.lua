@@ -1,10 +1,6 @@
-local CoreGui = game:GetService("CoreGui")
-local HttpService = game:GetService("HttpService")
-
--- Debug Label: Start
+-- Debug Label: Script Start
 local DebugStart = Instance.new("TextLabel")
 DebugStart.Name = "DebugStart"
-DebugStart.Parent = CoreGui
 DebugStart.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 DebugStart.Size = UDim2.new(0, 200, 0, 30)
 DebugStart.Position = UDim2.new(0.5, -100, 0.3, -15)
@@ -14,9 +10,33 @@ DebugStart.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugStart.TextSize = 12
 DebugStart.Visible = true
 
+-- Try CoreGui access
+local success, CoreGui = pcall(function()
+    return game:GetService("CoreGui")
+end)
+
+-- Debug Label: CoreGui Result
+local DebugCoreGui = Instance.new("TextLabel")
+DebugCoreGui.Name = "DebugCoreGui"
+DebugCoreGui.BackgroundColor3 = success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+DebugCoreGui.Size = UDim2.new(0, 200, 0, 30)
+DebugCoreGui.Position = UDim2.new(0.5, -100, 0.35, -15)
+DebugCoreGui.Font = Enum.Font.Gotham
+DebugCoreGui.Text = success and "DEBUG: CoreGui Success" or "DEBUG: CoreGui Failed"
+DebugCoreGui.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugCoreGui.TextSize = 12
+DebugCoreGui.Visible = true
+
+if success then
+    DebugStart.Parent = CoreGui
+    DebugCoreGui.Parent = CoreGui
+end
+
+if not success then return end
+
 -- Clean up existing GUIs
 for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name:match("^Debug") then
+    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name == "ToggleGUI" or gui.Name:match("^Debug") then
         gui:Destroy()
     end
 end
@@ -27,55 +47,87 @@ DebugCleanup.Name = "DebugCleanup"
 DebugCleanup.Parent = CoreGui
 DebugCleanup.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 DebugCleanup.Size = UDim2.new(0, 200, 0, 30)
-DebugCleanup.Position = UDim2.new(0.5, -100, 0.35, -15)
+DebugCleanup.Position = UDim2.new(0.5, -100, 0.4, -15)
 DebugCleanup.Font = Enum.Font.Gotham
 DebugCleanup.Text = "DEBUG: Cleanup Done"
 DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCleanup.TextSize = 12
 DebugCleanup.Visible = true
 
--- Try HttpGet
-local success, result = pcall(function()
-    return game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Info.lua", true)
-end)
+-- Embedded Info module
+local module = {
+    setGuiElements = function(elements)
+        module.InfoFrame = elements.InfoFrame
+        module.InfoScrollFrame = elements.InfoScrollFrame
+        module.InfoLayout = elements.InfoLayout
+    end,
+    updateGui = function()
+        if not module.InfoScrollFrame then return end
+        for _, child in pairs(module.InfoScrollFrame:GetChildren()) do
+            if child:IsA("TextLabel") or child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+        local watermarkLabel = Instance.new("TextLabel")
+        watermarkLabel.Name = "WatermarkLabel"
+        watermarkLabel.Parent = module.InfoScrollFrame
+        watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        watermarkLabel.BorderSizePixel = 0
+        watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
+        watermarkLabel.Font = Enum.Font.Gotham
+        watermarkLabel.Text = [[
+--[ NOTICE BEFORE USING ]--
 
--- Debug Label: HttpGet Result
-local DebugHttpGet = Instance.new("TextLabel")
-DebugHttpGet.Name = "DebugHttpGet"
-DebugHttpGet.Parent = CoreGui
-DebugHttpGet.BackgroundColor3 = success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-DebugHttpGet.Size = UDim2.new(0, 200, 0, 30)
-DebugHttpGet.Position = UDim2.new(0.5, -100, 0.4, -15)
-DebugHttpGet.Font = Enum.Font.Gotham
-DebugHttpGet.Text = success and "DEBUG: HttpGet Success" or "DEBUG: HttpGet Failed"
-DebugHttpGet.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugHttpGet.TextSize = 12
-DebugHttpGet.Visible = true
+Created by Fari Noveri for Unknown Block members.
+Not for sale, not for showing off, not for tampering.
 
--- Try loadstring if HttpGet succeeded
-local module
-if success then
-    local loadSuccess, loadResult = pcall(function()
-        return loadstring(result)()
-    end)
-    
-    -- Debug Label: loadstring Result
-    local DebugLoadstring = Instance.new("TextLabel")
-    DebugLoadstring.Name = "DebugLoadstring"
-    DebugLoadstring.Parent = CoreGui
-    DebugLoadstring.BackgroundColor3 = loadSuccess and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-    DebugLoadstring.Size = UDim2.new(0, 200, 0, 30)
-    DebugLoadstring.Position = UDim2.new(0.5, -100, 0.45, -15)
-    DebugLoadstring.Font = Enum.Font.Gotham
-    DebugLoadstring.Text = loadSuccess and "DEBUG: loadstring Success" or "DEBUG: loadstring Failed"
-    DebugLoadstring.TextColor3 = Color3.fromRGB(255, 255, 255)
-    DebugLoadstring.TextSize = 12
-    DebugLoadstring.Visible = true
-    
-    if loadSuccess then
-        module = loadResult
+- Rules of Use:
+- Do not sell this script. It's not for profit.
+- Keep the creator's name as "by Fari Noveri".
+- Do not re-upload to public platforms without permission.
+- Do not combine with other scripts and claim as your own.
+- Only get updates from the original source to avoid errors.
+
+- If you find this script outside the group:
+It may have been leaked. Please don't share it further.
+
+- Purpose:
+This script is made to help fellow members, not for profit.
+Please use it responsibly and respect its purpose.
+
+- For suggestions, questions, or feedback:
+Contact:
+- Instagram: @fariinoveri
+- TikTok: @fari_noveri
+
+Thank you for reading. Use it wisely.
+
+- Fari Noveri
+]]
+        watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        watermarkLabel.TextSize = 10
+        watermarkLabel.TextWrapped = true
+        watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
+        watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+        
+        wait(0.1)
+        local contentSize = module.InfoLayout.AbsoluteContentSize
+        module.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
     end
-end
+}
+
+-- Debug Label: Module Loaded
+local DebugModule = Instance.new("TextLabel")
+DebugModule.Name = "DebugModule"
+DebugModule.Parent = CoreGui
+DebugModule.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugModule.Size = UDim2.new(0, 200, 0, 30)
+DebugModule.Position = UDim2.new(0.5, -100, 0.45, -15)
+DebugModule.Font = Enum.Font.Gotham
+DebugModule.Text = "DEBUG: Module Loaded (Embedded)"
+DebugModule.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugModule.TextSize = 12
+DebugModule.Visible = true
 
 -- Create ScreenGui for testing module
 local ScreenGui = Instance.new("ScreenGui")
@@ -97,7 +149,7 @@ DebugScreenGui.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugScreenGui.TextSize = 12
 DebugScreenGui.Visible = true
 
--- Test module if loaded
+-- Test module
 if module and module.updateGui then
     local ContentFrame = Instance.new("Frame")
     ContentFrame.Name = "ContentFrame"
@@ -144,4 +196,4 @@ DebugComplete.Font = Enum.Font.Gotham
 DebugComplete.Text = "DEBUG: GUI Complete"
 DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugComplete.TextSize = 12
-DebugComplete.Visible = module and module.updateGui and true or false
+DebugComplete.Visible = true

@@ -1,5 +1,4 @@
 local CoreGui = game:GetService("CoreGui")
-local HttpService = game:GetService("HttpService")
 
 -- Debug Label: Start
 local DebugStart = Instance.new("TextLabel")
@@ -16,7 +15,7 @@ DebugStart.Visible = true
 
 -- Clean up existing GUIs
 for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name:match("^Debug") then
+    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name == "ToggleGUI" or gui.Name:match("^Debug") then
         gui:Destroy()
     end
 end
@@ -34,27 +33,79 @@ DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCleanup.TextSize = 12
 DebugCleanup.Visible = true
 
--- Load modules
-local modules = {}
-local moduleNames = {"Info", "Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "AntiAdmin", "AntiAdminInfo"}
-for _, moduleName in ipairs(moduleNames) do
-    local success, result = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/" .. moduleName .. ".lua", true))()
-    end)
-    if success and result then
-        modules[moduleName] = result
-    end
-end
+-- Embedded Info module
+local modules = {
+    Info = {
+        setGuiElements = function(elements)
+            modules.Info.InfoFrame = elements.InfoFrame
+            modules.Info.InfoScrollFrame = elements.InfoScrollFrame
+            modules.Info.InfoLayout = elements.InfoLayout
+        end,
+        updateGui = function()
+            if not modules.Info.InfoScrollFrame then return end
+            for _, child in pairs(modules.Info.InfoScrollFrame:GetChildren()) do
+                if child:IsA("TextLabel") or child:IsA("Frame") then
+                    child:Destroy()
+                end
+            end
+            local watermarkLabel = Instance.new("TextLabel")
+            watermarkLabel.Name = "WatermarkLabel"
+            watermarkLabel.Parent = modules.Info.InfoScrollFrame
+            watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            watermarkLabel.BorderSizePixel = 0
+            watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
+            watermarkLabel.Font = Enum.Font.Gotham
+            watermarkLabel.Text = [[
+--[ NOTICE BEFORE USING ]--
+
+Created by Fari Noveri for Unknown Block members.
+Not for sale, not for showing off, not for tampering.
+
+- Rules of Use:
+- Do not sell this script. It's not for profit.
+- Keep the creator's name as "by Fari Noveri".
+- Do not re-upload to public platforms without permission.
+- Do not combine with other scripts and claim as your own.
+- Only get updates from the original source to avoid errors.
+
+- If you find this script outside the group:
+It may have been leaked. Please don't share it further.
+
+- Purpose:
+This script is made to help fellow members, not for profit.
+Please use it responsibly and respect its purpose.
+
+- For suggestions, questions, or feedback:
+Contact:
+- Instagram: @fariinoveri
+- TikTok: @fari_noveri
+
+Thank you for reading. Use it wisely.
+
+- Fari Noveri
+]]
+            watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+            watermarkLabel.TextSize = 10
+            watermarkLabel.TextWrapped = true
+            watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
+            watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+            
+            wait(0.1)
+            local contentSize = modules.Info.InfoLayout.AbsoluteContentSize
+            modules.Info.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+        end
+    }
+}
 
 -- Debug Label: Modules Loaded
 local DebugModules = Instance.new("TextLabel")
 DebugModules.Name = "DebugModules"
 DebugModules.Parent = CoreGui
-DebugModules.BackgroundColor3 = modules.Info and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+DebugModules.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 DebugModules.Size = UDim2.new(0, 200, 0, 30)
 DebugModules.Position = UDim2.new(0.5, -100, 0.4, -15)
 DebugModules.Font = Enum.Font.Gotham
-DebugModules.Text = modules.Info and "DEBUG: Info Loaded" or "DEBUG: Info Load Failed"
+DebugModules.Text = "DEBUG: Info Loaded (Embedded)"
 DebugModules.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugModules.TextSize = 12
 DebugModules.Visible = true
@@ -134,24 +185,32 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.new(0, 45, 0, 0)
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
+Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK] e321321"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
+-- Create Toggle ScreenGui
+local ToggleGui = Instance.new("ScreenGui")
+ToggleGui.Name = "ToggleGUI"
+ToggleGui.Parent = CoreGui
+ToggleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ToggleGui.Enabled = true
+
 -- Create Minimize Button
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
-MinimizeButton.Parent = TopBar
+MinimizeButton.Parent = ToggleGui
 MinimizeButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MinimizeButton.BorderSizePixel = 0
-MinimizeButton.Position = UDim2.new(1, -30, 0, 5)
+MinimizeButton.Position = UDim2.new(0.95, -30, 0.05, 0)
 MinimizeButton.Size = UDim2.new(0, 25, 0, 25)
 MinimizeButton.Font = Enum.Font.GothamBold
 MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 14
 MinimizeButton.Visible = true
+MinimizeButton.ZIndex = 10
 
 -- Debug Label: Minimize Click
 local DebugMinimize = Instance.new("TextLabel")
@@ -208,13 +267,11 @@ UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 -- Pass GUI elements to Info module
-if modules.Info then
-    modules.Info.setGuiElements({
-        InfoFrame = ContentFrame,
-        InfoScrollFrame = ScrollFrame,
-        InfoLayout = UIListLayout
-    })
-end
+modules.Info.setGuiElements({
+    InfoFrame = ContentFrame,
+    InfoScrollFrame = ScrollFrame,
+    InfoLayout = UIListLayout
+})
 
 -- Create category button
 local function createCategoryButton(name)
@@ -230,6 +287,8 @@ local function createCategoryButton(name)
     button.TextSize = 10
     
     button.MouseButton1Click:Connect(function()
+        DebugMinimize.Visible = true
+        DebugMinimize.Text = "DEBUG: " .. name .. " Clicked"
         switchCategory(name)
     end)
     
@@ -245,70 +304,44 @@ local function clearButtons()
     end
 end
 
--- Fallback watermark
-local function loadFallbackInfo()
-    local watermarkLabel = Instance.new("TextLabel")
-    watermarkLabel.Name = "WatermarkLabel"
-    watermarkLabel.Parent = ScrollFrame
-    watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    watermarkLabel.BorderSizePixel = 0
-    watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
-    watermarkLabel.Font = Enum.Font.Gotham
-    watermarkLabel.Text = [[
---[ NOTICE BEFORE USING ]--
-
-Created by Fari Noveri for Unknown Block members.
-Not for sale, not for showing off, not for tampering.
-
-- Rules of Use:
-- Do not sell this script. It's not for profit.
-- Keep the creator's name as "by Fari Noveri".
-- Do not re-upload to public platforms without permission.
-- Do not combine with other scripts and claim as your own.
-- Only get updates from the original source to avoid errors.
-
-- If you find this script outside the group:
-It may have been leaked. Please don't share it further.
-
-- Purpose:
-This script is made to help fellow members, not for profit.
-Please use it responsibly and respect its purpose.
-
-- For suggestions, questions, or feedback:
-Contact:
-- Instagram: @fariinoveri
-- TikTok: @fari_noveri
-
-Thank you for reading. Use it wisely.
-
-- Fari Noveri
-]]
-    watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    watermarkLabel.TextSize = 10
-    watermarkLabel.TextWrapped = true
-    watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
-    watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
-    
-    wait(0.1)
-    local contentSize = UIListLayout.AbsoluteContentSize
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
-end
-
 -- Placeholder for other categories
 local function loadPlaceholder(category)
+    local placeholderFrame = Instance.new("Frame")
+    placeholderFrame.Name = category .. "Placeholder"
+    placeholderFrame.Parent = ScrollFrame
+    placeholderFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    placeholderFrame.BorderSizePixel = 0
+    placeholderFrame.Size = UDim2.new(1, 0, 0, 100)
+    
     local placeholderLabel = Instance.new("TextLabel")
-    placeholderLabel.Name = category .. "Placeholder"
-    placeholderLabel.Parent = ScrollFrame
-    placeholderLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    placeholderLabel.BorderSizePixel = 0
-    placeholderLabel.Size = UDim2.new(1, 0, 0, 50)
+    placeholderLabel.Name = "Label"
+    placeholderLabel.Parent = placeholderFrame
+    placeholderLabel.BackgroundTransparency = 1
+    placeholderLabel.Size = UDim2.new(1, -10, 0, 30)
+    placeholderLabel.Position = UDim2.new(0, 5, 0, 5)
     placeholderLabel.Font = Enum.Font.Gotham
     placeholderLabel.Text = category .. " category not yet implemented."
     placeholderLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     placeholderLabel.TextSize = 10
     placeholderLabel.TextWrapped = true
     placeholderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    placeholderLabel.TextYAlignment = Enum.TextYAlignment.Top
+    
+    local exampleButton = Instance.new("TextButton")
+    exampleButton.Name = "ExampleButton"
+    exampleButton.Parent = placeholderFrame
+    exampleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    exampleButton.BorderSizePixel = 0
+    exampleButton.Position = UDim2.new(0, 5, 0, 40)
+    exampleButton.Size = UDim2.new(1, -10, 0, 30)
+    exampleButton.Font = Enum.Font.Gotham
+    exampleButton.Text = "Example " .. category .. " Feature"
+    exampleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    exampleButton.TextSize = 10
+    
+    exampleButton.MouseButton1Click:Connect(function()
+        DebugMinimize.Visible = true
+        DebugMinimize.Text = "DEBUG: " .. category .. " Example Clicked"
+    end)
     
     wait(0.1)
     local contentSize = UIListLayout.AbsoluteContentSize
@@ -316,15 +349,14 @@ local function loadPlaceholder(category)
 end
 
 -- Minimize button logic
-MinimizeButton.MouseButton1Click:Connect(function()
+MinimizeButton.Activated:Connect(function()
     DebugMinimize.Visible = true
     DebugMinimize.Text = "DEBUG: Minimize Clicked"
-    if MainFrame.Visible then
-        MainFrame.Visible = false
-        MinimizeButton.Text = "+"
-    else
-        MainFrame.Visible = true
-        MinimizeButton.Text = "-"
+    local newVisible = not MainFrame.Visible
+    MainFrame.Visible = newVisible
+    wait(0.2)
+    if MainFrame.Parent then
+        MinimizeButton.Text = newVisible and "-" or "+"
     end
 end)
 
@@ -348,11 +380,7 @@ function switchCategory(categoryName)
     clearButtons()
     
     if categoryName == "Info" then
-        if modules.Info then
-            modules.Info.updateGui()
-        else
-            loadFallbackInfo()
-        end
+        modules.Info.updateGui()
     else
         loadPlaceholder(categoryName)
     end
