@@ -1,218 +1,233 @@
--- Settings.lua
--- Settings features for MinimalHackGUI by Fari Noveri
-
-local UserInputService = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
 
--- Settings variables
+local player = Players.LocalPlayer
+
+-- Tabel pengaturan untuk semua fitur
 local settings = {
-    uiScale = 1, -- Default UI scale (1 = 100%)
-    toggleKey = Enum.KeyCode.Insert, -- Default key to toggle GUI
-    notificationsEnabled = true, -- Default notification setting
+    FlySpeed = { value = 50, default = 50, min = 10, max = 200 },
+    JumpHeight = { value = 50, default = 50, min = 10, max = 150 },
+    WalkSpeed = { value = 100, default = 100, min = 16, max = 300 },
     FlashlightBrightness = { value = 5, default = 5, min = 1, max = 10 },
     FlashlightRange = { value = 100, default = 100, min = 50, max = 200 },
-    FullbrightBrightness = { value = 2, default = 2, min = 0, max = 5 },
-    FreecamSpeed = { value = 80, default = 80, min = 20, max = 300 }
+    FullbrightBrightness = { value = 2, default = 2, min = 0, max = 5 }
 }
-local filePath = "DCIM/Supertool/settings.json"
-local inputConnection
 
--- Load settings from file
-local function loadSettings()
-    if isfile and isfile(filePath) then
-        local success, data = pcall(function()
-            return HttpService:JSONDecode(readfile(filePath))
-        end)
-        if success and data then
-            settings.uiScale = data.uiScale or settings.uiScale
-            settings.toggleKey = Enum.KeyCode[data.toggleKey] or settings.toggleKey
-            settings.notificationsEnabled = data.notificationsEnabled ~= nil and data.notificationsEnabled
-            settings.FlashlightBrightness.value = data.FlashlightBrightness or settings.FlashlightBrightness.default
-            settings.FlashlightRange.value = data.FlashlightRange or settings.FlashlightRange.default
-            settings.FullbrightBrightness.value = data.FullbrightBrightness or settings.FullbrightBrightness.default
-            settings.FreecamSpeed.value = data.FreecamSpeed or settings.FreecamSpeed.default
-            if utils and utils.notify then
-                utils.notify("Loaded settings from " .. filePath)
-            else
-                print("Loaded settings from " .. filePath)
-            end
-        else
-            if utils and utils.notify then
-                utils.notify("Failed to load settings from " .. filePath)
-            else
-                print("Failed to load settings from " .. filePath)
-            end
-        end
-    else
-        if utils and utils.notify then
-            utils.notify("No settings file found at " .. filePath)
-        else
-            print("No settings file found at " .. filePath)
-        end
+-- GUI Creation untuk Settings
+local ScreenGui = Instance.new("ScreenGui")
+local SettingsFrame = Instance.new("Frame")
+local SettingsTitle = Instance.new("TextLabel")
+local CloseSettingsButton = Instance.new("TextButton")
+local SettingsScrollFrame = Instance.new("ScrollingFrame")
+local SettingsLayout = Instance.new("UIListLayout")
+
+-- GUI Properties
+ScreenGui.Name = "SettingsHackGUI"
+ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Settings Frame
+SettingsFrame.Name = "SettingsFrame"
+SettingsFrame.Parent = ScreenGui
+SettingsFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+SettingsFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+SettingsFrame.BorderSizePixel = 1
+SettingsFrame.Position = UDim2.new(0.5, -175, 0.2, 0)
+SettingsFrame.Size = UDim2.new(0, 350, 0, 400)
+SettingsFrame.Visible = false
+SettingsFrame.Active = true
+SettingsFrame.Draggable = true
+
+-- Settings Frame Title
+SettingsTitle.Name = "Title"
+SettingsTitle.Parent = SettingsFrame
+SettingsTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+SettingsTitle.BorderSizePixel = 0
+SettingsTitle.Position = UDim2.new(0, 0, 0, 0)
+SettingsTitle.Size = UDim2.new(1, 0, 0, 35)
+SettingsTitle.Font = Enum.Font.Gotham
+SettingsTitle.Text = "SETTINGS"
+SettingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+SettingsTitle.TextSize = 12
+
+-- Close Settings Frame Button
+CloseSettingsButton.Name = "CloseButton"
+CloseSettingsButton.Parent = SettingsFrame
+CloseSettingsButton.BackgroundTransparency = 1
+CloseSettingsButton.Position = UDim2.new(1, -30, 0, 5)
+CloseSettingsButton.Size = UDim2.new(0, 25, 0, 25)
+CloseSettingsButton.Font = Enum.Font.GothamBold
+CloseSettingsButton.Text = "X"
+CloseSettingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseSettingsButton.TextSize = 12
+
+-- Settings ScrollFrame
+SettingsScrollFrame.Name = "SettingsScrollFrame"
+SettingsScrollFrame.Parent = SettingsFrame
+SettingsScrollFrame.BackgroundTransparency = 1
+SettingsScrollFrame.Position = UDim2.new(0, 10, 0, 45)
+SettingsScrollFrame.Size = UDim2.new(1, -20, 1, -55)
+SettingsScrollFrame.ScrollBarThickness = 4
+SettingsScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+SettingsScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+SettingsScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+SettingsScrollFrame.BorderSizePixel = 0
+
+-- Settings Layout
+SettingsLayout.Parent = SettingsScrollFrame
+SettingsLayout.Padding = UDim.new(0, 5)
+SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SettingsLayout.FillDirection = Enum.FillDirection.Vertical
+
+-- Fungsi untuk menyimpan pengaturan ke file
+local function saveSettingsToFile()
+    if not pcall(function() return writefile end) then
+        warn("writefile not supported in this environment")
+        return
     end
-end
-
--- Save settings to file
-local function saveSettings()
-    local success, error = pcall(function()
-        local data = {
-            uiScale = settings.uiScale,
-            toggleKey = settings.toggleKey.Name,
-            notificationsEnabled = settings.notificationsEnabled,
-            FlashlightBrightness = settings.FlashlightBrightness.value,
-            FlashlightRange = settings.FlashlightRange.value,
-            FullbrightBrightness = settings.FullbrightBrightness.value,
-            FreecamSpeed = settings.FreecamSpeed.value
-        }
-        writefile(filePath, HttpService:JSONEncode(data))
-        if utils and utils.notify then
-            utils.notify("Saved settings to " .. filePath)
-        else
-            print("Saved settings to " .. filePath)
+    
+    local success, errorMsg = pcall(function()
+        makefolder("DCIM/Supertool")
+        local settingsData = {}
+        for key, data in pairs(settings) do
+            settingsData[key] = data.value
         end
+        writefile("DCIM/Supertool/settings.json", HttpService:JSONEncode(settingsData))
+        print("Settings saved to DCIM/Supertool/settings.json")
     end)
     if not success then
-        if utils and utils.notify then
-            utils.notify("Failed to save settings to " .. filePath .. ": " .. tostring(error))
-        else
-            warn("Failed to save settings to " .. filePath .. ": " .. tostring(error))
-        end
+        warn("Failed to save settings: " .. tostring(errorMsg))
     end
 end
 
--- Initialize Settings
-local function initializeSettings()
-    loadSettings()
-    local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
-    if screenGui and screenGui:FindFirstChild("UIScale") then
-        screenGui.UIScale.Scale = settings.uiScale
+-- Fungsi untuk memuat pengaturan dari file
+local function loadSettingsFromFile()
+    if not pcall(function() return readfile end) then
+        warn("readfile not supported in this environment")
+        return
     end
-end
-
--- Load buttons for mainloader.lua
-local function loadButtons(scrollFrame, utils)
-    initializeSettings()
-
-    -- UI Scale Slider
-    utils.createSlider("UI Scale", 0.5, 2, settings.uiScale, function(value)
-        settings.uiScale = value
-        local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
-        if screenGui and screenGui:FindFirstChild("UIScale") then
-            screenGui.UIScale.Scale = value
-        end
-        saveSettings()
-        if utils.notify then
-            utils.notify("UI Scale set to " .. value)
-        else
-            print("UI Scale set to " .. value)
-        end
-    end).Parent = scrollFrame
-
-    -- Toggle Keybind
-    utils.createKeybind("Toggle GUI Key", settings.toggleKey, function(key)
-        settings.toggleKey = key
-        saveSettings()
-        if utils.notify then
-            utils.notify("Toggle GUI key set to " .. key.Name)
-        else
-            print("Toggle GUI key set to " .. key.Name)
-        end
-    end).Parent = scrollFrame
-
-    -- Notifications Toggle
-    utils.createToggle("Notifications", settings.notificationsEnabled, function(state)
-        settings.notificationsEnabled = state
-        saveSettings()
-        if utils.notify then
-            utils.notify("Notifications " .. (state and "enabled" or "disabled"))
-        else
-            print("Notifications " .. (state and "enabled" or "disabled"))
-        end
-    end).Parent = scrollFrame
-
-    -- Flashlight Brightness Slider
-    utils.createSlider("Flashlight Brightness", settings.FlashlightBrightness.min, settings.FlashlightBrightness.max, settings.FlashlightBrightness.value, function(value)
-        settings.FlashlightBrightness.value = value
-        saveSettings()
-        if utils.notify then
-            utils.notify("Flashlight Brightness set to " .. value)
-        else
-            print("Flashlight Brightness set to " .. value)
-        end
-    end).Parent = scrollFrame
-
-    -- Flashlight Range Slider
-    utils.createSlider("Flashlight Range", settings.FlashlightRange.min, settings.FlashlightRange.max, settings.FlashlightRange.value, function(value)
-        settings.FlashlightRange.value = value
-        saveSettings()
-        if utils.notify then
-            utils.notify("Flashlight Range set to " .. value)
-        else
-            print("Flashlight Range set to " .. value)
-        end
-    end).Parent = scrollFrame
-
-    -- Fullbright Brightness Slider
-    utils.createSlider("Fullbright Brightness", settings.FullbrightBrightness.min, settings.FullbrightBrightness.max, settings.FullbrightBrightness.value, function(value)
-        settings.FullbrightBrightness.value = value
-        saveSettings()
-        if utils.notify then
-            utils.notify("Fullbright Brightness set to " .. value)
-        else
-            print("Fullbright Brightness set to " .. value)
-        end
-    end).Parent = scrollFrame
-
-    -- Freecam Speed Slider
-    utils.createSlider("Freecam Speed", settings.FreecamSpeed.min, settings.FreecamSpeed.max, settings.FreecamSpeed.value, function(value)
-        settings.FreecamSpeed.value = value
-        saveSettings()
-        if utils.notify then
-            utils.notify("Freecam Speed set to " .. value)
-        else
-            print("Freecam Speed set to " .. value)
-        end
-    end).Parent = scrollFrame
-end
-
--- Cleanup function
-local function cleanup()
-    if inputConnection then
-        inputConnection:Disconnect()
-        inputConnection = nil
-    end
-    saveSettings()
-end
-
--- Cleanup on script destruction
-local function onScriptDestroy()
-    cleanup()
-end
-
--- Connect cleanup to GUI destruction
-local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
-if screenGui then
-    screenGui.AncestryChanged:Connect(function(_, parent)
-        if not parent then
-            onScriptDestroy()
-        end
+    
+    local success, result = pcall(function()
+        local fileContent = readfile("DCIM/Supertool/settings.json")
+        return HttpService:JSONDecode(fileContent)
     end)
-end
-
--- Return module
-return {
-    loadButtons = loadButtons,
-    cleanup = cleanup,
-    reset = cleanup,
-    settings = settings,
-    notify = function(message)
-        if settings.notificationsEnabled then
-            if utils and utils.notify then
-                utils.notify(message)
-            else
-                print(message)
+    
+    if success then
+        for key, value in pairs(result) do
+            if settings[key] then
+                settings[key].value = math.clamp(value, settings[key].min, settings[key].max)
             end
         end
+        print("Settings loaded from DCIM/Supertool/settings.json")
+        updateSettingsGUI()
+    else
+        warn("No saved settings found or error loading: " .. tostring(result))
     end
-}
+end
+
+-- Fungsi untuk memperbarui GUI Settings
+local function updateSettingsGUI()
+    for _, child in pairs(SettingsScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local itemCount = 0
+    for settingName, settingData in pairs(settings) do
+        local settingItem = Instance.new("Frame")
+        settingItem.Name = settingName .. "Item"
+        settingItem.Parent = SettingsScrollFrame
+        settingItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        settingItem.BorderSizePixel = 0
+        settingItem.Size = UDim2.new(1, -5, 0, 60)
+        settingItem.LayoutOrder = itemCount
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Parent = settingItem
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Position = UDim2.new(0, 5, 0, 5)
+        nameLabel.Size = UDim2.new(1, -10, 0, 20)
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.Text = settingName
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 11
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local valueInput = Instance.new("TextBox")
+        valueInput.Name = "ValueInput"
+        valueInput.Parent = settingItem
+        valueInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        valueInput.BorderSizePixel = 0
+        valueInput.Position = UDim2.new(0, 5, 0, 30)
+        valueInput.Size = UDim2.new(0, 80, 0, 25)
+        valueInput.Font = Enum.Font.Gotham
+        valueInput.Text = tostring(settingData.value)
+        valueInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        valueInput.TextSize = 11
+        
+        local rangeLabel = Instance.new("TextLabel")
+        rangeLabel.Name = "RangeLabel"
+        rangeLabel.Parent = settingItem
+        rangeLabel.BackgroundTransparency = 1
+        rangeLabel.Position = UDim2.new(0, 90, 0, 30)
+        rangeLabel.Size = UDim2.new(1, -95, 0, 25)
+        rangeLabel.Font = Enum.Font.Gotham
+        rangeLabel.Text = string.format("(Min: %s, Max: %s)", settingData.min, settingData.max)
+        rangeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        rangeLabel.TextSize = 10
+        rangeLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        valueInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                local newValue = tonumber(valueInput.Text)
+                if newValue then
+                    newValue = math.clamp(newValue, settingData.min, settingData.max)
+                    settingData.value = newValue
+                    valueInput.Text = tostring(newValue)
+                    saveSettingsToFile()
+                    print("Updated " .. settingName .. " to " .. newValue)
+                else
+                    valueInput.Text = tostring(settingData.value)
+                    print("Invalid input for " .. settingName)
+                end
+            end
+        end)
+        
+        itemCount = itemCount + 1
+    end
+    
+    wait(0.1)
+    local contentSize = SettingsLayout.AbsoluteContentSize
+    SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+end
+
+-- Fungsi untuk menampilkan Settings
+local function showSettings()
+    SettingsFrame.Visible = true
+    updateSettingsGUI()
+end
+
+-- Event Connections
+CloseSettingsButton.MouseButton1Click:Connect(function()
+    SettingsFrame.Visible = false
+end)
+
+-- Cleanup saat script dihancurkan
+local function cleanup()
+    -- Hapus GUI
+    if ScreenGui then
+        ScreenGui:Destroy()
+    end
+end
+
+-- Tangani penutupan game atau script
+game:BindToClose(cleanup)
+
+-- Inisialisasi
+loadSettingsFromFile()
+showSettings()
+print("Settings Features Loaded")

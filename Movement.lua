@@ -1,19 +1,13 @@
--- Movement.lua
--- Movement features for MinimalHackGUI by Fari Noveri
-
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local PhysicsService = game:GetService("PhysicsService")
-local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- Movement feature variables
+-- Variabel untuk fitur Movement
 local flyEnabled = false
 local noclipEnabled = false
 local speedEnabled = false
@@ -21,43 +15,28 @@ local jumpHighEnabled = false
 local spiderEnabled = false
 local playerPhaseEnabled = false
 
--- Connections table for movement features
-local connections = {}
-
--- Button states for toggles
-local buttonStates = {
-    Fly = false,
-    Noclip = false,
-    Speed = false,
-    ["Jump High"] = false,
-    Spider = false,
-    ["Player Phase"] = false
+-- Settings table untuk Movement
+local settings = {
+    FlySpeed = { value = 50, default = 50, min = 10, max = 200 },
+    JumpHeight = { value = 50, default = 50, min = 10, max = 150 },
+    WalkSpeed = { value = 100, default = 100, min = 16, max = 300 }
 }
 
--- Setup collision group for Noclip and Player Phase
-local function setupCollisionGroup()
-    local success, error = pcall(function()
-        PhysicsService:CreateCollisionGroup("Players")
-        PhysicsService:CollisionGroupSetCollidable("Players", "Players", false)
-    end)
-    if not success then
-        warn("Failed to setup collision group: " .. tostring(error))
-    end
-end
+-- Connections untuk Movement
+local connections = {}
 
 -- Fly (Android Touch Controls)
-local function toggleFly(enabled, utils)
+local function toggleFly(enabled)
     flyEnabled = enabled
     if enabled then
         local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.Name = "FlyBodyVelocity"
-        bodyVelocity.MaxForce = Vector3.new(2000, 2000, 2000) -- Reduced for mobile
+        bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.Parent = rootPart
         
         connections.fly = RunService.Heartbeat:Connect(function()
             if flyEnabled then
-                local camera = Workspace.CurrentCamera
+                local camera = workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
                 local cameraCFrame = camera.CFrame
@@ -66,7 +45,7 @@ local function toggleFly(enabled, utils)
                 local upVector = Vector3.new(0, 1, 0)
                 
                 local velocity = Vector3.new(0, 0, 0)
-                local speed = utils.settings.FlySpeed.value
+                local speed = settings.FlySpeed.value
                 
                 if moveVector.Magnitude > 0 then
                     velocity = velocity + (forwardVector * -moveVector.Z * speed)
@@ -81,141 +60,90 @@ local function toggleFly(enabled, utils)
                 bodyVelocity.Velocity = velocity
             end
         end)
-        if utils.notify then
-            utils.notify("Fly enabled")
-        else
-            print("Fly enabled")
-        end
     else
         if connections.fly then
             connections.fly:Disconnect()
-            connections.fly = nil
         end
-        if rootPart:FindFirstChild("FlyBodyVelocity") then
-            rootPart:FindFirstChild("FlyBodyVelocity"):Destroy()
-        end
-        if utils.notify then
-            utils.notify("Fly disabled")
-        else
-            print("Fly disabled")
+        if rootPart:FindFirstChild("BodyVelocity") then
+            rootPart:FindFirstChild("BodyVelocity"):Destroy()
         end
     end
 end
 
 -- Noclip
-local function toggleNoclip(enabled, utils)
+local function toggleNoclip(enabled)
     noclipEnabled = enabled
     if enabled then
         connections.noclip = RunService.Stepped:Connect(function()
             if noclipEnabled and character then
                 for _, part in pairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") then
+                    if part:IsA("BasePart") and part.CanCollide then
                         part.CanCollide = false
-                        pcall(function()
-                            part.CollisionGroup = "Players"
-                        end)
                     end
                 end
             end
         end)
-        if utils.notify then
-            utils.notify("Noclip enabled")
-        else
-            print("Noclip enabled")
-        end
     else
         if connections.noclip then
             connections.noclip:Disconnect()
-            connections.noclip = nil
         end
         if character then
             for _, part in pairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = true
-                    pcall(function()
-                        part.CollisionGroup = "Default"
-                    end)
                 end
             end
-        end
-        if utils.notify then
-            utils.notify("Noclip disabled")
-        else
-            print("Noclip disabled")
         end
     end
 end
 
 -- Speed
-local function toggleSpeed(enabled, utils)
+local function toggleSpeed(enabled)
     speedEnabled = enabled
     if enabled then
-        humanoid.WalkSpeed = utils.settings.WalkSpeed.value
-        if utils.notify then
-            utils.notify("Speed enabled")
-        else
-            print("Speed enabled")
-        end
+        humanoid.WalkSpeed = settings.WalkSpeed.value
     else
         humanoid.WalkSpeed = 16
-        if utils.notify then
-            utils.notify("Speed disabled")
-        else
-            print("Speed disabled")
-        end
     end
 end
 
 -- Jump High
-local function toggleJumpHigh(enabled, utils)
+local function toggleJumpHigh(enabled)
     jumpHighEnabled = enabled
     if enabled then
-        humanoid.JumpHeight = utils.settings.JumpHeight.value
-        humanoid.JumpPower = utils.settings.JumpHeight.value * 2.4
+        humanoid.JumpHeight = settings.JumpHeight.value
+        humanoid.JumpPower = settings.JumpHeight.value * 2.4
         connections.jumphigh = humanoid.Jumping:Connect(function()
             if jumpHighEnabled then
-                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, utils.settings.JumpHeight.value * 2.4, rootPart.Velocity.Z)
+                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 2.4, rootPart.Velocity.Z)
             end
         end)
-        if utils.notify then
-            utils.notify("Jump High enabled")
-        else
-            print("Jump High enabled")
-        end
     else
         humanoid.JumpHeight = 7.2
         humanoid.JumpPower = 50
         if connections.jumphigh then
             connections.jumphigh:Disconnect()
-            connections.jumphigh = nil
-        end
-        if utils.notify then
-            utils.notify("Jump High disabled")
-        else
-            print("Jump High disabled")
         end
     end
 end
 
 -- Spider (stick to walls)
-local function toggleSpider(enabled, utils)
+local function toggleSpider(enabled)
     spiderEnabled = enabled
     if enabled then
         local bodyPosition = Instance.new("BodyPosition")
-        bodyPosition.Name = "SpiderBodyPosition"
-        bodyPosition.MaxForce = Vector3.new(2000, 2000, 2000) -- Reduced for mobile
+        bodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
         bodyPosition.Position = rootPart.Position
         bodyPosition.Parent = rootPart
         
         local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
-        bodyAngularVelocity.Name = "SpiderBodyAngularVelocity"
-        bodyAngularVelocity.MaxTorque = Vector3.new(2000, 2000, 2000)
+        bodyAngularVelocity.MaxTorque = Vector3.new(4000, 4000, 4000)
         bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
         bodyAngularVelocity.Parent = rootPart
         
         connections.spider = RunService.Heartbeat:Connect(function()
             if spiderEnabled and rootPart then
-                local ray = Workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 5) -- Reduced range
+                local ray = workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 10)
                 if ray then
                     bodyPosition.Position = ray.Position + ray.Normal * 3
                     local lookDirection = -ray.Normal
@@ -224,32 +152,21 @@ local function toggleSpider(enabled, utils)
                 end
             end
         end)
-        if utils.notify then
-            utils.notify("Spider enabled")
-        else
-            print("Spider enabled")
-        end
     else
         if connections.spider then
             connections.spider:Disconnect()
-            connections.spider = nil
         end
-        if rootPart:FindFirstChild("SpiderBodyPosition") then
-            rootPart:FindFirstChild("SpiderBodyPosition"):Destroy()
+        if rootPart:FindFirstChild("BodyPosition") then
+            rootPart:FindFirstChild("BodyPosition"):Destroy()
         end
-        if rootPart:FindFirstChild("SpiderBodyAngularVelocity") then
-            rootPart:FindFirstChild("SpiderBodyAngularVelocity"):Destroy()
-        end
-        if utils.notify then
-            utils.notify("Spider disabled")
-        else
-            print("Spider disabled")
+        if rootPart:FindFirstChild("BodyAngularVelocity") then
+            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
         end
     end
 end
 
--- Player Phase (pass through other players)
-local function togglePlayerPhase(enabled, utils)
+-- Player Phase (nembus player lain)
+local function togglePlayerPhase(enabled)
     playerPhaseEnabled = enabled
     if enabled then
         connections.playerphase = RunService.Heartbeat:Connect(function()
@@ -258,113 +175,36 @@ local function togglePlayerPhase(enabled, utils)
                     if otherPlayer ~= player and otherPlayer.Character then
                         for _, part in pairs(otherPlayer.Character:GetChildren()) do
                             if part:IsA("BasePart") then
-                                pcall(function()
-                                    part.CollisionGroup = "Players"
-                                end)
+                                part.CanCollide = false
                             end
                         end
                     end
                 end
             end
         end)
-        if utils.notify then
-            utils.notify("Player Phase enabled")
-        else
-            print("Player Phase enabled")
-        end
     else
         if connections.playerphase then
             connections.playerphase:Disconnect()
-            connections.playerphase = nil
         end
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player and otherPlayer.Character then
                 for _, part in pairs(otherPlayer.Character:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        pcall(function()
-                            part.CollisionGroup = "Default"
-                        end)
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        part.CanCollide = true
                     end
                 end
             end
         end
-        if utils.notify then
-            utils.notify("Player Phase disabled")
-        else
-            print("Player Phase disabled")
-        end
     end
 end
 
--- Initialize Movement
-local function initializeMovement()
-    local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
-    if not screenGui then
-        warn("MinimalHackGUI not found")
-        return
-    end
-    setupCollisionGroup()
-end
-
--- Load buttons for mainloader.lua
-local function loadButtons(scrollFrame, utils)
-    initializeMovement()
-
-    utils.createToggle("Fly", buttonStates["Fly"], function(state)
-        buttonStates["Fly"] = state
-        toggleFly(state, utils)
-    end).Parent = scrollFrame
-
-    utils.createToggle("Noclip", buttonStates["Noclip"], function(state)
-        buttonStates["Noclip"] = state
-        toggleNoclip(state, utils)
-    end).Parent = scrollFrame
-
-    utils.createToggle("Speed", buttonStates["Speed"], function(state)
-        buttonStates["Speed"] = state
-        toggleSpeed(state, utils)
-    end).Parent = scrollFrame
-
-    utils.createToggle("Jump High", buttonStates["Jump High"], function(state)
-        buttonStates["Jump High"] = state
-        toggleJumpHigh(state, utils)
-    end).Parent = scrollFrame
-
-    utils.createToggle("Spider", buttonStates["Spider"], function(state)
-        buttonStates["Spider"] = state
-        toggleSpider(state, utils)
-    end).Parent = scrollFrame
-
-    utils.createToggle("Player Phase", buttonStates["Player Phase"], function(state)
-        buttonStates["Player Phase"] = state
-        togglePlayerPhase(state, utils)
-    end).Parent = scrollFrame
-end
-
--- Cleanup function
-local function cleanup()
-    toggleFly(false, { notify = print })
-    toggleNoclip(false, { notify = print })
-    toggleSpeed(false, { notify = print })
-    toggleJumpHigh(false, { notify = print })
-    toggleSpider(false, { notify = print })
-    togglePlayerPhase(false, { notify = print })
-    
-    for _, connection in pairs(connections) do
-        if connection then
-            connection:Disconnect()
-        end
-    end
-    connections = {}
-end
-
--- Handle character reset
-local characterConnection
-characterConnection = player.CharacterAdded:Connect(function(newCharacter)
+-- Handle character reset untuk Movement
+player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     
+    -- Reset fitur Movement saat karakter respawn
     flyEnabled = false
     noclipEnabled = false
     speedEnabled = false
@@ -372,43 +212,33 @@ characterConnection = player.CharacterAdded:Connect(function(newCharacter)
     spiderEnabled = false
     playerPhaseEnabled = false
     
-    toggleFly(false, { notify = print })
-    toggleNoclip(false, { notify = print })
-    toggleSpeed(false, { notify = print })
-    toggleJumpHigh(false, { notify = print })
-    toggleSpider(false, { notify = print })
-    togglePlayerPhase(false, { notify = print })
-    
-    buttonStates["Fly"] = false
-    buttonStates["Noclip"] = false
-    buttonStates["Speed"] = false
-    buttonStates["Jump High"] = false
-    buttonStates["Spider"] = false
-    buttonStates["Player Phase"] = false
+    toggleFly(false)
+    toggleNoclip(false)
+    toggleSpeed(false)
+    toggleJumpHigh(false)
+    toggleSpider(false)
+    togglePlayerPhase(false)
 end)
 
--- Cleanup on script destruction
-local function onScriptDestroy()
-    cleanup()
-    if characterConnection then
-        characterConnection:Disconnect()
-        characterConnection = nil
+-- Cleanup saat script dihancurkan
+local function cleanup()
+    -- Matikan semua fitur Movement
+    toggleFly(false)
+    toggleNoclip(false)
+    toggleSpeed(false)
+    toggleJumpHigh(false)
+    toggleSpider(false)
+    togglePlayerPhase(false)
+    
+    -- Putuskan semua koneksi
+    for _, connection in pairs(connections) do
+        if connection then
+            connection:Disconnect()
+        end
     end
 end
 
--- Connect cleanup to GUI destruction
-local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
-if screenGui then
-    screenGui.AncestryChanged:Connect(function(_, parent)
-        if not parent then
-            onScriptDestroy()
-        end
-    end)
-end
+-- Tangani penutupan game atau script
+game:BindToClose(cleanup)
 
--- Return module
-return {
-    loadButtons = loadButtons,
-    cleanup = cleanup,
-    reset = cleanup
-}
+print("Movement Features Loaded")
