@@ -4,18 +4,16 @@ local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
--- AUTO-DISABLE PREVIOUS SCRIPTS
+-- Clean up existing MinimalHackGUI
 for _, gui in pairs(CoreGui:GetChildren()) do
     if gui.Name == "MinimalHackGUI" then
         gui:Destroy()
     end
 end
 
--- Load Info module
+-- Load Info module only
 local modules = {}
-local success, result = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Info.lua", true))()
-end)
+local success, result = loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Info.lua", true))()
 if success and result then
     modules.Info = result
 end
@@ -26,6 +24,19 @@ ScreenGui.Name = "MinimalHackGUI"
 ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
+
+-- Fallback TestLabel
+local TestLabel = Instance.new("TextLabel")
+TestLabel.Name = "TestLabel"
+TestLabel.Parent = ScreenGui
+TestLabel.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+TestLabel.Size = UDim2.new(0, 200, 0, 50)
+TestLabel.Position = UDim2.new(0.5, -100, 0.5, -25)
+TestLabel.Font = Enum.Font.Gotham
+TestLabel.Text = "GUI TEST - Fari Noveri"
+TestLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TestLabel.TextSize = 14
+TestLabel.Visible = true
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
@@ -70,6 +81,19 @@ Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
+local CategoryFrame = Instance.new("Frame")
+CategoryFrame.Name = "CategoryFrame"
+CategoryFrame.Parent = MainFrame
+CategoryFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+CategoryFrame.BorderSizePixel = 0
+CategoryFrame.Position = UDim2.new(0, 0, 0, 35)
+CategoryFrame.Size = UDim2.new(0, 140, 1, -35)
+
+local CategoryList = Instance.new("UIListLayout")
+CategoryList.Parent = CategoryFrame
+CategoryList.Padding = UDim.new(0, 2)
+CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
+
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
 ContentFrame.Parent = MainFrame
@@ -88,7 +112,7 @@ ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
 ScrollFrame.BorderSizePixel = 0
 ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-ScrollFrame.VerticalScroll(renameFileName) = "mainloader_minimal.lua"
+ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
 local UIListLayout = Instance.new("UIListLayout")
@@ -103,5 +127,72 @@ if modules.Info then
         InfoScrollFrame = ScrollFrame,
         InfoLayout = UIListLayout
     })
-    modules.Info.updateGui()
 end
+
+-- Create category button
+local function createCategoryButton(name)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Category"
+    button.Parent = CategoryFrame
+    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, 0, 0, 35)
+    button.Font = Enum.Font.Gotham
+    button.Text = name:upper()
+    button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    button.TextSize = 10
+    
+    button.MouseButton1Click:Connect(function()
+        switchCategory(name)
+    end)
+    
+    return button
+end
+
+-- Clear buttons
+local function clearButtons()
+    for _, child in pairs(ScrollFrame:GetChildren()) do
+        if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+end
+
+-- Category switching
+local currentCategory = "Info"
+function switchCategory(categoryName)
+    currentCategory = categoryName
+    
+    for _, child in pairs(CategoryFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            if child.Name == categoryName .. "Category" then
+                child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                child.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                child.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                child.TextColor3 = Color3.fromRGB(200, 200, 200)
+            end
+        end
+    end
+    
+    clearButtons()
+    
+    if categoryName == "Info" and modules.Info then
+        modules.Info.updateGui()
+    end
+    
+    wait(0.1)
+    local contentSize = UIListLayout.AbsoluteContentSize
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+end
+
+-- Initialize categories
+createCategoryButton("Info")
+
+-- Initialize GUI
+switchCategory("Info")
+
+-- Update CategoryFrame size
+wait(0.1)
+local categoryContentSize = CategoryList.AbsoluteContentSize
+CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
