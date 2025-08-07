@@ -12,17 +12,17 @@ local rootPart = character:WaitForChild("HumanoidRootPart")
 local backpack = player:WaitForChild("Backpack")
 local camera = Workspace.CurrentCamera
 
--- GUI untuk notifikasi
+-- GUI untuk peringatan
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AntiAdminGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player.PlayerGui
 
--- Frame untuk notifikasi
+-- Frame untuk peringatan - ukuran lebih kecil dan kotak
 local notificationFrame = Instance.new("Frame")
 notificationFrame.Name = "NotificationFrame"
-notificationFrame.Size = UDim2.new(0, 350, 0, 300)
-notificationFrame.Position = UDim2.new(1, -370, 0, 20)
+notificationFrame.Size = UDim2.new(0, 200, 0, 200) -- Lebih kecil dan kotak
+notificationFrame.Position = UDim2.new(1, -210, 0, 10) -- Posisi kanan atas
 notificationFrame.BackgroundTransparency = 1
 notificationFrame.Parent = screenGui
 
@@ -31,7 +31,7 @@ local antiAdminEnabled = true
 local protectedPlayers = {}
 local detectedExploiters = {}
 local detectedAdmins = {}
-local playerProfiles = {} -- Profile setiap player untuk analisis
+local playerProfiles = {}
 local lastKnownPosition = rootPart and rootPart.CFrame or CFrame.new(0, 0, 0)
 local lastKnownHealth = humanoid and humanoid.Health or 100
 local lastKnownVelocity = rootPart and rootPart.Velocity or Vector3.new(0, 0, 0)
@@ -46,7 +46,7 @@ local exploiterConnections = {}
 local maxReverseAttempts = 10
 local notifications = {}
 
--- Known Admin/Staff IDs (dapat diupdate)
+-- ID Admin yang dikenal
 local knownAdminIds = {
     261, -- ROBLOX
     1, -- Admin
@@ -54,9 +54,8 @@ local knownAdminIds = {
     -- Tambahkan ID admin game ini
 }
 
--- Advanced Exploit Detection Patterns
+-- Pola deteksi exploit
 local exploitSignatures = {
-    -- Executor-specific patterns
     synapse = {
         functions = {"syn", "Synapse", "getgenv", "secure_call"},
         globals = {"syn_clipboard_get", "syn_io_read", "syn_io_write", "syn_request"},
@@ -77,7 +76,6 @@ local exploitSignatures = {
         globals = {"jjsploit_version"},
         properties = {"jjx"}
     },
-    -- Universal patterns
     universal = {
         functions = {"loadstring", "getfenv", "setfenv", "debug", "getupvalue", "setupvalue"},
         globals = {"_G", "shared", "getgenv", "getrenv", "getfenv", "setfenv"},
@@ -85,7 +83,7 @@ local exploitSignatures = {
     }
 }
 
--- Player behavior analysis
+-- Membuat profil pemain
 local function createPlayerProfile(targetPlayer)
     if playerProfiles[targetPlayer] then return end
     
@@ -98,32 +96,32 @@ local function createPlayerProfile(targetPlayer)
         lastSpeeds = {},
         toolHistory = {},
         chatHistory = {},
-        exploitType = "Unknown",
+        exploitType = "Tidak diketahui",
         isConfirmed = false,
         detectionMethods = {}
     }
 end
 
--- Fungsi untuk membuat notifikasi
+-- Fungsi untuk membuat peringatan - lebih sederhana dan kecil
 local function createNotification(text, color, duration)
     local notification = Instance.new("TextLabel")
-    notification.Size = UDim2.new(1, 0, 0, 30)
+    notification.Size = UDim2.new(1, 0, 0, 25) -- Tinggi lebih kecil
     notification.BackgroundColor3 = color or Color3.fromRGB(255, 0, 0)
-    notification.BackgroundTransparency = 0.2
+    notification.BackgroundTransparency = 0.1
     notification.BorderSizePixel = 0
     notification.Text = text
     notification.TextColor3 = Color3.fromRGB(255, 255, 255)
     notification.TextScaled = true
-    notification.Font = Enum.Font.GothamBold
+    notification.Font = Enum.Font.Gotham
     notification.Parent = notificationFrame
     
-    -- Rounded corners
+    -- Sudut melengkung
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
+    corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = notification
     
-    -- Posisi notifikasi
-    local yPos = #notifications * 35
+    -- Posisi peringatan
+    local yPos = #notifications * 30 -- Jarak antar notifikasi lebih kecil
     notification.Position = UDim2.new(0, 0, 0, yPos)
     
     table.insert(notifications, notification)
@@ -132,22 +130,22 @@ local function createNotification(text, color, duration)
     notification:TweenPosition(
         UDim2.new(0, 0, 0, yPos),
         Enum.EasingDirection.Out,
-        Enum.EasingStyle.Bounce,
-        0.5
+        Enum.EasingStyle.Quad,
+        0.3
     )
     
-    -- Auto remove setelah durasi
+    -- Hilang otomatis setelah durasi lebih singkat
     spawn(function()
-        wait(duration or 10)
+        wait(duration or 4) -- Durasi default lebih singkat
         notification:TweenPosition(
             UDim2.new(1, 0, 0, yPos),
             Enum.EasingDirection.In,
             Enum.EasingStyle.Quad,
-            0.5
+            0.3
         )
-        wait(0.5)
+        wait(0.3)
         
-        -- Remove dari array
+        -- Hapus dari array
         for i, v in pairs(notifications) do
             if v == notification then
                 table.remove(notifications, i)
@@ -157,25 +155,25 @@ local function createNotification(text, color, duration)
         
         notification:Destroy()
         
-        -- Reposisi notifikasi lainnya
+        -- Atur ulang posisi peringatan lainnya
         for i, notif in pairs(notifications) do
             notif:TweenPosition(
-                UDim2.new(0, 0, 0, (i-1) * 35),
+                UDim2.new(0, 0, 0, (i-1) * 30),
                 Enum.EasingDirection.Out,
                 Enum.EasingStyle.Quad,
-                0.3
+                0.2
             )
         end
     end)
 end
 
--- Advanced exploit detection berdasarkan environment
+-- Deteksi exploit berdasarkan environment
 local function detectExploitEnvironment()
     local exploitDetected = false
-    local exploitType = "Unknown"
+    local exploitType = "Tidak diketahui"
     local detectionMethods = {}
     
-    -- Check for common exploit functions
+    -- Periksa fungsi exploit umum
     local testFunctions = {
         "getgenv", "getrenv", "getfenv", "setfenv", "debug.getupvalue", 
         "debug.setupvalue", "syn", "Synapse", "krnl", "ScriptWare",
@@ -202,7 +200,7 @@ local function detectExploitEnvironment()
             exploitDetected = true
             table.insert(detectionMethods, func)
             
-            -- Determine exploit type based on function
+            -- Tentukan jenis exploit berdasarkan fungsi
             if string.find(func:lower(), "syn") then
                 exploitType = "Synapse X"
             elseif string.find(func:lower(), "krnl") then
@@ -210,12 +208,12 @@ local function detectExploitEnvironment()
             elseif string.find(func:lower(), "script") then
                 exploitType = "ScriptWare"
             elseif func == "loadstring" or func == "HttpGet" then
-                exploitType = "Generic Executor"
+                exploitType = "Executor Umum"
             end
         end
     end
     
-    -- Check for exploit-specific globals
+    -- Periksa global exploit
     local exploitGlobals = {"syn", "krnl", "ScriptWare", "JJSploit", "Fluxus", "Delta"}
     for _, global in pairs(exploitGlobals) do
         if _G[global] then
@@ -225,7 +223,7 @@ local function detectExploitEnvironment()
         end
     end
     
-    -- Check for common exploit patterns in environment
+    -- Periksa pola exploit dalam environment
     local function checkEnvironment(env)
         for name, value in pairs(env) do
             if type(name) == "string" then
@@ -238,9 +236,9 @@ local function detectExploitEnvironment()
                 for _, pattern in pairs(suspiciousPatterns) do
                     if string.find(lowerName, pattern) then
                         exploitDetected = true
-                        table.insert(detectionMethods, "Suspicious global: " .. name)
-                        if exploitType == "Unknown" then
-                            exploitType = "Custom Executor"
+                        table.insert(detectionMethods, "Global mencurigakan: " .. name)
+                        if exploitType == "Tidak diketahui" then
+                            exploitType = "Executor Kustom"
                         end
                     end
                 end
@@ -248,7 +246,7 @@ local function detectExploitEnvironment()
         end
     end
     
-    -- Safely check environments
+    -- Periksa environment dengan aman
     pcall(function() checkEnvironment(_G) end)
     pcall(function() checkEnvironment(shared) end)
     pcall(function() checkEnvironment(getfenv(0)) end)
@@ -256,20 +254,20 @@ local function detectExploitEnvironment()
     return exploitDetected, exploitType, detectionMethods
 end
 
--- Detect exploit berdasarkan script analysis
+-- Deteksi exploit berdasarkan analisis script
 local function detectScriptExploit(targetPlayer)
     if not targetPlayer.Character then return false end
     
     local suspicious = false
-    local exploitType = "Unknown"
+    local exploitType = "Tidak diketahui"
     local methods = {}
     
-    -- Check player's scripts (LocalScripts in StarterPlayerScripts)
+    -- Periksa script pemain
     local playerScripts = targetPlayer:FindFirstChild("PlayerScripts")
     if playerScripts then
         local function checkScript(script)
             if script:IsA("LocalScript") or script:IsA("ModuleScript") then
-                -- Check script source for exploit patterns
+                -- Periksa source script untuk pola exploit
                 local success, source = pcall(function()
                     return script.Source
                 end)
@@ -285,8 +283,8 @@ local function detectScriptExploit(targetPlayer)
                     for _, pattern in pairs(exploitPatterns) do
                         if string.find(lowerSource, pattern) then
                             suspicious = true
-                            exploitType = "Script-based Exploit"
-                            table.insert(methods, "Pattern: " .. pattern)
+                            exploitType = "Exploit Berbasis Script"
+                            table.insert(methods, "Pola: " .. pattern)
                         end
                     end
                 end
@@ -301,7 +299,7 @@ local function detectScriptExploit(targetPlayer)
     return suspicious, exploitType, methods
 end
 
--- Advanced player behavior analysis
+-- Analisis perilaku pemain
 local function analyzePlayerBehavior(targetPlayer)
     local profile = playerProfiles[targetPlayer]
     if not profile then return false end
@@ -309,14 +307,14 @@ local function analyzePlayerBehavior(targetPlayer)
     local suspicious = false
     local reasons = {}
     
-    -- Analyze join time vs behavior (exploiters often act quickly)
+    -- Analisis waktu bergabung vs perilaku
     local timeSinceJoin = tick() - profile.joinTime
     if timeSinceJoin < 10 and profile.suspicionLevel > 3 then
         suspicious = true
-        table.insert(reasons, "Suspicious behavior too quickly after joining")
+        table.insert(reasons, "Perilaku mencurigakan terlalu cepat setelah bergabung")
     end
     
-    -- Analyze position patterns
+    -- Analisis pola posisi
     if #profile.lastPositions >= 5 then
         local positionJumps = 0
         for i = 2, #profile.lastPositions do
@@ -328,11 +326,11 @@ local function analyzePlayerBehavior(targetPlayer)
         
         if positionJumps >= 3 then
             suspicious = true
-            table.insert(reasons, "Multiple position jumps detected")
+            table.insert(reasons, "Berpindah posisi tidak wajar")
         end
     end
     
-    -- Analyze speed patterns
+    -- Analisis pola kecepatan
     if #profile.lastSpeeds >= 3 then
         local abnormalSpeeds = 0
         for _, speed in pairs(profile.lastSpeeds) do
@@ -343,14 +341,14 @@ local function analyzePlayerBehavior(targetPlayer)
         
         if abnormalSpeeds >= 2 then
             suspicious = true
-            table.insert(reasons, "Abnormal speeds detected")
+            table.insert(reasons, "Kecepatan tidak normal")
         end
     end
     
     return suspicious, reasons
 end
 
--- Ultimate exploit detection
+-- Deteksi exploit utama
 local function ultimateExploitDetection(targetPlayer)
     if targetPlayer == player then return false end
     
@@ -358,11 +356,11 @@ local function ultimateExploitDetection(targetPlayer)
     local profile = playerProfiles[targetPlayer]
     
     local isExploiter = false
-    local exploitType = "Unknown"
+    local exploitType = "Tidak diketahui"
     local detectionMethods = {}
     local confidence = 0
     
-    -- Method 1: Environment detection (if it's our own player)
+    -- Metode 1: Deteksi environment (jika pemain sendiri)
     if targetPlayer == player then
         local envDetected, envType, envMethods = detectExploitEnvironment()
         if envDetected then
@@ -373,35 +371,35 @@ local function ultimateExploitDetection(targetPlayer)
         end
     end
     
-    -- Method 2: Script analysis
+    -- Metode 2: Analisis script
     local scriptDetected, scriptType, scriptMethods = detectScriptExploit(targetPlayer)
     if scriptDetected then
         isExploiter = true
-        if exploitType == "Unknown" then exploitType = scriptType end
+        if exploitType == "Tidak diketahui" then exploitType = scriptType end
         for _, method in pairs(scriptMethods) do
             table.insert(detectionMethods, method)
         end
         confidence = confidence + 30
     end
     
-    -- Method 3: Behavior analysis
+    -- Metode 3: Analisis perilaku
     local behaviorSuspicious, behaviorReasons = analyzePlayerBehavior(targetPlayer)
     if behaviorSuspicious then
         isExploiter = true
-        if exploitType == "Unknown" then exploitType = "Behavioral Detection" end
+        if exploitType == "Tidak diketahui" then exploitType = "Deteksi Perilaku" end
         for _, reason in pairs(behaviorReasons) do
             table.insert(detectionMethods, reason)
         end
         confidence = confidence + 20
     end
     
-    -- Method 4: Character properties analysis
+    -- Metode 4: Analisis properti karakter
     if targetPlayer.Character then
         local humanoidCheck = targetPlayer.Character:FindFirstChild("Humanoid")
         local rootPartCheck = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         
         if humanoidCheck and rootPartCheck then
-            -- Update profile data
+            -- Update data profil
             table.insert(profile.lastPositions, rootPartCheck.Position)
             if #profile.lastPositions > 10 then
                 table.remove(profile.lastPositions, 1)
@@ -417,38 +415,38 @@ local function ultimateExploitDetection(targetPlayer)
                 table.remove(profile.lastHealths, 1)
             end
             
-            -- Immediate red flags
+            -- Tanda bahaya langsung
             if humanoidCheck.WalkSpeed > 100 or humanoidCheck.WalkSpeed < 0 then
                 isExploiter = true
-                exploitType = "Speed Exploit"
-                table.insert(detectionMethods, "Abnormal WalkSpeed: " .. humanoidCheck.WalkSpeed)
+                exploitType = "Speed Hack"
+                table.insert(detectionMethods, "WalkSpeed tidak wajar: " .. humanoidCheck.WalkSpeed)
                 confidence = confidence + 40
             end
             
             if humanoidCheck.JumpPower > 200 or humanoidCheck.JumpPower < 0 then
                 isExploiter = true
-                exploitType = "Jump Exploit"
-                table.insert(detectionMethods, "Abnormal JumpPower: " .. humanoidCheck.JumpPower)
+                exploitType = "Jump Hack"
+                table.insert(detectionMethods, "JumpPower tidak wajar: " .. humanoidCheck.JumpPower)
                 confidence = confidence + 40
             end
             
             if rootPartCheck.Position.Y > 300 and rootPartCheck.Velocity.Y > -5 then
                 isExploiter = true
-                exploitType = "Fly Exploit"
-                table.insert(detectionMethods, "Flying at Y: " .. rootPartCheck.Position.Y)
+                exploitType = "Fly Hack"
+                table.insert(detectionMethods, "Terbang di Y: " .. rootPartCheck.Position.Y)
                 confidence = confidence + 35
             end
             
             if rootPartCheck.Velocity.Magnitude > 150 then
                 isExploiter = true
-                exploitType = "Velocity Exploit"
-                table.insert(detectionMethods, "Extreme velocity: " .. rootPartCheck.Velocity.Magnitude)
+                exploitType = "Velocity Hack"
+                table.insert(detectionMethods, "Kecepatan ekstrem: " .. rootPartCheck.Velocity.Magnitude)
                 confidence = confidence + 35
             end
         end
     end
     
-    -- Method 5: Tool analysis
+    -- Metode 5: Analisis tool
     local suspiciousTools = 0
     local toolNames = {}
     
@@ -457,7 +455,7 @@ local function ultimateExploitDetection(targetPlayer)
             table.insert(toolNames, tool.Name)
             local toolName = string.lower(tool.Name)
             
-            -- Advanced tool pattern matching
+            -- Pencocokan pola tool exploit
             local exploitToolPatterns = {
                 "admin", "exploit", "script", "hack", "cheat", "god", "kill", 
                 "ban", "kick", "fly", "speed", "teleport", "noclip", "inf",
@@ -467,7 +465,7 @@ local function ultimateExploitDetection(targetPlayer)
             for _, pattern in pairs(exploitToolPatterns) do
                 if string.find(toolName, pattern) then
                     suspiciousTools = suspiciousTools + 1
-                    table.insert(detectionMethods, "Suspicious tool: " .. tool.Name)
+                    table.insert(detectionMethods, "Tool mencurigakan: " .. tool.Name)
                 end
             end
         end
@@ -488,7 +486,7 @@ local function ultimateExploitDetection(targetPlayer)
                 for _, pattern in pairs(exploitToolPatterns) do
                     if string.find(toolName, pattern) then
                         suspiciousTools = suspiciousTools + 1
-                        table.insert(detectionMethods, "Suspicious equipped tool: " .. tool.Name)
+                        table.insert(detectionMethods, "Tool terpasang mencurigakan: " .. tool.Name)
                     end
                 end
             end
@@ -497,17 +495,17 @@ local function ultimateExploitDetection(targetPlayer)
     
     if suspiciousTools >= 1 then
         isExploiter = true
-        if exploitType == "Unknown" then exploitType = "Tool-based Exploit" end
+        if exploitType == "Tidak diketahui" then exploitType = "Exploit Tool" end
         confidence = confidence + (suspiciousTools * 25)
     end
     
-    -- Method 6: Account analysis
+    -- Metode 6: Analisis akun
     if targetPlayer.AccountAge < 30 then
         confidence = confidence + 10
-        table.insert(detectionMethods, "New account (Age: " .. targetPlayer.AccountAge .. ")")
+        table.insert(detectionMethods, "Akun baru (Umur: " .. targetPlayer.AccountAge .. " hari)")
     end
     
-    -- Update profile
+    -- Update profil
     profile.exploitType = exploitType
     profile.detectionMethods = detectionMethods
     profile.isConfirmed = confidence >= 70
@@ -515,26 +513,26 @@ local function ultimateExploitDetection(targetPlayer)
     return isExploiter and confidence >= 50, exploitType, detectionMethods, confidence
 end
 
--- Check if player is admin
+-- Periksa apakah pemain adalah admin
 local function isAdmin(targetPlayer)
     return table.find(knownAdminIds, targetPlayer.UserId) ~= nil
 end
 
--- Scan player dengan detection yang comprehensive
+-- Pindai pemain dengan deteksi komprehensif
 local function scanPlayer(targetPlayer)
     if targetPlayer == player then return end
     
-    -- Admin check
+    -- Periksa admin
     if isAdmin(targetPlayer) then
         if not detectedAdmins[targetPlayer] then
             detectedAdmins[targetPlayer] = true
-            createNotification("ADMIN DETECTED: " .. targetPlayer.Name, Color3.fromRGB(255, 165, 0), 15)
-            print("Admin detected: " .. targetPlayer.Name .. " (ID: " .. targetPlayer.UserId .. ")")
+            createNotification("Admin: " .. targetPlayer.Name, Color3.fromRGB(255, 165, 0), 5)
+            print("Admin terdeteksi: " .. targetPlayer.Name .. " (ID: " .. targetPlayer.UserId .. ")")
         end
-        return -- Don't flag admins as exploiters
+        return -- Jangan tandai admin sebagai exploiter
     end
     
-    -- Exploit detection
+    -- Deteksi exploit
     local isExploiter, exploitType, methods, confidence = ultimateExploitDetection(targetPlayer)
     
     if isExploiter and not detectedExploiters[targetPlayer] then
@@ -547,25 +545,25 @@ local function scanPlayer(targetPlayer)
         
         local confidenceText = ""
         if confidence >= 90 then
-            confidenceText = " (CERTAIN)"
+            confidenceText = " (Pasti)"
         elseif confidence >= 70 then
-            confidenceText = " (LIKELY)"
+            confidenceText = " (Kemungkinan)"
         else
-            confidenceText = " (POSSIBLE)"
+            confidenceText = " (Mungkin)"
         end
         
         createNotification(
-            "EXPLOIT DETECTED: " .. targetPlayer.Name .. " (" .. exploitType .. ")" .. confidenceText, 
+            "Exploit: " .. targetPlayer.Name .. " (" .. exploitType .. ")" .. confidenceText, 
             Color3.fromRGB(255, 0, 0), 
-            20
+            6
         )
         
-        print("Exploiter detected: " .. targetPlayer.Name .. " - " .. exploitType .. " (Confidence: " .. confidence .. "%)")
-        print("Detection methods: " .. table.concat(methods, ", "))
+        print("Exploiter terdeteksi: " .. targetPlayer.Name .. " - " .. exploitType .. " (Keyakinan: " .. confidence .. "%)")
+        print("Metode deteksi: " .. table.concat(methods, ", "))
     end
 end
 
--- Continuous scanning system
+-- Sistem pemindaian berkelanjutan
 local function continuousScan()
     spawn(function()
         while antiAdminEnabled do
@@ -574,20 +572,20 @@ local function continuousScan()
                     scanPlayer(targetPlayer)
                 end
             end
-            wait(0.5) -- Scan setiap 0.5 detik untuk deteksi real-time
+            wait(0.5) -- Pindai setiap 0.5 detik untuk deteksi real-time
         end
     end)
 end
 
--- Instant detection saat player join
+-- Deteksi instan saat pemain bergabung
 local function onPlayerAdded(newPlayer)
     spawn(function()
-        -- Immediate scan
+        -- Pindai langsung
         scanPlayer(newPlayer)
         
-        -- Wait for character and scan again
+        -- Tunggu karakter dan pindai lagi
         local function onCharacterAdded(character)
-            wait(0.1) -- Minimal wait
+            wait(0.1) -- Tunggu minimal
             scanPlayer(newPlayer)
         end
         
@@ -598,7 +596,7 @@ local function onPlayerAdded(newPlayer)
             onCharacterAdded(newPlayer.Character)
         end
         
-        -- Continuous monitoring for this specific player
+        -- Monitor berkelanjutan untuk pemain ini
         spawn(function()
             while newPlayer.Parent == Players and antiAdminEnabled do
                 scanPlayer(newPlayer)
@@ -609,7 +607,7 @@ local function onPlayerAdded(newPlayer)
 end
 
 local function onPlayerRemoving(leavingPlayer)
-    -- Clean up
+    -- Bersihkan
     if exploiterConnections[leavingPlayer] then
         for _, connection in pairs(exploiterConnections[leavingPlayer]) do
             if connection then
@@ -624,7 +622,7 @@ local function onPlayerRemoving(leavingPlayer)
     playerProfiles[leavingPlayer] = nil
 end
 
--- Rest of the protection functions remain the same...
+-- Fungsi untuk memperbarui cache tool
 local function updateToolCache()
     lastKnownTools = {}
     for _, tool in pairs(backpack:GetChildren()) do
@@ -634,10 +632,12 @@ local function updateToolCache()
     end
 end
 
+-- Periksa apakah pemain memiliki anti admin
 local function hasAntiAdmin(targetPlayer)
     return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
 end
 
+-- Update pemain yang dilindungi
 local function updateProtectedPlayers()
     protectedPlayers = {}
     for _, p in pairs(Players:GetPlayers()) do
@@ -647,6 +647,7 @@ local function updateProtectedPlayers()
     end
 end
 
+-- Cari target yang tidak dilindungi
 local function findUnprotectedTarget(excludePlayers)
     local availablePlayers = {}
     for _, p in pairs(Players:GetPlayers()) do
@@ -662,6 +663,7 @@ local function findUnprotectedTarget(excludePlayers)
     return nil
 end
 
+-- Balikkan efek
 local function reverseEffect(effectType, originalSource)
     if not antiAdminEnabled then return end
 
@@ -682,28 +684,28 @@ local function reverseEffect(effectType, originalSource)
         pcall(function()
             if effectType == "kill" then
                 targetHumanoid.Health = 0
-                print("Reversed kill effect to: " .. currentTarget.Name)
+                print("Efek kill dibalikkan ke: " .. currentTarget.Name)
             elseif effectType == "teleport" then
                 targetRootPart.CFrame = CFrame.new(Vector3.new(math.random(-1000, 1000), math.random(50, 500), math.random(-1000, 1000)))
-                print("Reversed teleport effect to: " .. currentTarget.Name)
+                print("Efek teleport dibalikkan ke: " .. currentTarget.Name)
             elseif effectType == "fling" then
                 targetRootPart.Velocity = Vector3.new(math.random(-100, 100), math.random(50, 200), math.random(-100, 100))
-                print("Reversed fling effect to: " .. currentTarget.Name)
+                print("Efek fling dibalikkan ke: " .. currentTarget.Name)
             elseif effectType == "freeze" then
                 targetRootPart.Anchored = true
-                print("Reversed freeze effect to: " .. currentTarget.Name)
+                print("Efek freeze dibalikkan ke: " .. currentTarget.Name)
             end
         end)
     end
 end
 
--- Protection handlers
+-- Handler perlindungan
 local function handleAntiAdmin()
     antiAdminConnections.health = humanoid.HealthChanged:Connect(function(health)
         if not antiAdminEnabled then return end
         if health < lastKnownHealth and health <= 0 then
             humanoid.Health = lastKnownHealth
-            createNotification("KILL ATTEMPT BLOCKED", Color3.fromRGB(0, 255, 0), 5)
+            createNotification("Kill Diblokir", Color3.fromRGB(0, 255, 0), 3)
             reverseEffect("kill")
         end
         lastKnownHealth = humanoid.Health
@@ -715,7 +717,7 @@ local function handleAntiAdmin()
         local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
         if distance > 75 then
             rootPart.CFrame = lastKnownPosition
-            createNotification("TELEPORT BLOCKED", Color3.fromRGB(0, 255, 0), 5)
+            createNotification("Teleport Diblokir", Color3.fromRGB(0, 255, 0), 3)
             reverseEffect("teleport")
         else
             lastKnownPosition = currentPos
@@ -727,7 +729,7 @@ local function handleAntiAdmin()
         local currentVelocity = rootPart.Velocity
         if currentVelocity.Magnitude > 100 then
             rootPart.Velocity = lastKnownVelocity
-            createNotification("FLING BLOCKED", Color3.fromRGB(0, 255, 0), 5)
+            createNotification("Fling Diblokir", Color3.fromRGB(0, 255, 0), 3)
             reverseEffect("fling")
         else
             lastKnownVelocity = currentVelocity
@@ -738,7 +740,7 @@ local function handleAntiAdmin()
         if not antiAdminEnabled then return end
         if rootPart.Anchored and not lastKnownAnchored then
             rootPart.Anchored = false
-            createNotification("FREEZE BLOCKED", Color3.fromRGB(0, 255, 0), 5)
+            createNotification("Freeze Diblokir", Color3.fromRGB(0, 255, 0), 3)
             reverseEffect("freeze")
         end
         lastKnownAnchored = rootPart.Anchored
@@ -748,7 +750,7 @@ local function handleAntiAdmin()
         if not antiAdminEnabled then return end
         if math.abs(humanoid.WalkSpeed - lastKnownWalkSpeed) > 5 then
             humanoid.WalkSpeed = lastKnownWalkSpeed
-            createNotification("SPEED CHANGE BLOCKED", Color3.fromRGB(0, 255, 0), 5)
+            createNotification("Speed Diblokir", Color3.fromRGB(0, 255, 0), 3)
         end
         lastKnownWalkSpeed = humanoid.WalkSpeed
     end)
@@ -757,19 +759,19 @@ local function handleAntiAdmin()
         if not antiAdminEnabled then return end
         if math.abs(humanoid.JumpPower - lastKnownJumpPower) > 5 then
             humanoid.JumpPower = lastKnownJumpPower
-            createNotification("JUMP BLOCKED", Color3.fromRGB(0, 255, 0), 5)
+            createNotification("Jump Diblokir", Color3.fromRGB(0, 255, 0), 3)
         end
         lastKnownJumpPower = humanoid.JumpPower
     end)
 end
 
--- Initialize everything
+-- Inisialisasi semua
 local function initializeAntiAdmin()
     antiAdminEnabled = true
-    createNotification("ULTIMATE ANTI-ADMIN LOADED", Color3.fromRGB(0, 255, 0), 8)
-    print("Ultimate Anti Admin & Instant Exploit Detection Loaded - By Fari Noveri")
+    createNotification("Anti Admin Aktif", Color3.fromRGB(0, 255, 0), 4)
+    print("Anti Admin & Deteksi Exploit Dimuat - Oleh Fari Noveri")
     
-    -- Scan existing players immediately
+    -- Pindai pemain yang sudah ada
     for _, existingPlayer in pairs(Players:GetPlayers()) do
         if existingPlayer ~= player then
             onPlayerAdded(existingPlayer)
@@ -806,7 +808,7 @@ local function initializeAntiAdmin()
         lastKnownCameraSubject = camera.CameraSubject
         updateToolCache()
         
-        -- Disconnect old connections
+        -- Putus koneksi lama
         for _, conn in pairs(antiAdminConnections) do
             if conn then
                 conn:Disconnect()
@@ -814,12 +816,12 @@ local function initializeAntiAdmin()
         end
         antiAdminConnections = {}
         
-        -- Restart protections
+        -- Mulai ulang perlindungan
         handleAntiAdmin()
     end)
 end
 
--- Cleanup function
+-- Fungsi pembersihan
 local function cleanup()
     antiAdminEnabled = false
     
@@ -841,24 +843,24 @@ local function cleanup()
         screenGui:Destroy()
     end
     
-    print("Anti Admin system cleaned up")
+    print("Sistem Anti Admin dibersihkan")
 end
 
--- Advanced network monitoring (deteksi remote events exploit)
+-- Monitor exploit jaringan
 local function monitorNetworkExploits()
     spawn(function()
         while antiAdminEnabled do
-            -- Monitor for suspicious remote events
+            -- Monitor remote events yang mencurigakan
             for _, service in pairs({game.ReplicatedStorage, game.ReplicatedFirst}) do
                 for _, remote in pairs(service:GetDescendants()) do
                     if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
-                        -- Monitor remote usage patterns
+                        -- Monitor pola penggunaan remote
                         pcall(function()
                             local originalFire = remote.FireServer
                             remote.FireServer = function(self, ...)
                                 local args = {...}
                                 
-                                -- Check for exploit-like arguments
+                                -- Periksa argumen yang mencurigakan
                                 for _, arg in pairs(args) do
                                     if type(arg) == "string" then
                                         local lowerArg = string.lower(arg)
@@ -871,11 +873,11 @@ local function monitorNetworkExploits()
                                         for _, keyword in pairs(exploitKeywords) do
                                             if string.find(lowerArg, keyword) then
                                                 createNotification(
-                                                    "REMOTE EXPLOIT ATTEMPT: " .. remote.Name, 
+                                                    "Remote Exploit: " .. remote.Name, 
                                                     Color3.fromRGB(255, 100, 100), 
-                                                    8
+                                                    4
                                                 )
-                                                return -- Block the request
+                                                return -- Blokir permintaan
                                             end
                                         end
                                     end
@@ -892,23 +894,23 @@ local function monitorNetworkExploits()
     end)
 end
 
--- Memory scanning untuk deteksi exploit yang lebih dalam
+-- Pemindaian memori mendalam
 local function deepMemoryScan()
     spawn(function()
         while antiAdminEnabled do
             pcall(function()
-                -- Scan untuk process yang mencurigakan
+                -- Pindai proses yang mencurigakan
                 local suspiciousProcesses = {
                     "cheat", "hack", "exploit", "inject", "dll", 
                     "synapse", "krnl", "jjsploit", "scriptware"
                 }
                 
-                -- Check environment untuk tanda-tanda exploit
+                -- Periksa environment untuk tanda exploit
                 local function scanEnvironment()
                     local suspicious = false
                     local foundExploits = {}
                     
-                    -- Scan _G table
+                    -- Pindai tabel _G
                     for key, value in pairs(_G) do
                         if type(key) == "string" then
                             local lowerKey = string.lower(key)
@@ -921,7 +923,7 @@ local function deepMemoryScan()
                         end
                     end
                     
-                    -- Scan shared table
+                    -- Pindai tabel shared
                     if shared then
                         for key, value in pairs(shared) do
                             if type(key) == "string" then
@@ -938,9 +940,9 @@ local function deepMemoryScan()
                     
                     if suspicious then
                         createNotification(
-                            "DEEP SCAN: EXPLOIT DETECTED (" .. table.concat(foundExploits, ", ") .. ")",
+                            "Exploit Ditemukan: " .. table.concat(foundExploits, ", "),
                             Color3.fromRGB(255, 0, 100),
-                            12
+                            6
                         )
                     end
                 end
@@ -948,12 +950,12 @@ local function deepMemoryScan()
                 scanEnvironment()
             end)
             
-            wait(10) -- Deep scan setiap 10 detik
+            wait(10) -- Pindai mendalam setiap 10 detik
         end
     end)
 end
 
--- Auto-kick exploiters (optional, bisa diaktifkan/nonaktifkan)
+-- Auto-kick exploiter (opsional)
 local autoKickEnabled = false -- Set ke true jika ingin auto-kick
 
 local function autoKickExploiters()
@@ -963,33 +965,33 @@ local function autoKickExploiters()
         while antiAdminEnabled do
             for exploiter, data in pairs(detectedExploiters) do
                 if exploiter and exploiter.Parent == Players then
-                    if data.confidence >= 90 then -- Hanya kick jika confidence tinggi
+                    if data.confidence >= 90 then -- Hanya kick jika keyakinan tinggi
                         pcall(function()
-                            exploiter:Kick("Exploit detected: " .. data.type)
+                            exploiter:Kick("Exploit terdeteksi: " .. data.type)
                         end)
                         createNotification(
-                            "AUTO-KICKED: " .. exploiter.Name .. " (" .. data.type .. ")",
+                            "Auto-kick: " .. exploiter.Name,
                             Color3.fromRGB(255, 50, 50),
-                            10
+                            4
                         )
                     end
                 end
             end
-            wait(30) -- Check setiap 30 detik
+            wait(30) -- Periksa setiap 30 detik
         end
     end)
 end
 
--- Initialize semua sistem
+-- Inisialisasi semua sistem
 initializeAntiAdmin()
 monitorNetworkExploits()
 deepMemoryScan()
 autoKickExploiters()
 
--- Instant detection untuk current players
+-- Deteksi instan untuk pemain saat ini
 spawn(function()
-    wait(2) -- Tunggu sebentar untuk sistem stabil
-    createNotification("SCANNING ALL PLAYERS...", Color3.fromRGB(0, 200, 255), 3)
+    wait(2) -- Tunggu sistem stabil
+    createNotification("Memindai Pemain...", Color3.fromRGB(0, 200, 255), 2)
     
     for _, targetPlayer in pairs(Players:GetPlayers()) do
         if targetPlayer ~= player then
@@ -997,12 +999,12 @@ spawn(function()
         end
     end
     
-    createNotification("SCAN COMPLETE - MONITORING ACTIVE", Color3.fromRGB(0, 255, 0), 5)
+    createNotification("Pindai Selesai", Color3.fromRGB(0, 255, 0), 3)
 end)
 
-print("Ultimate Anti Admin & Instant Exploit Detection System Fully Loaded!")
-print("Features: Instant Detection | Deep Memory Scan | Network Monitor | Auto-Protection")
-print("Created by: Fari Noveri")
+print("Sistem Anti Admin & Deteksi Exploit Selesai Dimuat!")
+print("Fitur: Deteksi Instan | Pindai Memori | Monitor Jaringan | Perlindungan Otomatis")
+print("Dibuat oleh: Fari Noveri")
 
 return {
     cleanup = cleanup,
@@ -1014,9 +1016,9 @@ return {
         autoKickEnabled = enabled
         if enabled then
             autoKickExploiters()
-            print("Auto-kick enabled")
+            print("Auto-kick diaktifkan")
         else
-            print("Auto-kick disabled")
+            print("Auto-kick dinonaktifkan")
         end
     end
 }

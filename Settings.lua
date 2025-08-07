@@ -9,7 +9,11 @@ local CoreGui = game:GetService("CoreGui")
 local settings = {
     uiScale = 1, -- Default UI scale (1 = 100%)
     toggleKey = Enum.KeyCode.Insert, -- Default key to toggle GUI
-    notificationsEnabled = true -- Default notification setting
+    notificationsEnabled = true, -- Default notification setting
+    FlashlightBrightness = { value = 5, default = 5, min = 1, max = 10 },
+    FlashlightRange = { value = 100, default = 100, min = 50, max = 200 },
+    FullbrightBrightness = { value = 2, default = 2, min = 0, max = 5 },
+    FreecamSpeed = { value = 80, default = 80, min = 20, max = 300 }
 }
 local filePath = "DCIM/Supertool/settings.json"
 local inputConnection
@@ -24,12 +28,28 @@ local function loadSettings()
             settings.uiScale = data.uiScale or settings.uiScale
             settings.toggleKey = Enum.KeyCode[data.toggleKey] or settings.toggleKey
             settings.notificationsEnabled = data.notificationsEnabled ~= nil and data.notificationsEnabled
-            print("Loaded settings from " .. filePath)
+            settings.FlashlightBrightness.value = data.FlashlightBrightness or settings.FlashlightBrightness.default
+            settings.FlashlightRange.value = data.FlashlightRange or settings.FlashlightRange.default
+            settings.FullbrightBrightness.value = data.FullbrightBrightness or settings.FullbrightBrightness.default
+            settings.FreecamSpeed.value = data.FreecamSpeed or settings.FreecamSpeed.default
+            if utils and utils.notify then
+                utils.notify("Loaded settings from " .. filePath)
+            else
+                print("Loaded settings from " .. filePath)
+            end
         else
-            print("Failed to load settings from " .. filePath)
+            if utils and utils.notify then
+                utils.notify("Failed to load settings from " .. filePath)
+            else
+                print("Failed to load settings from " .. filePath)
+            end
         end
     else
-        print("No settings file found at " .. filePath)
+        if utils and utils.notify then
+            utils.notify("No settings file found at " .. filePath)
+        else
+            print("No settings file found at " .. filePath)
+        end
     end
 end
 
@@ -39,13 +59,25 @@ local function saveSettings()
         local data = {
             uiScale = settings.uiScale,
             toggleKey = settings.toggleKey.Name,
-            notificationsEnabled = settings.notificationsEnabled
+            notificationsEnabled = settings.notificationsEnabled,
+            FlashlightBrightness = settings.FlashlightBrightness.value,
+            FlashlightRange = settings.FlashlightRange.value,
+            FullbrightBrightness = settings.FullbrightBrightness.value,
+            FreecamSpeed = settings.FreecamSpeed.value
         }
         writefile(filePath, HttpService:JSONEncode(data))
-        print("Saved settings to " .. filePath)
+        if utils and utils.notify then
+            utils.notify("Saved settings to " .. filePath)
+        else
+            print("Saved settings to " .. filePath)
+        end
     end)
     if not success then
-        warn("Failed to save settings to " .. filePath .. ": " .. tostring(error))
+        if utils and utils.notify then
+            utils.notify("Failed to save settings to " .. filePath .. ": " .. tostring(error))
+        else
+            warn("Failed to save settings to " .. filePath .. ": " .. tostring(error))
+        end
     end
 end
 
@@ -98,6 +130,50 @@ local function loadButtons(scrollFrame, utils)
             print("Notifications " .. (state and "enabled" or "disabled"))
         end
     end).Parent = scrollFrame
+
+    -- Flashlight Brightness Slider
+    utils.createSlider("Flashlight Brightness", settings.FlashlightBrightness.min, settings.FlashlightBrightness.max, settings.FlashlightBrightness.value, function(value)
+        settings.FlashlightBrightness.value = value
+        saveSettings()
+        if utils.notify then
+            utils.notify("Flashlight Brightness set to " .. value)
+        else
+            print("Flashlight Brightness set to " .. value)
+        end
+    end).Parent = scrollFrame
+
+    -- Flashlight Range Slider
+    utils.createSlider("Flashlight Range", settings.FlashlightRange.min, settings.FlashlightRange.max, settings.FlashlightRange.value, function(value)
+        settings.FlashlightRange.value = value
+        saveSettings()
+        if utils.notify then
+            utils.notify("Flashlight Range set to " .. value)
+        else
+            print("Flashlight Range set to " .. value)
+        end
+    end).Parent = scrollFrame
+
+    -- Fullbright Brightness Slider
+    utils.createSlider("Fullbright Brightness", settings.FullbrightBrightness.min, settings.FullbrightBrightness.max, settings.FullbrightBrightness.value, function(value)
+        settings.FullbrightBrightness.value = value
+        saveSettings()
+        if utils.notify then
+            utils.notify("Fullbright Brightness set to " .. value)
+        else
+            print("Fullbright Brightness set to " .. value)
+        end
+    end).Parent = scrollFrame
+
+    -- Freecam Speed Slider
+    utils.createSlider("Freecam Speed", settings.FreecamSpeed.min, settings.FreecamSpeed.max, settings.FreecamSpeed.value, function(value)
+        settings.FreecamSpeed.value = value
+        saveSettings()
+        if utils.notify then
+            utils.notify("Freecam Speed set to " .. value)
+        else
+            print("Freecam Speed set to " .. value)
+        end
+    end).Parent = scrollFrame
 end
 
 -- Cleanup function
@@ -106,7 +182,7 @@ local function cleanup()
         inputConnection:Disconnect()
         inputConnection = nil
     end
-    saveSettings() -- Save settings before cleanup
+    saveSettings()
 end
 
 -- Cleanup on script destruction

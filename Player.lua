@@ -5,7 +5,6 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
-local PhysicsService = game:GetService("PhysicsService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -15,31 +14,22 @@ local rootPart = character:WaitForChild("HumanoidRootPart")
 -- Player feature variables
 local godModeEnabled = false
 local antiAFKEnabled = false
-local noclipEnabled = false
 local selectedPlayer = nil
 local playerListVisible = false
 local spectatePlayerList = {}
 local currentSpectateIndex = 0
 local spectateConnections = {}
 local connections = {}
+local PlayerListFrame = nil
 
 -- Button states for toggles
 local buttonStates = {
     ["God Mode"] = false,
-    ["Anti AFK"] = false,
-    ["Noclip"] = false
+    ["Anti AFK"] = false
 }
 
--- Setup collision group for Noclip
-local function setupCollisionGroup()
-    pcall(function()
-        PhysicsService:CreateCollisionGroup("Players")
-        PhysicsService:CollisionGroupSetCollidable("Players", "Players", false)
-    end)
-end
-
 -- God Mode
-local function toggleGodMode(enabled)
+local function toggleGodMode(enabled, utils)
     godModeEnabled = enabled
     if enabled then
         connections.godmode = humanoid.HealthChanged:Connect(function()
@@ -47,15 +37,26 @@ local function toggleGodMode(enabled)
                 humanoid.Health = humanoid.MaxHealth
             end
         end)
+        if utils.notify then
+            utils.notify("God Mode enabled")
+        else
+            print("God Mode enabled")
+        end
     else
         if connections.godmode then
             connections.godmode:Disconnect()
+            connections.godmode = nil
+        end
+        if utils.notify then
+            utils.notify("God Mode disabled")
+        else
+            print("God Mode disabled")
         end
     end
 end
 
 -- Anti AFK
-local function toggleAntiAFK(enabled)
+local function toggleAntiAFK(enabled, utils)
     antiAFKEnabled = enabled
     if enabled then
         connections.antiafk = Players.LocalPlayer.Idled:Connect(function()
@@ -64,62 +65,44 @@ local function toggleAntiAFK(enabled)
                 game:GetService("VirtualUser"):Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
             end
         end)
+        if utils.notify then
+            utils.notify("Anti AFK enabled")
+        else
+            print("Anti AFK enabled")
+        end
     else
         if connections.antiafk then
             connections.antiafk:Disconnect()
+            connections.antiafk = nil
         end
-    end
-end
-
--- Noclip
-local function toggleNoclip(enabled)
-    noclipEnabled = enabled
-    if enabled then
-        connections.noclip = RunService.Stepped:Connect(function()
-            if noclipEnabled and character then
-                for _, part in pairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                        pcall(function()
-                            part.CollisionGroup = "Players"
-                        end)
-                    end
-                end
-            end
-        end)
-    else
-        if connections.noclip then
-            connections.noclip:Disconnect()
-        end
-        if character then
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
-                    pcall(function()
-                        part.CollisionGroup = "Default"
-                    end)
-                end
-            end
+        if utils.notify then
+            utils.notify("Anti AFK disabled")
+        else
+            print("Anti AFK disabled")
         end
     end
 end
 
 -- Player Selection UI Creation
-local function createPlayerListUI()
+local function createPlayerListUI(screenGui)
     local PlayerListFrame = Instance.new("Frame")
     local PlayerListTitle = Instance.new("TextLabel")
     local ClosePlayerListButton = Instance.new("TextButton")
     local SelectedPlayerLabel = Instance.new("TextLabel")
     local PlayerListScrollFrame = Instance.new("ScrollingFrame")
     local PlayerListLayout = Instance.new("UIListLayout")
+    local NextSpectateButton = Instance.new("TextButton")
+    local PrevSpectateButton = Instance.new("TextButton")
+    local StopSpectateButton = Instance.new("TextButton")
+    local TeleportSpectateButton = Instance.new("TextButton")
 
     PlayerListFrame.Name = "PlayerListFrame"
-    PlayerListFrame.Parent = CoreGui
+    PlayerListFrame.Parent = screenGui
     PlayerListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
-    PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 350)
+    PlayerListFrame.Position = UDim2.new(0.5, -125, 0.2, 0)
+    PlayerListFrame.Size = UDim2.new(0, 250, 0, 300)
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
@@ -128,8 +111,7 @@ local function createPlayerListUI()
     PlayerListTitle.Parent = PlayerListFrame
     PlayerListTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     PlayerListTitle.BorderSizePixel = 0
-    PlayerListTitle.Position = UDim2.new(0, 0, 0, 0)
-    PlayerListTitle.Size = UDim2.new(1, 0, 0, 35)
+    PlayerListTitle.Size = UDim2.new(1, 0, 0, 30)
     PlayerListTitle.Font = Enum.Font.Gotham
     PlayerListTitle.Text = "SELECT PLAYER"
     PlayerListTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -138,8 +120,8 @@ local function createPlayerListUI()
     ClosePlayerListButton.Name = "CloseButton"
     ClosePlayerListButton.Parent = PlayerListFrame
     ClosePlayerListButton.BackgroundTransparency = 1
-    ClosePlayerListButton.Position = UDim2.new(1, -30, 0, 5)
-    ClosePlayerListButton.Size = UDim2.new(0, 25, 0, 25)
+    ClosePlayerListButton.Position = UDim2.new(1, -25, 0, 5)
+    ClosePlayerListButton.Size = UDim2.new(0, 20, 0, 20)
     ClosePlayerListButton.Font = Enum.Font.GothamBold
     ClosePlayerListButton.Text = "X"
     ClosePlayerListButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -149,18 +131,18 @@ local function createPlayerListUI()
     SelectedPlayerLabel.Parent = PlayerListFrame
     SelectedPlayerLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     SelectedPlayerLabel.BorderSizePixel = 0
-    SelectedPlayerLabel.Position = UDim2.new(0, 10, 0, 45)
-    SelectedPlayerLabel.Size = UDim2.new(1, -20, 0, 25)
+    SelectedPlayerLabel.Position = UDim2.new(0, 10, 0, 40)
+    SelectedPlayerLabel.Size = UDim2.new(1, -20, 0, 30)
     SelectedPlayerLabel.Font = Enum.Font.Gotham
     SelectedPlayerLabel.Text = "SELECTED: NONE"
     SelectedPlayerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    SelectedPlayerLabel.TextSize = 10
+    SelectedPlayerLabel.TextSize = 12
 
     PlayerListScrollFrame.Name = "PlayerListScrollFrame"
     PlayerListScrollFrame.Parent = PlayerListFrame
     PlayerListScrollFrame.BackgroundTransparency = 1
     PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 80)
-    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -90)
+    PlayerListScrollFrame.Size = UDim2.new(1, -20, 0, 140)
     PlayerListScrollFrame.ScrollBarThickness = 4
     PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
     PlayerListScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -169,100 +151,86 @@ local function createPlayerListUI()
     PlayerListScrollFrame.BorderSizePixel = 0
 
     PlayerListLayout.Parent = PlayerListScrollFrame
-    PlayerListLayout.Padding = UDim.new(0, 2)
+    PlayerListLayout.Padding = UDim.new(0, 5)
     PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
 
-    ClosePlayerListButton.MouseButton1Click:Connect(function()
-        playerListVisible = false
-        PlayerListFrame.Visible = false
-    end)
-
-    return PlayerListFrame, SelectedPlayerLabel, PlayerListScrollFrame, PlayerListLayout
-end
-
--- Spectate Buttons Creation
-local function createSpectateButtons()
-    local NextSpectateButton = Instance.new("TextButton")
-    local PrevSpectateButton = Instance.new("TextButton")
-    local StopSpectateButton = Instance.new("TextButton")
-    local TeleportSpectateButton = Instance.new("TextButton")
-
     NextSpectateButton.Name = "NextSpectateButton"
-    NextSpectateButton.Parent = CoreGui
+    NextSpectateButton.Parent = PlayerListFrame
     NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
     NextSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     NextSpectateButton.BorderSizePixel = 1
-    NextSpectateButton.Position = UDim2.new(0.5, 20, 0.5, 0)
-    NextSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    NextSpectateButton.Position = UDim2.new(0, 10, 1, -70)
+    NextSpectateButton.Size = UDim2.new(0, 80, 0, 30)
     NextSpectateButton.Font = Enum.Font.Gotham
     NextSpectateButton.Text = "NEXT >"
     NextSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    NextSpectateButton.TextSize = 10
+    NextSpectateButton.TextSize = 12
     NextSpectateButton.Visible = false
     NextSpectateButton.Active = true
 
     PrevSpectateButton.Name = "PrevSpectateButton"
-    PrevSpectateButton.Parent = CoreGui
+    PrevSpectateButton.Parent = PlayerListFrame
     PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
     PrevSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PrevSpectateButton.BorderSizePixel = 1
-    PrevSpectateButton.Position = UDim2.new(0.5, -80, 0.5, 0)
-    PrevSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    PrevSpectateButton.Position = UDim2.new(0, 95, 1, -70)
+    PrevSpectateButton.Size = UDim2.new(0, 80, 0, 30)
     PrevSpectateButton.Font = Enum.Font.Gotham
     PrevSpectateButton.Text = "< PREV"
     PrevSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PrevSpectateButton.TextSize = 10
+    PrevSpectateButton.TextSize = 12
     PrevSpectateButton.Visible = false
     PrevSpectateButton.Active = true
 
     StopSpectateButton.Name = "StopSpectateButton"
-    StopSpectateButton.Parent = CoreGui
+    StopSpectateButton.Parent = PlayerListFrame
     StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
     StopSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     StopSpectateButton.BorderSizePixel = 1
-    StopSpectateButton.Position = UDim2.new(0.5, -30, 0.5, 40)
-    StopSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    StopSpectateButton.Position = UDim2.new(0, 10, 1, -35)
+    StopSpectateButton.Size = UDim2.new(0, 80, 0, 30)
     StopSpectateButton.Font = Enum.Font.Gotham
     StopSpectateButton.Text = "STOP"
     StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    StopSpectateButton.TextSize = 10
+    StopSpectateButton.TextSize = 12
     StopSpectateButton.Visible = false
     StopSpectateButton.Active = true
 
     TeleportSpectateButton.Name = "TeleportSpectateButton"
-    TeleportSpectateButton.Parent = CoreGui
+    TeleportSpectateButton.Parent = PlayerListFrame
     TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
     TeleportSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     TeleportSpectateButton.BorderSizePixel = 1
-    TeleportSpectateButton.Position = UDim2.new(0.5, 40, 0.5, 40)
-    TeleportSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    TeleportSpectateButton.Position = UDim2.new(0, 95, 1, -35)
+    TeleportSpectateButton.Size = UDim2.new(0, 80, 0, 30)
     TeleportSpectateButton.Font = Enum.Font.Gotham
     TeleportSpectateButton.Text = "TP"
     TeleportSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TeleportSpectateButton.TextSize = 10
+    TeleportSpectateButton.TextSize = 12
     TeleportSpectateButton.Visible = false
     TeleportSpectateButton.Active = true
 
-    return NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
+    return PlayerListFrame, SelectedPlayerLabel, PlayerListScrollFrame, PlayerListLayout, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 end
 
 -- Player Selection and Spectate Functions
 local function showPlayerSelection(utils)
     playerListVisible = true
-    local PlayerListFrame = CoreGui:FindFirstChild("PlayerListFrame")
     if PlayerListFrame then
         PlayerListFrame.Visible = true
+        task.defer(function()
+            updatePlayerList(utils)
+        end)
     end
-    updatePlayerList(utils)
 end
 
 local function updateSpectateButtons()
     local isSpectating = selectedPlayer ~= nil
-    local NextSpectateButton = CoreGui:FindFirstChild("NextSpectateButton")
-    local PrevSpectateButton = CoreGui:FindFirstChild("PrevSpectateButton")
-    local StopSpectateButton = CoreGui:FindFirstChild("StopSpectateButton")
-    local TeleportSpectateButton = CoreGui:FindFirstChild("TeleportSpectateButton")
+    local NextSpectateButton = PlayerListFrame and PlayerListFrame:FindFirstChild("NextSpectateButton")
+    local PrevSpectateButton = PlayerListFrame and PlayerListFrame:FindFirstChild("PrevSpectateButton")
+    local StopSpectateButton = PlayerListFrame and PlayerListFrame:FindFirstChild("StopSpectateButton")
+    local TeleportSpectateButton = PlayerListFrame and PlayerListFrame:FindFirstChild("TeleportSpectateButton")
     if NextSpectateButton then NextSpectateButton.Visible = isSpectating end
     if PrevSpectateButton then PrevSpectateButton.Visible = isSpectating end
     if StopSpectateButton then StopSpectateButton.Visible = isSpectating end
@@ -279,7 +247,7 @@ local function stopSpectating(utils)
     workspace.CurrentCamera.CameraSubject = humanoid
     selectedPlayer = nil
     currentSpectateIndex = 0
-    local SelectedPlayerLabel = CoreGui:FindFirstChild("PlayerListFrame") and CoreGui.PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
+    local SelectedPlayerLabel = PlayerListFrame and PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
     if SelectedPlayerLabel then
         SelectedPlayerLabel.Text = "SELECTED: NONE"
     end
@@ -289,12 +257,12 @@ local function stopSpectating(utils)
         print("Stopped spectating")
     end
     updateSpectateButtons()
-    local PlayerListScrollFrame = CoreGui:FindFirstChild("PlayerListFrame") and CoreGui.PlayerListFrame:FindFirstChild("PlayerListScrollFrame")
+    local PlayerListScrollFrame = PlayerListFrame and PlayerListFrame:FindFirstChild("PlayerListScrollFrame")
     if PlayerListScrollFrame then
         for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
             if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
                 item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                item.SelectButton.Text = "SELECT PLAYER"
+                item.SelectButton.Text = "SELECT"
             end
         end
     end
@@ -312,7 +280,7 @@ local function spectatePlayer(targetPlayer, utils)
         workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
         selectedPlayer = targetPlayer
         currentSpectateIndex = table.find(spectatePlayerList, targetPlayer) or 0
-        local SelectedPlayerLabel = CoreGui:FindFirstChild("PlayerListFrame") and CoreGui.PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
+        local SelectedPlayerLabel = PlayerListFrame and PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
         if SelectedPlayerLabel then
             SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
         end
@@ -343,7 +311,7 @@ local function spectatePlayer(targetPlayer, utils)
             end
         end)
         
-        local PlayerListScrollFrame = CoreGui:FindFirstChild("PlayerListFrame") and CoreGui.PlayerListFrame:FindFirstChild("PlayerListScrollFrame")
+        local PlayerListScrollFrame = PlayerListFrame and PlayerListFrame:FindFirstChild("PlayerListScrollFrame")
         if PlayerListScrollFrame then
             for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
                 if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
@@ -352,7 +320,7 @@ local function spectatePlayer(targetPlayer, utils)
                         item.SelectButton.Text = "SELECTED"
                     else
                         item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                        item.SelectButton.Text = "SELECT PLAYER"
+                        item.SelectButton.Text = "SELECT"
                     end
                 end
             end
@@ -429,7 +397,7 @@ local function teleportToSpectatedPlayer(utils)
 end
 
 local function updatePlayerList(utils)
-    local PlayerListScrollFrame = CoreGui:FindFirstChild("PlayerListFrame") and CoreGui.PlayerListFrame:FindFirstChild("PlayerListScrollFrame")
+    local PlayerListScrollFrame = PlayerListFrame and PlayerListFrame:FindFirstChild("PlayerListScrollFrame")
     local PlayerListLayout = PlayerListScrollFrame and PlayerListScrollFrame:FindFirstChild("PlayerListLayout")
     if not PlayerListScrollFrame or not PlayerListLayout then return end
 
@@ -453,7 +421,7 @@ local function updatePlayerList(utils)
         noPlayersLabel.Font = Enum.Font.Gotham
         noPlayersLabel.Text = "No other players found"
         noPlayersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        noPlayersLabel.TextSize = 11
+        noPlayersLabel.TextSize = 12
         noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
         if utils.notify then
             utils.notify("Player List Updated: No other players found")
@@ -471,7 +439,7 @@ local function updatePlayerList(utils)
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 60)
+                playerItem.Size = UDim2.new(1, -5, 0, 80)
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -492,11 +460,11 @@ local function updatePlayerList(utils)
                 selectButton.BackgroundColor3 = selectedPlayer == p and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
                 selectButton.BorderSizePixel = 0
                 selectButton.Position = UDim2.new(0, 5, 0, 30)
-                selectButton.Size = UDim2.new(0, 80, 0, 25)
+                selectButton.Size = UDim2.new(0, 80, 0, 30)
                 selectButton.Font = Enum.Font.Gotham
                 selectButton.Text = selectedPlayer == p and "SELECTED" or "SELECT"
                 selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                selectButton.TextSize = 9
+                selectButton.TextSize = 10
                 
                 local spectateButton = Instance.new("TextButton")
                 spectateButton.Name = "SpectateButton"
@@ -504,11 +472,11 @@ local function updatePlayerList(utils)
                 spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
                 spectateButton.BorderSizePixel = 0
                 spectateButton.Position = UDim2.new(0, 90, 0, 30)
-                spectateButton.Size = UDim2.new(0, 80, 0, 25)
+                spectateButton.Size = UDim2.new(0, 80, 0, 30)
                 spectateButton.Font = Enum.Font.Gotham
                 spectateButton.Text = "SPECTATE"
                 spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                spectateButton.TextSize = 9
+                spectateButton.TextSize = 10
                 
                 local teleportButton = Instance.new("TextButton")
                 teleportButton.Name = "TeleportButton"
@@ -516,16 +484,16 @@ local function updatePlayerList(utils)
                 teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
                 teleportButton.BorderSizePixel = 0
                 teleportButton.Position = UDim2.new(0, 175, 0, 30)
-                teleportButton.Size = UDim2.new(1, -180, 0, 25)
+                teleportButton.Size = UDim2.new(1, -180, 0, 30)
                 teleportButton.Font = Enum.Font.Gotham
                 teleportButton.Text = "TELEPORT"
                 teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                teleportButton.TextSize = 9
+                teleportButton.TextSize = 10
                 
                 selectButton.MouseButton1Click:Connect(function()
                     selectedPlayer = p
                     currentSpectateIndex = table.find(spectatePlayerList, p) or 0
-                    local SelectedPlayerLabel = CoreGui:FindFirstChild("PlayerListFrame") and CoreGui.PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
+                    local SelectedPlayerLabel = PlayerListFrame and PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
                     if SelectedPlayerLabel then
                         SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
                     end
@@ -604,7 +572,7 @@ local function updatePlayerList(utils)
                 stopSpectating(utils)
             end
         end
-        local SelectedPlayerLabel = CoreGui:FindFirstChild("PlayerListFrame") and CoreGui.PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
+        local SelectedPlayerLabel = PlayerListFrame and PlayerListFrame:FindFirstChild("SelectedPlayerLabel")
         if SelectedPlayerLabel then
             SelectedPlayerLabel.Text = selectedPlayer and "SELECTED: " .. selectedPlayer.Name:upper() or "SELECTED: NONE"
         end
@@ -612,9 +580,10 @@ local function updatePlayerList(utils)
         currentSpectateIndex = 0
     end
     
-    task.wait(0.1)
-    local contentSize = PlayerListLayout.AbsoluteContentSize
-    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
+    task.defer(function()
+        local contentSize = PlayerListLayout.AbsoluteContentSize
+        PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
+    end)
     if utils.notify then
         utils.notify("Player List Updated: " .. playerCount .. " players listed")
     else
@@ -624,9 +593,24 @@ end
 
 -- Initialize Player UI
 local function initializePlayerUI()
-    local PlayerListFrame, SelectedPlayerLabel, PlayerListScrollFrame, PlayerListLayout = createPlayerListUI()
-    local NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton = createSpectateButtons()
+    local screenGui = CoreGui:FindFirstChild("MinimalHackGUI")
+    if not screenGui then
+        warn("MinimalHackGUI not found")
+        return
+    end
+    PlayerListFrame, SelectedPlayerLabel, PlayerListScrollFrame, PlayerListLayout, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton = createPlayerListUI(screenGui)
     
+    ClosePlayerListButton = PlayerListFrame.CloseButton
+    ClosePlayerListButton.MouseButton1Click:Connect(function()
+        playerListVisible = false
+        PlayerListFrame.Visible = false
+        if utils.notify then
+            utils.notify("Player List closed")
+        else
+            print("Player List closed")
+        end
+    end)
+
     NextSpectateButton.MouseButton1Click:Connect(function()
         spectateNextPlayer(utils)
     end)
@@ -668,45 +652,27 @@ local function initializePlayerUI()
         TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
     end)
     
-    updatePlayerList({ notify = print }) -- Fallback notify
+    task.defer(function()
+        updatePlayerList({ notify = print }) -- Fallback notify
+    end)
 end
 
 -- Load buttons for mainloader.lua
 local function loadButtons(scrollFrame, utils)
     initializePlayerUI()
 
-    utils.createButton("Select Player", function()
+    utils.createToggle("Select Player", false, function(state)
         showPlayerSelection(utils)
-    end).Parent = scrollFrame
+    end, true).Parent = scrollFrame
 
     utils.createToggle("God Mode", buttonStates["God Mode"], function(state)
         buttonStates["God Mode"] = state
-        toggleGodMode(state)
-        if utils.notify then
-            utils.notify("God Mode " .. (state and "enabled" or "disabled"))
-        else
-            print("God Mode " .. (state and "enabled" or "disabled"))
-        end
+        toggleGodMode(state, utils)
     end).Parent = scrollFrame
 
     utils.createToggle("Anti AFK", buttonStates["Anti AFK"], function(state)
         buttonStates["Anti AFK"] = state
-        toggleAntiAFK(state)
-        if utils.notify then
-            utils.notify("Anti AFK " .. (state and "enabled" or "disabled"))
-        else
-            print("Anti AFK " .. (state and "enabled" or "disabled"))
-        end
-    end).Parent = scrollFrame
-
-    utils.createToggle("Noclip", buttonStates["Noclip"], function(state)
-        buttonStates["Noclip"] = state
-        toggleNoclip(state)
-        if utils.notify then
-            utils.notify("Noclip " .. (state and "enabled" or "disabled"))
-        else
-            print("Noclip " .. (state and "enabled" or "disabled"))
-        end
+        toggleAntiAFK(state, utils)
     end).Parent = scrollFrame
 end
 
@@ -719,28 +685,36 @@ characterConnection = player.CharacterAdded:Connect(function(newCharacter)
     
     godModeEnabled = false
     antiAFKEnabled = false
-    noclipEnabled = false
     buttonStates["God Mode"] = false
     buttonStates["Anti AFK"] = false
-    buttonStates["Noclip"] = false
     
-    toggleGodMode(false)
-    toggleAntiAFK(false)
-    toggleNoclip(false)
+    toggleGodMode(false, { notify = print })
+    toggleAntiAFK(false, { notify = print })
+    if selectedPlayer then
+        local targetPlayer = selectedPlayer
+        selectedPlayer = nil
+        currentSpectateIndex = 0
+        if table.find(spectatePlayerList, targetPlayer) then
+            spectatePlayer(targetPlayer, { notify = print })
+        else
+            stopSpectating({ notify = print })
+        end
+    end
 end)
 
 -- Update player list periodically
 local updateConnection
 updateConnection = RunService.Heartbeat:Connect(function()
-    updatePlayerList({ notify = print }) -- Fallback notify
+    task.defer(function()
+        updatePlayerList({ notify = print }) -- Fallback notify
+    end)
 end)
 
 -- Cleanup function
 local function cleanup()
-    toggleGodMode(false)
-    toggleAntiAFK(false)
-    toggleNoclip(false)
-    stopSpectating({ notify = print }) -- Fallback notify
+    toggleGodMode(false, { notify = print })
+    toggleAntiAFK(false, { notify = print })
+    stopSpectating({ notify = print })
     
     for _, connection in pairs(connections) do
         if connection then
@@ -752,25 +726,22 @@ local function cleanup()
             connection:Disconnect()
         end
     end
+    connections = {}
+    spectateConnections = {}
+    
     if updateConnection then
         updateConnection:Disconnect()
+        updateConnection = nil
     end
     if characterConnection then
         characterConnection:Disconnect()
+        characterConnection = nil
     end
     
-    local PlayerListFrame = CoreGui:FindFirstChild("PlayerListFrame")
     if PlayerListFrame then
         PlayerListFrame:Destroy()
+        PlayerListFrame = nil
     end
-    local NextSpectateButton = CoreGui:FindFirstChild("NextSpectateButton")
-    local PrevSpectateButton = CoreGui:FindFirstChild("PrevSpectateButton")
-    local StopSpectateButton = CoreGui:FindFirstChild("StopSpectateButton")
-    local TeleportSpectateButton = CoreGui:FindFirstChild("TeleportSpectateButton")
-    if NextSpectateButton then NextSpectateButton:Destroy() end
-    if PrevSpectateButton then PrevSpectateButton:Destroy() end
-    if StopSpectateButton then StopSpectateButton:Destroy() end
-    if TeleportSpectateButton then TeleportSpectateButton:Destroy() end
 end
 
 -- Cleanup on script destruction
@@ -787,9 +758,6 @@ if screenGui then
         end
     end)
 end
-
--- Initialize collision group
-setupCollisionGroup()
 
 -- Return module
 return {
