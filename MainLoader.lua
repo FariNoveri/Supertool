@@ -2,7 +2,18 @@ local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 
-local player = Players.LocalPlayer
+-- Debug Label: Start
+local DebugStart = Instance.new("TextLabel")
+DebugStart.Name = "DebugStart"
+DebugStart.Parent = CoreGui
+DebugStart.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugStart.Size = UDim2.new(0, 200, 0, 30)
+DebugStart.Position = UDim2.new(0.5, -100, 0.3, -15)
+DebugStart.Font = Enum.Font.Gotham
+DebugStart.Text = "DEBUG: Script Started"
+DebugStart.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugStart.TextSize = 12
+DebugStart.Visible = true
 
 -- Clean up existing MinimalHackGUI
 for _, gui in pairs(CoreGui:GetChildren()) do
@@ -11,7 +22,20 @@ for _, gui in pairs(CoreGui:GetChildren()) do
     end
 end
 
--- Load modules (Info and others)
+-- Debug Label: Cleanup Done
+local DebugCleanup = Instance.new("TextLabel")
+DebugCleanup.Name = "DebugCleanup"
+DebugCleanup.Parent = CoreGui
+DebugCleanup.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugCleanup.Size = UDim2.new(0, 200, 0, 30)
+DebugCleanup.Position = UDim2.new(0.5, -100, 0.35, -15)
+DebugCleanup.Font = Enum.Font.Gotham
+DebugCleanup.Text = "DEBUG: Cleanup Done"
+DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugCleanup.TextSize = 12
+DebugCleanup.Visible = true
+
+-- Load modules
 local modules = {}
 local moduleNames = {"Info", "Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "AntiAdmin", "AntiAdminInfo"}
 for _, moduleName in ipairs(moduleNames) do
@@ -21,13 +45,40 @@ for _, moduleName in ipairs(moduleNames) do
     end
 end
 
--- GUI Creation
+-- Debug Label: Modules Loaded
+local DebugModules = Instance.new("TextLabel")
+DebugModules.Name = "DebugModules"
+DebugModules.Parent = CoreGui
+DebugModules.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugModules.Size = UDim2.new(0, 200, 0, 30)
+DebugModules.Position = UDim2.new(0.5, -100, 0.4, -15)
+DebugModules.Font = Enum.Font.Gotham
+DebugModules.Text = "DEBUG: Modules Loaded"
+DebugModules.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugModules.TextSize = 12
+DebugModules.Visible = true
+
+-- Create ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MinimalHackGUI"
 ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
 
+-- Debug Label: ScreenGui Created
+local DebugScreenGui = Instance.new("TextLabel")
+DebugScreenGui.Name = "DebugScreenGui"
+DebugScreenGui.Parent = CoreGui
+DebugScreenGui.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugScreenGui.Size = UDim2.new(0, 200, 0, 30)
+DebugScreenGui.Position = UDim2.new(0.5, -100, 0.45, -15)
+DebugScreenGui.Font = Enum.Font.Gotham
+DebugScreenGui.Text = "DEBUG: ScreenGui Created"
+DebugScreenGui.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugScreenGui.TextSize = 12
+DebugScreenGui.Visible = true
+
+-- Create MainFrame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Parent = ScreenGui
@@ -40,6 +91,20 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Visible = true
 
+-- Debug Label: MainFrame Created
+local DebugMainFrame = Instance.new("TextLabel")
+DebugMainFrame.Name = "DebugMainFrame"
+DebugMainFrame.Parent = CoreGui
+DebugMainFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugMainFrame.Size = UDim2.new(0, 200, 0, 30)
+DebugMainFrame.Position = UDim2.new(0.5, -100, 0.5, -15)
+DebugMainFrame.Font = Enum.Font.Gotham
+DebugMainFrame.Text = "DEBUG: MainFrame Created"
+DebugMainFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugMainFrame.TextSize = 12
+DebugMainFrame.Visible = true
+
+-- Create TopBar
 local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
 TopBar.Parent = MainFrame
@@ -48,6 +113,7 @@ TopBar.BorderSizePixel = 0
 TopBar.Position = UDim2.new(0, 0, 0, 0)
 TopBar.Size = UDim2.new(1, 0, 0, 35)
 
+-- Create Logo
 local Logo = Instance.new("TextLabel")
 Logo.Name = "Logo"
 Logo.Parent = TopBar
@@ -59,6 +125,7 @@ Logo.Text = "H"
 Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
 Logo.TextScaled = true
 
+-- Create Title
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
 Title.Parent = TopBar
@@ -71,6 +138,7 @@ Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
+-- Create CategoryFrame
 local CategoryFrame = Instance.new("Frame")
 CategoryFrame.Name = "CategoryFrame"
 CategoryFrame.Parent = MainFrame
@@ -84,6 +152,7 @@ CategoryList.Parent = CategoryFrame
 CategoryList.Padding = UDim.new(0, 2)
 CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
 
+-- Create ContentFrame
 local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
 ContentFrame.Parent = MainFrame
@@ -110,7 +179,7 @@ UIListLayout.Parent = ScrollFrame
 UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Pass GUI elements to modules
+-- Pass GUI elements to Info module
 if modules.Info then
     modules.Info.setGuiElements({
         InfoFrame = ContentFrame,
@@ -124,12 +193,12 @@ local function createCategoryButton(name)
     local button = Instance.new("TextButton")
     button.Name = name .. "Category"
     button.Parent = CategoryFrame
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BackgroundColor3 = name == "Info" and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
     button.BorderSizePixel = 0
     button.Size = UDim2.new(1, 0, 0, 35)
     button.Font = Enum.Font.Gotham
     button.Text = name:upper()
-    button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    button.TextColor3 = name == "Info" and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
     button.TextSize = 10
     
     button.MouseButton1Click:Connect(function()
@@ -255,3 +324,16 @@ switchCategory("Info")
 wait(0.1)
 local categoryContentSize = CategoryList.AbsoluteContentSize
 CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
+
+-- Debug Label: GUI Complete
+local DebugComplete = Instance.new("TextLabel")
+DebugComplete.Name = "DebugComplete"
+DebugComplete.Parent = CoreGui
+DebugComplete.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugComplete.Size = UDim2.new(0, 200, 0, 30)
+DebugComplete.Position = UDim2.new(0.5, -100, 0.55, -15)
+DebugComplete.Font = Enum.Font.Gotham
+DebugComplete.Text = "DEBUG: GUI Complete"
+DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugComplete.TextSize = 12
+DebugComplete.Visible = true
