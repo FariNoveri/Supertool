@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -42,19 +43,44 @@ local moduleUrls = {
     AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdminInfo.lua"
 }
 
--- Load modules
+-- Load modules with better error handling
 local modules = {}
 for category, url in pairs(moduleUrls) do
-    print("Loading " .. category .. " from " .. url) -- Log buat debug
     success, errorMsg = pcall(function()
-        return loadstring(game:HttpGet(url, false))() -- Nonaktifkan caching
+        local response = game:HttpGet(url, true)
+        if response then
+            local module = loadstring(response)()
+            if type(module) == "table" and module.loadButtons then
+                return module
+            else
+                error("Invalid module structure for " .. category)
+            end
+        else
+            error("Failed to fetch module from URL")
+        end
     end)
     if success and errorMsg then
         modules[category] = errorMsg
-        print(category .. " module loaded successfully, type: " .. type(errorMsg))
+        print(category .. " module loaded successfully")
     else
         warn("Failed to load " .. category .. " module: " .. tostring(errorMsg))
-        modules[category] = {}
+        modules[category] = {
+            loadButtons = function(scrollFrame, utils)
+                local errorLabel = Instance.new("TextLabel")
+                errorLabel.Name = "ErrorLabel"
+                errorLabel.Parent = scrollFrame
+                errorLabel.BackgroundTransparency = 1
+                errorLabel.Size = UDim2.new(1, 0, 0, 30)
+                errorLabel.Font = Enum.Font.Gotham
+                errorLabel.Text = "Module " .. category .. " failed to load"
+                errorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+                errorLabel.TextSize = 11
+                errorLabel.TextXAlignment = Enum.TextXAlignment.Center
+                if utils.notify then
+                    utils.notify("Failed to load " .. category .. " module")
+                end
+            end
+        }
     end
 end
 
