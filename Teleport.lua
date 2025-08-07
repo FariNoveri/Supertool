@@ -1,418 +1,305 @@
 local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- Variabel untuk fitur Teleport
-local savedPositions = {}
-local selectedPlayer = nil
-local freecamPosition = nil
-local freecamEnabled = false -- Dibutuhkan untuk saveFreecamPosition dan teleportToFreecam
+local Teleport = {}
+Teleport.freecamEnabled = false
+Teleport.savedPositions = {}
+Teleport.freecamPosition = nil
+local connections = {}
+local settings = {
+    FreecamSpeed = { value = 80, default = 80, min = 20, max = 300 }
+}
+local directory = "dcim/supertool"
 
--- GUI Creation untuk Position Manager
-local ScreenGui = Instance.new("ScreenGui")
-local PositionFrame = Instance.new("Frame")
-local PositionTitle = Instance.new("TextLabel")
-local ClosePositionButton = Instance.new("TextButton")
-local PositionInput = Instance.new("TextBox")
-local SavePositionButton = Instance.new("TextButton")
-local PositionScrollFrame = Instance.new("ScrollingFrame")
-local PositionLayout = Instance.new("UIListLayout")
-
--- GUI Properties
-ScreenGui.Name = "TeleportHackGUI"
-ScreenGui.Parent = CoreGui
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
--- Position Save Frame
-PositionFrame.Name = "PositionFrame"
-PositionFrame.Parent = ScreenGui
-PositionFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-PositionFrame.BorderSizePixel = 1
-PositionFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-PositionFrame.Size = UDim2.new(0, 350, 0, 400)
-PositionFrame.Visible = false
-PositionFrame.Active = true
-PositionFrame.Draggable = true
-
--- Position Frame Title
-PositionTitle.Name = "Title"
-PositionTitle.Parent = PositionFrame
-PositionTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-PositionTitle.BorderSizePixel = 0
-PositionTitle.Position = UDim2.new(0, 0, 0, 0)
-PositionTitle.Size = UDim2.new(1, 0, 0, 35)
-PositionTitle.Font = Enum.Font.Gotham
-PositionTitle.Text = "SAVED POSITIONS"
-PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-PositionTitle.TextSize = 12
-
--- Close Position Frame Button
-ClosePositionButton.Name = "CloseButton"
-ClosePositionButton.Parent = PositionFrame
-ClosePositionButton.BackgroundTransparency = 1
-ClosePositionButton.Position = UDim2.new(1, -30, 0, 5)
-ClosePositionButton.Size = UDim2.new(0, 25, 0, 25)
-ClosePositionButton.Font = Enum.Font.GothamBold
-ClosePositionButton.Text = "X"
-ClosePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ClosePositionButton.TextSize = 12
-
--- Position Input
-PositionInput.Name = "PositionInput"
-PositionInput.Parent = PositionFrame
-PositionInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-PositionInput.BorderSizePixel = 0
-PositionInput.Position = UDim2.new(0, 10, 0, 45)
-PositionInput.Size = UDim2.new(1, -90, 0, 30)
-PositionInput.Font = Enum.Font.Gotham
-PositionInput.PlaceholderText = "Enter position name..."
-PositionInput.Text = ""
-PositionInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-PositionInput.TextSize = 11
-
--- Save Position Button
-SavePositionButton.Name = "SavePositionButton"
-SavePositionButton.Parent = PositionFrame
-SavePositionButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-SavePositionButton.BorderSizePixel = 0
-SavePositionButton.Position = UDim2.new(1, -70, 0, 45)
-SavePositionButton.Size = UDim2.new(0, 60, 0, 30)
-SavePositionButton.Font = Enum.Font.Gotham
-SavePositionButton.Text = "SAVE"
-SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-SavePositionButton.TextSize = 10
-
--- Position ScrollFrame
-PositionScrollFrame.Name = "PositionScrollFrame"
-PositionScrollFrame.Parent = PositionFrame
-PositionScrollFrame.BackgroundTransparency = 1
-PositionScrollFrame.Position = UDim2.new(0, 10, 0, 85)
-PositionScrollFrame.Size = UDim2.new(1, -20, 1, -95)
-PositionScrollFrame.ScrollBarThickness = 4
-PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-PositionScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-PositionScrollFrame.BorderSizePixel = 0
-
--- Position Layout
-PositionLayout.Parent = PositionScrollFrame
-PositionLayout.Padding = UDim.new(0, 2)
-PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-PositionLayout.FillDirection = Enum.FillDirection.Vertical
-
--- Fungsi untuk menyimpan posisi ke file
-local function savePositionsToFile()
-    if not pcall(function() return writefile end) then
-        warn("writefile not supported in this environment")
-        return
-    end
-    
-    local success, errorMsg = pcall(function()
-        makefolder("DCIM/Supertool")
-        local positionData = {}
-        for name, cframe in pairs(savedPositions) do
-            positionData[name] = {
-                Position = {cframe.Position.X, cframe.Position.Y, cframe.Position.Z},
-                Orientation = {cframe:ToEulerAnglesXYZ()}
-            }
-        end
-        writefile("DCIM/Supertool/saved_positions.json", HttpService:JSONEncode(positionData))
-        print("Positions saved to DCIM/Supertool/saved_positions.json")
-    end)
-    if not success then
-        warn("Failed to save positions: " .. tostring(errorMsg))
-    end
+-- Ensure directory exists
+if not isfolder(directory) then
+    makefolder(directory)
 end
 
--- Fungsi untuk memuat posisi dari file
-local function loadPositionsFromFile()
-    if not pcall(function() return readfile end) then
-        warn("readfile not supported in this environment")
-        return
-    end
-    
-    local success, result = pcall(function()
-        local fileContent = readfile("DCIM/Supertool/saved_positions.json")
-        return HttpService:JSONDecode(fileContent)
-    end)
-    
-    if success then
-        savedPositions = {}
-        for name, data in pairs(result) do
-            local pos = Vector3.new(data.Position[1], data.Position[2], data.Position[3])
-            local rot = CFrame.Angles(data.Orientation[1], data.Orientation[2], data.Orientation[3])
-            savedPositions[name] = CFrame.new(pos) * rot
-        end
-        print("Positions loaded from DCIM/Supertool/saved_positions.json")
-        updatePositionList()
-    else
-        warn("No saved positions found or error loading: " .. tostring(result))
-    end
-end
-
--- Save Freecam Position
-local function saveFreecamPosition()
-    if freecamEnabled and freecamPosition then
-        local positionName = PositionInput.Text
-        if positionName == "" then
-            positionName = "Freecam Position " .. (#savedPositions + 1)
-        end
-        savedPositions[positionName] = CFrame.new(freecamPosition)
-        print("Freecam Position Saved: " .. positionName)
-        PositionInput.Text = ""
-        savePositionsToFile()
-        updatePositionList()
-    else
-        print("Freecam must be enabled to save position")
-    end
-end
-
--- Save Selected Player Position
-local function savePlayerPosition()
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local positionName = PositionInput.Text
-        if positionName == "" then
-            positionName = selectedPlayer.Name .. " Position " .. (#savedPositions + 1)
-        end
-        savedPositions[positionName] = selectedPlayer.Character.HumanoidRootPart.CFrame
-        print("Player Position Saved: " .. positionName)
-        PositionInput.Text = ""
-        savePositionsToFile()
-        updatePositionList()
-    else
-        print("Select a player first to save their position")
-    end
-end
-
--- Teleport to Freecam
-local function teleportToFreecam()
-    if freecamPosition and rootPart then
-        if freecamEnabled then
-            freecamEnabled = false -- Nonaktifkan freecam
-            if game:GetService("Workspace").CurrentCamera then
-                game:GetService("Workspace").CurrentCamera.CameraSubject = humanoid
+-- Load saved positions from dcim/supertool
+function Teleport.loadSavedPositions()
+    Teleport.savedPositions = {}
+    local files = listfiles(directory)
+    for _, file in pairs(files) do
+        local success, content = pcall(readfile, file)
+        if success then
+            local success, data = pcall(function() return HttpService:JSONDecode(content) end)
+            if success and data.name and data.position then
+                Teleport.savedPositions[data.name] = {
+                    position = Vector3.new(data.position.x, data.position.y, data.position.z),
+                    file = file
+                }
             end
         end
-        rootPart.CFrame = CFrame.new(freecamPosition)
-        print("Teleported to freecam position")
-    else
-        print("No freecam position available")
+    end
+    Teleport.updatePositionList()
+end
+
+-- Save position to file
+function Teleport.savePositionToFile(name, position)
+    local data = {
+        name = name,
+        position = { x = position.X, y = position.Y, z = position.Z }
+    }
+    local json = HttpService:JSONEncode(data)
+    local filename = directory .. "/" .. HttpService:GenerateGUID(false) .. ".json"
+    writefile(filename, json)
+    Teleport.savedPositions[name] = { position = position, file = filename }
+    Teleport.updatePositionList()
+end
+
+-- Rename position
+function Teleport.renamePosition(oldName, newName)
+    if Teleport.savedPositions[oldName] and not Teleport.savedPositions[newName] then
+        local data = Teleport.savedPositions[oldName]
+        local newData = {
+            name = newName,
+            position = { x = data.position.X, y = data.position.Y, z = data.position.Z }
+        }
+        local json = HttpService:JSONEncode(newData)
+        writefile(data.file, json)
+        Teleport.savedPositions[newName] = { position = data.position, file = data.file }
+        Teleport.savedPositions[oldName] = nil
+        Teleport.updatePositionList()
     end
 end
 
--- Teleport to Selected Player
-local function teleportToPlayer()
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
-        rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-        print("Teleported to: " .. selectedPlayer.Name)
-    else
-        print("Select a player first")
+-- Delete position
+function Teleport.deletePosition(name)
+    if Teleport.savedPositions[name] then
+        local file = Teleport.savedPositions[name].file
+        delfile(file)
+        Teleport.savedPositions[name] = nil
+        Teleport.updatePositionList()
     end
 end
 
--- Position Manager
-local function showPositionManager()
-    PositionFrame.Visible = true
-    updatePositionList()
-end
-
-local function updatePositionList()
+-- Update position list GUI
+function Teleport.updatePositionList()
+    local PositionScrollFrame = Teleport.PositionScrollFrame
+    local PositionLayout = Teleport.PositionLayout
+    if not (PositionScrollFrame and PositionLayout) then
+        return
+    end
     for _, child in pairs(PositionScrollFrame:GetChildren()) do
         if child:IsA("Frame") then
             child:Destroy()
         end
     end
-    
-    local itemCount = 0
-    
-    for positionName, _ in pairs(savedPositions) do
-        local positionItem = Instance.new("Frame")
-        positionItem.Name = positionName .. "Item"
-        positionItem.Parent = PositionScrollFrame
-        positionItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        positionItem.BorderSizePixel = 0
-        positionItem.Size = UDim2.new(1, -5, 0, 90)
-        positionItem.LayoutOrder = itemCount
-        
+    local index = 0
+    for name, data in pairs(Teleport.savedPositions) do
+        index = index + 1
+        local posFrame = Instance.new("Frame")
+        posFrame.Name = name
+        posFrame.Parent = PositionScrollFrame
+        posFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        posFrame.BorderSizePixel = 0
+        posFrame.Size = UDim2.new(1, -5, 0, 90)
+        posFrame.LayoutOrder = index
+
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Name = "NameLabel"
-        nameLabel.Parent = positionItem
+        nameLabel.Parent = posFrame
         nameLabel.BackgroundTransparency = 1
         nameLabel.Position = UDim2.new(0, 5, 0, 5)
         nameLabel.Size = UDim2.new(1, -10, 0, 20)
-        nameLabel.Font = Enum.Font.Gotham
-        nameLabel.Text = positionName
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.Text = name
         nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextSize = 11
+        nameLabel.TextSize = 12
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local tpButton = Instance.new("TextButton")
-        tpButton.Name = "TeleportButton"
-        tpButton.Parent = positionItem
-        tpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        tpButton.BorderSizePixel = 0
-        tpButton.Position = UDim2.new(0, 5, 0, 30)
-        tpButton.Size = UDim2.new(0, 80, 0, 25)
-        tpButton.Font = Enum.Font.Gotham
-        tpButton.Text = "TELEPORT"
-        tpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        tpButton.TextSize = 9
-        
+
+        local teleportButton = Instance.new("TextButton")
+        teleportButton.Name = "TeleportButton"
+        teleportButton.Parent = posFrame
+        teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+        teleportButton.BorderSizePixel = 0
+        teleportButton.Position = UDim2.new(0, 5, 0, 30)
+        teleportButton.Size = UDim2.new(0, 70, 0, 25)
+        teleportButton.Font = Enum.Font.Gotham
+        teleportButton.Text = "TELEPORT"
+        teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        teleportButton.TextSize = 10
+
+        local renameInput = Instance.new("TextBox")
+        renameInput.Name = "RenameInput"
+        renameInput.Parent = posFrame
+        renameInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        renameInput.BorderSizePixel = 0
+        renameInput.Position = UDim2.new(0, 80, 0, 30)
+        renameInput.Size = UDim2.new(0, 100, 0, 25)
+        renameInput.Font = Enum.Font.Gotham
+        renameInput.Text = "Rename..."
+        renameInput.TextColor3 = Color3.fromRGB(200, 200, 200)
+        renameInput.TextSize = 10
+
         local deleteButton = Instance.new("TextButton")
         deleteButton.Name = "DeleteButton"
-        deleteButton.Parent = positionItem
-        deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+        deleteButton.Parent = posFrame
+        deleteButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
         deleteButton.BorderSizePixel = 0
-        deleteButton.Position = UDim2.new(0, 90, 0, 30)
-        deleteButton.Size = UDim2.new(0, 60, 0, 25)
+        deleteButton.Position = UDim2.new(0, 185, 0, 30)
+        deleteButton.Size = UDim2.new(0, 70, 0, 25)
         deleteButton.Font = Enum.Font.Gotham
         deleteButton.Text = "DELETE"
         deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        deleteButton.TextSize = 9
-        
-        local renameButton = Instance.new("TextButton")
-        renameButton.Name = "RenameButton"
-        renameButton.Parent = positionItem
-        renameButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-        renameButton.BorderSizePixel = 0
-        renameButton.Position = UDim2.new(0, 155, 0, 30)
-        renameButton.Size = UDim2.new(0, 60, 0, 25)
-        renameButton.Font = Enum.Font.Gotham
-        renameButton.Text = "RENAME"
-        renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameButton.TextSize = 9
-        
-        local renameInput = Instance.new("TextBox")
-        renameInput.Name = "RenameInput"
-        renameInput.Parent = positionItem
-        renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        renameInput.BorderSizePixel = 0
-        renameInput.Position = UDim2.new(0, 5, 0, 60)
-        renameInput.Size = UDim2.new(1, -10, 0, 25)
-        renameInput.Font = Enum.Font.Gotham
-        renameInput.PlaceholderText = "Enter new name..."
-        renameInput.Text = ""
-        renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameInput.TextSize = 11
-        renameInput.Visible = false
-        
-        tpButton.MouseButton1Click:Connect(function()
-            if savedPositions[positionName] and rootPart then
-                rootPart.CFrame = savedPositions[positionName]
-                print("Teleported to: " .. positionName)
+        deleteButton.TextSize = 10
+
+        teleportButton.MouseButton1Click:Connect(function()
+            Teleport.teleportToPosition(data.position)
+        end)
+
+        renameInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed and renameInput.Text ~= "" and renameInput.Text ~= "Rename..." then
+                Teleport.renamePosition(name, renameInput.Text)
+                renameInput.Text = "Rename..."
             end
         end)
-        
+
         deleteButton.MouseButton1Click:Connect(function()
-            savedPositions[positionName] = nil
-            print("Deleted position: " .. positionName)
-            savePositionsToFile()
-            updatePositionList()
+            Teleport.deletePosition(name)
         end)
-        
-        renameButton.MouseButton1Click:Connect(function()
-            renameInput.Visible = true
-            renameInput:CaptureFocus()
+
+        teleportButton.MouseEnter:Connect(function()
+            teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
         end)
-        
-        renameInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed and renameInput.Text ~= "" then
-                local newName = renameInput.Text
-                if savedPositions[newName] then
-                    print("Position name already exists: " .. newName)
-                else
-                    savedPositions[newName] = savedPositions[positionName]
-                    savedPositions[positionName] = nil
-                    print("Renamed position from " .. positionName .. " to " .. newName)
-                    savePositionsToFile()
-                    updatePositionList()
+        teleportButton.MouseLeave:Connect(function()
+            teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+        end)
+        deleteButton.MouseEnter:Connect(function()
+            deleteButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+        end)
+        deleteButton.MouseLeave:Connect(function()
+            deleteButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+        end)
+    end
+    wait(0.1)
+    PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(PositionLayout.AbsoluteContentSize.Y + 10, 30))
+end
+
+-- Freecam
+function Teleport.toggleFreecam(enabled)
+    Teleport.freecamEnabled = enabled
+    if enabled then
+        Teleport.freecamPosition = Workspace.CurrentCamera.CFrame
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+        connections.freecam = RunService.RenderStepped:Connect(function()
+            if Teleport.freecamEnabled then
+                local camera = Workspace.CurrentCamera
+                local moveVector = Vector3.new(0, 0, 0)
+                local speed = settings.FreecamSpeed.value
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    moveVector = moveVector + camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    moveVector = moveVector - camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    moveVector = moveVector + camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    moveVector = moveVector - camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    moveVector = moveVector + Vector3.new(0, 1, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    moveVector = moveVector - Vector3.new(0, 1, 0)
+                end
+                
+                if moveVector.Magnitude > 0 then
+                    moveVector = moveVector.Unit * speed
+                    Teleport.freecamPosition = Teleport.freecamPosition + moveVector * RunService.RenderStepped:Wait()
+                    camera.CFrame = Teleport.freecamPosition
                 end
             end
-            renameInput.Text = ""
-            renameInput.Visible = false
         end)
-        
-        tpButton.MouseEnter:Connect(function()
-            tpButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        end)
-        
-        tpButton.MouseLeave:Connect(function()
-            tpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        end)
-        
-        deleteButton.MouseEnter:Connect(function()
-            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-        end)
-        
-        deleteButton.MouseLeave:Connect(function()
-            deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-        end)
-        
-        renameButton.MouseEnter:Connect(function()
-            renameButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
-        end)
-        
-        renameButton.MouseLeave:Connect(function()
-            renameButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-        end)
-        
-        itemCount = itemCount + 1
+    else
+        if connections.freecam then
+            connections.freecam:Disconnect()
+        end
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        Workspace.CurrentCamera.CameraSubject = character:WaitForChild("Humanoid")
+        Teleport.freecamPosition = nil
     end
-    
-    wait(0.1)
-    local contentSize = PositionLayout.AbsoluteContentSize
-    PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
 end
 
--- Save Current Position
-local function savePosition()
-    local positionName = PositionInput.Text
-    if positionName == "" then
-        positionName = "Position " .. (#savedPositions + 1)
+-- Teleport to Freecam
+function Teleport.teleportToFreecam()
+    if Teleport.freecamEnabled and Teleport.freecamPosition and rootPart then
+        rootPart.CFrame = Teleport.freecamPosition
+        print("Teleported to freecam position")
+    else
+        print("Cannot teleport: Freecam not enabled or no valid position")
     end
-    
+end
+
+-- Save Freecam Position
+function Teleport.saveFreecamPosition(name)
+    if Teleport.freecamEnabled and Teleport.freecamPosition then
+        local position = Teleport.freecamPosition.Position
+        Teleport.savePositionToFile(name, position)
+        print("Saved freecam position: " .. name)
+    else
+        print("Cannot save freecam position: Freecam not enabled")
+    end
+end
+
+-- Save Player Position
+function Teleport.savePlayerPosition(name)
     if rootPart then
-        savedPositions[positionName] = rootPart.CFrame
-        print("Position Saved: " .. positionName)
-        PositionInput.Text = ""
-        savePositionsToFile()
-        updatePositionList()
+        local position = rootPart.Position
+        Teleport.savePositionToFile(name, position)
+        print("Saved player position: " .. name)
+    else
+        print("Cannot save player position: No valid player position")
     end
 end
 
--- Event Connections
-ClosePositionButton.MouseButton1Click:Connect(function()
-    PositionFrame.Visible = false
-end)
+-- Teleport to Position
+function Teleport.teleportToPosition(position)
+    if rootPart then
+        rootPart.CFrame = CFrame.new(position)
+        print("Teleported to position: " .. tostring(position))
+    else
+        print("Cannot teleport: No valid player root part")
+    end
+end
 
-SavePositionButton.MouseButton1Click:Connect(savePosition)
+-- Cleanup
+function Teleport.cleanup()
+    Teleport.toggleFreecam(false)
+    for _, connection in pairs(connections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+end
 
--- Handle character reset untuk Teleport
+-- Set GUI elements
+function Teleport.setGuiElements(elements)
+    Teleport.PositionFrame = elements.PositionFrame
+    Teleport.PositionScrollFrame = elements.PositionScrollFrame
+    Teleport.PositionLayout = elements.PositionLayout
+    Teleport.PositionInput = elements.PositionInput
+end
+
+-- Initialize saved positions
+Teleport.loadSavedPositions()
+
+-- Update character references on respawn
 player.CharacterAdded:Connect(function(newCharacter)
     character = newCharacter
-    humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
+    Teleport.cleanup() -- Reset freecam on respawn
 end)
 
--- Cleanup saat script dihancurkan
-local function cleanup()
-    -- Hapus GUI
-    if ScreenGui then
-        ScreenGui:Destroy()
-    end
-end
-
--- Tangani penutupan game atau script
-game:BindToClose(cleanup)
-
--- Inisialisasi
-loadPositionsFromFile()
-showPositionManager()
-print("Teleport Features Loaded")
+return Teleport

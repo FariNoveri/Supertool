@@ -1,36 +1,40 @@
--- Info Category (Simplified Watermark)
-local isIndonesian = true -- Default ke bahasa Indonesia
+local Info = {}
 
-local function updateWatermarkText(watermarkLabel)
-    watermarkLabel.Text = isIndonesian and [[
---[ PEMBERITAHUAN SEBELUM MENGGUNAKAN ]--
+-- Store GUI elements from mainloader.lua
+local guiElements = {
+    InfoFrame = nil,
+    InfoScrollFrame = nil,
+    InfoLayout = nil
+}
 
-Dibuat oleh Fari Noveri untuk anggota Unknown Block.
-Tidak untuk dijual, tidak untuk pamer, tidak untuk dirusak.
+-- Store created GUI objects for cleanup
+local createdGuiObjects = {}
 
-- Aturan Penggunaan:
-- Jangan menjual skrip ini. Ini bukan untuk keuntungan.
-- Pertahankan nama pembuat sebagai "by Fari Noveri".
-- Jangan unggah ulang ke platform publik tanpa izin.
-- Jangan gabungkan dengan skrip lain dan klaim sebagai milik Anda.
-- Hanya dapatkan pembaruan dari sumber asli untuk menghindari kesalahan.
+-- Set GUI elements passed from mainloader.lua
+function Info.setGuiElements(elements)
+    guiElements.InfoFrame = elements.InfoFrame
+    guiElements.InfoScrollFrame = elements.InfoScrollFrame
+    guiElements.InfoLayout = elements.InfoLayout
+end
 
-- Jika Anda menemukan skrip ini di luar grup:
-Mungkin telah bocor. Harap jangan membagikannya lebih lanjut.
+-- Update GUI to display watermark
+function Info.updateGui()
+    -- Clear existing content in ScrollFrame
+    for _, child in pairs(guiElements.InfoScrollFrame:GetChildren()) do
+        if child:IsA("TextLabel") or child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
 
-- Tujuan:
-Skrip ini dibuat untuk membantu sesama anggota, bukan untuk keuntungan.
-Harap gunakan dengan bertanggung jawab dan hormati tujuannya.
-
-- Untuk saran, pertanyaan, atau umpan balik:
-Kontak:
-- Instagram: @fariinoveri
-- TikTok: @fari_noveri
-
-Terima kasih telah membaca. Gunakan dengan bijak.
-
-- Fari Noveri
-]] or [[
+    -- Create watermark label
+    local watermarkLabel = Instance.new("TextLabel")
+    watermarkLabel.Name = "WatermarkLabel"
+    watermarkLabel.Parent = guiElements.InfoScrollFrame
+    watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    watermarkLabel.BorderSizePixel = 0
+    watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
+    watermarkLabel.Font = Enum.Font.Gotham
+    watermarkLabel.Text = [[
 --[ NOTICE BEFORE USING ]--
 
 Created by Fari Noveri for Unknown Block members.
@@ -59,48 +63,29 @@ Thank you for reading. Use it wisely.
 
 - Fari Noveri
 ]]
-end
-
-local function loadInfoButtons()
-    local watermarkLabel = Instance.new("TextLabel")
-    watermarkLabel.Name = "WatermarkLabel"
-    watermarkLabel.Parent = ScrollFrame
-    watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    watermarkLabel.BorderSizePixel = 0
-    watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
-    watermarkLabel.Font = Enum.Font.Gotham
     watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     watermarkLabel.TextSize = 10
     watermarkLabel.TextWrapped = true
     watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
     watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+    table.insert(createdGuiObjects, watermarkLabel)
 
-    updateWatermarkText(watermarkLabel) -- Set teks awal
-
-    -- Tombol untuk mengubah bahasa
-    local languageButton = Instance.new("TextButton")
-    languageButton.Name = "LanguageButton"
-    languageButton.Parent = ScrollFrame
-    languageButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    languageButton.BorderSizePixel = 0
-    languageButton.Position = UDim2.new(0, 5, 0, 310)
-    languageButton.Size = UDim2.new(1, -10, 0, 30)
-    languageButton.Font = Enum.Font.Gotham
-    languageButton.Text = isIndonesian and "Ubah ke Bahasa Inggris" or "Ubah ke Bahasa Indonesia"
-    languageButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    languageButton.TextSize = 11
-
-    languageButton.MouseButton1Click:Connect(function()
-        isIndonesian = not isIndonesian
-        languageButton.Text = isIndonesian and "Ubah ke Bahasa Inggris" or "Ubah ke Bahasa Indonesia"
-        updateWatermarkText(watermarkLabel)
-    end)
-
-    languageButton.MouseEnter:Connect(function()
-        languageButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    end)
-
-    languageButton.MouseLeave:Connect(function()
-        languageButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    end)
+    -- Update ScrollFrame CanvasSize
+    wait(0.1)
+    local contentSize = guiElements.InfoLayout.AbsoluteContentSize
+    guiElements.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
 end
+
+-- Cleanup function to release resources
+function Info.cleanup()
+    -- Destroy created GUI objects
+    for _, obj in pairs(createdGuiObjects) do
+        if obj and obj.Parent then
+            obj:Destroy()
+        end
+    end
+    createdGuiObjects = {}
+    print("Info module cleaned up")
+end
+
+return Info

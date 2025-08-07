@@ -1,33 +1,28 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- Variabel untuk fitur Movement
-local flyEnabled = false
-local noclipEnabled = false
-local speedEnabled = false
-local jumpHighEnabled = false
-local spiderEnabled = false
-local playerPhaseEnabled = false
-
--- Settings table untuk Movement
+local Movement = {}
+Movement.flyEnabled = false
+Movement.noclipEnabled = false
+Movement.speedEnabled = false
+Movement.jumpHighEnabled = false
+Movement.spiderEnabled = false
+Movement.playerPhaseEnabled = false
+local connections = {}
 local settings = {
     FlySpeed = { value = 50, default = 50, min = 10, max = 200 },
     JumpHeight = { value = 50, default = 50, min = 10, max = 150 },
     WalkSpeed = { value = 100, default = 100, min = 16, max = 300 }
 }
 
--- Connections untuk Movement
-local connections = {}
-
--- Fly (Android Touch Controls)
-local function toggleFly(enabled)
-    flyEnabled = enabled
+function Movement.toggleFly(enabled)
+    Movement.flyEnabled = enabled
     if enabled then
         local bodyVelocity = Instance.new("BodyVelocity")
         bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
@@ -35,8 +30,8 @@ local function toggleFly(enabled)
         bodyVelocity.Parent = rootPart
         
         connections.fly = RunService.Heartbeat:Connect(function()
-            if flyEnabled then
-                local camera = workspace.CurrentCamera
+            if Movement.flyEnabled then
+                local camera = Workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
                 local cameraCFrame = camera.CFrame
@@ -64,18 +59,17 @@ local function toggleFly(enabled)
         if connections.fly then
             connections.fly:Disconnect()
         end
-        if rootPart:FindFirstChild("BodyVelocity") then
+        if rootPart and rootPart:FindFirstChild("BodyVelocity") then
             rootPart:FindFirstChild("BodyVelocity"):Destroy()
         end
     end
 end
 
--- Noclip
-local function toggleNoclip(enabled)
-    noclipEnabled = enabled
+function Movement.toggleNoclip(enabled)
+    Movement.noclipEnabled = enabled
     if enabled then
         connections.noclip = RunService.Stepped:Connect(function()
-            if noclipEnabled and character then
+            if Movement.noclipEnabled and character then
                 for _, part in pairs(character:GetDescendants()) do
                     if part:IsA("BasePart") and part.CanCollide then
                         part.CanCollide = false
@@ -97,9 +91,8 @@ local function toggleNoclip(enabled)
     end
 end
 
--- Speed
-local function toggleSpeed(enabled)
-    speedEnabled = enabled
+function Movement.toggleSpeed(enabled)
+    Movement.speedEnabled = enabled
     if enabled then
         humanoid.WalkSpeed = settings.WalkSpeed.value
     else
@@ -107,14 +100,13 @@ local function toggleSpeed(enabled)
     end
 end
 
--- Jump High
-local function toggleJumpHigh(enabled)
-    jumpHighEnabled = enabled
+function Movement.toggleJumpHigh(enabled)
+    Movement.jumpHighEnabled = enabled
     if enabled then
         humanoid.JumpHeight = settings.JumpHeight.value
         humanoid.JumpPower = settings.JumpHeight.value * 2.4
         connections.jumphigh = humanoid.Jumping:Connect(function()
-            if jumpHighEnabled then
+            if Movement.jumpHighEnabled then
                 rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 2.4, rootPart.Velocity.Z)
             end
         end)
@@ -127,9 +119,8 @@ local function toggleJumpHigh(enabled)
     end
 end
 
--- Spider (stick to walls)
-local function toggleSpider(enabled)
-    spiderEnabled = enabled
+function Movement.toggleSpider(enabled)
+    Movement.spiderEnabled = enabled
     if enabled then
         local bodyPosition = Instance.new("BodyPosition")
         bodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
@@ -142,8 +133,8 @@ local function toggleSpider(enabled)
         bodyAngularVelocity.Parent = rootPart
         
         connections.spider = RunService.Heartbeat:Connect(function()
-            if spiderEnabled and rootPart then
-                local ray = workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 10)
+            if Movement.spiderEnabled and rootPart then
+                local ray = Workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 10)
                 if ray then
                     bodyPosition.Position = ray.Position + ray.Normal * 3
                     local lookDirection = -ray.Normal
@@ -156,21 +147,20 @@ local function toggleSpider(enabled)
         if connections.spider then
             connections.spider:Disconnect()
         end
-        if rootPart:FindFirstChild("BodyPosition") then
+        if rootPart and rootPart:FindFirstChild("BodyPosition") then
             rootPart:FindFirstChild("BodyPosition"):Destroy()
         end
-        if rootPart:FindFirstChild("BodyAngularVelocity") then
+        if rootPart and rootPart:FindFirstChild("BodyAngularVelocity") then
             rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
         end
     end
 end
 
--- Player Phase (nembus player lain)
-local function togglePlayerPhase(enabled)
-    playerPhaseEnabled = enabled
+function Movement.togglePlayerPhase(enabled)
+    Movement.playerPhaseEnabled = enabled
     if enabled then
         connections.playerphase = RunService.Heartbeat:Connect(function()
-            if playerPhaseEnabled and character then
+            if Movement.playerPhaseEnabled and character then
                 for _, otherPlayer in pairs(Players:GetPlayers()) do
                     if otherPlayer ~= player and otherPlayer.Character then
                         for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -198,39 +188,13 @@ local function togglePlayerPhase(enabled)
     end
 end
 
--- Handle character reset untuk Movement
-player.CharacterAdded:Connect(function(newCharacter)
-    character = newCharacter
-    humanoid = character:WaitForChild("Humanoid")
-    rootPart = character:WaitForChild("HumanoidRootPart")
-    
-    -- Reset fitur Movement saat karakter respawn
-    flyEnabled = false
-    noclipEnabled = false
-    speedEnabled = false
-    jumpHighEnabled = false
-    spiderEnabled = false
-    playerPhaseEnabled = false
-    
-    toggleFly(false)
-    toggleNoclip(false)
-    toggleSpeed(false)
-    toggleJumpHigh(false)
-    toggleSpider(false)
-    togglePlayerPhase(false)
-end)
-
--- Cleanup saat script dihancurkan
-local function cleanup()
-    -- Matikan semua fitur Movement
-    toggleFly(false)
-    toggleNoclip(false)
-    toggleSpeed(false)
-    toggleJumpHigh(false)
-    toggleSpider(false)
-    togglePlayerPhase(false)
-    
-    -- Putuskan semua koneksi
+function Movement.cleanup()
+    Movement.toggleFly(false)
+    Movement.toggleNoclip(false)
+    Movement.toggleSpeed(false)
+    Movement.toggleJumpHigh(false)
+    Movement.toggleSpider(false)
+    Movement.togglePlayerPhase(false)
     for _, connection in pairs(connections) do
         if connection then
             connection:Disconnect()
@@ -238,7 +202,12 @@ local function cleanup()
     end
 end
 
--- Tangani penutupan game atau script
-game:BindToClose(cleanup)
+-- Update character references when character respawns
+player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    Movement.cleanup() -- Reset all movement features on respawn
+end)
 
-print("Movement Features Loaded")
+return Movement
