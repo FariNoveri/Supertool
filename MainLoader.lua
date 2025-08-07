@@ -1,4 +1,3 @@
-local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 
@@ -15,9 +14,9 @@ DebugStart.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugStart.TextSize = 12
 DebugStart.Visible = true
 
--- Clean up existing MinimalHackGUI
+-- Clean up existing GUIs
 for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui.Name == "MinimalHackGUI" then
+    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" then
         gui:Destroy()
     end
 end
@@ -35,25 +34,24 @@ DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCleanup.TextSize = 12
 DebugCleanup.Visible = true
 
--- Load modules
+-- Load Info module only
 local modules = {}
-local moduleNames = {"Info", "Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "AntiAdmin", "AntiAdminInfo"}
-for _, moduleName in ipairs(moduleNames) do
-    local success, result = loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/" .. moduleName .. ".lua", true))()
-    if success and result then
-        modules[moduleName] = result
-    end
+local success, result = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Info.lua", true))()
+end)
+if success and result then
+    modules.Info = result
 end
 
 -- Debug Label: Modules Loaded
 local DebugModules = Instance.new("TextLabel")
 DebugModules.Name = "DebugModules"
 DebugModules.Parent = CoreGui
-DebugModules.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugModules.BackgroundColor3 = success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 DebugModules.Size = UDim2.new(0, 200, 0, 30)
 DebugModules.Position = UDim2.new(0.5, -100, 0.4, -15)
 DebugModules.Font = Enum.Font.Gotham
-DebugModules.Text = "DEBUG: Modules Loaded"
+DebugModules.Text = success and "DEBUG: Info Loaded" or "DEBUG: Info Load Failed"
 DebugModules.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugModules.TextSize = 12
 DebugModules.Visible = true
@@ -133,7 +131,7 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.new(0, 45, 0, 0)
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK] asfasa"
+Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -291,20 +289,6 @@ function switchCategory(categoryName)
         else
             loadFallbackInfo()
         end
-    elseif categoryName == "Movement" and modules.Movement then
-        -- Placeholder for Movement buttons
-    elseif categoryName == "Player" and modules.Player then
-        -- Placeholder for Player buttons
-    elseif categoryName == "Visual" and modules.Visual then
-        -- Placeholder for Visual buttons
-    elseif categoryName == "Teleport" and modules.Teleport then
-        -- Placeholder for Teleport buttons
-    elseif categoryName == "Utility" and modules.Utility then
-        -- Placeholder for Utility buttons
-    elseif categoryName == "Settings" and modules.Settings then
-        -- Placeholder for Settings buttons
-    elseif categoryName == "Anti Admin" and modules.AntiAdminInfo then
-        -- Placeholder for Anti Admin buttons
     end
     
     wait(0.1)
