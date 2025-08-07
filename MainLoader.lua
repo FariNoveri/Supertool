@@ -12,7 +12,7 @@ local rootPart = character:WaitForChild("HumanoidRootPart")
 
 -- AUTO-DISABLE PREVIOUS SCRIPTS
 for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui.Name == "MinimalHackGUI" then
+    if gui.Name == "MinimalHackGUI" or gui.Name == "TeleportHackGUI" then
         gui:Destroy()
     end
 end
@@ -34,9 +34,17 @@ local success, errorMsg = pcall(function()
     loadstring(game:HttpGet(scriptURLs.AntiAdmin, true))()
 end)
 if not success then
-    warn("Failed to load AntiAdmin.lua: " .. tostring(errorMsg))
-else
-    print("Anti Admin Loaded - By Fari Noveri")
+    local errorLabel = Instance.new("TextLabel")
+    errorLabel.Name = "AntiAdminError"
+    errorLabel.Parent = CoreGui
+    errorLabel.BackgroundTransparency = 1
+    errorLabel.Position = UDim2.new(0.5, 0, 0.05, 0)
+    errorLabel.Size = UDim2.new(0, 300, 0, 20)
+    errorLabel.Font = Enum.Font.Gotham
+    errorLabel.Text = "Failed to load AntiAdmin: " .. tostring(errorMsg)
+    errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+    errorLabel.TextSize = 10
+    errorLabel.TextWrapped = true
 end
 
 -- Variables for GUI
@@ -51,31 +59,11 @@ local buttonStates = {}
 
 -- GUI Creation
 local ScreenGui = Instance.new("ScreenGui")
-local MainFrame = Instance.new("Frame")
-local TopBar = Instance.new("Frame")
-local Title = Instance.new("TextLabel")
-local Logo = Instance.new("TextLabel")
-local MinimizeButton = Instance.new("TextButton")
-local CategoryFrame = Instance.new("Frame")
-local CategoryList = Instance.new("UIListLayout")
-local ContentFrame = Instance.new("Frame")
-local ScrollFrame = Instance.new("ScrollingFrame")
-local UIListLayout = Instance.new("UIListLayout")
-local PlayerListFrame = Instance.new("Frame")
-local PlayerListScrollFrame = Instance.new("ScrollingFrame")
-local PlayerListLayout = Instance.new("UIListLayout")
-local SelectedPlayerLabel = Instance.new("TextLabel")
-local LogoButton = Instance.new("TextButton")
-local NextSpectateButton = Instance.new("TextButton")
-local PrevSpectateButton = Instance.new("TextButton")
-local StopSpectateButton = Instance.new("TextButton")
-local TeleportSpectateButton = Instance.new("TextButton")
-
--- GUI Properties
 ScreenGui.Name = "MinimalHackGUI"
 ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Parent = ScreenGui
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -86,6 +74,7 @@ MainFrame.Size = UDim2.new(0, 600, 0, 400)
 MainFrame.Active = true
 MainFrame.Draggable = true
 
+local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
 TopBar.Parent = MainFrame
 TopBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -93,6 +82,7 @@ TopBar.BorderSizePixel = 0
 TopBar.Position = UDim2.new(0, 0, 0, 0)
 TopBar.Size = UDim2.new(1, 0, 0, 35)
 
+local Logo = Instance.new("TextLabel")
 Logo.Name = "Logo"
 Logo.Parent = TopBar
 Logo.BackgroundTransparency = 1
@@ -103,6 +93,7 @@ Logo.Text = "H"
 Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
 Logo.TextScaled = true
 
+local Title = Instance.new("TextLabel")
 Title.Name = "Title"
 Title.Parent = TopBar
 Title.BackgroundTransparency = 1
@@ -114,6 +105,7 @@ Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
+local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
 MinimizeButton.Parent = TopBar
 MinimizeButton.BackgroundTransparency = 1
@@ -123,7 +115,9 @@ MinimizeButton.Font = Enum.Font.GothamBold
 MinimizeButton.Text = "_"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 16
+MinimizeButton.AutoButtonColor = true
 
+local CategoryFrame = Instance.new("Frame")
 CategoryFrame.Name = "CategoryFrame"
 CategoryFrame.Parent = MainFrame
 CategoryFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
@@ -131,10 +125,12 @@ CategoryFrame.BorderSizePixel = 0
 CategoryFrame.Position = UDim2.new(0, 0, 0, 35)
 CategoryFrame.Size = UDim2.new(0, 140, 1, -35)
 
+local CategoryList = Instance.new("UIListLayout")
 CategoryList.Parent = CategoryFrame
 CategoryList.Padding = UDim.new(0, 2)
 CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
 
+local ContentFrame = Instance.new("Frame")
 ContentFrame.Name = "ContentFrame"
 ContentFrame.Parent = MainFrame
 ContentFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
@@ -142,6 +138,7 @@ ContentFrame.BorderSizePixel = 0
 ContentFrame.Position = UDim2.new(0, 140, 0, 35)
 ContentFrame.Size = UDim2.new(1, -140, 1, -35)
 
+local ScrollFrame = Instance.new("ScrollingFrame")
 ScrollFrame.Name = "ScrollFrame"
 ScrollFrame.Parent = ContentFrame
 ScrollFrame.BackgroundTransparency = 1
@@ -154,10 +151,12 @@ ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
 ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
+local UIListLayout = Instance.new("UIListLayout")
 UIListLayout.Parent = ScrollFrame
 UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
+local PlayerListFrame = Instance.new("Frame")
 PlayerListFrame.Name = "PlayerListFrame"
 PlayerListFrame.Parent = ScreenGui
 PlayerListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -191,7 +190,9 @@ ClosePlayerListButton.Font = Enum.Font.GothamBold
 ClosePlayerListButton.Text = "X"
 ClosePlayerListButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ClosePlayerListButton.TextSize = 12
+ClosePlayerListButton.AutoButtonColor = true
 
+local SelectedPlayerLabel = Instance.new("TextLabel")
 SelectedPlayerLabel.Name = "SelectedPlayerLabel"
 SelectedPlayerLabel.Parent = PlayerListFrame
 SelectedPlayerLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -203,6 +204,7 @@ SelectedPlayerLabel.Text = "SELECTED: NONE"
 SelectedPlayerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 SelectedPlayerLabel.TextSize = 10
 
+local PlayerListScrollFrame = Instance.new("ScrollingFrame")
 PlayerListScrollFrame.Name = "PlayerListScrollFrame"
 PlayerListScrollFrame.Parent = PlayerListFrame
 PlayerListScrollFrame.BackgroundTransparency = 1
@@ -215,11 +217,13 @@ PlayerListScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
 PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 PlayerListScrollFrame.BorderSizePixel = 0
 
+local PlayerListLayout = Instance.new("UIListLayout")
 PlayerListLayout.Parent = PlayerListScrollFrame
 PlayerListLayout.Padding = UDim.new(0, 2)
 PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
 
+local LogoButton = Instance.new("TextButton")
 LogoButton.Name = "LogoButton"
 LogoButton.Parent = ScreenGui
 LogoButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -234,7 +238,9 @@ LogoButton.TextSize = 16
 LogoButton.Visible = false
 LogoButton.Active = true
 LogoButton.Draggable = true
+LogoButton.AutoButtonColor = true
 
+local NextSpectateButton = Instance.new("TextButton")
 NextSpectateButton.Name = "NextSpectateButton"
 NextSpectateButton.Parent = ScreenGui
 NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
@@ -248,7 +254,9 @@ NextSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 NextSpectateButton.TextSize = 10
 NextSpectateButton.Visible = false
 NextSpectateButton.Active = true
+NextSpectateButton.AutoButtonColor = true
 
+local PrevSpectateButton = Instance.new("TextButton")
 PrevSpectateButton.Name = "PrevSpectateButton"
 PrevSpectateButton.Parent = ScreenGui
 PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
@@ -262,7 +270,9 @@ PrevSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 PrevSpectateButton.TextSize = 10
 PrevSpectateButton.Visible = false
 PrevSpectateButton.Active = true
+PrevSpectateButton.AutoButtonColor = true
 
+local StopSpectateButton = Instance.new("TextButton")
 StopSpectateButton.Name = "StopSpectateButton"
 StopSpectateButton.Parent = ScreenGui
 StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
@@ -275,7 +285,9 @@ StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 StopSpectateButton.TextSize = 10
 StopSpectateButton.Visible = false
 StopSpectateButton.Active = true
+StopSpectateButton.AutoButtonColor = true
 
+local TeleportSpectateButton = Instance.new("TextButton")
 TeleportSpectateButton.Name = "TeleportSpectateButton"
 TeleportSpectateButton.Parent = ScreenGui
 TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
@@ -288,17 +300,26 @@ TeleportSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 TeleportSpectateButton.TextSize = 10
 TeleportSpectateButton.Visible = false
 TeleportSpectateButton.Active = true
+TeleportSpectateButton.AutoButtonColor = true
 
 -- Load feature scripts
 local function loadFeatureScript(category)
     local success, result = pcall(function()
-        return loadstring(game:HttpGet(scriptURLs[category], true))()
+        local scriptContent = game:HttpGet(scriptURLs[category], true)
+        return loadstring(scriptContent)()
     end)
-    if success then
-        print(category .. " Loaded - By Fari Noveri")
+    if success and type(result) == "table" then
         return result
     else
-        warn("Failed to load " .. category .. ".lua: " .. tostring(result))
+        local errorLabel = Instance.new("TextLabel")
+        errorLabel.Name = category .. "Error"
+        errorLabel.Parent = ScrollFrame
+        errorLabel.BackgroundTransparency = 1
+        errorLabel.Size = UDim2.new(1, 0, 0, 30)
+        errorLabel.Font = Enum.Font.Gotham
+        errorLabel.Text = "Failed to load " .. category .. ": " .. tostring(result or "Unknown error")
+        errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+        errorLabel.TextSize = 11
         return nil
     end
 end
@@ -315,17 +336,31 @@ local function createButton(name, callback)
     button.Text = name:upper()
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 11
-    
-    button.MouseButton1Click:Connect(callback)
-    
+    button.AutoButtonColor = true
+
+    button.MouseButton1Click:Connect(function()
+        local success, err = pcall(callback)
+        if not success then
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = name .. "Error"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Error in " .. name .. ": " .. tostring(err)
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end
+    end)
+
     button.MouseEnter:Connect(function()
         button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     end)
-    
+
     button.MouseLeave:Connect(function()
         button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     end)
-    
+
     return button
 end
 
@@ -340,24 +375,36 @@ local function createToggleButton(name, callback)
     button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 11
-    
+    button.AutoButtonColor = true
+
     button.MouseButton1Click:Connect(function()
         buttonStates[name] = not buttonStates[name]
         button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
         button.Text = name:upper() .. (buttonStates[name] and " [ON]" or " [OFF]")
-        callback(buttonStates[name])
+        local success, err = pcall(function() callback(buttonStates[name]) end)
+        if not success then
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = name .. "Error"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Error in " .. name .. ": " .. tostring(err)
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end
     end)
-    
+
     button.MouseEnter:Connect(function()
         if not buttonStates[name] then
             button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         end
     end)
-    
+
     button.MouseLeave:Connect(function()
         button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
     end)
-    
+
     return button
 end
 
@@ -365,18 +412,19 @@ local function createCategoryButton(name)
     local button = Instance.new("TextButton")
     button.Name = name .. "Category"
     button.Parent = CategoryFrame
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    button.BackgroundColor3 = name == currentCategory and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
     button.BorderSizePixel = 0
     button.Size = UDim2.new(1, 0, 0, 35)
     button.Font = Enum.Font.Gotham
     button.Text = name:upper()
-    button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    button.TextColor3 = name == currentCategory and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
     button.TextSize = 10
-    
+    button.AutoButtonColor = true
+
     button.MouseButton1Click:Connect(function()
         switchCategory(name)
     end)
-    
+
     return button
 end
 
@@ -408,7 +456,6 @@ local function stopSpectating()
     selectedPlayer = nil
     currentSpectateIndex = 0
     SelectedPlayerLabel.Text = "SELECTED: NONE"
-    print("Stopped spectating via Stop Spectate button")
     updateSpectateButtons()
     for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
         if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
@@ -425,27 +472,25 @@ local function spectatePlayer(targetPlayer)
         end
     end
     spectateConnections = {}
-    
+
     if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
         workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
         selectedPlayer = targetPlayer
         currentSpectateIndex = table.find(spectatePlayerList, targetPlayer) or 0
         SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
-        print("Spectating: " .. targetPlayer.Name)
-        
+
         local targetHumanoid = targetPlayer.Character.Humanoid
         spectateConnections.died = targetHumanoid.Died:Connect(function()
-            print("Spectated player died, waiting for respawn")
+            -- Handle player death
         end)
-        
+
         spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
             local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
             if newHumanoid then
                 workspace.CurrentCamera.CameraSubject = newHumanoid
-                print("Spectated player respawned, continuing spectate")
             end
         end)
-        
+
         for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
             if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
                 if item.Name == targetPlayer.Name .. "Item" then
@@ -465,16 +510,15 @@ end
 
 local function spectateNextPlayer()
     if #spectatePlayerList == 0 then
-        print("No players to spectate")
         stopSpectating()
         return
     end
-    
+
     currentSpectateIndex = currentSpectateIndex + 1
     if currentSpectateIndex > #spectatePlayerList then
         currentSpectateIndex = 1
     end
-    
+
     local targetPlayer = spectatePlayerList[currentSpectateIndex]
     if targetPlayer then
         spectatePlayer(targetPlayer)
@@ -485,16 +529,15 @@ end
 
 local function spectatePrevPlayer()
     if #spectatePlayerList == 0 then
-        print("No players to spectate")
         stopSpectating()
         return
     end
-    
+
     currentSpectateIndex = currentSpectateIndex - 1
     if currentSpectateIndex < 1 then
         currentSpectateIndex = #spectatePlayerList
     end
-    
+
     local targetPlayer = spectatePlayerList[currentSpectateIndex]
     if targetPlayer then
         spectatePlayer(targetPlayer)
@@ -509,12 +552,12 @@ local function updatePlayerList()
             child:Destroy()
         end
     end
-    
+
     local previousSelectedPlayer = selectedPlayer
     spectatePlayerList = {}
     local playerCount = 0
     local players = Players:GetPlayers()
-    
+
     if #players <= 1 then
         local noPlayersLabel = Instance.new("TextLabel")
         noPlayersLabel.Name = "NoPlayersLabel"
@@ -526,13 +569,12 @@ local function updatePlayerList()
         noPlayersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         noPlayersLabel.TextSize = 11
         noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
-        print("Player List Updated: No other players found")
     else
         for _, p in pairs(players) do
             if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                 playerCount = playerCount + 1
                 table.insert(spectatePlayerList, p)
-                
+
                 local playerItem = Instance.new("Frame")
                 playerItem.Name = p.Name .. "Item"
                 playerItem.Parent = PlayerListScrollFrame
@@ -540,7 +582,7 @@ local function updatePlayerList()
                 playerItem.BorderSizePixel = 0
                 playerItem.Size = UDim2.new(1, -5, 0, 90)
                 playerItem.LayoutOrder = playerCount
-                
+
                 local nameLabel = Instance.new("TextLabel")
                 nameLabel.Name = "NameLabel"
                 nameLabel.Parent = playerItem
@@ -552,7 +594,7 @@ local function updatePlayerList()
                 nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
                 nameLabel.TextSize = 12
                 nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-                
+
                 local selectButton = Instance.new("TextButton")
                 selectButton.Name = "SelectButton"
                 selectButton.Parent = playerItem
@@ -564,7 +606,8 @@ local function updatePlayerList()
                 selectButton.Text = selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
                 selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 selectButton.TextSize = 10
-                
+                selectButton.AutoButtonColor = true
+
                 local spectateButton = Instance.new("TextButton")
                 spectateButton.Name = "SpectateButton"
                 spectateButton.Parent = playerItem
@@ -576,7 +619,8 @@ local function updatePlayerList()
                 spectateButton.Text = "SPECTATE"
                 spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 spectateButton.TextSize = 9
-                
+                spectateButton.AutoButtonColor = true
+
                 local stopSpectateButton = Instance.new("TextButton")
                 stopSpectateButton.Name = "StopSpectateButton"
                 stopSpectateButton.Parent = playerItem
@@ -588,7 +632,8 @@ local function updatePlayerList()
                 stopSpectateButton.Text = "STOP"
                 stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 stopSpectateButton.TextSize = 9
-                
+                stopSpectateButton.AutoButtonColor = true
+
                 local teleportButton = Instance.new("TextButton")
                 teleportButton.Name = "TeleportButton"
                 teleportButton.Parent = playerItem
@@ -600,7 +645,8 @@ local function updatePlayerList()
                 teleportButton.Text = "TELEPORT"
                 teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 teleportButton.TextSize = 9
-                
+                teleportButton.AutoButtonColor = true
+
                 selectButton.MouseButton1Click:Connect(function()
                     selectedPlayer = p
                     currentSpectateIndex = table.find(spectatePlayerList, p) or 0
@@ -617,31 +663,50 @@ local function updatePlayerList()
                         end
                     end
                 end)
-                
+
                 spectateButton.MouseButton1Click:Connect(function()
                     currentSpectateIndex = table.find(spectatePlayerList, p) or 0
                     spectatePlayer(p)
                 end)
-                
+
                 stopSpectateButton.MouseButton1Click:Connect(function()
                     stopSpectating()
                 end)
-                
+
                 teleportButton.MouseButton1Click:Connect(function()
                     local teleport = loadFeatureScript("Teleport")
                     if teleport and teleport.teleportToPlayer then
-                        teleport.teleportToPlayer()
+                        local success, err = pcall(teleport.teleportToPlayer)
+                        if not success then
+                            local errorLabel = Instance.new("TextLabel")
+                            errorLabel.Name = "TeleportError"
+                            errorLabel.Parent = ScrollFrame
+                            errorLabel.BackgroundTransparency = 1
+                            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+                            errorLabel.Font = Enum.Font.Gotham
+                            errorLabel.Text = "Error in Teleport: " .. tostring(err)
+                            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+                            errorLabel.TextSize = 10
+                        end
                     else
-                        print("Teleport function not available")
+                        local errorLabel = Instance.new("TextLabel")
+                        errorLabel.Name = "TeleportError"
+                        errorLabel.Parent = ScrollFrame
+                        errorLabel.BackgroundTransparency = 1
+                        errorLabel.Size = UDim2.new(1, 0, 0, 20)
+                        errorLabel.Font = Enum.Font.Gotham
+                        errorLabel.Text = "Teleport function not available"
+                        errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+                        errorLabel.TextSize = 10
                     end
                 end)
-                
+
                 selectButton.MouseEnter:Connect(function()
                     if selectedPlayer ~= p then
                         selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
                     end
                 end)
-                
+
                 selectButton.MouseLeave:Connect(function()
                     if selectedPlayer ~= p then
                         selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
@@ -649,34 +714,34 @@ local function updatePlayerList()
                         selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
                     end
                 end)
-                
+
                 spectateButton.MouseEnter:Connect(function()
                     spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
                 end)
-                
+
                 spectateButton.MouseLeave:Connect(function()
                     spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
                 end)
-                
+
                 stopSpectateButton.MouseEnter:Connect(function()
                     stopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
                 end)
-                
+
                 stopSpectateButton.MouseLeave:Connect(function()
                     stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
                 end)
-                
+
                 teleportButton.MouseEnter:Connect(function()
                     teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
                 end)
-                
+
                 teleportButton.MouseLeave:Connect(function()
                     teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
                 end)
             end
         end
     end
-    
+
     if previousSelectedPlayer then
         selectedPlayer = previousSelectedPlayer
         currentSpectateIndex = table.find(spectatePlayerList, selectedPlayer) or 0
@@ -689,11 +754,10 @@ local function updatePlayerList()
     else
         currentSpectateIndex = 0
     end
-    
+
     wait(0.1)
     local contentSize = PlayerListLayout.AbsoluteContentSize
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
-    print("Player List Updated: " .. playerCount .. " players listed")
     updateSpectateButtons()
 end
 
@@ -701,41 +765,204 @@ end
 local function loadMovementButtons()
     local movement = loadFeatureScript("Movement")
     if movement then
-        createToggleButton("Fly", movement.toggleFly or function() end)
-        createToggleButton("Noclip", movement.toggleNoclip or function() end)
-        createToggleButton("Speed", movement.toggleSpeed or function() end)
-        createToggleButton("Jump High", movement.toggleJumpHigh or function() end)
-        createToggleButton("Spider", movement.toggleSpider or function() end)
-        createToggleButton("Player Phase", movement.togglePlayerPhase or function() end)
+        createToggleButton("Fly", movement.toggleFly or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "FlyError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Fly function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Noclip", movement.toggleNoclip or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "NoclipError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Noclip function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Speed", movement.toggleSpeed or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "SpeedError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Speed function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Jump High", movement.toggleJumpHigh or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "JumpHighError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Jump High function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Spider", movement.toggleSpider or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "SpiderError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Spider function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Player Phase", movement.togglePlayerPhase or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "PlayerPhaseError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Player Phase function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
     end
 end
 
 local function loadPlayerButtons()
     local playerFuncs = loadFeatureScript("Player")
     if playerFuncs then
-        createButton("Select Player", playerFuncs.showPlayerSelection or function() updatePlayerList() PlayerListFrame.Visible = true end)
-        createToggleButton("God Mode", playerFuncs.toggleGodMode or function() end)
-        createToggleButton("Anti AFK", playerFuncs.toggleAntiAFK or function() end)
+        createButton("Select Player", playerFuncs.showPlayerSelection or function()
+            updatePlayerList()
+            PlayerListFrame.Visible = true
+        end)
+        createToggleButton("God Mode", playerFuncs.toggleGodMode or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "GodModeError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "God Mode function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Anti AFK", playerFuncs.toggleAntiAFK or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "AntiAFKError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Anti AFK function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
     end
 end
 
 local function loadVisualButtons()
     local visual = loadFeatureScript("Visual")
     if visual then
-        createToggleButton("Fullbright", visual.toggleFullbright or function() end)
-        createToggleButton("Freecam", visual.toggleFreecam or function() end)
-        createToggleButton("Flashlight", visual.toggleFlashlight or function() end)
+        createToggleButton("Fullbright", visual.toggleFullbright or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "FullbrightError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Fullbright function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Freecam", visual.toggleFreecam or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "FreecamError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Freecam function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createToggleButton("Flashlight", visual.toggleFlashlight or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "FlashlightError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Flashlight function not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
     end
 end
 
 local function loadTeleportButtons()
     local teleport = loadFeatureScript("Teleport")
     if teleport then
-        createButton("Position Manager", teleport.showPositionManager or function() print("Position Manager not available") end)
-        createButton("TP to Selected Player", teleport.teleportToPlayer or function() print("Teleport to Player not available") end)
-        createButton("TP to Freecam", teleport.teleportToFreecam or function() print("Teleport to Freecam not available") end)
-        createButton("Save Freecam Position", teleport.saveFreecamPosition or function() print("Save Freecam Position not available") end)
-        createButton("Save Player Position", teleport.savePlayerPosition or function() print("Save Player Position not available") end)
+        createButton("Position Manager", teleport.showPositionManager or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "PositionManagerError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Position Manager not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createButton("TP to Selected Player", teleport.teleportToPlayer or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "TeleportToPlayerError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Teleport to Player not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createButton("TP to Freecam", teleport.teleportToFreecam or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "TeleportToFreecamError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Teleport to Freecam not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createButton("Save Freecam Position", teleport.saveFreecamPosition or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "SaveFreecamPositionError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Save Freecam Position not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
+        createButton("Save Player Position", teleport.savePlayerPosition or function() 
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "SavePlayerPositionError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Save Player Position not available"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end)
     end
 end
 
@@ -748,7 +975,6 @@ local function loadUtilityButtons()
                     gui:Destroy()
                 end
             end
-            print("Previous scripts disabled")
         end)
         createButton("Reset Character", utility.resetCharacter or function()
             if humanoid then
@@ -760,15 +986,37 @@ end
 
 local function loadSettingsButtons()
     local settingsFuncs = loadFeatureScript("Settings")
-    if settingsFuncs then
-        settingsFuncs.loadSettingsButtons()
+    if settingsFuncs and settingsFuncs.loadSettingsButtons then
+        local success, err = pcall(settingsFuncs.loadSettingsButtons)
+        if not success then
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "SettingsError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Error in Settings: " .. tostring(err)
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end
     end
 end
 
 local function loadInfoButtons()
     local info = loadFeatureScript("Info")
-    if info then
-        info.loadInfoButtons()
+    if info and info.loadInfoButtons then
+        local success, err = pcall(info.loadInfoButtons)
+        if not success then
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "InfoError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Error in Info (Language Switch): " .. tostring(err)
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end
     end
 end
 
@@ -799,7 +1047,7 @@ end
 -- Category switching function
 function switchCategory(categoryName)
     currentCategory = categoryName
-    
+
     for _, child in pairs(CategoryFrame:GetChildren()) do
         if child:IsA("TextButton") then
             if child.Name == categoryName .. "Category" then
@@ -811,9 +1059,9 @@ function switchCategory(categoryName)
             end
         end
     end
-    
+
     clearButtons()
-    
+
     if categoryName == "Movement" then
         loadMovementButtons()
     elseif categoryName == "Player" then
@@ -831,10 +1079,10 @@ function switchCategory(categoryName)
     elseif categoryName == "AntiAdmin" then
         loadAntiAdminButtons()
     end
-    
+
     wait(0.1)
     local contentSize = UIListLayout.AbsoluteContentSize
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
 end
 
 -- GUI interactions
@@ -858,12 +1106,32 @@ end)
 NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
 PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
 StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
+
 TeleportSpectateButton.MouseButton1Click:Connect(function()
     local teleport = loadFeatureScript("Teleport")
     if teleport and teleport.teleportToPlayer then
-        teleport.teleportToPlayer()
+        local success, err = pcall(teleport.teleportToPlayer)
+        if not success then
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Name = "TeleportSpectateError"
+            errorLabel.Parent = ScrollFrame
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, 0, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Error in Teleport Spectate: " .. tostring(err)
+            errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            errorLabel.TextSize = 10
+        end
     else
-        print("Teleport to Player not available")
+        local errorLabel = Instance.new("TextLabel")
+        errorLabel.Name = "TeleportSpectateError"
+        errorLabel.Parent = ScrollFrame
+        errorLabel.BackgroundTransparency = 1
+        errorLabel.Size = UDim2.new(1, 0, 0, 20)
+        errorLabel.Font = Enum.Font.Gotham
+        errorLabel.Text = "Teleport Spectate function not available"
+        errorLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+        errorLabel.TextSize = 10
     end
 end)
 
@@ -896,5 +1164,3 @@ local function cleanup()
 end
 
 game:BindToClose(cleanup)
-
-print("Main Loader Initialized - By Fari Noveri")
