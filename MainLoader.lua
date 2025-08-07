@@ -11,11 +11,14 @@ for _, gui in pairs(CoreGui:GetChildren()) do
     end
 end
 
--- Load Info module only
+-- Load modules (Info and others)
 local modules = {}
-local success, result = loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/Info.lua", true))()
-if success and result then
-    modules.Info = result
+local moduleNames = {"Info", "Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "AntiAdmin", "AntiAdminInfo"}
+for _, moduleName in ipairs(moduleNames) do
+    local success, result = loadstring(game:HttpGet("https://raw.githubusercontent.com/FariNoveri/Supertool/refs/heads/main/" .. moduleName .. ".lua", true))()
+    if success and result then
+        modules[moduleName] = result
+    end
 end
 
 -- GUI Creation
@@ -24,19 +27,6 @@ ScreenGui.Name = "MinimalHackGUI"
 ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
-
--- Fallback TestLabel
-local TestLabel = Instance.new("TextLabel")
-TestLabel.Name = "TestLabel"
-TestLabel.Parent = ScreenGui
-TestLabel.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-TestLabel.Size = UDim2.new(0, 200, 0, 50)
-TestLabel.Position = UDim2.new(0.5, -100, 0.5, -25)
-TestLabel.Font = Enum.Font.Gotham
-TestLabel.Text = "GUI TEST - Fari Noveri"
-TestLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TestLabel.TextSize = 14
-TestLabel.Visible = true
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
@@ -120,7 +110,7 @@ UIListLayout.Parent = ScrollFrame
 UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Pass GUI elements to Info module
+-- Pass GUI elements to modules
 if modules.Info then
     modules.Info.setGuiElements({
         InfoFrame = ContentFrame,
@@ -158,6 +148,55 @@ local function clearButtons()
     end
 end
 
+-- Fallback watermark
+local function loadFallbackInfo()
+    local watermarkLabel = Instance.new("TextLabel")
+    watermarkLabel.Name = "WatermarkLabel"
+    watermarkLabel.Parent = ScrollFrame
+    watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    watermarkLabel.BorderSizePixel = 0
+    watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
+    watermarkLabel.Font = Enum.Font.Gotham
+    watermarkLabel.Text = [[
+--[ NOTICE BEFORE USING ]--
+
+Created by Fari Noveri for Unknown Block members.
+Not for sale, not for showing off, not for tampering.
+
+- Rules of Use:
+- Do not sell this script. It's not for profit.
+- Keep the creator's name as "by Fari Noveri".
+- Do not re-upload to public platforms without permission.
+- Do not combine with other scripts and claim as your own.
+- Only get updates from the original source to avoid errors.
+
+- If you find this script outside the group:
+It may have been leaked. Please don't share it further.
+
+- Purpose:
+This script is made to help fellow members, not for profit.
+Please use it responsibly and respect its purpose.
+
+- For suggestions, questions, or feedback:
+Contact:
+- Instagram: @fariinoveri
+- TikTok: @fari_noveri
+
+Thank you for reading. Use it wisely.
+
+- Fari Noveri
+]]
+    watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    watermarkLabel.TextSize = 10
+    watermarkLabel.TextWrapped = true
+    watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
+    watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+    
+    wait(0.1)
+    local contentSize = UIListLayout.AbsoluteContentSize
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+end
+
 -- Category switching
 local currentCategory = "Info"
 function switchCategory(categoryName)
@@ -177,8 +216,26 @@ function switchCategory(categoryName)
     
     clearButtons()
     
-    if categoryName == "Info" and modules.Info then
-        modules.Info.updateGui()
+    if categoryName == "Info" then
+        if modules.Info then
+            modules.Info.updateGui()
+        else
+            loadFallbackInfo()
+        end
+    elseif categoryName == "Movement" and modules.Movement then
+        -- Placeholder for Movement buttons
+    elseif categoryName == "Player" and modules.Player then
+        -- Placeholder for Player buttons
+    elseif categoryName == "Visual" and modules.Visual then
+        -- Placeholder for Visual buttons
+    elseif categoryName == "Teleport" and modules.Teleport then
+        -- Placeholder for Teleport buttons
+    elseif categoryName == "Utility" and modules.Utility then
+        -- Placeholder for Utility buttons
+    elseif categoryName == "Settings" and modules.Settings then
+        -- Placeholder for Settings buttons
+    elseif categoryName == "Anti Admin" and modules.AntiAdminInfo then
+        -- Placeholder for Anti Admin buttons
     end
     
     wait(0.1)
@@ -187,7 +244,9 @@ function switchCategory(categoryName)
 end
 
 -- Initialize categories
-createCategoryButton("Info")
+for _, category in ipairs({"Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "Info", "Anti Admin"}) do
+    createCategoryButton(category)
+end
 
 -- Initialize GUI
 switchCategory("Info")
