@@ -16,7 +16,7 @@ DebugStart.Visible = true
 
 -- Clean up existing GUIs
 for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name == "DebugStart" or gui.Name == "DebugCleanup" or gui.Name == "DebugModules" or gui.Name == "DebugScreenGui" or gui.Name == "DebugMainFrame" or gui.Name == "DebugComplete" then
+    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name:match("^Debug") then
         gui:Destroy()
     end
 end
@@ -134,7 +134,7 @@ Title.BackgroundTransparency = 1
 Title.Position = UDim2.new(0, 45, 0, 0)
 Title.Size = UDim2.new(1, -90, 1, 0)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK] dasda"
+Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -151,6 +151,20 @@ MinimizeButton.Font = Enum.Font.GothamBold
 MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 14
+MinimizeButton.Visible = true
+
+-- Debug Label: Minimize Click
+local DebugMinimize = Instance.new("TextLabel")
+DebugMinimize.Name = "DebugMinimize"
+DebugMinimize.Parent = CoreGui
+DebugMinimize.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugMinimize.Size = UDim2.new(0, 200, 0, 30)
+DebugMinimize.Position = UDim2.new(0.5, -100, 0.55, -15)
+DebugMinimize.Font = Enum.Font.Gotham
+DebugMinimize.Text = "DEBUG: Minimize Not Clicked"
+DebugMinimize.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugMinimize.TextSize = 12
+DebugMinimize.Visible = false
 
 -- Create CategoryFrame
 local CategoryFrame = Instance.new("Frame")
@@ -303,8 +317,15 @@ end
 
 -- Minimize button logic
 MinimizeButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-    MinimizeButton.Text = MainFrame.Visible and "-" or "+"
+    DebugMinimize.Visible = true
+    DebugMinimize.Text = "DEBUG: Minimize Clicked"
+    if MainFrame.Visible then
+        MainFrame.Visible = false
+        MinimizeButton.Text = "+"
+    else
+        MainFrame.Visible = true
+        MinimizeButton.Text = "-"
+    end
 end)
 
 -- Category switching
@@ -332,48 +353,8 @@ function switchCategory(categoryName)
         else
             loadFallbackInfo()
         end
-    elseif categoryName == "Movement" then
-        if modules.Movement then
-            modules.Movement.updateGui()
-        else
-            loadPlaceholder("Movement")
-        end
-    elseif categoryName == "Player" then
-        if modules.Player then
-            modules.Player.updateGui()
-        else
-            loadPlaceholder("Player")
-        end
-    elseif categoryName == "Visual" then
-        if modules.Visual then
-            modules.Visual.updateGui()
-        else
-            loadPlaceholder("Visual")
-        end
-    elseif categoryName == "Teleport" then
-        if modules.Teleport then
-            modules.Teleport.updateGui()
-        else
-            loadPlaceholder("Teleport")
-        end
-    elseif categoryName == "Utility" then
-        if modules.Utility then
-            modules.Utility.updateGui()
-        else
-            loadPlaceholder("Utility")
-        end
-    elseif categoryName == "Settings" then
-        if modules.Settings then
-            modules.Settings.updateGui()
-        else
-            loadPlaceholder("Settings")
-        end
-    elseif categoryName == "Anti Admin" then
-        if modules.AntiAdminInfo then
-            modules.AntiAdminInfo.updateGui()
-        else
-            loadPlaceholder("Anti Admin")
-        end
+    else
+        loadPlaceholder(categoryName)
     end
     
     wait(0.1)
@@ -400,7 +381,7 @@ DebugComplete.Name = "DebugComplete"
 DebugComplete.Parent = CoreGui
 DebugComplete.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 DebugComplete.Size = UDim2.new(0, 200, 0, 30)
-DebugComplete.Position = UDim2.new(0.5, -100, 0.55, -15)
+DebugComplete.Position = UDim2.new(0.5, -100, 0.6, -15)
 DebugComplete.Font = Enum.Font.Gotham
 DebugComplete.Text = "DEBUG: GUI Complete"
 DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)
