@@ -1,3 +1,6 @@
+-- Console Output: Script Start
+print("MAINLOADER: Script Started")
+
 local CoreGui = game:GetService("CoreGui")
 
 -- Debug Label: Start
@@ -33,17 +36,29 @@ DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCleanup.TextSize = 12
 DebugCleanup.Visible = true
 
+-- Console Output: Cleanup Done
+print("MAINLOADER: Cleanup Done")
+
 -- Embedded Info module
 local modules = {
     Info = {
         setGuiElements = function(elements)
-            if not elements then return end
+            print("MAINLOADER: Setting Info Elements")
+            if not elements then
+                print("MAINLOADER: Elements nil")
+                return
+            end
             modules.Info.InfoFrame = elements.InfoFrame
             modules.Info.InfoScrollFrame = elements.InfoScrollFrame
             modules.Info.InfoLayout = elements.InfoLayout
+            print("MAINLOADER: Elements Set")
         end,
         updateGui = function()
-            if not modules.Info.InfoScrollFrame then return end
+            print("MAINLOADER: Updating Info GUI")
+            if not modules.Info.InfoScrollFrame then
+                print("MAINLOADER: InfoScrollFrame nil")
+                return
+            end
             for _, child in pairs(modules.Info.InfoScrollFrame:GetChildren()) do
                 if child:IsA("TextLabel") or child:IsA("Frame") then
                     child:Destroy()
@@ -56,35 +71,7 @@ local modules = {
             watermarkLabel.BorderSizePixel = 0
             watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
             watermarkLabel.Font = Enum.Font.Gotham
-            watermarkLabel.Text = [[
---[ NOTICE BEFORE USING ]--
-
-Created by Fari Noveri for Unknown Block members.
-Not for sale, not for showing off, not for tampering.
-
-- Rules of Use:
-- Do not sell this script. It's not for profit.
-- Keep the creator's name as "by Fari Noveri".
-- Do not re-upload to public platforms without permission.
-- Do not combine with other scripts and claim as your own.
-- Only get updates from the original source to avoid errors.
-
-- If you find this script outside the group:
-It may have been leaked. Please don't share it further.
-
-- Purpose:
-This script is made to help fellow members, not for profit.
-Please use it responsibly and respect its purpose.
-
-- For suggestions, questions, or feedback:
-Contact:
-- Instagram: @fariinoveri
-- TikTok: @fari_noveri
-
-Thank you for reading. Use it wisely.
-
-- Fari Noveri
-]]
+            watermarkLabel.Text = "TEST INFO WATERMARK"
             watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
             watermarkLabel.TextSize = 10
             watermarkLabel.TextWrapped = true
@@ -94,6 +81,7 @@ Thank you for reading. Use it wisely.
             wait(0.1)
             local contentSize = modules.Info.InfoLayout and modules.Info.InfoLayout.AbsoluteContentSize or Vector2.new(0, 0)
             modules.Info.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+            print("MAINLOADER: Info Watermark Created")
         end
     }
 }
@@ -106,10 +94,13 @@ DebugModules.BackgroundColor3 = modules.Info and Color3.fromRGB(0, 255, 0) or Co
 DebugModules.Size = UDim2.new(0, 200, 0, 30)
 DebugModules.Position = UDim2.new(0.5, -100, 0.4, -15)
 DebugModules.Font = Enum.Font.Gotham
-DebugModules.Text = modules.Info and "DEBUG: Info Loaded (Embedded)" or "DEBUG: Info Load Failed"
+DebugModules.Text = modules.Info and "DEBUG: Info Loaded" or "DEBUG: Info Load Failed"
 DebugModules.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugModules.TextSize = 12
 DebugModules.Visible = true
+
+-- Console Output: Modules Loaded
+print("MAINLOADER: Modules Loaded")
 
 -- Create ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
@@ -130,6 +121,9 @@ DebugScreenGui.Text = "DEBUG: ScreenGui Created"
 DebugScreenGui.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugScreenGui.TextSize = 12
 DebugScreenGui.Visible = true
+
+-- Console Output: ScreenGui Created
+print("MAINLOADER: ScreenGui Created")
 
 -- Create MainFrame
 local MainFrame = Instance.new("Frame")
@@ -156,6 +150,9 @@ DebugMainFrame.Text = "DEBUG: MainFrame Created"
 DebugMainFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugMainFrame.TextSize = 12
 DebugMainFrame.Visible = true
+
+-- Console Output: MainFrame Created
+print("MAINLOADER: MainFrame Created")
 
 -- Create TopBar
 local TopBar = Instance.new("Frame")
@@ -226,6 +223,9 @@ DebugMinimize.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugMinimize.TextSize = 12
 DebugMinimize.Visible = false
 
+-- Console Output: Minimize Button Created
+print("MAINLOADER: Minimize Button Created")
+
 -- Create CategoryFrame
 local CategoryFrame = Instance.new("Frame")
 CategoryFrame.Name = "CategoryFrame"
@@ -252,6 +252,9 @@ DebugCategoryFrame.Text = "DEBUG: CategoryFrame Created"
 DebugCategoryFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCategoryFrame.TextSize = 12
 DebugCategoryFrame.Visible = true
+
+-- Console Output: CategoryFrame Created
+print("MAINLOADER: CategoryFrame Created")
 
 -- Create ContentFrame
 local ContentFrame = Instance.new("Frame")
@@ -293,6 +296,9 @@ DebugContentFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugContentFrame.TextSize = 12
 DebugContentFrame.Visible = true
 
+-- Console Output: ContentFrame Created
+print("MAINLOADER: ContentFrame Created")
+
 -- Pass GUI elements to Info module
 if modules.Info then
     local success, err = pcall(function()
@@ -314,6 +320,7 @@ if modules.Info then
         DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
         DebugError.TextSize = 12
         DebugError.Visible = true
+        print("MAINLOADER: Info Error: " .. tostring(err))
     end
 end
 
@@ -333,6 +340,7 @@ local function createCategoryButton(name)
     button.MouseButton1Click:Connect(function()
         DebugMinimize.Visible = true
         DebugMinimize.Text = "DEBUG: " .. name .. " Clicked"
+        print("MAINLOADER: " .. name .. " Clicked")
         switchCategory(name)
     end)
     
@@ -385,6 +393,7 @@ local function loadPlaceholder(category)
     exampleButton.MouseButton1Click:Connect(function()
         DebugMinimize.Visible = true
         DebugMinimize.Text = "DEBUG: " .. category .. " Example Clicked"
+        print("MAINLOADER: " .. category .. " Example Clicked")
     end)
     
     wait(0.1)
@@ -396,10 +405,12 @@ end
 MinimizeButton.Activated:Connect(function()
     DebugMinimize.Visible = true
     DebugMinimize.Text = "DEBUG: Minimize Clicked"
-    MainFrame.Visible = not MainFrame.Visible
-    wait(0.3)
+    print("MAINLOADER: Minimize Clicked")
+    local newVisible = not MainFrame.Visible
+    MainFrame.Visible = newVisible
+    wait(0.5)
     if MainFrame.Parent then
-        MinimizeButton.Text = MainFrame.Visible and "-" or "+"
+        MinimizeButton.Text = newVisible and "-" or "+"
     end
 end)
 
@@ -438,6 +449,7 @@ function switchCategory(categoryName)
             DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
             DebugError.TextSize = 12
             DebugError.Visible = true
+            print("MAINLOADER: Info Update Error: " .. tostring(err))
         end
     else
         loadPlaceholder(categoryName)
@@ -466,6 +478,7 @@ if not success then
     DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
     DebugError.TextSize = 12
     DebugError.Visible = true
+    print("MAINLOADER: Categories Error: " .. tostring(err))
 end
 
 -- Initialize GUI
@@ -485,6 +498,7 @@ if modules.Info then
         DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
         DebugError.TextSize = 12
         DebugError.Visible = true
+        print("MAINLOADER: Init Error: " .. tostring(err))
     end
 end
 
@@ -505,3 +519,6 @@ DebugComplete.Text = "DEBUG: GUI Complete"
 DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugComplete.TextSize = 12
 DebugComplete.Visible = true
+
+-- Console Output: GUI Complete
+print("MAINLOADER: GUI Complete")

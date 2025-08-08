@@ -1,3 +1,6 @@
+-- Console Output: Script Start
+print("TEST_HTTPGET: Script Started")
+
 -- Debug Label: Script Start
 local DebugStart = Instance.new("TextLabel")
 DebugStart.Name = "DebugStart"
@@ -15,6 +18,9 @@ local success, CoreGui = pcall(function()
     return game:GetService("CoreGui")
 end)
 
+-- Console Output: CoreGui Result
+print("TEST_HTTPGET: CoreGui " .. (success and "Success" or "Failed: " .. tostring(CoreGui)))
+
 -- Debug Label: CoreGui Result
 local DebugCoreGui = Instance.new("TextLabel")
 DebugCoreGui.Name = "DebugCoreGui"
@@ -30,9 +36,9 @@ DebugCoreGui.Visible = true
 if success then
     DebugStart.Parent = CoreGui
     DebugCoreGui.Parent = CoreGui
+else
+    return
 end
-
-if not success then return end
 
 -- Clean up existing GUIs
 for _, gui in pairs(CoreGui:GetChildren()) do
@@ -54,16 +60,27 @@ DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugCleanup.TextSize = 12
 DebugCleanup.Visible = true
 
+-- Console Output: Cleanup Done
+print("TEST_HTTPGET: Cleanup Done")
+
 -- Embedded Info module
 local module = {
     setGuiElements = function(elements)
-        if not elements then return end
+        print("TEST_HTTPGET: Setting GUI Elements")
+        if not elements then
+            print("TEST_HTTPGET: Elements nil")
+            return
+        end
         module.InfoFrame = elements.InfoFrame
         module.InfoScrollFrame = elements.InfoScrollFrame
         module.InfoLayout = elements.InfoLayout
     end,
     updateGui = function()
-        if not module.InfoScrollFrame then return end
+        print("TEST_HTTPGET: Updating GUI")
+        if not module.InfoScrollFrame then
+            print("TEST_HTTPGET: InfoScrollFrame nil")
+            return
+        end
         for _, child in pairs(module.InfoScrollFrame:GetChildren()) do
             if child:IsA("TextLabel") or child:IsA("Frame") then
                 child:Destroy()
@@ -76,35 +93,7 @@ local module = {
         watermarkLabel.BorderSizePixel = 0
         watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
         watermarkLabel.Font = Enum.Font.Gotham
-        watermarkLabel.Text = [[
---[ NOTICE BEFORE USING ]--
-
-Created by Fari Noveri for Unknown Block members.
-Not for sale, not for showing off, not for tampering.
-
-- Rules of Use:
-- Do not sell this script. It's not for profit.
-- Keep the creator's name as "by Fari Noveri".
-- Do not re-upload to public platforms without permission.
-- Do not combine with other scripts and claim as your own.
-- Only get updates from the original source to avoid errors.
-
-- If you find this script outside the group:
-It may have been leaked. Please don't share it further.
-
-- Purpose:
-This script is made to help fellow members, not for profit.
-Please use it responsibly and respect its purpose.
-
-- For suggestions, questions, or feedback:
-Contact:
-- Instagram: @fariinoveri
-- TikTok: @fari_noveri
-
-Thank you for reading. Use it wisely.
-
-- Fari Noveri
-]]
+        watermarkLabel.Text = "TEST WATERMARK"
         watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         watermarkLabel.TextSize = 10
         watermarkLabel.TextWrapped = true
@@ -114,6 +103,7 @@ Thank you for reading. Use it wisely.
         wait(0.1)
         local contentSize = module.InfoLayout and module.InfoLayout.AbsoluteContentSize or Vector2.new(0, 0)
         module.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+        print("TEST_HTTPGET: Watermark Created")
     end
 }
 
@@ -125,12 +115,15 @@ DebugModule.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 DebugModule.Size = UDim2.new(0, 200, 0, 30)
 DebugModule.Position = UDim2.new(0.5, -100, 0.45, -15)
 DebugModule.Font = Enum.Font.Gotham
-DebugModule.Text = "DEBUG: Module Loaded (Embedded)"
+DebugModule.Text = "DEBUG: Module Loaded"
 DebugModule.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugModule.TextSize = 12
 DebugModule.Visible = true
 
--- Create ScreenGui for testing module
+-- Console Output: Module Loaded
+print("TEST_HTTPGET: Module Loaded")
+
+-- Create ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "TestHttpGetGUI"
 ScreenGui.Parent = CoreGui
@@ -150,66 +143,57 @@ DebugScreenGui.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugScreenGui.TextSize = 12
 DebugScreenGui.Visible = true
 
+-- Console Output: ScreenGui Created
+print("TEST_HTTPGET: ScreenGui Created")
+
 -- Test module
-if module then
-    local success, err = pcall(function()
-        local ContentFrame = Instance.new("Frame")
-        ContentFrame.Name = "ContentFrame"
-        ContentFrame.Parent = ScreenGui
-        ContentFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-        ContentFrame.BorderSizePixel = 0
-        ContentFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-        ContentFrame.Size = UDim2.new(0, 400, 0, 300)
-        
-        local ScrollFrame = Instance.new("ScrollingFrame")
-        ScrollFrame.Name = "ScrollFrame"
-        ScrollFrame.Parent = ContentFrame
-        ScrollFrame.BackgroundTransparency = 1
-        ScrollFrame.Position = UDim2.new(0, 10, 0, 10)
-        ScrollFrame.Size = UDim2.new(1, -20, 1, -20)
-        ScrollFrame.ScrollBarThickness = 4
-        ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-        ScrollFrame.BorderSizePixel = 0
-        ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-        ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-        
-        local UIListLayout = Instance.new("UIListLayout")
-        UIListLayout.Parent = ScrollFrame
-        UIListLayout.Padding = UDim.new(0, 5)
-        UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        
-        module.setGuiElements({
-            InfoFrame = ContentFrame,
-            InfoScrollFrame = ScrollFrame,
-            InfoLayout = UIListLayout
-        })
-        module.updateGui()
-    end)
-    if not success then
-        local DebugError = Instance.new("TextLabel")
-        DebugError.Name = "DebugError"
-        DebugError.Parent = CoreGui
-        DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-        DebugError.Size = UDim2.new(0, 200, 0, 30)
-        DebugError.Position = UDim2.new(0.5, -100, 0.55, -15)
-        DebugError.Font = Enum.Font.Gotham
-        DebugError.Text = "DEBUG: GUI Error: " .. tostring(err)
-        DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
-        DebugError.TextSize = 12
-        DebugError.Visible = true
-    end
-end
+local success, err = pcall(function()
+    local ContentFrame = Instance.new("Frame")
+    ContentFrame.Name = "ContentFrame"
+    ContentFrame.Parent = ScreenGui
+    ContentFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+    ContentFrame.BorderSizePixel = 0
+    ContentFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+    ContentFrame.Size = UDim2.new(0, 400, 0, 300)
+    
+    local ScrollFrame = Instance.new("ScrollingFrame")
+    ScrollFrame.Name = "ScrollFrame"
+    ScrollFrame.Parent = ContentFrame
+    ScrollFrame.BackgroundTransparency = 1
+    ScrollFrame.Position = UDim2.new(0, 10, 0, 10)
+    ScrollFrame.Size = UDim2.new(1, -20, 1, -20)
+    ScrollFrame.ScrollBarThickness = 4
+    ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    ScrollFrame.BorderSizePixel = 0
+    ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Parent = ScrollFrame
+    UIListLayout.Padding = UDim.new(0, 5)
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    
+    module.setGuiElements({
+        InfoFrame = ContentFrame,
+        InfoScrollFrame = ScrollFrame,
+        InfoLayout = UIListLayout
+    })
+    module.updateGui()
+end)
 
 -- Debug Label: GUI Complete
 local DebugComplete = Instance.new("TextLabel")
 DebugComplete.Name = "DebugComplete"
 DebugComplete.Parent = CoreGui
-DebugComplete.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+DebugComplete.BackgroundColor3 = success and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 DebugComplete.Size = UDim2.new(0, 200, 0, 30)
-DebugComplete.Position = UDim2.new(0.5, -100, 0.6, -15)
+DebugComplete.Position = UDim2.new(0.5, -100, 0.55, -15)
 DebugComplete.Font = Enum.Font.Gotham
-DebugComplete.Text = "DEBUG: GUI Complete"
+DebugComplete.Text = success and "DEBUG: GUI Complete" or "DEBUG: GUI Failed: " .. tostring(err)
 DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)
 DebugComplete.TextSize = 12
 DebugComplete.Visible = true
+
+-- Console Output: GUI Result
+print("TEST_HTTPGET: GUI " .. (success and "Complete" or "Failed: " .. tostring(err)))

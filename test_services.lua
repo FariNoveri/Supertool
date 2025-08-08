@@ -1,3 +1,6 @@
+-- Console Output: Script Start
+print("TEST_SERVICES: Script Started")
+
 -- Debug Label: Script Start
 local DebugStart = Instance.new("TextLabel")
 DebugStart.Name = "DebugStart"
@@ -16,6 +19,9 @@ local success, result = pcall(function()
     DebugStart.Parent = CoreGui
     return CoreGui
 end)
+
+-- Console Output: CoreGui Result
+print("TEST_SERVICES: CoreGui " .. (success and "Success" or "Failed: " .. tostring(result)))
 
 -- Debug Label: CoreGui Result
 local DebugCoreGui = Instance.new("TextLabel")
