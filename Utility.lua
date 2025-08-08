@@ -77,7 +77,7 @@ local function startMacroRecording()
     macroRecording = true
     currentMacro = {frames = {}, startTime = tick()}
     
-    updateCharacterReferences() -- Ensure valid references at start
+    updateCharacterReferences()
     
     recordConnection = RunService.Heartbeat:Connect(function()
         if not macroRecording then
@@ -89,7 +89,7 @@ local function startMacroRecording()
         end
         
         if not humanoid or not rootPart then
-            updateCharacterReferences() -- Update references if invalid
+            updateCharacterReferences()
             if not humanoid or not rootPart then return end
         end
         
@@ -136,7 +136,7 @@ local function playMacro(macroName)
     if not macro or not macro.frames then return end
     
     macroPlaying = true
-    humanoid.WalkSpeed = 0 -- Prevent player input during playback
+    humanoid.WalkSpeed = 0
     
     local startTime = tick()
     local index = 1
@@ -467,12 +467,12 @@ function Utility.resetStates()
         recordConnection = nil
     end
     currentMacro = {}
-    savedMacros = {}
-    fileSystem["DCIM/Supertool"] = {}
     macroFrameVisible = false
     if MacroFrame then
         MacroFrame.Visible = false
     end
+    -- Preserve savedMacros and fileSystem
+    Utility.updateMacroList()
 end
 
 -- Function to set dependencies and handle character respawn
@@ -493,6 +493,12 @@ function Utility.init(deps)
     currentMacro = {}
     savedMacros = {}
     macroFrameVisible = false
+    
+    -- Load any existing macros from file system
+    ensureFileSystem()
+    for macroName, macroData in pairs(fileSystem["DCIM/Supertool"]) do
+        savedMacros[macroName] = macroData
+    end
     
     -- Initialize UI elements
     initUI()
