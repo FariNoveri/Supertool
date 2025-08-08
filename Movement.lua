@@ -134,7 +134,7 @@ local function toggleWallClimb(enabled)
                 local isNearWall = false
                 for _, direction in ipairs(directions) do
                     local raycast = Workspace:Raycast(Movement.rootPart.Position, direction * 3, raycastParams)
-                    if raycast and raycast.Instance and raycast.Normal.Y < 0.1 then -- Vertical surface check
+                    if raycast and raycast.Instance and raycast.Normal.Y < 0.1 then
                         isNearWall = true
                         break
                     end
@@ -282,7 +282,8 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     print("Loading movement buttons")
     
     if not createButton or not createToggleButton then
-        print("createButton or createToggleButton not provided!")
+        warn("Error: createButton or createToggleButton not provided! Buttons will not be created.")
+        print("Debug: createButton =", createButton, "createToggleButton =", createToggleButton)
         return
     end
     
@@ -365,7 +366,7 @@ function Movement.init(deps)
     print("Initializing Movement module")
     
     if not deps then
-        print("Error: No dependencies provided!")
+        warn("Error: No dependencies provided!")
         return false
     end
     
