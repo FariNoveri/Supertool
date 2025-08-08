@@ -1,19 +1,396 @@
--- utility.lua
 -- Utility-related features for MinimalHackGUI by Fari Noveri
 
 -- Dependencies: These must be passed from mainloader.lua
-local Players, humanoid, rootPart, ScrollFrame, buttonStates
+local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService
 
 -- Initialize module
 local Utility = {}
+
+-- Variables
+local macroRecording = false
+local macroPlaying = false
+local currentMacro = {}
+local savedMacros = {}
+local macroFrameVisible = false
+local MacroFrame, MacroScrollFrame, MacroLayout, MacroInput, SaveMacroButton
+
+-- Mock file system for DCIM/Supertool
+local fileSystem = {
+    ["DCIM/Supertool"] = {}
+}
+
+-- Helper function to ensure DCIM/Supertool exists
+local function ensureFileSystem()
+    if not fileSystem["DCIM"] then
+        fileSystem["DCIM"] = {}
+    end
+    if not fileSystem["DCIM/Supertool"] then
+        fileSystem["DCIM/Supertool"] = {}
+    end
+end
+
+-- Helper function to save macro to file system
+local function saveToFileSystem(macroName, macroData)
+    ensureFileSystem()
+    fileSystem["DCIM/Supertool"][macroName] = macroData
+end
+
+-- Helper function to load macro from file system
+local function loadFromFileSystem(macroName)
+    ensureFileSystem()
+    return fileSystem["DCIM/Supertool"][macroName]
+end
+
+-- Helper function to delete macro from file system
+local function deleteFromFileSystem(macroName)
+    ensureFileSystem()
+    if fileSystem["DCIM/Supertool"][macroName] then
+        fileSystem["DCIM/Supertool"][macroName] = nil
+        return true
+    end
+    return false
+end
+
+-- Helper function to rename macro in file system
+local function renameInFileSystem(oldName, newName)
+    ensureFileSystem()
+    if fileSystem["DCIM/Supertool"][oldName] and newName ~= "" then
+        fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][oldName]
+        fileSystem["DCIM/Supertool"][oldName] = nil
+        return true
+    end
+    return false
+end
+
+-- Record Macro
+local function startMacroRecording()
+    if macroRecording or macroPlaying then return end
+    macroRecording = true
+    currentMacro = {frames = {}, startTime = tick()}
+    
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        if not macroRecording or not humanoid or not rootPart then
+            if connection then connection:Disconnect() end
+            macroRecording = false
+            return
+        end
+        
+        local frame = {
+            time = tick() - currentMacro.startTime,
+            cframe = rootPart.CFrame,
+            velocity = rootPart.Velocity,
+            walkSpeed = humanoid.WalkSpeed,
+            jumpPower = humanoid.JumpPower,
+            hipHeight = humanoid.HipHeight,
+            state = humanoid:GetState()
+        }
+        table.insert(currentMacro.frames, frame)
+    end)
+end
+
+-- Stop Macro
+local function stopMacroRecording()
+    if not macroRecording then return end
+    macroRecording = false
+    
+    local macroName = MacroInput.Text
+    if macroName == "" then
+        macroName = "Macro " .. (#savedMacros + 1)
+    end
+    
+    savedMacros[macroName] = currentMacro
+    saveToFileSystem(macroName, currentMacro)
+    MacroInput.Text = ""
+    Utility.updateMacroList()
+end
+
+-- Play Macro
+local function playMacro(macroName)
+    if macroRecording or macroPlaying or not humanoid or not rootPart then return end
+    local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
+    if not macro or not macro.frames then return end
+    
+    macroPlaying = true
+    humanoid.WalkSpeed = 0 -- Prevent player input during playback
+    
+    local startTime = tick()
+    local index = 1
+    
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        if not macroPlaying or not humanoid or not rootPart or index > #macro.frames then
+            if connection then connection:Disconnect() end
+            macroPlaying = false
+            humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+            return
+        end
+        
+        local frame = macro.frames[index]
+        while index <= #macro.frames and frame.time <= (tick() - startTime) do
+            rootPart.CFrame = frame.cframe
+            rootPart.Velocity = frame.velocity
+            humanoid.WalkSpeed = frame.walkSpeed
+            humanoid.JumpPower = frame.jumpPower
+            humanoid.HipHeight = frame.hipHeight
+            humanoid:ChangeState(frame.state)
+            index = index + 1
+            frame = macro.frames[index] or frame
+        end
+    end)
+end
+
+-- Delete Macro
+local function deleteMacro(macroName)
+    if savedMacros[macroName] then
+        savedMacros[macroName] = nil
+        deleteFromFileSystem(macroName)
+        Utility.updateMacroList()
+    end
+end
+
+-- Rename Macro
+local function renameMacro(oldName, newName)
+    if savedMacros[oldName] and newName ~= "" then
+        if renameInFileSystem(oldName, newName) then
+            savedMacros[newName] = savedMacros[oldName]
+            savedMacros[oldName] = nil
+            Utility.updateMacroList()
+        end
+    end
+end
+
+-- Show Macro Manager
+local function showMacroManager()
+    macroFrameVisible = true
+    if MacroFrame then
+        MacroFrame.Visible = true
+        Utility.updateMacroList()
+    end
+end
+
+-- Update Macro List UI
+function Utility.updateMacroList()
+    if not MacroScrollFrame then return end
+    
+    for _, child in pairs(MacroScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local itemCount = 0
+    
+    for macroName, _ in pairs(savedMacros) do
+        local macroItem = Instance.new("Frame")
+        macroItem.Name = macroName .. "Item"
+        macroItem.Parent = MacroScrollFrame
+        macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        macroItem.BorderSizePixel = 0
+        macroItem.Size = UDim2.new(1, -5, 0, 70)
+        macroItem.LayoutOrder = itemCount
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Parent = macroItem
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Position = UDim2.new(0, 5, 0, 5)
+        nameLabel.Size = UDim2.new(1, -10, 0, 15)
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.Text = macroName
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 7
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local renameInput = Instance.new("TextBox")
+        renameInput.Name = "RenameInput"
+        renameInput.Parent = macroItem
+        renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        renameInput.BorderSizePixel = 0
+        renameInput.Position = UDim2.new(0, 5, 0, 25)
+        renameInput.Size = UDim2.new(1, -10, 0, 15)
+        renameInput.Font = Enum.Font.Gotham
+        renameInput.Text = ""
+        renameInput.PlaceholderText = "Enter new name..."
+        renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        renameInput.TextSize = 7
+        
+        local buttonFrame = Instance.new("Frame")
+        buttonFrame.Name = "ButtonFrame"
+        buttonFrame.Parent = macroItem
+        buttonFrame.BackgroundTransparency = 1
+        buttonFrame.Position = UDim2.new(0, 5, 0, 45)
+        buttonFrame.Size = UDim2.new(1, -10, 0, 15)
+        
+        local playButton = Instance.new("TextButton")
+        playButton.Name = "PlayButton"
+        playButton.Parent = buttonFrame
+        playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        playButton.BorderSizePixel = 0
+        playButton.Position = UDim2.new(0, 0, 0, 0)
+        playButton.Size = UDim2.new(0, 60, 0, 15)
+        playButton.Font = Enum.Font.Gotham
+        playButton.Text = "PLAY"
+        playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        playButton.TextSize = 7
+        
+        local deleteButton = Instance.new("TextButton")
+        deleteButton.Name = "DeleteButton"
+        deleteButton.Parent = buttonFrame
+        deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+        deleteButton.BorderSizePixel = 0
+        deleteButton.Position = UDim2.new(0, 65, 0, 0)
+        deleteButton.Size = UDim2.new(0, 50, 0, 15)
+        deleteButton.Font = Enum.Font.Gotham
+        deleteButton.Text = "DELETE"
+        deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        deleteButton.TextSize = 7
+        
+        local renameButton = Instance.new("TextButton")
+        renameButton.Name = "RenameButton"
+        renameButton.Parent = buttonFrame
+        renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+        renameButton.BorderSizePixel = 0
+        renameButton.Position = UDim2.new(0, 120, 0, 0)
+        renameButton.Size = UDim2.new(0, 50, 0, 15)
+        renameButton.Font = Enum.Font.Gotham
+        renameButton.Text = "RENAME"
+        renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        renameButton.TextSize = 7
+        
+        playButton.MouseButton1Click:Connect(function()
+            playMacro(macroName)
+        end)
+        
+        deleteButton.MouseButton1Click:Connect(function()
+            deleteMacro(macroName)
+        end)
+        
+        renameButton.MouseButton1Click:Connect(function()
+            renameMacro(macroName, renameInput.Text)
+        end)
+        
+        playButton.MouseEnter:Connect(function()
+            playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end)
+        
+        playButton.MouseLeave:Connect(function()
+            playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        end)
+        
+        deleteButton.MouseEnter:Connect(function()
+            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+        end)
+        
+        deleteButton.MouseLeave:Connect(function()
+            deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+        end)
+        
+        renameButton.MouseEnter:Connect(function()
+            renameButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+        end)
+        
+        renameButton.MouseLeave:Connect(function()
+            renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+        end)
+        
+        itemCount = itemCount + 1
+    end
+    
+    task.wait(0.1)
+    local contentSize = MacroLayout.AbsoluteContentSize
+    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 5)
+end
+
+-- Initialize UI elements
+local function initUI()
+    MacroFrame = Instance.new("Frame")
+    MacroFrame.Name = "MacroFrame"
+    MacroFrame.Parent = ScreenGui
+    MacroFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroFrame.BorderSizePixel = 1
+    MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
+    MacroFrame.Size = UDim2.new(0, 300, 0, 300)
+    MacroFrame.Visible = false
+    MacroFrame.Active = true
+    MacroFrame.Draggable = true
+
+    local MacroTitle = Instance.new("TextLabel")
+    MacroTitle.Name = "Title"
+    MacroTitle.Parent = MacroFrame
+    MacroTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroTitle.BorderSizePixel = 0
+    MacroTitle.Size = UDim2.new(1, 0, 0, 20)
+    MacroTitle.Font = Enum.Font.Gotham
+    MacroTitle.Text = "MACRO MANAGER"
+    MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroTitle.TextSize = 8
+
+    local CloseMacroButton = Instance.new("TextButton")
+    CloseMacroButton.Name = "CloseButton"
+    CloseMacroButton.Parent = MacroFrame
+    CloseMacroButton.BackgroundTransparency = 1
+    CloseMacroButton.Position = UDim2.new(1, -20, 0, 2)
+    CloseMacroButton.Size = UDim2.new(0, 15, 0, 15)
+    CloseMacroButton.Font = Enum.Font.GothamBold
+    CloseMacroButton.Text = "X"
+    CloseMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseMacroButton.TextSize = 8
+
+    MacroInput = Instance.new("TextBox")
+    MacroInput.Name = "MacroInput"
+    MacroInput.Parent = MacroFrame
+    MacroInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroInput.BorderSizePixel = 0
+    MacroInput.Position = UDim2.new(0, 5, 0, 25)
+    MacroInput.Size = UDim2.new(1, -65, 0, 20)
+    MacroInput.Font = Enum.Font.Gotham
+    MacroInput.PlaceholderText = "Enter macro name..."
+    MacroInput.Text = ""
+    MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroInput.TextSize = 7
+
+    SaveMacroButton = Instance.new("TextButton")
+    SaveMacroButton.Name = "SaveMacroButton"
+    SaveMacroButton.Parent = MacroFrame
+    SaveMacroButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    SaveMacroButton.BorderSizePixel = 0
+    SaveMacroButton.Position = UDim2.new(1, -55, 0, 25)
+    SaveMacroButton.Size = UDim2.new(0, 50, 0, 20)
+    SaveMacroButton.Font = Enum.Font.Gotham
+    SaveMacroButton.Text = "SAVE"
+    SaveMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SaveMacroButton.TextSize = 7
+
+    MacroScrollFrame = Instance.new("ScrollingFrame")
+    MacroScrollFrame.Name = "MacroScrollFrame"
+    MacroScrollFrame.Parent = MacroFrame
+    MacroScrollFrame.BackgroundTransparency = 1
+    MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
+    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -55)
+    MacroScrollFrame.ScrollBarThickness = 2
+    MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    MacroScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    MacroScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    MacroLayout = Instance.new("UIListLayout")
+    MacroLayout.Parent = MacroScrollFrame
+    MacroLayout.Padding = UDim.new(0, 2)
+    MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    SaveMacroButton.MouseButton1Click:Connect(stopMacroRecording)
+    CloseMacroButton.MouseButton1Click:Connect(function()
+        macroFrameVisible = false
+        MacroFrame.Visible = false
+    end)
+end
 
 -- Kill Player
 local function killPlayer()
     if humanoid then
         humanoid.Health = 0
-        print("Player killed")
-    else
-        print("Cannot kill player: No valid humanoid")
     end
 end
 
@@ -21,9 +398,6 @@ end
 local function resetCharacter()
     if player and player.Character then
         player:LoadCharacter()
-        print("Character reset")
-    else
-        print("Cannot reset character: No valid player or character")
     end
 end
 
@@ -31,11 +405,21 @@ end
 function Utility.loadUtilityButtons(createButton)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
+    createButton("Record Macro", startMacroRecording)
+    createButton("Stop Macro", stopMacroRecording)
+    createButton("Macro Manager", showMacroManager)
 end
 
--- Function to reset Utility states (if any)
+-- Function to reset Utility states
 function Utility.resetStates()
-    -- No persistent states in Utility, but included for consistency
+    macroRecording = false
+    macroPlaying = false
+    currentMacro = {}
+    savedMacros = {}
+    fileSystem["DCIM/Supertool"] = {}
+    if MacroFrame then
+        MacroFrame.Visible = false
+    end
 end
 
 -- Function to set dependencies
@@ -46,8 +430,17 @@ function Utility.init(deps)
     ScrollFrame = deps.ScrollFrame
     buttonStates = deps.buttonStates
     player = deps.player
+    RunService = deps.RunService
+    settings = deps.settings
     
-    -- Initialize state variables (none needed currently)
+    -- Initialize state variables
+    macroRecording = false
+    macroPlaying = false
+    currentMacro = {}
+    savedMacros = {}
+    
+    -- Initialize UI elements
+    initUI()
 end
 
 return Utility
