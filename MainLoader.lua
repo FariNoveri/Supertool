@@ -58,6 +58,22 @@ Title.Text = "MinimalHackGUI by Fari Noveri"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
+-- Watermark for AntiAdminInfo
+local Watermark = Instance.new("TextLabel")
+Watermark.Name = "Watermark"
+Watermark.Parent = ScreenGui
+Watermark.BackgroundTransparency = 0.5
+Watermark.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Watermark.BorderColor3 = Color3.fromRGB(45, 45, 45)
+Watermark.BorderSizePixel = 1
+Watermark.Position = UDim2.new(0, 10, 0, 60)
+Watermark.Size = UDim2.new(0, 200, 0, 20)
+Watermark.Font = Enum.Font.Gotham
+Watermark.Text = "AntiAdmin: Initializing..."
+Watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
+Watermark.TextSize = 10
+Watermark.TextXAlignment = Enum.TextXAlignment.Left
+
 -- Minimized Logo (hidden by default)
 local MinimizedLogo = Instance.new("Frame")
 MinimizedLogo.Name = "MinimizedLogo"
@@ -167,7 +183,7 @@ local categories = {
     {name = "Utility", order = 5},
     {name = "Settings", order = 6},
     {name = "Info", order = 7},
-    {name = "Admin", order = 8}
+    {name = "AntiAdmin", order = 8}  -- Renamed to AntiAdmin
 }
 
 local categoryFrames = {}
@@ -256,7 +272,8 @@ local dependencies = {
     buttonStates = buttonStates,
     player = player,
     humanoid = humanoid,
-    rootPart = rootPart
+    rootPart = rootPart,
+    Watermark = Watermark  -- For AntiAdminInfo
 }
 
 -- Initialize modules
@@ -268,6 +285,29 @@ for moduleName, module in pairs(modules) do
         if not success then
             warn("Failed to initialize module " .. moduleName .. ": " .. tostring(err))
         end
+    end
+end
+
+-- AntiAdmin background execution
+if modules.AntiAdmin and type(modules.AntiAdmin.runBackground) == "function" then
+    local success, err = pcall(function()
+        modules.AntiAdmin.runBackground()
+    end)
+    if not success then
+        warn("Failed to run AntiAdmin in background: " .. tostring(err))
+    end
+end
+
+-- AntiAdminInfo watermark update
+if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
+    local success, err = pcall(function()
+        local watermarkText = modules.AntiAdminInfo.getWatermarkText()
+        if watermarkText then
+            Watermark.Text = watermarkText
+        end
+    end)
+    if not success then
+        warn("Failed to update AntiAdminInfo watermark: " .. tostring(err))
     end
 end
 
@@ -464,11 +504,11 @@ local function loadButtons()
         end
     end
     
-    -- AntiAdminInfo module (goes to Admin category)
-    if selectedCategory == "Admin" and modules.AntiAdminInfo and type(modules.AntiAdminInfo.loadInfoButtons) == "function" then
+    -- AntiAdminInfo module (for AntiAdmin category)
+    if selectedCategory == "AntiAdmin" and modules.AntiAdminInfo and type(modules.AntiAdminInfo.loadInfoButtons) == "function" then
         local success, err = pcall(function()
             modules.AntiAdminInfo.loadInfoButtons(function(name, callback)
-                createButton(name, callback, "Admin")
+                createButton(name, callback, "AntiAdmin")
             end)
         end)
         if not success then
@@ -484,10 +524,12 @@ local function toggleMinimize()
         Frame.Visible = false
         MinimizedLogo.Visible = true
         MinimizeButton.Text = "+"
+        Watermark.Visible = false
     else
         Frame.Visible = true
         MinimizedLogo.Visible = false
         MinimizeButton.Text = "-"
+        Watermark.Visible = true
     end
 end
 
@@ -516,6 +558,19 @@ local function resetStates()
     
     selectedCategory = nil
     loadButtons()
+
+    -- Update watermark on reset
+    if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
+        local success, err = pcall(function()
+            local watermarkText = modules.AntiAdminInfo.getWatermarkText()
+            if watermarkText then
+                Watermark.Text = watermarkText
+            end
+        end)
+        if not success then
+            warn("Failed to update AntiAdminInfo watermark on reset: " .. tostring(err))
+        end
+    end
 end
 
 -- Character setup
@@ -573,6 +628,7 @@ LogoButton.MouseButton1Click:Connect(toggleMinimize)
 CloseButton.MouseButton1Click:Connect(function()
     Frame.Visible = false
     MinimizedLogo.Visible = false
+    Watermark.Visible = false
 end)
 
 -- Toggle GUI with Home key
@@ -581,11 +637,13 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
         if Frame.Visible or MinimizedLogo.Visible then
             Frame.Visible = false
             MinimizedLogo.Visible = false
+            Watermark.Visible = false
         else
             Frame.Visible = true
             MinimizedLogo.Visible = false
             isMinimized = false
             MinimizeButton.Text = "-"
+            Watermark.Visible = true
         end
     end
 end)
