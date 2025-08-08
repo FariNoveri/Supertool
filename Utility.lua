@@ -9,11 +9,14 @@ local Utility = {}
 -- Variables
 local macroRecording = false
 local macroPlaying = false
+local autoPlaying = false
 local currentMacro = {}
 local savedMacros = {}
 local macroFrameVisible = false
 local MacroFrame, MacroScrollFrame, MacroLayout, MacroInput, SaveMacroButton
 local recordConnection = nil
+local playbackConnection = nil
+local currentMacroName = nil
 
 -- Mock file system for DCIM/Supertool
 local fileSystem = {
@@ -106,7 +109,7 @@ local function startMacroRecording()
     end)
 end
 
--- Stop Macro
+-- Stop Macro Recording
 local function stopMacroRecording()
     if not macroRecording then return end
     macroRecording = false
@@ -129,61 +132,98 @@ local function stopMacroRecording()
     end
 end
 
+-- Stop Macro Playback
+local function stopMacroPlayback()
+    if not macroPlaying then return end
+    macroPlaying = false
+    autoPlaying = false
+    if playbackConnection then
+        playbackConnection:Disconnect()
+        playbackConnection = nil
+    end
+    if humanoid then
+        humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+    end
+    currentMacroName = nil
+    Utility.updateMacroList()
+end
+
 -- Play Macro
-local function playMacro(macroName)
+local function playMacro(macroName, autoPlay)
     if macroRecording or macroPlaying or not humanoid or not rootPart then return end
     local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
     if not macro or not macro.frames then return end
     
     macroPlaying = true
+    autoPlaying = autoPlay or false
+    currentMacroName = macroName
     humanoid.WalkSpeed = 0
     
-    local startTime = tick()
-    local index = 1
-    
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not macroPlaying or not player.Character then
-            if connection then connection:Disconnect() end
-            macroPlaying = false
-            humanoid.WalkSpeed = settings.WalkSpeed.value or 16
-            return
-        end
+    local function playSingleMacro()
+        local startTime = tick()
+        local index = 1
         
-        if not humanoid or not rootPart then
-            updateCharacterReferences()
-            if not humanoid or not rootPart then
-                if connection then connection:Disconnect() end
+        playbackConnection = RunService.Heartbeat:Connect(function()
+            if not macroPlaying or not player.Character then
+                if playbackConnection then playbackConnection:Disconnect() end
                 macroPlaying = false
+                autoPlaying = false
                 humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+                currentMacroName = nil
+                Utility.updateMacroList()
                 return
             end
-        end
-        
-        if index > #macro.frames then
-            if connection then connection:Disconnect() end
-            macroPlaying = false
-            humanoid.WalkSpeed = settings.WalkSpeed.value or 16
-            return
-        end
-        
-        local frame = macro.frames[index]
-        while index <= #macro.frames and frame.time <= (tick() - startTime) do
-            rootPart.CFrame = frame.cframe
-            rootPart.Velocity = frame.velocity
-            humanoid.WalkSpeed = frame.walkSpeed
-            humanoid.JumpPower = frame.jumpPower
-            humanoid.HipHeight = frame.hipHeight
-            humanoid:ChangeState(frame.state)
-            index = index + 1
-            frame = macro.frames[index] or frame
-        end
-    end)
+            
+            if not humanoid or not rootPart then
+                updateCharacterReferences()
+                if not humanoid or not rootPart then
+                    if playbackConnection then playbackConnection:Disconnect() end
+                    macroPlaying = false
+                    autoPlaying = false
+                    humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+                    currentMacroName = nil
+                    Utility.updateMacroList()
+                    return
+                end
+            end
+            
+            if index > #macro.frames then
+                if autoPlaying then
+                    index = 1
+                    startTime = tick()
+                else
+                    if playbackConnection then playbackConnection:Disconnect() end
+                    macroPlaying = false
+                    humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+                    currentMacroName = nil
+                    Utility.updateMacroList()
+                    return
+                end
+            end
+            
+            local frame = macro.frames[index]
+            while index <= #macro.frames and frame.time <= (tick() - startTime) do
+                rootPart.CFrame = frame.cframe
+                rootPart.Velocity = frame.velocity
+                humanoid.WalkSpeed = frame.walkSpeed
+                humanoid.JumpPower = frame.jumpPower
+                humanoid.HipHeight = frame.hipHeight
+                humanoid:ChangeState(frame.state)
+                index = index + 1
+                frame = macro.frames[index] or frame
+            end
+        end)
+    end
+    
+    playSingleMacro()
 end
 
 -- Delete Macro
 local function deleteMacro(macroName)
     if savedMacros[macroName] then
+        if macroPlaying and currentMacroName == macroName then
+            stopMacroPlayback()
+        end
         savedMacros[macroName] = nil
         deleteFromFileSystem(macroName)
         Utility.updateMacroList()
@@ -194,6 +234,9 @@ end
 local function renameMacro(oldName, newName)
     if savedMacros[oldName] and newName ~= "" then
         if renameInFileSystem(oldName, newName) then
+            if currentMacroName == oldName then
+                currentMacroName = newName
+            end
             savedMacros[newName] = savedMacros[oldName]
             savedMacros[oldName] = nil
             Utility.updateMacroList()
@@ -267,22 +310,34 @@ function Utility.updateMacroList()
         local playButton = Instance.new("TextButton")
         playButton.Name = "PlayButton"
         playButton.Parent = buttonFrame
-        playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        playButton.BackgroundColor3 = (macroPlaying and currentMacroName == macroName and not autoPlaying) and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
         playButton.BorderSizePixel = 0
         playButton.Position = UDim2.new(0, 0, 0, 0)
-        playButton.Size = UDim2.new(0, 60, 0, 15)
+        playButton.Size = UDim2.new(0, 40, 0, 15)
         playButton.Font = Enum.Font.Gotham
-        playButton.Text = "PLAY"
+        playButton.Text = (macroPlaying and currentMacroName == macroName and not autoPlaying) and "PLAYING" or "PLAY"
         playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         playButton.TextSize = 7
+        
+        local autoPlayButton = Instance.new("TextButton")
+        autoPlayButton.Name = "AutoPlayButton"
+        autoPlayButton.Parent = buttonFrame
+        autoPlayButton.BackgroundColor3 = (macroPlaying and currentMacroName == macroName and autoPlaying) and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 80, 60)
+        autoPlayButton.BorderSizePixel = 0
+        autoPlayButton.Position = UDim2.new(0, 45, 0, 0)
+        autoPlayButton.Size = UDim2.new(0, 40, 0, 15)
+        autoPlayButton.Font = Enum.Font.Gotham
+        autoPlayButton.Text = (macroPlaying and currentMacroName == macroName and autoPlaying) and "STOP" or "AUTO"
+        autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        autoPlayButton.TextSize = 7
         
         local deleteButton = Instance.new("TextButton")
         deleteButton.Name = "DeleteButton"
         deleteButton.Parent = buttonFrame
         deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
         deleteButton.BorderSizePixel = 0
-        deleteButton.Position = UDim2.new(0, 65, 0, 0)
-        deleteButton.Size = UDim2.new(0, 50, 0, 15)
+        deleteButton.Position = UDim2.new(0, 90, 0, 0)
+        deleteButton.Size = UDim2.new(0, 40, 0, 15)
         deleteButton.Font = Enum.Font.Gotham
         deleteButton.Text = "DELETE"
         deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -293,15 +348,29 @@ function Utility.updateMacroList()
         renameButton.Parent = buttonFrame
         renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
         renameButton.BorderSizePixel = 0
-        renameButton.Position = UDim2.new(0, 120, 0, 0)
-        renameButton.Size = UDim2.new(0, 50, 0, 15)
+        renameButton.Position = UDim2.new(0, 135, 0, 0)
+        renameButton.Size = UDim2.new(0, 40, 0, 15)
         renameButton.Font = Enum.Font.Gotham
         renameButton.Text = "RENAME"
         renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         renameButton.TextSize = 7
         
         playButton.MouseButton1Click:Connect(function()
-            playMacro(macroName)
+            if macroPlaying and currentMacroName == macroName and not autoPlaying then
+                stopMacroPlayback()
+            else
+                playMacro(macroName, false)
+                Utility.updateMacroList()
+            end
+        end)
+        
+        autoPlayButton.MouseButton1Click:Connect(function()
+            if macroPlaying and currentMacroName == macroName and autoPlaying then
+                stopMacroPlayback()
+            else
+                playMacro(macroName, true)
+                Utility.updateMacroList()
+            end
         end)
         
         deleteButton.MouseButton1Click:Connect(function()
@@ -313,11 +382,31 @@ function Utility.updateMacroList()
         end)
         
         playButton.MouseEnter:Connect(function()
-            playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            if not (macroPlaying and currentMacroName == macroName and not autoPlaying) then
+                playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            end
         end)
         
         playButton.MouseLeave:Connect(function()
-            playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            if macroPlaying and currentMacroName == macroName and not autoPlaying then
+                playButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            else
+                playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            end
+        end)
+        
+        autoPlayButton.MouseEnter:Connect(function()
+            if not (macroPlaying and currentMacroName == macroName and autoPlaying) then
+                autoPlayButton.BackgroundColor3 = Color3.fromRGB(80, 100, 80)
+            end
+        end)
+        
+        autoPlayButton.MouseLeave:Connect(function()
+            if macroPlaying and currentMacroName == macroName and autoPlaying then
+                autoPlayButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+            else
+                autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 80, 60)
+            end
         end)
         
         deleteButton.MouseEnter:Connect(function()
@@ -462,16 +551,21 @@ end
 function Utility.resetStates()
     macroRecording = false
     macroPlaying = false
+    autoPlaying = false
     if recordConnection then
         recordConnection:Disconnect()
         recordConnection = nil
     end
+    if playbackConnection then
+        playbackConnection:Disconnect()
+        playbackConnection = nil
+    end
     currentMacro = {}
+    currentMacroName = nil
     macroFrameVisible = false
     if MacroFrame then
         MacroFrame.Visible = false
     end
-    -- Preserve savedMacros and fileSystem
     Utility.updateMacroList()
 end
 
@@ -487,27 +581,32 @@ function Utility.init(deps)
     settings = deps.settings
     ScreenGui = deps.ScreenGui
     
-    -- Initialize state variables
     macroRecording = false
     macroPlaying = false
+    autoPlaying = false
     currentMacro = {}
     savedMacros = {}
     macroFrameVisible = false
+    currentMacroName = nil
     
-    -- Load any existing macros from file system
     ensureFileSystem()
     for macroName, macroData in pairs(fileSystem["DCIM/Supertool"]) do
         savedMacros[macroName] = macroData
     end
     
-    -- Initialize UI elements
     initUI()
     
-    -- Handle character respawn
     player.CharacterAdded:Connect(function(newCharacter)
         if newCharacter then
             humanoid = newCharacter:WaitForChild("Humanoid", 30)
             rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
+            if macroPlaying and currentMacroName then
+                if autoPlaying then
+                    playMacro(currentMacroName, true)
+                else
+                    playMacro(currentMacroName, false)
+                end
+            end
         end
     end)
 end

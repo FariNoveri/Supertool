@@ -1,561 +1,722 @@
--- Movement features for MinimalHackGUI by Fari Noveri
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, and freeze players
 
 -- Dependencies: These must be passed from mainloader.lua
-local Players, UserInputService, RunService, Workspace, settings, character, humanoid, rootPart, connections, buttonStates, ScrollFrame
+local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
 
 -- Initialize module
-local Movement = {}
+local Player = {}
 
--- Function to update character references
-local function updateCharacterReferences()
-    local player = Players.LocalPlayer
-    if player and player.Character then
-        character = player.Character
-        humanoid = character:WaitForChild("Humanoid", 5)
-        rootPart = character:WaitForChild("HumanoidRootPart", 5)
-        return true
-    end
-    return false
-end
+-- Variables for player selection and spectate
+Player.selectedPlayer = nil
+Player.spectatePlayerList = {}
+Player.currentSpectateIndex = 0
+Player.spectateConnections = {}
+Player.playerListVisible = false
+Player.freezeEnabled = false
+Player.frozenPlayerPositions = {}
 
--- Fly (Improved for smoother control)
-local function toggleFly(enabled)
-    Movement.flyEnabled = enabled
+-- UI Elements (to be initialized in init function)
+local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
+local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
+
+-- God Mode
+local function toggleGodMode(enabled)
+    Player.godModeEnabled = enabled
     if enabled then
-        if not updateCharacterReferences() then return end
-        if not rootPart or not humanoid or not settings.FlySpeed then return end
-        
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.Parent = rootPart
-        
-        connections.fly = RunService.Heartbeat:Connect(function(deltaTime)
-            if Movement.flyEnabled then
-                if not updateCharacterReferences() then return end
-                if not rootPart or not humanoid or not settings.FlySpeed then return end
-                
-                local camera = Workspace.CurrentCamera
-                local moveVector = humanoid.MoveDirection
-                
-                local cameraCFrame = camera.CFrame
-                local forwardVector = cameraCFrame.LookVector
-                local rightVector = cameraCFrame.RightVector
-                local upVector = Vector3.new(0, 1, 0)
-                
-                local velocity = Vector3.new(0, 0, 0)
-                local speed = settings.FlySpeed.value
-                
-                if moveVector.Magnitude > 0 then
-                    velocity = velocity + (forwardVector * -moveVector.Z * speed)
-                    velocity = velocity + (rightVector * moveVector.X * speed)
-                end
-                
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                    velocity = velocity + (upVector * speed)
-                elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-                    velocity = velocity - (upVector * speed)
-                end
-                
-                local currentBodyVelocity = rootPart:FindFirstChild("BodyVelocity")
-                if currentBodyVelocity then
-                    currentBodyVelocity.Velocity = velocity
-                end
+        connections.godmode = humanoid.HealthChanged:Connect(function()
+            if Player.godModeEnabled then
+                humanoid.Health = humanoid.MaxHealth
             end
         end)
     else
-        if connections.fly then
-            connections.fly:Disconnect()
-            connections.fly = nil
-        end
-        if updateCharacterReferences() and rootPart and rootPart:FindFirstChild("BodyVelocity") then
-            rootPart:FindFirstChild("BodyVelocity"):Destroy()
+        if connections.godmode then
+            connections.godmode:Disconnect()
+            connections.godmode = nil
         end
     end
 end
 
--- Noclip (Improved with dynamic part handling)
-local function toggleNoclip(enabled)
-    Movement.noclipEnabled = enabled
+-- Anti AFK
+local function toggleAntiAFK(enabled)
+    Player.antiAFKEnabled = enabled
     if enabled then
-        connections.noclip = RunService.Stepped:Connect(function()
-            if Movement.noclipEnabled then
-                if not updateCharacterReferences() then return end
-                if character then
-                    for _, part in pairs(character:GetDescendants()) do
-                        if part:IsA("BasePart") and part.CanCollide then
-                            part.CanCollide = false
-                        end
-                    end
-                end
+        connections.antiafk = Players.LocalPlayer.Idled:Connect(function()
+            if Player.antiAFKEnabled then
+                game:GetService("VirtualUser"):Button2Down(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+                game:GetService("VirtualUser"):Button2Up(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
             end
         end)
-        
-        -- Handle new parts added to character
-        local function setupChildAddedConnection()
-            if updateCharacterReferences() and character then
-                if connections.noclipChildAdded then
-                    connections.noclipChildAdded:Disconnect()
-                end
-                connections.noclipChildAdded = character.ChildAdded:Connect(function(child)
-                    if Movement.noclipEnabled and child:IsA("BasePart") and child.CanCollide then
-                        child.CanCollide = false
-                    end
-                end)
-            end
-        end
-        setupChildAddedConnection()
     else
-        if connections.noclip then
-            connections.noclip:Disconnect()
-            connections.noclip = nil
-        end
-        if connections.noclipChildAdded then
-            connections.noclipChildAdded:Disconnect()
-            connections.noclipChildAdded = nil
-        end
-        if updateCharacterReferences() and character then
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
-                end
-            end
+        if connections.antiafk then
+            connections.antiafk:Disconnect()
+            connections.antiafk = nil
         end
     end
 end
 
--- Speed (Fixed with proper checks)
-local function toggleSpeed(enabled)
-    Movement.speedEnabled = enabled
-    if enabled then
-        if updateCharacterReferences() and humanoid and settings.WalkSpeed then
-            humanoid.WalkSpeed = settings.WalkSpeed.value
-        end
-    else
-        if updateCharacterReferences() and humanoid then
-            humanoid.WalkSpeed = 16
+-- Freeze a single player
+local function freezePlayer(targetPlayer)
+    if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = targetPlayer.Character.HumanoidRootPart
+        Player.frozenPlayerPositions[targetPlayer] = {
+            cframe = hrp.CFrame,
+            anchored = hrp.Anchored,
+            velocity = hrp.AssemblyLinearVelocity
+        }
+        
+        hrp.Anchored = true
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        
+        if targetPlayer.Character:FindFirstChild("Humanoid") then
+            local hum = targetPlayer.Character.Humanoid
+            hum.PlatformStand = true
+            hum.Sit = false
+            hum.WalkSpeed = 0
+            hum.JumpPower = 0
         end
     end
 end
 
--- Jump High (Fixed with consistent physics)
-local function toggleJumpHigh(enabled)
-    Movement.jumpHighEnabled = enabled
-    if enabled then
-        if updateCharacterReferences() and humanoid and settings.JumpHeight then
-            humanoid.JumpPower = settings.JumpHeight.value * 7
-            
-            if connections.jumphigh then
-                connections.jumphigh:Disconnect()
-            end
-            connections.jumphigh = humanoid.Jumping:Connect(function()
-                if Movement.jumpHighEnabled then
-                    if updateCharacterReferences() and rootPart then
-                        rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 7, rootPart.Velocity.Z)
-                    end
-                end
-            end)
+-- Unfreeze a single player
+local function unfreezePlayer(targetPlayer)
+    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.frozenPlayerPositions[targetPlayer] then
+        local hrp = targetPlayer.Character.HumanoidRootPart
+        local frozenData = Player.frozenPlayerPositions[targetPlayer]
+        hrp.Anchored = frozenData.anchored or false
+        
+        if targetPlayer.Character:FindFirstChild("Humanoid") then
+            local hum = targetPlayer.Character.Humanoid
+            hum.PlatformStand = false
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
         end
-    else
-        if updateCharacterReferences() and humanoid then
-            humanoid.JumpPower = 50
-        end
-        if connections.jumphigh then
-            connections.jumphigh:Disconnect()
-            connections.jumphigh = nil
-        end
+        Player.frozenPlayerPositions[targetPlayer] = nil
     end
 end
 
--- Spider (Improved raycasting and orientation)
-local function toggleSpider(enabled)
-    Movement.spiderEnabled = enabled
+-- Improved Freeze Players function
+local function toggleFreezePlayers(enabled)
+    Player.freezeEnabled = enabled
     if enabled then
-        if not updateCharacterReferences() then return end
-        if not rootPart then return end
+        Player.frozenPlayerPositions = {}
         
-        local bodyPosition = Instance.new("BodyPosition")
-        bodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bodyPosition.Position = rootPart.Position
-        bodyPosition.Parent = rootPart
+        for _, p in pairs(Players:GetPlayers()) do
+            freezePlayer(p)
+        end
         
-        local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
-        bodyAngularVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
-        bodyAngularVelocity.Parent = rootPart
-        
-        connections.spider = RunService.Heartbeat:Connect(function()
-            if Movement.spiderEnabled then
-                if not updateCharacterReferences() then return end
-                if rootPart then
-                    local rayParams = RaycastParams.new()
-                    rayParams.FilterDescendantsInstances = {character}
-                    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-                    local rayResult = Workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 5, rayParams)
-                    
-                    if rayResult then
-                        local currentBodyPosition = rootPart:FindFirstChild("BodyPosition")
-                        local currentBodyAngularVelocity = rootPart:FindFirstChild("BodyAngularVelocity")
+        connections.freeze = RunService.Heartbeat:Connect(function()
+            if Player.freezeEnabled then
+                for targetPlayer, frozenData in pairs(Player.frozenPlayerPositions) do
+                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        local hrp = targetPlayer.Character.HumanoidRootPart
+                        hrp.CFrame = frozenData.cframe
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                        hrp.Anchored = true
                         
-                        if currentBodyPosition then
-                            currentBodyPosition.Position = rayResult.Position + rayResult.Normal * 1.5
-                        end
-                        
-                        if currentBodyAngularVelocity then
-                            local lookDirection = -rayResult.Normal
-                            local upVector = Vector3.new(0, 1, 0)
-                            local rightVector = lookDirection:Cross(upVector).Unit
-                            local newCFrame = CFrame.fromMatrix(rootPart.Position, rightVector, lookDirection, upVector)
-                            currentBodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
-                            rootPart.CFrame = newCFrame
+                        if targetPlayer.Character:FindFirstChild("Humanoid") then
+                            local hum = targetPlayer.Character.Humanoid
+                            hum.PlatformStand = true
+                            hum.WalkSpeed = 0
+                            hum.JumpPower = 0
                         end
                     end
                 end
             end
         end)
     else
-        if connections.spider then
-            connections.spider:Disconnect()
-            connections.spider = nil
+        if connections.freeze then
+            connections.freeze:Disconnect()
+            connections.freeze = nil
         end
-        if updateCharacterReferences() and rootPart then
-            if rootPart:FindFirstChild("BodyPosition") then
-                rootPart:FindFirstChild("BodyPosition"):Destroy()
-            end
-            if rootPart:FindFirstChild("BodyAngularVelocity") then
-                rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
-            end
+        
+        for targetPlayer, _ in pairs(Player.frozenPlayerPositions) do
+            unfreezePlayer(targetPlayer)
+        end
+        Player.frozenPlayerPositions = {}
+    end
+end
+
+-- Show Player Selection UI
+local function showPlayerSelection()
+    Player.playerListVisible = true
+    PlayerListFrame.Visible = true
+    Player.updatePlayerList()
+end
+
+-- Update Spectate Buttons Visibility
+local function updateSpectateButtons()
+    local isSpectating = Player.selectedPlayer ~= nil
+    NextSpectateButton.Visible = isSpectating
+    PrevSpectateButton.Visible = isSpectating
+    StopSpectateButton.Visible = isSpectating
+    TeleportSpectateButton.Visible = isSpectating
+end
+
+-- Improved Stop Spectating function
+local function stopSpectating()
+    for _, connection in pairs(Player.spectateConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    Player.spectateConnections = {}
+    
+    if player.Character and player.Character:FindFirstChild("Humanoid") then
+        Workspace.CurrentCamera.CameraSubject = player.Character.Humanoid
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    else
+        Workspace.CurrentCamera.CameraSubject = humanoid
+    end
+    
+    Player.selectedPlayer = nil
+    Player.currentSpectateIndex = 0
+    SelectedPlayerLabel.Text = "SELECTED: NONE"
+    
+    updateSpectateButtons()
+    
+    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            item.SelectButton.Text = "SELECT PLAYER"
         end
     end
 end
 
--- Player Phase (Improved with dynamic player handling)
-local function togglePlayerPhase(enabled)
-    Movement.playerPhaseEnabled = enabled
-    if enabled then
-        connections.playerphase = RunService.Heartbeat:Connect(function()
-            if Movement.playerPhaseEnabled then
-                for _, otherPlayer in pairs(Players:GetPlayers()) do
-                    if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
-                        for _, part in pairs(otherPlayer.Character:GetDescendants()) do
-                            if part:IsA("BasePart") and part.CanCollide then
-                                part.CanCollide = false
+-- Improved Spectate Player function
+local function spectatePlayer(targetPlayer)
+    for _, connection in pairs(Player.spectateConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    Player.spectateConnections = {}
+    
+    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        
+        Player.selectedPlayer = targetPlayer
+        Player.currentSpectateIndex = table.find(Player.spectatePlayerList, targetPlayer) or 0
+        SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
+        
+        local targetHumanoid = targetPlayer.Character.Humanoid
+        Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
+            local newCharacter = targetPlayer.CharacterAdded:Wait()
+            local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
+            if newHumanoid and Player.selectedPlayer == targetPlayer then
+                Workspace.CurrentCamera.CameraSubject = newHumanoid
+                Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+            end
+        end)
+        
+        Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
+            local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
+            if newHumanoid and Player.selectedPlayer == targetPlayer then
+                Workspace.CurrentCamera.CameraSubject = newHumanoid
+                Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+            end
+        end)
+        
+        for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+            if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                if item.Name == targetPlayer.Name .. "Item" then
+                    item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                    item.SelectButton.Text = "SELECTED"
+                else
+                    item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    item.SelectButton.Text = "SELECT PLAYER"
+                end
+            end
+        end
+    else
+        stopSpectating()
+    end
+    updateSpectateButtons()
+end
+
+-- Spectate Next Player
+local function spectateNextPlayer()
+    if #Player.spectatePlayerList == 0 then
+        stopSpectating()
+        return
+    end
+    
+    Player.currentSpectateIndex = Player.currentSpectateIndex + 1
+    if Player.currentSpectateIndex > #Player.spectatePlayerList then
+        Player.currentSpectateIndex = 1
+    end
+    
+    local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
+    if targetPlayer then
+        spectatePlayer(targetPlayer)
+    else
+        stopSpectating()
+    end
+end
+
+-- Spectate Previous Player
+local function spectatePrevPlayer()
+    if #Player.spectatePlayerList == 0 then
+        stopSpectating()
+        return
+    end
+    
+    Player.currentSpectateIndex = Player.currentSpectateIndex - 1
+    if Player.currentSpectateIndex < 1 then
+        Player.currentSpectateIndex = #Player.spectatePlayerList
+    end
+    
+    local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
+    if targetPlayer then
+        spectatePlayer(targetPlayer)
+    else
+        stopSpectating()
+    end
+end
+
+-- Update Player List
+function Player.updatePlayerList()
+    for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
+        if child:IsA("Frame") or child:IsA("TextLabel") then
+            child:Destroy()
+        end
+    end
+    
+    local previousSelectedPlayer = Player.selectedPlayer
+    Player.spectatePlayerList = {}
+    local playerCount = 0
+    local players = Players:GetPlayers()
+    
+    if #players <= 1 then
+        local noPlayersLabel = Instance.new("TextLabel")
+        noPlayersLabel.Name = "NoPlayersLabel"
+        noPlayersLabel.Parent = PlayerListScrollFrame
+        noPlayersLabel.BackgroundTransparency = 1
+        noPlayersLabel.Size = UDim2.new(1, 0, 0, 30)
+        noPlayersLabel.Font = Enum.Font.Gotham
+        noPlayersLabel.Text = "No other players found"
+        noPlayersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        noPlayersLabel.TextSize = 11
+        noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
+    else
+        for _, p in pairs(players) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
+                playerCount = playerCount + 1
+                table.insert(Player.spectatePlayerList, p)
+                
+                local playerItem = Instance.new("Frame")
+                playerItem.Name = p.Name .. "Item"
+                playerItem.Parent = PlayerListScrollFrame
+                playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                playerItem.BorderSizePixel = 0
+                playerItem.Size = UDim2.new(1, -5, 0, 90)
+                playerItem.LayoutOrder = playerCount
+                
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "NameLabel"
+                nameLabel.Parent = playerItem
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Position = UDim2.new(0, 5, 0, 5)
+                nameLabel.Size = UDim2.new(1, -10, 0, 20)
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = p.Name
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                nameLabel.TextSize = 12
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                
+                local selectButton = Instance.new("TextButton")
+                selectButton.Name = "SelectButton"
+                selectButton.Parent = playerItem
+                selectButton.BackgroundColor3 = Player.selectedPlayer == p and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
+                selectButton.BorderSizePixel = 0
+                selectButton.Position = UDim2.new(0, 5, 0, 30)
+                selectButton.Size = UDim2.new(1, -10, 0, 25)
+                selectButton.Font = Enum.Font.Gotham
+                selectButton.Text = Player.selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
+                selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                selectButton.TextSize = 10
+                
+                local spectateButton = Instance.new("TextButton")
+                spectateButton.Name = "SpectateButton"
+                spectateButton.Parent = playerItem
+                spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+                spectateButton.BorderSizePixel = 0
+                spectateButton.Position = UDim2.new(0, 5, 0, 60)
+                spectateButton.Size = UDim2.new(0, 70, 0, 25)
+                spectateButton.Font = Enum.Font.Gotham
+                spectateButton.Text = "SPECTATE"
+                spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                spectateButton.TextSize = 9
+                
+                local stopSpectateButton = Instance.new("TextButton")
+                stopSpectateButton.Name = "StopSpectateButton"
+                stopSpectateButton.Parent = playerItem
+                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+                stopSpectateButton.BorderSizePixel = 0
+                stopSpectateButton.Position = UDim2.new(0, 80, 0, 60)
+                stopSpectateButton.Size = UDim2.new(0, 70, 0, 25)
+                stopSpectateButton.Font = Enum.Font.Gotham
+                stopSpectateButton.Text = "STOP"
+                stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                stopSpectateButton.TextSize = 9
+                
+                local teleportButton = Instance.new("TextButton")
+                teleportButton.Name = "TeleportButton"
+                teleportButton.Parent = playerItem
+                teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+                teleportButton.BorderSizePixel = 0
+                teleportButton.Position = UDim2.new(0, 155, 0, 60)
+                teleportButton.Size = UDim2.new(1, -160, 0, 25)
+                teleportButton.Font = Enum.Font.Gotham
+                teleportButton.Text = "TELEPORT"
+                teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                teleportButton.TextSize = 9
+                
+                selectButton.MouseButton1Click:Connect(function()
+                    Player.selectedPlayer = p
+                    Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
+                    SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
+                    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                            if item.Name == p.Name .. "Item" then
+                                item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                                item.SelectButton.Text = "SELECTED"
+                            else
+                                item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                                item.SelectButton.Text = "SELECT PLAYER"
                             end
                         end
                     end
-                end
-            end
-        end)
-        connections.playerPhasePlayerAdded = Players.PlayerAdded:Connect(function(player)
-            if Movement.playerPhaseEnabled and player.Character then
-                for _, part in pairs(player.Character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-    else
-        if connections.playerphase then
-            connections.playerphase:Disconnect()
-            connections.playerphase = nil
-        end
-        if connections.playerPhasePlayerAdded then
-            connections.playerPhasePlayerAdded:Disconnect()
-            connections.playerPhasePlayerAdded = nil
-        end
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
-                for _, part in pairs(otherPlayer.Character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                        part.CanCollide = true
-                    end
-                end
-            end
-        end
-    end
-end
-
--- Freeze Blocks/Objects (Optimized to reduce lag)
-local function toggleFreezeObjects(enabled)
-    Movement.freezeObjectsEnabled = enabled
-    Movement.frozenObjectPositions = Movement.frozenObjectPositions or {}
-    
-    if enabled then
-        if not Workspace then return end
-        Movement.frozenObjectPositions = {}
-        
-        -- Use a more selective approach to reduce object count
-        local function isObjectFreezeable(obj)
-            if not obj or not obj:IsA("BasePart") or not obj.Parent then
-                return false
-            end
-            
-            updateCharacterReferences()
-            if obj == rootPart or (character and obj:IsDescendantOf(character)) then
-                return false
-            end
-            
-            -- Skip player parts
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Character and obj:IsDescendantOf(player.Character) then
-                    return false
-                end
-            end
-            
-            -- Only freeze objects that are likely to be blocks/objects (not GUI, effects, etc.)
-            local parent = obj.Parent
-            if parent and (parent.Name == "Camera" or parent.Name == "Lighting" or parent.Name == "SoundService") then
-                return false
-            end
-            
-            -- Skip very small parts (likely debris/effects)
-            local size = obj.Size
-            if size.X < 0.5 and size.Y < 0.5 and size.Z < 0.5 then
-                return false
-            end
-            
-            return true
-        end
-        
-        -- Collect objects in batches to prevent lag
-        spawn(function()
-            local success, descendants = pcall(function()
-                return Workspace:GetDescendants()
-            end)
-            
-            if success then
-                local processedCount = 0
-                local maxProcessPerFrame = 50 -- Process only 50 objects per frame
+                end)
                 
-                for _, obj in pairs(descendants) do
-                    if isObjectFreezeable(obj) then
-                        local cframeSuccess, cframe = pcall(function()
-                            return obj.CFrame
-                        end)
-                        if cframeSuccess then
-                            Movement.frozenObjectPositions[obj] = cframe
-                        end
-                        
-                        processedCount = processedCount + 1
-                        if processedCount >= maxProcessPerFrame then
-                            processedCount = 0
-                            wait() -- Yield to prevent lag
-                        end
-                    end
-                end
-            else
-                warn("Failed to access Workspace descendants: " .. tostring(descendants))
-            end
-        end)
-        
-        -- Use Heartbeat instead of RenderStepped for better performance
-        -- And process objects in smaller batches
-        local objectList = {}
-        local currentIndex = 1
-        local maxProcessPerFrame = 25 -- Process fewer objects per frame
-        
-        connections.freezeObjects = RunService.Heartbeat:Connect(function()
-            if Movement.freezeObjectsEnabled then
-                -- Convert frozen objects to list if empty or index exceeded
-                if #objectList == 0 or currentIndex > #objectList then
-                    objectList = {}
-                    for obj, _ in pairs(Movement.frozenObjectPositions) do
-                        table.insert(objectList, obj)
-                    end
-                    currentIndex = 1
-                end
+                spectateButton.MouseButton1Click:Connect(function()
+                    Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
+                    spectatePlayer(p)
+                end)
                 
-                -- Process objects in batches
-                local processed = 0
-                while currentIndex <= #objectList and processed < maxProcessPerFrame do
-                    local obj = objectList[currentIndex]
-                    local frozenCFrame = Movement.frozenObjectPositions[obj]
-                    
-                    if obj and obj.Parent and obj:IsA("BasePart") and frozenCFrame then
-                        local success, err = pcall(function()
-                            obj.CFrame = frozenCFrame
-                        end)
-                        if not success then
-                            Movement.frozenObjectPositions[obj] = nil
-                        end
-                    else
-                        Movement.frozenObjectPositions[obj] = nil
-                    end
-                    
-                    currentIndex = currentIndex + 1
-                    processed = processed + 1
-                end
-            end
-        end)
-        
-        -- Handle new objects with more selective filtering
-        connections.freezeObjectsAdded = Workspace.DescendantAdded:Connect(function(obj)
-            if Movement.freezeObjectsEnabled and isObjectFreezeable(obj) then
-                -- Add small delay to ensure object is properly loaded
-                spawn(function()
-                    wait(0.1)
-                    if obj and obj.Parent then
-                        local success, cframe = pcall(function()
-                            return obj.CFrame
-                        end)
-                        if success then
-                            Movement.frozenObjectPositions[obj] = cframe
-                        end
+                stopSpectateButton.MouseButton1Click:Connect(function()
+                    stopSpectating()
+                end)
+                
+                teleportButton.MouseButton1Click:Connect(function()
+                    if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
+                        local targetPosition = p.Character.HumanoidRootPart.CFrame
+                        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 3)
                     end
                 end)
+                
+                selectButton.MouseEnter:Connect(function()
+                    if Player.selectedPlayer ~= p then
+                        selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+                    end
+                end)
+                
+                selectButton.MouseLeave:Connect(function()
+                    if Player.selectedPlayer ~= p then
+                        selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    else
+                        selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                    end
+                end)
+                
+                spectateButton.MouseEnter:Connect(function()
+                    spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+                end)
+                
+                spectateButton.MouseLeave:Connect(function()
+                    spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+                end)
+                
+                stopSpectateButton.MouseEnter:Connect(function()
+                    stopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+                end)
+                
+                stopSpectateButton.MouseLeave:Connect(function()
+                    stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+                end)
+                
+                teleportButton.MouseEnter:Connect(function()
+                    teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+                end)
+                
+                teleportButton.MouseLeave:Connect(function()
+                    teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+                end)
             end
-        end)
+        end
+    end
+    
+    if previousSelectedPlayer then
+        Player.selectedPlayer = previousSelectedPlayer
+        Player.currentSpectateIndex = table.find(Player.spectatePlayerList, Player.selectedPlayer) or 0
+        if Player.currentSpectateIndex == 0 and Player.selectedPlayer then
+            if not (Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("Humanoid")) then
+                stopSpectating()
+            end
+        end
+        SelectedPlayerLabel.Text = Player.selectedPlayer and "SELECTED: " .. Player.selectedPlayer.Name:upper() or "SELECTED: NONE"
     else
-        if connections.freezeObjects then
-            connections.freezeObjects:Disconnect()
-            connections.freezeObjects = nil
-        end
-        if connections.freezeObjectsAdded then
-            connections.freezeObjectsAdded:Disconnect()
-            connections.freezeObjectsAdded = nil
-        end
-        Movement.frozenObjectPositions = {}
+        Player.currentSpectateIndex = 0
+    end
+    
+    wait(0.1)
+    local contentSize = PlayerListLayout.AbsoluteContentSize
+    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
+    updateSpectateButtons()
+end
+
+-- Improved Teleport to Spectated Player
+local function teleportToSpectatedPlayer()
+    if Player.selectedPlayer and Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
+        local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
+        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 3)
     end
 end
 
--- Function to create toggle buttons for Movement features
-function Movement.loadMovementButtons(createToggleButton)
-    createToggleButton("Fly", toggleFly)
-    createToggleButton("Noclip", toggleNoclip)
-    createToggleButton("Speed", toggleSpeed)
-    createToggleButton("Jump High", toggleJumpHigh)
-    createToggleButton("Spider", toggleSpider)
-    createToggleButton("Player Phase", togglePlayerPhase)
-    createToggleButton("Freeze Objects", toggleFreezeObjects)
+-- Function to create buttons for Player features
+function Player.loadPlayerButtons(createButton, createToggleButton)
+    createButton("Select Player", showPlayerSelection)
+    createToggleButton("God Mode", toggleGodMode)
+    createToggleButton("Anti AFK", toggleAntiAFK)
+    createToggleButton("Freeze Players", toggleFreezePlayers)
 end
 
--- Function to handle respawn
-function Movement.handleRespawn()
-    -- Store current states
-    local states = {
-        fly = Movement.flyEnabled,
-        noclip = Movement.noclipEnabled,
-        speed = Movement.speedEnabled,
-        jumpHigh = Movement.jumpHighEnabled,
-        spider = Movement.spiderEnabled,
-        playerPhase = Movement.playerPhaseEnabled,
-        freezeObjects = Movement.freezeObjectsEnabled
-    }
+-- Function to reset Player states (called when character respawns)
+function Player.resetStates()
+    Player.godModeEnabled = false
+    Player.antiAFKEnabled = false
+    Player.freezeEnabled = false
     
-    -- Disable all features first
-    Movement.resetStates()
-    
-    -- Wait a bit for new character to load
-    wait(0.5)
-    
-    -- Update references
-    updateCharacterReferences()
-    
-    -- Re-enable features that were active
-    if states.fly then toggleFly(true) end
-    if states.noclip then toggleNoclip(true) end
-    if states.speed then toggleSpeed(true) end
-    if states.jumpHigh then toggleJumpHigh(true) end
-    if states.spider then toggleSpider(true) end
-    if states.playerPhase then togglePlayerPhase(true) end
-    if states.freezeObjects then toggleFreezeObjects(true) end
+    toggleGodMode(false)
+    toggleAntiAFK(false)
+    toggleFreezePlayers(false)
+    stopSpectating()
 end
 
--- Function to reset Movement states
-function Movement.resetStates()
-    Movement.flyEnabled = false
-    Movement.noclipEnabled = false
-    Movement.speedEnabled = false
-    Movement.jumpHighEnabled = false
-    Movement.spiderEnabled = false
-    Movement.playerPhaseEnabled = false
-    Movement.freezeObjectsEnabled = false
-    
-    -- Disconnect all connections
-    for connectionName, connection in pairs(connections) do
-        if connection and typeof(connection) == "RBXScriptConnection" then
-            connection:Disconnect()
-            connections[connectionName] = nil
-        end
-    end
-    
-    -- Clean up body objects
-    if updateCharacterReferences() and rootPart then
-        local objectsToRemove = {"BodyVelocity", "BodyPosition", "BodyAngularVelocity"}
-        for _, objectName in ipairs(objectsToRemove) do
-            local obj = rootPart:FindFirstChild(objectName)
-            if obj then
-                obj:Destroy()
-            end
-        end
-    end
-    
-    -- Reset humanoid properties
-    if updateCharacterReferences() and humanoid then
-        humanoid.WalkSpeed = 16
-        humanoid.JumpPower = 50
-    end
-    
-    -- Reset collision for character
-    if updateCharacterReferences() and character then
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
-            end
-        end
-    end
-    
-    -- Reset collision for other players
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
-            for _, part in pairs(otherPlayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.CanCollide = true
-                end
-            end
-        end
-    end
-    
-    -- Clear frozen objects
-    Movement.frozenObjectPositions = {}
+-- Function to initialize UI elements
+local function initUI()
+    PlayerListFrame = Instance.new("Frame")
+    PlayerListFrame.Name = "PlayerListFrame"
+    PlayerListFrame.Parent = ScreenGui
+    PlayerListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    PlayerListFrame.BorderSizePixel = 1
+    PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 350)
+    PlayerListFrame.Visible = false
+    PlayerListFrame.Active = true
+    PlayerListFrame.Draggable = true
+
+    local PlayerListTitle = Instance.new("TextLabel")
+    PlayerListTitle.Name = "Title"
+    PlayerListTitle.Parent = PlayerListFrame
+    PlayerListTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    PlayerListTitle.BorderSizePixel = 0
+    PlayerListTitle.Position = UDim2.new(0, 0, 0, 0)
+    PlayerListTitle.Size = UDim2.new(1, 0, 0, 35)
+    PlayerListTitle.Font = Enum.Font.Gotham
+    PlayerListTitle.Text = "SELECT PLAYER"
+    PlayerListTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PlayerListTitle.TextSize = 12
+
+    ClosePlayerListButton = Instance.new("TextButton")
+    ClosePlayerListButton.Name = "CloseButton"
+    ClosePlayerListButton.Parent = PlayerListFrame
+    ClosePlayerListButton.BackgroundTransparency = 1
+    ClosePlayerListButton.Position = UDim2.new(1, -30, 0, 5)
+    ClosePlayerListButton.Size = UDim2.new(0, 25, 0, 25)
+    ClosePlayerListButton.Font = Enum.Font.GothamBold
+    ClosePlayerListButton.Text = "X"
+    ClosePlayerListButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ClosePlayerListButton.TextSize = 12
+
+    SelectedPlayerLabel = Instance.new("TextLabel")
+    SelectedPlayerLabel.Name = "SelectedPlayerLabel"
+    SelectedPlayerLabel.Parent = PlayerListFrame
+    SelectedPlayerLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    SelectedPlayerLabel.BorderSizePixel = 0
+    SelectedPlayerLabel.Position = UDim2.new(0, 10, 0, 45)
+    SelectedPlayerLabel.Size = UDim2.new(1, -20, 0, 25)
+    SelectedPlayerLabel.Font = Enum.Font.Gotham
+    SelectedPlayerLabel.Text = "SELECTED: NONE"
+    SelectedPlayerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    SelectedPlayerLabel.TextSize = 10
+
+    PlayerListScrollFrame = Instance.new("ScrollingFrame")
+    PlayerListScrollFrame.Name = "PlayerListScrollFrame"
+    PlayerListScrollFrame.Parent = PlayerListFrame
+    PlayerListScrollFrame.BackgroundTransparency = 1
+    PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 80)
+    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -90)
+    PlayerListScrollFrame.ScrollBarThickness = 4
+    PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    PlayerListScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    PlayerListScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    PlayerListScrollFrame.BorderSizePixel = 0
+
+    PlayerListLayout = Instance.new("UIListLayout")
+    PlayerListLayout.Parent = PlayerListScrollFrame
+    PlayerListLayout.Padding = UDim.new(0, 2)
+    PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
+
+    NextSpectateButton = Instance.new("TextButton")
+    NextSpectateButton.Name = "NextSpectateButton"
+    NextSpectateButton.Parent = ScreenGui
+    NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+    NextSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    NextSpectateButton.BorderSizePixel = 1
+    NextSpectateButton.Position = UDim2.new(0.5, 20, 0.5, 0)
+    NextSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    NextSpectateButton.Font = Enum.Font.Gotham
+    NextSpectateButton.Text = "NEXT >"
+    NextSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    NextSpectateButton.TextSize = 10
+    NextSpectateButton.Visible = false
+    NextSpectateButton.Active = true
+
+    PrevSpectateButton = Instance.new("TextButton")
+    PrevSpectateButton.Name = "PrevSpectateButton"
+    PrevSpectateButton.Parent = ScreenGui
+    PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+    PrevSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    PrevSpectateButton.BorderSizePixel = 1
+    PrevSpectateButton.Position = UDim2.new(0.5, -80, 0.5, 0)
+    PrevSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    PrevSpectateButton.Font = Enum.Font.Gotham
+    PrevSpectateButton.Text = "< PREV"
+    PrevSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PrevSpectateButton.TextSize = 10
+    PrevSpectateButton.Visible = false
+    PrevSpectateButton.Active = true
+
+    StopSpectateButton = Instance.new("TextButton")
+    StopSpectateButton.Name = "StopSpectateButton"
+    StopSpectateButton.Parent = ScreenGui
+    StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+    StopSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    StopSpectateButton.BorderSizePixel = 1
+    StopSpectateButton.Position = UDim2.new(0.5, -30, 0.5, 40)
+    StopSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    StopSpectateButton.Font = Enum.Font.Gotham
+    StopSpectateButton.Text = "STOP"
+    StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    StopSpectateButton.TextSize = 10
+    StopSpectateButton.Visible = false
+    StopSpectateButton.Active = true
+
+    TeleportSpectateButton = Instance.new("TextButton")
+    TeleportSpectateButton.Name = "TeleportSpectateButton"
+    TeleportSpectateButton.Parent = ScreenGui
+    TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+    TeleportSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    TeleportSpectateButton.BorderSizePixel = 1
+    TeleportSpectateButton.Position = UDim2.new(0.5, 40, 0.5, 40)
+    TeleportSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    TeleportSpectateButton.Font = Enum.Font.Gotham
+    TeleportSpectateButton.Text = "TP"
+    TeleportSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TeleportSpectateButton.TextSize = 10
+    TeleportSpectateButton.Visible = false
+    TeleportSpectateButton.Active = true
+
+    NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
+    PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
+    StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
+    TeleportSpectateButton.MouseButton1Click:Connect(teleportToSpectatedPlayer)
+
+    NextSpectateButton.MouseEnter:Connect(function()
+        NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+    end)
+    NextSpectateButton.MouseLeave:Connect(function()
+        NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+    end)
+
+    PrevSpectateButton.MouseEnter:Connect(function()
+        PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+    end)
+    PrevSpectateButton.MouseLeave:Connect(function()
+        PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+    end)
+
+    StopSpectateButton.MouseEnter:Connect(function()
+        StopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+    end)
+    StopSpectateButton.MouseLeave:Connect(function()
+        StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+    end)
+
+    TeleportSpectateButton.MouseEnter:Connect(function()
+        TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+    end)
+    TeleportSpectateButton.MouseLeave:Connect(function()
+        TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+    end)
+
+    ClosePlayerListButton.MouseButton1Click:Connect(function()
+        Player.playerListVisible = false
+        PlayerListFrame.Visible = false
+    end)
 end
 
--- Function to set dependencies
-function Movement.init(deps)
+-- Function to set dependencies and initialize UI
+function Player.init(deps)
     Players = deps.Players
-    UserInputService = deps.UserInputService
     RunService = deps.RunService
     Workspace = deps.Workspace
-    settings = deps.settings
-    character = deps.character
     humanoid = deps.humanoid
-    rootPart = deps.rootPart
     connections = deps.connections
     buttonStates = deps.buttonStates
     ScrollFrame = deps.ScrollFrame
+    ScreenGui = deps.ScreenGui
+    player = deps.player
+    Player.rootPart = deps.rootPart
     
-    Movement.flyEnabled = false
-    Movement.noclipEnabled = false
-    Movement.speedEnabled = false
-    Movement.jumpHighEnabled = false
-    Movement.spiderEnabled = false
-    Movement.playerPhaseEnabled = false
-    Movement.freezeObjectsEnabled = false
-    Movement.frozenObjectPositions = {}
+    Player.godModeEnabled = false
+    Player.antiAFKEnabled = false
+    Player.freezeEnabled = false
+    Player.selectedPlayer = nil
+    Player.spectatePlayerList = {}
+    Player.currentSpectateIndex = 0
+    Player.spectateConnections = {}
+    Player.playerListVisible = false
+    Player.frozenPlayerPositions = {}
     
-    -- Set up respawn detection
-    local player = Players.LocalPlayer
-    if player then
-        player.CharacterAdded:Connect(function(newCharacter)
-            -- Wait for character to fully load
-            spawn(function()
-                newCharacter:WaitForChild("Humanoid", 10)
-                newCharacter:WaitForChild("HumanoidRootPart", 10)
-                Movement.handleRespawn()
+    initUI()
+    
+    Players.PlayerAdded:Connect(function(p)
+        if p ~= player and Player.freezeEnabled then
+            p.CharacterAdded:Connect(function(character)
+                local hrp = character:WaitForChild("HumanoidRootPart", 5)
+                local hum = character:WaitForChild("Humanoid", 5)
+                if hrp and hum then
+                    freezePlayer(p)
+                end
             end)
-        end)
-    end
+        end
+        Player.updatePlayerList()
+    end)
+
+    Players.PlayerRemoving:Connect(function(p)
+        if p == Player.selectedPlayer then
+            stopSpectating()
+        end
+        unfreezePlayer(p)
+        Player.updatePlayerList()
+    end)
 end
 
-return Movement
+-- Function to handle player added/removed events
+function Player.setupPlayerEvents()
+    spawn(function()
+        while true do
+            Player.updatePlayerList()
+            wait(5)
+        end
+    end)
+end
+
+return Player
