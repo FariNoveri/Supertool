@@ -15,7 +15,7 @@ local character, humanoid, rootPart
 -- Connections
 local connections = {}
 local buttonStates = {}
-local selectedCategory = nil
+local selectedCategory = "Movement" -- Set default category
 
 -- Settings
 local settings = {
@@ -32,15 +32,15 @@ ScreenGui.Parent = player:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- Main Frame
+-- Main Frame (Made smaller)
 local Frame = Instance.new("Frame")
 Frame.Name = "MainFrame"
 Frame.Parent = ScreenGui
 Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Frame.BorderColor3 = Color3.fromRGB(45, 45, 45)
 Frame.BorderSizePixel = 1
-Frame.Position = UDim2.new(0.5, -400, 0.5, -150)
-Frame.Size = UDim2.new(0, 800, 0, 300)
+Frame.Position = UDim2.new(0.5, -300, 0.5, -125) -- Smaller position
+Frame.Size = UDim2.new(0, 600, 0, 250) -- Reduced from 800x300 to 600x250
 Frame.Active = true
 Frame.Draggable = true
 
@@ -57,7 +57,7 @@ Title.Text = "MinimalHackGUI by Fari Noveri"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
--- Watermark for AntiAdminInfo
+-- Watermark for AntiAdminInfo (Made smaller)
 local Watermark = Instance.new("TextLabel")
 Watermark.Name = "Watermark"
 Watermark.Parent = ScreenGui
@@ -66,14 +66,14 @@ Watermark.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Watermark.BorderColor3 = Color3.fromRGB(45, 45, 45)
 Watermark.BorderSizePixel = 1
 Watermark.Position = UDim2.new(0, 10, 0, 60)
-Watermark.Size = UDim2.new(0, 200, 0, 20)
+Watermark.Size = UDim2.new(0, 180, 0, 18) -- Made smaller
 Watermark.Font = Enum.Font.Gotham
 Watermark.Text = "AntiAdmin: Initializing..."
 Watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
-Watermark.TextSize = 10
+Watermark.TextSize = 9
 Watermark.TextXAlignment = Enum.TextXAlignment.Left
 
--- Minimized Logo (hidden by default)
+-- Minimized Logo (Made smaller)
 local MinimizedLogo = Instance.new("Frame")
 MinimizedLogo.Name = "MinimizedLogo"
 MinimizedLogo.Parent = ScreenGui
@@ -81,14 +81,14 @@ MinimizedLogo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MinimizedLogo.BorderColor3 = Color3.fromRGB(45, 45, 45)
 MinimizedLogo.BorderSizePixel = 1
 MinimizedLogo.Position = UDim2.new(0, 10, 0, 10)
-MinimizedLogo.Size = UDim2.new(0, 40, 0, 40)
+MinimizedLogo.Size = UDim2.new(0, 35, 0, 35) -- Made smaller
 MinimizedLogo.Visible = false
 MinimizedLogo.Active = true
 MinimizedLogo.Draggable = true
 
 -- Make it circular
 local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0, 20)
+Corner.CornerRadius = UDim.new(0, 17)
 Corner.Parent = MinimizedLogo
 
 -- Logo Text
@@ -101,7 +101,7 @@ LogoText.Size = UDim2.new(1, 0, 1, 0)
 LogoText.Font = Enum.Font.GothamBold
 LogoText.Text = "H"
 LogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
-LogoText.TextSize = 16
+LogoText.TextSize = 14
 LogoText.TextStrokeTransparency = 0.5
 LogoText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
@@ -138,18 +138,18 @@ CloseButton.Text = "X"
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.TextSize = 10
 
--- Category Container (Left Side)
+-- Category Container (Left Side) - Made smaller
 local CategoryContainer = Instance.new("Frame")
 CategoryContainer.Name = "CategoryContainer"
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
 CategoryContainer.Position = UDim2.new(0, 5, 0, 30)
-CategoryContainer.Size = UDim2.new(0, 100, 1, -35)
+CategoryContainer.Size = UDim2.new(0, 85, 1, -35) -- Reduced width
 
 -- Category Layout (Vertical)
 local CategoryLayout = Instance.new("UIListLayout")
 CategoryLayout.Parent = CategoryContainer
-CategoryLayout.Padding = UDim.new(0, 5)
+CategoryLayout.Padding = UDim.new(0, 3) -- Reduced padding
 CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 CategoryLayout.FillDirection = Enum.FillDirection.Vertical
 
@@ -158,8 +158,8 @@ local FeatureContainer = Instance.new("ScrollingFrame")
 FeatureContainer.Name = "FeatureContainer"
 FeatureContainer.Parent = Frame
 FeatureContainer.BackgroundTransparency = 1
-FeatureContainer.Position = UDim2.new(0, 110, 0, 30)
-FeatureContainer.Size = UDim2.new(1, -115, 1, -35)
+FeatureContainer.Position = UDim2.new(0, 95, 0, 30) -- Adjusted for smaller category container
+FeatureContainer.Size = UDim2.new(1, -100, 1, -35)
 FeatureContainer.ScrollBarThickness = 2
 FeatureContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
 FeatureContainer.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -193,15 +193,15 @@ for _, category in ipairs(categories) do
     local categoryButton = Instance.new("TextButton")
     categoryButton.Name = category.name .. "Category"
     categoryButton.Parent = CategoryContainer
-    categoryButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    categoryButton.BackgroundColor3 = selectedCategory == category.name and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(25, 25, 25)
     categoryButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     categoryButton.BorderSizePixel = 1
-    categoryButton.Size = UDim2.new(1, -10, 0, 30)
+    categoryButton.Size = UDim2.new(1, -5, 0, 25) -- Made smaller
     categoryButton.LayoutOrder = category.order
     categoryButton.Font = Enum.Font.GothamBold
     categoryButton.Text = category.name
     categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    categoryButton.TextSize = 10
+    categoryButton.TextSize = 9 -- Made smaller
 
     categoryButton.MouseButton1Click:Connect(function()
         selectedCategory = category.name
@@ -209,7 +209,9 @@ for _, category in ipairs(categories) do
     end)
 
     categoryButton.MouseEnter:Connect(function()
-        categoryButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        if selectedCategory ~= category.name then
+            categoryButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        end
     end)
 
     categoryButton.MouseLeave:Connect(function()
@@ -238,6 +240,8 @@ local moduleURLs = {
 
 -- Load modules
 local modules = {}
+local modulesLoaded = {}
+
 local function loadModule(moduleName)
     if not moduleURLs[moduleName] then
         warn("No URL found for module: " .. moduleName)
@@ -264,10 +268,18 @@ local function loadModule(moduleName)
     
     if success and result then
         modules[moduleName] = result
+        modulesLoaded[moduleName] = true
         print("Successfully loaded module: " .. moduleName)
+        
+        -- Auto-load buttons if this is the selected category
+        if selectedCategory and (selectedCategory == moduleName or (moduleName == "AntiAdminInfo" and selectedCategory == "AntiAdmin")) then
+            loadButtons()
+        end
+        
         return true
     else
         warn("Failed to load module " .. moduleName .. ": " .. tostring(result))
+        modulesLoaded[moduleName] = false
         return false
     end
 end
@@ -311,8 +323,6 @@ local function initializeModules()
             else
                 print("Successfully initialized module: " .. moduleName)
             end
-        else
-            warn("Module " .. moduleName .. " is invalid or missing init function")
         end
     end
 end
@@ -321,6 +331,8 @@ end
 spawn(function()
     wait(3)
     initializeModules()
+    -- Load default category buttons
+    loadButtons()
 end)
 
 -- AntiAdmin background execution
@@ -361,7 +373,7 @@ local function createButton(name, callback, categoryName)
     button.Parent = FeatureContainer
     button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -2, 0, 22)
+    button.Size = UDim2.new(1, -2, 0, 20) -- Made smaller
     button.Font = Enum.Font.Gotham
     button.Text = name
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -396,13 +408,19 @@ local function createToggleButton(name, callback, categoryName)
     button.Parent = FeatureContainer
     button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -2, 0, 22)
+    button.Size = UDim2.new(1, -2, 0, 20) -- Made smaller
     button.Font = Enum.Font.Gotham
     button.Text = name
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 8
     
-    buttonStates[name] = buttonStates[name] or false
+    -- Initialize button state
+    if buttonStates[name] == nil then
+        buttonStates[name] = false
+    end
+    
+    -- Set initial color based on state
+    button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     
     button.MouseButton1Click:Connect(function()
         buttonStates[name] = not buttonStates[name]
@@ -428,139 +446,154 @@ local function createToggleButton(name, callback, categoryName)
     end)
 end
 
--- Load buttons for selected category
+-- Load buttons for selected category (FIXED VERSION)
 function loadButtons()
+    -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
-    for _, category in pairs(categoryFrames) do
-        category.button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    end
-    if selectedCategory and categoryFrames[selectedCategory] then
-        categoryFrames[selectedCategory].button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    -- Update category button colors
+    for categoryName, categoryData in pairs(categoryFrames) do
+        if categoryName == selectedCategory then
+            categoryData.button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        else
+            categoryData.button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        end
     end
 
     if not selectedCategory then return end
+    
+    -- Add loading indicator
+    local loadingLabel = Instance.new("TextLabel")
+    loadingLabel.Name = "LoadingLabel"
+    loadingLabel.Parent = FeatureContainer
+    loadingLabel.BackgroundTransparency = 1
+    loadingLabel.Size = UDim2.new(1, -2, 0, 20)
+    loadingLabel.Font = Enum.Font.Gotham
+    loadingLabel.Text = "Loading " .. selectedCategory .. " features..."
+    loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    loadingLabel.TextSize = 8
+    loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-    if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
-        local success, err = pcall(function()
-            modules.Movement.loadMovementButtons(function(name, callback)
-                createToggleButton(name, callback, "Movement")
-            end)
-        end)
-        if not success then
-            warn("Error loading Movement buttons: " .. tostring(err))
-        end
-    end
-    
-    if selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
-        local success, err = pcall(function()
-            local selectedPlayer = nil
-            if type(modules.Player.getSelectedPlayer) == "function" then
-                selectedPlayer = modules.Player.getSelectedPlayer()
-            end
-            modules.Player.loadPlayerButtons(
-                function(name, callback) createButton(name, callback, "Player") end,
-                function(name, callback) createToggleButton(name, callback, "Player") end,
-                selectedPlayer
-            )
-        end)
-        if not success then
-            warn("Error loading Player buttons: " .. tostring(err))
-        end
-    end
-    
-    if selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
-        local success, err = pcall(function()
-            local selectedPlayer = nil
-            if modules.Player and type(modules.Player.getSelectedPlayer) == "function" then
-                selectedPlayer = modules.Player.getSelectedPlayer()
-            end
-            
-            local freecamEnabled, freecamPosition = false, nil
-            if modules.Visual and type(modules.Visual.getFreecamState) == "function" then
-                freecamEnabled, freecamPosition = modules.Visual.getFreecamState()
-            end
-            
-            local toggleFreecam = function() end
-            if modules.Visual and type(modules.Visual.toggleFreecam) == "function" then
-                toggleFreecam = modules.Visual.toggleFreecam
-            end
-            
-            modules.Teleport.loadTeleportButtons(
-                function(name, callback) createButton(name, callback, "Teleport") end,
-                selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
-            )
-        end)
-        if not success then
-            warn("Error loading Teleport buttons: " .. tostring(err))
-        end
-    end
-    
-    if selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
-        local success, err = pcall(function()
-            modules.Visual.loadVisualButtons(function(name, callback)
-                createToggleButton(name, callback, "Visual")
-            end)
-        end)
-        if not success then
-            warn("Error loading Visual buttons: " .. tostring(err))
-        end
-    end
-    
-    if selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
-        local success, err = pcall(function()
-            modules.Utility.loadUtilityButtons(function(name, callback)
-                createButton(name, callback, "Utility")
-            end)
-        end)
-        if not success then
-            warn("Error loading Utility buttons: " .. tostring(err))
-        end
-    end
-    
-    if selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
-        local success, err = pcall(function()
-            modules.Settings.loadSettingsButtons(function(name, callback)
-                createButton(name, callback, "Settings")
-            end)
-        end)
-        if not success then
-            warn("Error loading Settings buttons: " .. tostring(err))
-        end
-    end
-    
-    if selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
-        local success, err = pcall(function()
-            modules.Info.loadInfoButtons(function(name, callback)
-                createButton(name, callback, "Info")
-            end)
-        end)
-        if not success then
-            warn("Error loading Info buttons: " .. tostring(err))
-        end
-    end
-    
-    if selectedCategory == "AntiAdmin" then
-        local placeholder = Instance.new("TextLabel")
-        placeholder.Name = "Placeholder"
-        placeholder.Parent = FeatureContainer
-        placeholder.BackgroundTransparency = 1
-        placeholder.Size = UDim2.new(1, -2, 0, 22)
-        placeholder.Font = Enum.Font.Gotham
-        placeholder.Text = "AntiAdmin features run in background"
-        placeholder.TextColor3 = Color3.fromRGB(255, 255, 255)
-        placeholder.TextSize = 8
-        placeholder.TextXAlignment = Enum.TextXAlignment.Left
+    -- Load category-specific buttons
+    spawn(function()
+        wait(0.1) -- Small delay to show loading
         
-        spawn(function()
-            wait(0.01)
-            FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
-        end)
-    end
+        if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
+            local success, err = pcall(function()
+                modules.Movement.loadMovementButtons(function(name, callback)
+                    createToggleButton(name, callback, "Movement")
+                end)
+            end)
+            if not success then
+                warn("Error loading Movement buttons: " .. tostring(err))
+            end
+        elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
+            local success, err = pcall(function()
+                local selectedPlayer = nil
+                if type(modules.Player.getSelectedPlayer) == "function" then
+                    selectedPlayer = modules.Player.getSelectedPlayer()
+                end
+                modules.Player.loadPlayerButtons(
+                    function(name, callback) createButton(name, callback, "Player") end,
+                    function(name, callback) createToggleButton(name, callback, "Player") end,
+                    selectedPlayer
+                )
+            end)
+            if not success then
+                warn("Error loading Player buttons: " .. tostring(err))
+            end
+        elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
+            local success, err = pcall(function()
+                local selectedPlayer = nil
+                if modules.Player and type(modules.Player.getSelectedPlayer) == "function" then
+                    selectedPlayer = modules.Player.getSelectedPlayer()
+                end
+                
+                local freecamEnabled, freecamPosition = false, nil
+                if modules.Visual and type(modules.Visual.getFreecamState) == "function" then
+                    freecamEnabled, freecamPosition = modules.Visual.getFreecamState()
+                end
+                
+                local toggleFreecam = function() end
+                if modules.Visual and type(modules.Visual.toggleFreecam) == "function" then
+                    toggleFreecam = modules.Visual.toggleFreecam
+                end
+                
+                modules.Teleport.loadTeleportButtons(
+                    function(name, callback) createButton(name, callback, "Teleport") end,
+                    selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
+                )
+            end)
+            if not success then
+                warn("Error loading Teleport buttons: " .. tostring(err))
+            end
+        elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
+            local success, err = pcall(function()
+                modules.Visual.loadVisualButtons(function(name, callback)
+                    createToggleButton(name, callback, "Visual")
+                end)
+            end)
+            if not success then
+                warn("Error loading Visual buttons: " .. tostring(err))
+            end
+        elseif selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
+            local success, err = pcall(function()
+                modules.Utility.loadUtilityButtons(function(name, callback)
+                    createButton(name, callback, "Utility")
+                end)
+            end)
+            if not success then
+                warn("Error loading Utility buttons: " .. tostring(err))
+            end
+        elseif selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
+            local success, err = pcall(function()
+                modules.Settings.loadSettingsButtons(function(name, callback)
+                    createButton(name, callback, "Settings")
+                end)
+            end)
+            if not success then
+                warn("Error loading Settings buttons: " .. tostring(err))
+            end
+        elseif selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
+            local success, err = pcall(function()
+                modules.Info.loadInfoButtons(function(name, callback)
+                    createButton(name, callback, "Info")
+                end)
+            end)
+            if not success then
+                warn("Error loading Info buttons: " .. tostring(err))
+            end
+        elseif selectedCategory == "AntiAdmin" then
+            -- Remove loading label first
+            if loadingLabel and loadingLabel.Parent then
+                loadingLabel:Destroy()
+            end
+            
+            local placeholder = Instance.new("TextLabel")
+            placeholder.Name = "Placeholder"
+            placeholder.Parent = FeatureContainer
+            placeholder.BackgroundTransparency = 1
+            placeholder.Size = UDim2.new(1, -2, 0, 20)
+            placeholder.Font = Enum.Font.Gotham
+            placeholder.Text = "AntiAdmin features run in background"
+            placeholder.TextColor3 = Color3.fromRGB(255, 255, 255)
+            placeholder.TextSize = 8
+            placeholder.TextXAlignment = Enum.TextXAlignment.Left
+        end
+        
+        -- Remove loading label
+        if loadingLabel and loadingLabel.Parent then
+            loadingLabel:Destroy()
+        end
+        
+        -- Update canvas size
+        wait(0.01)
+        FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, math.max(FeatureLayout.AbsoluteContentSize.Y + 5, 1))
+    end)
 end
 
 -- Minimize/Maximize functionality
@@ -587,8 +620,8 @@ local function resetStates()
         end
     end
     connections = {}
-    buttonStates = {}
     
+    -- Don't reset button states completely, just reset module states
     for _, module in pairs(modules) do
         if module and type(module.resetStates) == "function" then
             local success, err = pcall(function()
@@ -600,8 +633,10 @@ local function resetStates()
         end
     end
     
-    selectedCategory = nil
-    loadButtons()
+    -- Reload current category
+    if selectedCategory then
+        loadButtons()
+    end
 
     if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
         local success, err = pcall(function()

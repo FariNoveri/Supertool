@@ -276,7 +276,7 @@ local function togglePlayerPhase(enabled)
     end
 end
 
--- Freeze Blocks/Objects (Fixed to handle permission errors)
+-- Freeze Blocks/Objects (Optimized to reduce lag)
 local function toggleFreezeObjects(enabled)
     Movement.freezeObjectsEnabled = enabled
     Movement.frozenObjectPositions = Movement.frozenObjectPositions or {}
@@ -285,41 +285,94 @@ local function toggleFreezeObjects(enabled)
         if not Workspace then return end
         Movement.frozenObjectPositions = {}
         
-        local success, descendants = pcall(function()
-            return Workspace:GetDescendants()
-        end)
+        -- Use a more selective approach to reduce object count
+        local function isObjectFreezeable(obj)
+            if not obj or not obj:IsA("BasePart") or not obj.Parent then
+                return false
+            end
+            
+            updateCharacterReferences()
+            if obj == rootPart or (character and obj:IsDescendantOf(character)) then
+                return false
+            end
+            
+            -- Skip player parts
+            for _, player in pairs(Players:GetPlayers()) do
+                if player.Character and obj:IsDescendantOf(player.Character) then
+                    return false
+                end
+            end
+            
+            -- Only freeze objects that are likely to be blocks/objects (not GUI, effects, etc.)
+            local parent = obj.Parent
+            if parent and (parent.Name == "Camera" or parent.Name == "Lighting" or parent.Name == "SoundService") then
+                return false
+            end
+            
+            -- Skip very small parts (likely debris/effects)
+            local size = obj.Size
+            if size.X < 0.5 and size.Y < 0.5 and size.Z < 0.5 then
+                return false
+            end
+            
+            return true
+        end
         
-        if success then
-            for _, obj in pairs(descendants) do
-                if obj and obj:IsA("BasePart") and obj.Parent then
-                    updateCharacterReferences()
-                    if obj ~= rootPart and not obj:IsDescendantOf(character) then
-                        local isPlayerPart = false
-                        for _, player in pairs(Players:GetPlayers()) do
-                            if player.Character and obj:IsDescendantOf(player.Character) then
-                                isPlayerPart = true
-                                break
-                            end
+        -- Collect objects in batches to prevent lag
+        spawn(function()
+            local success, descendants = pcall(function()
+                return Workspace:GetDescendants()
+            end)
+            
+            if success then
+                local processedCount = 0
+                local maxProcessPerFrame = 50 -- Process only 50 objects per frame
+                
+                for _, obj in pairs(descendants) do
+                    if isObjectFreezeable(obj) then
+                        local cframeSuccess, cframe = pcall(function()
+                            return obj.CFrame
+                        end)
+                        if cframeSuccess then
+                            Movement.frozenObjectPositions[obj] = cframe
                         end
-                        if not isPlayerPart then
-                            local cframeSuccess, cframe = pcall(function()
-                                return obj.CFrame
-                            end)
-                            if cframeSuccess then
-                                Movement.frozenObjectPositions[obj] = cframe
-                            end
+                        
+                        processedCount = processedCount + 1
+                        if processedCount >= maxProcessPerFrame then
+                            processedCount = 0
+                            wait() -- Yield to prevent lag
                         end
                     end
                 end
+            else
+                warn("Failed to access Workspace descendants: " .. tostring(descendants))
             end
-        else
-            warn("Failed to access Workspace descendants: " .. tostring(descendants))
-        end
+        end)
         
-        connections.freezeObjects = RunService.RenderStepped:Connect(function()
+        -- Use Heartbeat instead of RenderStepped for better performance
+        -- And process objects in smaller batches
+        local objectList = {}
+        local currentIndex = 1
+        local maxProcessPerFrame = 25 -- Process fewer objects per frame
+        
+        connections.freezeObjects = RunService.Heartbeat:Connect(function()
             if Movement.freezeObjectsEnabled then
-                for obj, frozenCFrame in pairs(Movement.frozenObjectPositions) do
-                    if obj and obj.Parent and obj:IsA("BasePart") then
+                -- Convert frozen objects to list if empty or index exceeded
+                if #objectList == 0 or currentIndex > #objectList then
+                    objectList = {}
+                    for obj, _ in pairs(Movement.frozenObjectPositions) do
+                        table.insert(objectList, obj)
+                    end
+                    currentIndex = 1
+                end
+                
+                -- Process objects in batches
+                local processed = 0
+                while currentIndex <= #objectList and processed < maxProcessPerFrame do
+                    local obj = objectList[currentIndex]
+                    local frozenCFrame = Movement.frozenObjectPositions[obj]
+                    
+                    if obj and obj.Parent and obj:IsA("BasePart") and frozenCFrame then
                         local success, err = pcall(function()
                             obj.CFrame = frozenCFrame
                         end)
@@ -329,22 +382,20 @@ local function toggleFreezeObjects(enabled)
                     else
                         Movement.frozenObjectPositions[obj] = nil
                     end
+                    
+                    currentIndex = currentIndex + 1
+                    processed = processed + 1
                 end
             end
         end)
         
+        -- Handle new objects with more selective filtering
         connections.freezeObjectsAdded = Workspace.DescendantAdded:Connect(function(obj)
-            if Movement.freezeObjectsEnabled and obj:IsA("BasePart") then
-                updateCharacterReferences()
-                if obj ~= rootPart and not obj:IsDescendantOf(character) then
-                    local isPlayerPart = false
-                    for _, player in pairs(Players:GetPlayers()) do
-                        if player.Character and obj:IsDescendantOf(player.Character) then
-                            isPlayerPart = true
-                            break
-                        end
-                    end
-                    if not isPlayerPart then
+            if Movement.freezeObjectsEnabled and isObjectFreezeable(obj) then
+                -- Add small delay to ensure object is properly loaded
+                spawn(function()
+                    wait(0.1)
+                    if obj and obj.Parent then
                         local success, cframe = pcall(function()
                             return obj.CFrame
                         end)
@@ -352,7 +403,7 @@ local function toggleFreezeObjects(enabled)
                             Movement.frozenObjectPositions[obj] = cframe
                         end
                     end
-                end
+                end)
             end
         end)
     else
