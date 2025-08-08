@@ -13,7 +13,7 @@ local function toggleFly(enabled)
         if not rootPart or not humanoid or not settings.FlySpeed then return end
         
         local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge) -- Increased for better control
+        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.Parent = rootPart
         
@@ -35,7 +35,6 @@ local function toggleFly(enabled)
                     velocity = velocity + (rightVector * moveVector.X * speed)
                 end
                 
-                -- Handle vertical movement with input
                 if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
                     velocity = velocity + (upVector * speed)
                 elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
@@ -69,7 +68,6 @@ local function toggleNoclip(enabled)
                 end
             end
         end)
-        -- Handle new parts added to character
         if character then
             connections.noclipChildAdded = character.ChildAdded:Connect(function(child)
                 if Movement.noclipEnabled and child:IsA("BasePart") and child.CanCollide then
@@ -115,7 +113,7 @@ local function toggleJumpHigh(enabled)
     Movement.jumpHighEnabled = enabled
     if enabled then
         if humanoid and settings.JumpHeight then
-            humanoid.JumpPower = settings.JumpHeight.value * 7 -- Adjusted for Roblox physics
+            humanoid.JumpPower = settings.JumpHeight.value * 7
             connections.jumphigh = humanoid.Jumping:Connect(function()
                 if Movement.jumpHighEnabled and rootPart then
                     rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 7, rootPart.Velocity.Z)
@@ -124,7 +122,7 @@ local function toggleJumpHigh(enabled)
         end
     else
         if humanoid then
-            humanoid.JumpPower = 50 -- Default Roblox value
+            humanoid.JumpPower = 50
         end
         if connections.jumphigh then
             connections.jumphigh:Disconnect()
@@ -200,7 +198,6 @@ local function togglePlayerPhase(enabled)
                 end
             end
         end)
-        -- Handle new players
         connections.playerPhasePlayerAdded = Players.PlayerAdded:Connect(function(player)
             if Movement.playerPhaseEnabled and player.Character then
                 for _, part in pairs(player.Character:GetDescendants()) do
@@ -231,38 +228,64 @@ local function togglePlayerPhase(enabled)
     end
 end
 
--- Freeze Blocks/Objects (New feature)
+-- Freeze Blocks/Objects (Fixed to handle permission errors)
 local function toggleFreezeObjects(enabled)
     Movement.freezeObjectsEnabled = enabled
     Movement.frozenObjectPositions = Movement.frozenObjectPositions or {}
     
     if enabled then
-        -- Store initial positions of all non-player objects
+        if not Workspace then return end
         Movement.frozenObjectPositions = {}
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and obj ~= rootPart and not obj:IsDescendantOf(character) then
-                local isPlayerPart = false
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player.Character and obj:IsDescendantOf(player.Character) then
-                        isPlayerPart = true
-                        break
+        
+        -- Use pcall to handle potential permission errors
+        local success, descendants = pcall(function()
+            return Workspace:GetDescendants()
+        end)
+        
+        if success then
+            for _, obj in pairs(descendants) do
+                -- Check if object is valid and accessible
+                if obj and obj:IsA("BasePart") and obj ~= rootPart and obj.Parent and not obj:IsDescendantOf(character) then
+                    local isPlayerPart = false
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player.Character and obj:IsDescendantOf(player.Character) then
+                            isPlayerPart = true
+                            break
+                        end
+                    end
+                    if not isPlayerPart then
+                        -- Use pcall to safely access CFrame
+                        local cframeSuccess, cframe = pcall(function()
+                            return obj.CFrame
+                        end)
+                        if cframeSuccess then
+                            Movement.frozenObjectPositions[obj] = cframe
+                        end
                     end
                 end
-                if not isPlayerPart then
-                    Movement.frozenObjectPositions[obj] = obj.CFrame
-                end
             end
+        else
+            warn("Failed to access Workspace descendants: " .. tostring(descendants))
         end
+        
         connections.freezeObjects = RunService.RenderStepped:Connect(function()
             if Movement.freezeObjectsEnabled then
                 for obj, frozenCFrame in pairs(Movement.frozenObjectPositions) do
                     if obj and obj.Parent and obj:IsA("BasePart") then
-                        obj.CFrame = frozenCFrame
+                        -- Use pcall to safely set CFrame
+                        local success, err = pcall(function()
+                            obj.CFrame = frozenCFrame
+                        end)
+                        if not success then
+                            Movement.frozenObjectPositions[obj] = nil -- Remove invalid object
+                        end
+                    else
+                        Movement.frozenObjectPositions[obj] = nil -- Clean up invalid objects
                     end
                 end
             end
         end)
-        -- Handle new objects added to Workspace
+        
         connections.freezeObjectsAdded = Workspace.DescendantAdded:Connect(function(obj)
             if Movement.freezeObjectsEnabled and obj:IsA("BasePart") and obj ~= rootPart and not obj:IsDescendantOf(character) then
                 local isPlayerPart = false
@@ -273,7 +296,12 @@ local function toggleFreezeObjects(enabled)
                     end
                 end
                 if not isPlayerPart then
-                    Movement.frozenObjectPositions[obj] = obj.CFrame
+                    local success, cframe = pcall(function()
+                        return obj.CFrame
+                    end)
+                    if success then
+                        Movement.frozenObjectPositions[obj] = cframe
+                    end
                 end
             end
         end)
@@ -311,7 +339,6 @@ function Movement.resetStates()
     Movement.playerPhaseEnabled = false
     Movement.freezeObjectsEnabled = false
     
-    -- Disconnect all connections
     if connections.fly then
         connections.fly:Disconnect()
         connections.fly = nil
@@ -349,7 +376,6 @@ function Movement.resetStates()
         connections.freezeObjectsAdded = nil
     end
     
-    -- Clean up body objects
     if rootPart then
         if rootPart:FindFirstChild("BodyVelocity") then
             rootPart:FindFirstChild("BodyVelocity"):Destroy()
@@ -362,7 +388,6 @@ function Movement.resetStates()
         end
     end
     
-    -- Reset character properties
     if humanoid then
         humanoid.WalkSpeed = 16
         humanoid.JumpPower = 50
@@ -399,7 +424,6 @@ function Movement.init(deps)
     buttonStates = deps.buttonStates
     ScrollFrame = deps.ScrollFrame
     
-    -- Initialize state variables
     Movement.flyEnabled = false
     Movement.noclipEnabled = false
     Movement.speedEnabled = false
