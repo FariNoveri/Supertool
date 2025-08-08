@@ -3,19 +3,6 @@ print("MAINLOADER: Script Started")
 
 local CoreGui = game:GetService("CoreGui")
 
--- Debug Label: Start
-local DebugStart = Instance.new("TextLabel")
-DebugStart.Name = "DebugStart"
-DebugStart.Parent = CoreGui
-DebugStart.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugStart.Size = UDim2.new(0, 200, 0, 30)
-DebugStart.Position = UDim2.new(0.5, -100, 0.3, -15)
-DebugStart.Font = Enum.Font.Gotham
-DebugStart.Text = "DEBUG: Script Started"
-DebugStart.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugStart.TextSize = 12
-DebugStart.Visible = true
-
 -- Clean up existing GUIs
 for _, gui in pairs(CoreGui:GetChildren()) do
     if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name == "ToggleGUI" or gui.Name:match("^Debug") then
@@ -23,84 +10,11 @@ for _, gui in pairs(CoreGui:GetChildren()) do
     end
 end
 
--- Debug Label: Cleanup Done
-local DebugCleanup = Instance.new("TextLabel")
-DebugCleanup.Name = "DebugCleanup"
-DebugCleanup.Parent = CoreGui
-DebugCleanup.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugCleanup.Size = UDim2.new(0, 200, 0, 30)
-DebugCleanup.Position = UDim2.new(0.5, -100, 0.35, -15)
-DebugCleanup.Font = Enum.Font.Gotham
-DebugCleanup.Text = "DEBUG: Cleanup Done"
-DebugCleanup.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugCleanup.TextSize = 12
-DebugCleanup.Visible = true
-
 -- Console Output: Cleanup Done
 print("MAINLOADER: Cleanup Done")
 
--- Embedded Info module
-local modules = {
-    Info = {
-        setGuiElements = function(elements)
-            print("MAINLOADER: Setting Info Elements")
-            if not elements then
-                print("MAINLOADER: Elements nil")
-                return
-            end
-            modules.Info.InfoFrame = elements.InfoFrame
-            modules.Info.InfoScrollFrame = elements.InfoScrollFrame
-            modules.Info.InfoLayout = elements.InfoLayout
-            print("MAINLOADER: Elements Set")
-        end,
-        updateGui = function()
-            print("MAINLOADER: Updating Info GUI")
-            if not modules.Info.InfoScrollFrame then
-                print("MAINLOADER: InfoScrollFrame nil")
-                return
-            end
-            for _, child in pairs(modules.Info.InfoScrollFrame:GetChildren()) do
-                if child:IsA("TextLabel") or child:IsA("Frame") then
-                    child:Destroy()
-                end
-            end
-            local watermarkLabel = Instance.new("TextLabel")
-            watermarkLabel.Name = "WatermarkLabel"
-            watermarkLabel.Parent = modules.Info.InfoScrollFrame
-            watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            watermarkLabel.BorderSizePixel = 0
-            watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
-            watermarkLabel.Font = Enum.Font.Gotham
-            watermarkLabel.Text = "TEST INFO WATERMARK"
-            watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            watermarkLabel.TextSize = 10
-            watermarkLabel.TextWrapped = true
-            watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
-            watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
-            
-            wait(0.1)
-            local contentSize = modules.Info.InfoLayout and modules.Info.InfoLayout.AbsoluteContentSize or Vector2.new(0, 0)
-            modules.Info.InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
-            print("MAINLOADER: Info Watermark Created")
-        end
-    }
-}
-
--- Debug Label: Modules Loaded
-local DebugModules = Instance.new("TextLabel")
-DebugModules.Name = "DebugModules"
-DebugModules.Parent = CoreGui
-DebugModules.BackgroundColor3 = modules.Info and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-DebugModules.Size = UDim2.new(0, 200, 0, 30)
-DebugModules.Position = UDim2.new(0.5, -100, 0.4, -15)
-DebugModules.Font = Enum.Font.Gotham
-DebugModules.Text = modules.Info and "DEBUG: Info Loaded" or "DEBUG: Info Load Failed"
-DebugModules.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugModules.TextSize = 12
-DebugModules.Visible = true
-
--- Console Output: Modules Loaded
-print("MAINLOADER: Modules Loaded")
+-- Info module variables
+local InfoFrame, InfoScrollFrame, InfoLayout
 
 -- Create ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
@@ -108,19 +22,6 @@ ScreenGui.Name = "MinimalHackGUI"
 ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
-
--- Debug Label: ScreenGui Created
-local DebugScreenGui = Instance.new("TextLabel")
-DebugScreenGui.Name = "DebugScreenGui"
-DebugScreenGui.Parent = CoreGui
-DebugScreenGui.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugScreenGui.Size = UDim2.new(0, 200, 0, 30)
-DebugScreenGui.Position = UDim2.new(0.5, -100, 0.45, -15)
-DebugScreenGui.Font = Enum.Font.Gotham
-DebugScreenGui.Text = "DEBUG: ScreenGui Created"
-DebugScreenGui.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugScreenGui.TextSize = 12
-DebugScreenGui.Visible = true
 
 -- Console Output: ScreenGui Created
 print("MAINLOADER: ScreenGui Created")
@@ -137,19 +38,6 @@ MainFrame.Size = UDim2.new(0, 600, 0, 400)
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Visible = true
-
--- Debug Label: MainFrame Created
-local DebugMainFrame = Instance.new("TextLabel")
-DebugMainFrame.Name = "DebugMainFrame"
-DebugMainFrame.Parent = CoreGui
-DebugMainFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugMainFrame.Size = UDim2.new(0, 200, 0, 30)
-DebugMainFrame.Position = UDim2.new(0.5, -100, 0.5, -15)
-DebugMainFrame.Font = Enum.Font.Gotham
-DebugMainFrame.Text = "DEBUG: MainFrame Created"
-DebugMainFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugMainFrame.TextSize = 12
-DebugMainFrame.Visible = true
 
 -- Console Output: MainFrame Created
 print("MAINLOADER: MainFrame Created")
@@ -210,19 +98,6 @@ MinimizeButton.TextSize = 14
 MinimizeButton.Visible = true
 MinimizeButton.ZIndex = 10
 
--- Debug Label: Minimize Click
-local DebugMinimize = Instance.new("TextLabel")
-DebugMinimize.Name = "DebugMinimize"
-DebugMinimize.Parent = CoreGui
-DebugMinimize.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugMinimize.Size = UDim2.new(0, 200, 0, 30)
-DebugMinimize.Position = UDim2.new(0.5, -100, 0.55, -15)
-DebugMinimize.Font = Enum.Font.Gotham
-DebugMinimize.Text = "DEBUG: Minimize Not Clicked"
-DebugMinimize.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugMinimize.TextSize = 12
-DebugMinimize.Visible = false
-
 -- Console Output: Minimize Button Created
 print("MAINLOADER: Minimize Button Created")
 
@@ -239,19 +114,6 @@ local CategoryList = Instance.new("UIListLayout")
 CategoryList.Parent = CategoryFrame
 CategoryList.Padding = UDim.new(0, 2)
 CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
-
--- Debug Label: CategoryFrame Created
-local DebugCategoryFrame = Instance.new("TextLabel")
-DebugCategoryFrame.Name = "DebugCategoryFrame"
-DebugCategoryFrame.Parent = CoreGui
-DebugCategoryFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugCategoryFrame.Size = UDim2.new(0, 200, 0, 30)
-DebugCategoryFrame.Position = UDim2.new(0.5, -100, 0.6, -15)
-DebugCategoryFrame.Font = Enum.Font.Gotham
-DebugCategoryFrame.Text = "DEBUG: CategoryFrame Created"
-DebugCategoryFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugCategoryFrame.TextSize = 12
-DebugCategoryFrame.Visible = true
 
 -- Console Output: CategoryFrame Created
 print("MAINLOADER: CategoryFrame Created")
@@ -283,46 +145,21 @@ UIListLayout.Parent = ScrollFrame
 UIListLayout.Padding = UDim.new(0, 5)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Debug Label: ContentFrame Created
-local DebugContentFrame = Instance.new("TextLabel")
-DebugContentFrame.Name = "DebugContentFrame"
-DebugContentFrame.Parent = CoreGui
-DebugContentFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugContentFrame.Size = UDim2.new(0, 200, 0, 30)
-DebugContentFrame.Position = UDim2.new(0.5, -100, 0.65, -15)
-DebugContentFrame.Font = Enum.Font.Gotham
-DebugContentFrame.Text = "DEBUG: ContentFrame Created"
-DebugContentFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugContentFrame.TextSize = 12
-DebugContentFrame.Visible = true
-
 -- Console Output: ContentFrame Created
 print("MAINLOADER: ContentFrame Created")
 
--- Pass GUI elements to Info module
-if modules.Info then
-    local success, err = pcall(function()
-        modules.Info.setGuiElements({
-            InfoFrame = ContentFrame,
-            InfoScrollFrame = ScrollFrame,
-            InfoLayout = UIListLayout
-        })
-    end)
-    if not success then
-        local DebugError = Instance.new("TextLabel")
-        DebugError.Name = "DebugError"
-        DebugError.Parent = CoreGui
-        DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-        DebugError.Size = UDim2.new(0, 200, 0, 30)
-        DebugError.Position = UDim2.new(0.5, -100, 0.7, -15)
-        DebugError.Font = Enum.Font.Gotham
-        DebugError.Text = "DEBUG: Info Error: " .. tostring(err)
-        DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
-        DebugError.TextSize = 12
-        DebugError.Visible = true
-        print("MAINLOADER: Info Error: " .. tostring(err))
-    end
+-- Set Info module variables
+local success, err = pcall(function()
+    InfoFrame = ContentFrame
+    InfoScrollFrame = ScrollFrame
+    InfoLayout = UIListLayout
+end)
+if not success then
+    print("MAINLOADER: Info Setup Error: " .. tostring(err))
 end
+
+-- Console Output: Info Setup
+print("MAINLOADER: Info Setup Complete")
 
 -- Create category button
 local function createCategoryButton(name)
@@ -338,8 +175,6 @@ local function createCategoryButton(name)
     button.TextSize = 10
     
     button.MouseButton1Click:Connect(function()
-        DebugMinimize.Visible = true
-        DebugMinimize.Text = "DEBUG: " .. name .. " Clicked"
         print("MAINLOADER: " .. name .. " Clicked")
         switchCategory(name)
     end)
@@ -391,8 +226,6 @@ local function loadPlaceholder(category)
     exampleButton.TextSize = 10
     
     exampleButton.MouseButton1Click:Connect(function()
-        DebugMinimize.Visible = true
-        DebugMinimize.Text = "DEBUG: " .. category .. " Example Clicked"
         print("MAINLOADER: " .. category .. " Example Clicked")
     end)
     
@@ -401,17 +234,49 @@ local function loadPlaceholder(category)
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
 end
 
+-- Info category function
+local function loadInfo()
+    if not InfoScrollFrame then
+        print("MAINLOADER: InfoScrollFrame nil")
+        return
+    end
+    local success, err = pcall(function()
+        for _, child in pairs(InfoScrollFrame:GetChildren()) do
+            if child:IsA("TextLabel") or child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+        local watermarkLabel = Instance.new("TextLabel")
+        watermarkLabel.Name = "WatermarkLabel"
+        watermarkLabel.Parent = InfoScrollFrame
+        watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        watermarkLabel.BorderSizePixel = 0
+        watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
+        watermarkLabel.Font = Enum.Font.SourceSans
+        watermarkLabel.Text = "TEST INFO WATERMARK"
+        watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        watermarkLabel.TextSize = 10
+        watermarkLabel.TextWrapped = true
+        watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
+        watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
+        
+        wait(0.1)
+        local contentSize = InfoLayout and InfoLayout.AbsoluteContentSize or Vector2.new(0, 0)
+        InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
+    end)
+    if not success then
+        print("MAINLOADER: Info Load Error: " .. tostring(err))
+    else
+        print("MAINLOADER: Info Watermark Created")
+    end
+end
+
 -- Minimize button logic
 MinimizeButton.Activated:Connect(function()
-    DebugMinimize.Visible = true
-    DebugMinimize.Text = "DEBUG: Minimize Clicked"
     print("MAINLOADER: Minimize Clicked")
-    local newVisible = not MainFrame.Visible
-    MainFrame.Visible = newVisible
+    MainFrame.Visible = not MainFrame.Visible
     wait(0.5)
-    if MainFrame.Parent then
-        MinimizeButton.Text = newVisible and "-" or "+"
-    end
+    MinimizeButton.Text = MainFrame.Visible and "-" or "+"
 end)
 
 -- Category switching
@@ -433,31 +298,11 @@ function switchCategory(categoryName)
     
     clearButtons()
     
-    if categoryName == "Info" and modules.Info then
-        local success, err = pcall(function()
-            modules.Info.updateGui()
-        end)
-        if not success then
-            local DebugError = Instance.new("TextLabel")
-            DebugError.Name = "DebugErrorUpdate"
-            DebugError.Parent = CoreGui
-            DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-            DebugError.Size = UDim2.new(0, 200, 0, 30)
-            DebugError.Position = UDim2.new(0.5, -100, 0.75, -15)
-            DebugError.Font = Enum.Font.Gotham
-            DebugError.Text = "DEBUG: Info Update Error: " .. tostring(err)
-            DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
-            DebugError.TextSize = 12
-            DebugError.Visible = true
-            print("MAINLOADER: Info Update Error: " .. tostring(err))
-        end
+    if categoryName == "Info" then
+        loadInfo()
     else
         loadPlaceholder(categoryName)
     end
-    
-    wait(0.1)
-    local contentSize = UIListLayout.AbsoluteContentSize
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
 end
 
 -- Initialize categories
@@ -467,58 +312,21 @@ local success, err = pcall(function()
     end
 end)
 if not success then
-    local DebugError = Instance.new("TextLabel")
-    DebugError.Name = "DebugErrorCategories"
-    DebugError.Parent = CoreGui
-    DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-    DebugError.Size = UDim2.new(0, 200, 0, 30)
-    DebugError.Position = UDim2.new(0.5, -100, 0.8, -15)
-    DebugError.Font = Enum.Font.Gotham
-    DebugError.Text = "DEBUG: Categories Error: " .. tostring(err)
-    DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
-    DebugError.TextSize = 12
-    DebugError.Visible = true
     print("MAINLOADER: Categories Error: " .. tostring(err))
 end
 
 -- Initialize GUI
-if modules.Info then
-    local success, err = pcall(function()
-        switchCategory("Info")
-    end)
-    if not success then
-        local DebugError = Instance.new("TextLabel")
-        DebugError.Name = "DebugErrorInit"
-        DebugError.Parent = CoreGui
-        DebugError.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-        DebugError.Size = UDim2.new(0, 200, 0, 30)
-        DebugError.Position = UDim2.new(0.5, -100, 0.85, -15)
-        DebugError.Font = Enum.Font.Gotham
-        DebugError.Text = "DEBUG: Init Error: " .. tostring(err)
-        DebugError.TextColor3 = Color3.fromRGB(255, 255, 255)
-        DebugError.TextSize = 12
-        DebugError.Visible = true
-        print("MAINLOADER: Init Error: " .. tostring(err))
-    end
+local success, err = pcall(function()
+    switchCategory("Info")
+end)
+if not success then
+    print("MAINLOADER: Init Error: " .. tostring(err))
 end
 
 -- Update CategoryFrame size
 wait(0.1)
 local categoryContentSize = CategoryList.AbsoluteContentSize
 CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
-
--- Debug Label: GUI Complete
-local DebugComplete = Instance.new("TextLabel")
-DebugComplete.Name = "DebugComplete"
-DebugComplete.Parent = CoreGui
-DebugComplete.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-DebugComplete.Size = UDim2.new(0, 200, 0, 30)
-DebugComplete.Position = UDim2.new(0.5, -100, 0.9, -15)
-DebugComplete.Font = Enum.Font.Gotham
-DebugComplete.Text = "DEBUG: GUI Complete"
-DebugComplete.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugComplete.TextSize = 12
-DebugComplete.Visible = true
 
 -- Console Output: GUI Complete
 print("MAINLOADER: GUI Complete")
