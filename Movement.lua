@@ -11,13 +11,16 @@ local Movement = {}
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     if enabled then
+        -- Check if rootPart exists before creating BodyVelocity
+        if not rootPart then return end
+        
         local bodyVelocity = Instance.new("BodyVelocity")
         bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
         bodyVelocity.Parent = rootPart
         
         connections.fly = RunService.Heartbeat:Connect(function()
-            if Movement.flyEnabled then
+            if Movement.flyEnabled and rootPart then
                 local camera = Workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
@@ -45,8 +48,10 @@ local function toggleFly(enabled)
     else
         if connections.fly then
             connections.fly:Disconnect()
+            connections.fly = nil
         end
-        if rootPart:FindFirstChild("BodyVelocity") then
+        -- Check if rootPart exists before trying to find BodyVelocity
+        if rootPart and rootPart:FindFirstChild("BodyVelocity") then
             rootPart:FindFirstChild("BodyVelocity"):Destroy()
         end
     end
@@ -68,6 +73,7 @@ local function toggleNoclip(enabled)
     else
         if connections.noclip then
             connections.noclip:Disconnect()
+            connections.noclip = nil
         end
         if character then
             for _, part in pairs(character:GetDescendants()) do
@@ -83,9 +89,13 @@ end
 local function toggleSpeed(enabled)
     Movement.speedEnabled = enabled
     if enabled then
-        humanoid.WalkSpeed = settings.WalkSpeed.value
+        if humanoid then
+            humanoid.WalkSpeed = settings.WalkSpeed.value
+        end
     else
-        humanoid.WalkSpeed = 16
+        if humanoid then
+            humanoid.WalkSpeed = 16
+        end
     end
 end
 
@@ -93,18 +103,23 @@ end
 local function toggleJumpHigh(enabled)
     Movement.jumpHighEnabled = enabled
     if enabled then
-        humanoid.JumpHeight = settings.JumpHeight.value
-        humanoid.JumpPower = settings.JumpHeight.value * 2.4
-        connections.jumphigh = humanoid.Jumping:Connect(function()
-            if Movement.jumpHighEnabled then
-                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 2.4, rootPart.Velocity.Z)
-            end
-        end)
+        if humanoid then
+            humanoid.JumpHeight = settings.JumpHeight.value
+            humanoid.JumpPower = settings.JumpHeight.value * 2.4
+            connections.jumphigh = humanoid.Jumping:Connect(function()
+                if Movement.jumpHighEnabled and rootPart then
+                    rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 2.4, rootPart.Velocity.Z)
+                end
+            end)
+        end
     else
-        humanoid.JumpHeight = 7.2
-        humanoid.JumpPower = 50
+        if humanoid then
+            humanoid.JumpHeight = 7.2
+            humanoid.JumpPower = 50
+        end
         if connections.jumphigh then
             connections.jumphigh:Disconnect()
+            connections.jumphigh = nil
         end
     end
 end
@@ -113,6 +128,9 @@ end
 local function toggleSpider(enabled)
     Movement.spiderEnabled = enabled
     if enabled then
+        -- Check if rootPart exists before creating body objects
+        if not rootPart then return end
+        
         local bodyPosition = Instance.new("BodyPosition")
         bodyPosition.MaxForce = Vector3.new(4000, 4000, 4000)
         bodyPosition.Position = rootPart.Position
@@ -137,12 +155,16 @@ local function toggleSpider(enabled)
     else
         if connections.spider then
             connections.spider:Disconnect()
+            connections.spider = nil
         end
-        if rootPart:FindFirstChild("BodyPosition") then
-            rootPart:FindFirstChild("BodyPosition"):Destroy()
-        end
-        if rootPart:FindFirstChild("BodyAngularVelocity") then
-            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
+        -- Check if rootPart exists before trying to find body objects
+        if rootPart then
+            if rootPart:FindFirstChild("BodyPosition") then
+                rootPart:FindFirstChild("BodyPosition"):Destroy()
+            end
+            if rootPart:FindFirstChild("BodyAngularVelocity") then
+                rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
+            end
         end
     end
 end
@@ -167,6 +189,7 @@ local function togglePlayerPhase(enabled)
     else
         if connections.playerphase then
             connections.playerphase:Disconnect()
+            connections.playerphase = nil
         end
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
@@ -199,12 +222,40 @@ function Movement.resetStates()
     Movement.spiderEnabled = false
     Movement.playerPhaseEnabled = false
     
-    toggleFly(false)
-    toggleNoclip(false)
-    toggleSpeed(false)
-    toggleJumpHigh(false)
-    toggleSpider(false)
-    togglePlayerPhase(false)
+    -- Disconnect all connections first to prevent errors
+    if connections.fly then
+        connections.fly:Disconnect()
+        connections.fly = nil
+    end
+    if connections.noclip then
+        connections.noclip:Disconnect()
+        connections.noclip = nil
+    end
+    if connections.jumphigh then
+        connections.jumphigh:Disconnect()
+        connections.jumphigh = nil
+    end
+    if connections.spider then
+        connections.spider:Disconnect()
+        connections.spider = nil
+    end
+    if connections.playerphase then
+        connections.playerphase:Disconnect()
+        connections.playerphase = nil
+    end
+    
+    -- Only try to clean up body objects if rootPart exists
+    if rootPart then
+        if rootPart:FindFirstChild("BodyVelocity") then
+            rootPart:FindFirstChild("BodyVelocity"):Destroy()
+        end
+        if rootPart:FindFirstChild("BodyPosition") then
+            rootPart:FindFirstChild("BodyPosition"):Destroy()
+        end
+        if rootPart:FindFirstChild("BodyAngularVelocity") then
+            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
+        end
+    end
 end
 
 -- Function to set dependencies
