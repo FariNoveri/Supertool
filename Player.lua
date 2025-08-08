@@ -31,6 +31,7 @@ local function toggleGodMode(enabled)
     else
         if connections.godmode then
             connections.godmode:Disconnect()
+            connections.godmode = nil
         end
     end
 end
@@ -48,34 +49,91 @@ local function toggleAntiAFK(enabled)
     else
         if connections.antiafk then
             connections.antiafk:Disconnect()
+            connections.antiafk = nil
         end
     end
 end
 
--- Freeze Players
+-- Improved Freeze Players function
 local function toggleFreezePlayers(enabled)
     Player.freezeEnabled = enabled
     if enabled then
         Player.frozenPlayerPositions = {}
+        
+        -- Store initial positions for all players
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                Player.frozenPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+                local hrp = p.Character.HumanoidRootPart
+                Player.frozenPlayerPositions[p] = {
+                    cframe = hrp.CFrame,
+                    anchored = hrp.Anchored,
+                    velocity = hrp.AssemblyLinearVelocity
+                }
+                
+                -- Anchor the part and stop all movement
+                hrp.Anchored = true
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                
+                -- Disable humanoid movement
+                if p.Character:FindFirstChild("Humanoid") then
+                    p.Character.Humanoid.PlatformStand = true
+                    p.Character.Humanoid.Sit = false
+                    p.Character.Humanoid.WalkSpeed = 0
+                    p.Character.Humanoid.JumpPower = 0
+                end
             end
         end
-        connections.freeze = RunService.RenderStepped:Connect(function()
+        
+        -- Use Heartbeat for more consistent updates
+        connections.freeze = RunService.Heartbeat:Connect(function()
             if Player.freezeEnabled then
-                for targetPlayer, frozenCFrame in pairs(Player.frozenPlayerPositions) do
+                for targetPlayer, frozenData in pairs(Player.frozenPlayerPositions) do
                     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        targetPlayer.Character.HumanoidRootPart.CFrame = frozenCFrame
+                        local hrp = targetPlayer.Character.HumanoidRootPart
+                        
+                        -- Force position and stop all movement
+                        hrp.CFrame = frozenData.cframe
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                        hrp.Anchored = true
+                        
+                        -- Keep humanoid disabled
+                        if targetPlayer.Character:FindFirstChild("Humanoid") then
+                            local hum = targetPlayer.Character.Humanoid
+                            hum.PlatformStand = true
+                            hum.WalkSpeed = 0
+                            hum.JumpPower = 0
+                        end
                     end
                 end
             end
         end)
+        print("Players frozen successfully")
     else
+        -- Restore all players to normal state
         if connections.freeze then
             connections.freeze:Disconnect()
+            connections.freeze = nil
         end
+        
+        for targetPlayer, frozenData in pairs(Player.frozenPlayerPositions) do
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = targetPlayer.Character.HumanoidRootPart
+                hrp.Anchored = frozenData.anchored or false
+                
+                -- Restore humanoid movement
+                if targetPlayer.Character:FindFirstChild("Humanoid") then
+                    local hum = targetPlayer.Character.Humanoid
+                    hum.PlatformStand = false
+                    hum.WalkSpeed = 16 -- Default Roblox walkspeed
+                    hum.JumpPower = 50 -- Default Roblox jump power
+                end
+            end
+        end
+        
         Player.frozenPlayerPositions = {}
+        print("Players unfrozen successfully")
     end
 end
 
@@ -95,30 +153,46 @@ local function updateSpectateButtons()
     TeleportSpectateButton.Visible = isSpectating
 end
 
--- Stop Spectating
+-- Improved Stop Spectating function
 local function stopSpectating()
+    -- Disconnect all spectate connections
     for _, connection in pairs(Player.spectateConnections) do
         if connection then
             connection:Disconnect()
         end
     end
     Player.spectateConnections = {}
-    Workspace.CurrentCamera.CameraSubject = humanoid
+    
+    -- Reset camera to local player immediately
+    if player.Character and player.Character:FindFirstChild("Humanoid") then
+        Workspace.CurrentCamera.CameraSubject = player.Character.Humanoid
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    else
+        Workspace.CurrentCamera.CameraSubject = humanoid
+    end
+    
+    -- Clear selected player
     Player.selectedPlayer = nil
     Player.currentSpectateIndex = 0
     SelectedPlayerLabel.Text = "SELECTED: NONE"
-    print("Stopped spectating via Stop Spectate button")
+    
+    -- Update UI
     updateSpectateButtons()
+    
+    -- Reset all player selection buttons
     for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
         if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
             item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
             item.SelectButton.Text = "SELECT PLAYER"
         end
     end
+    
+    print("Stopped spectating - Camera reset to local player")
 end
 
--- Spectate a Player
+-- Improved Spectate Player function
 local function spectatePlayer(targetPlayer)
+    -- Clean up existing connections
     for _, connection in pairs(Player.spectateConnections) do
         if connection then
             connection:Disconnect()
@@ -127,7 +201,10 @@ local function spectatePlayer(targetPlayer)
     Player.spectateConnections = {}
     
     if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+        -- Set camera immediately
         Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        
         Player.selectedPlayer = targetPlayer
         Player.currentSpectateIndex = table.find(Player.spectatePlayerList, targetPlayer) or 0
         SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
@@ -142,6 +219,7 @@ local function spectatePlayer(targetPlayer)
             local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
             if newHumanoid and Player.selectedPlayer == targetPlayer then
                 Workspace.CurrentCamera.CameraSubject = newHumanoid
+                Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
                 print("Spectated player respawned, continuing spectate")
             end
         end)
@@ -151,6 +229,7 @@ local function spectatePlayer(targetPlayer)
             local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
             if newHumanoid and Player.selectedPlayer == targetPlayer then
                 Workspace.CurrentCamera.CameraSubject = newHumanoid
+                Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
                 print("Spectated player character added, continuing spectate")
             end
         end)
@@ -342,10 +421,11 @@ function Player.updatePlayerList()
                 
                 teleportButton.MouseButton1Click:Connect(function()
                     if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
-                        Player.rootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                        local targetPosition = p.Character.HumanoidRootPart.CFrame
+                        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 3)
                         print("Teleported to: " .. p.Name)
                     else
-                        print("Cannot teleport: No valid target player")
+                        print("Cannot teleport: No valid target player or missing rootPart")
                     end
                 end)
                 
@@ -390,12 +470,34 @@ function Player.updatePlayerList()
         end
     end
     
-    -- Update frozen positions when player list updates
+    -- Update frozen positions when player list updates (untuk freeze yang sudah aktif)
     if Player.freezeEnabled then
         local newFrozenPositions = {}
         for _, p in pairs(players) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                newFrozenPositions[p] = Player.frozenPlayerPositions[p] or p.Character.HumanoidRootPart.CFrame
+                if Player.frozenPlayerPositions[p] then
+                    -- Gunakan posisi yang sudah tersimpan
+                    newFrozenPositions[p] = Player.frozenPlayerPositions[p]
+                else
+                    -- Player baru, freeze di posisi saat ini
+                    local hrp = p.Character.HumanoidRootPart
+                    newFrozenPositions[p] = {
+                        cframe = hrp.CFrame,
+                        anchored = hrp.Anchored,
+                        velocity = hrp.AssemblyLinearVelocity
+                    }
+                    
+                    -- Apply freeze immediately for new players
+                    hrp.Anchored = true
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    
+                    if p.Character:FindFirstChild("Humanoid") then
+                        p.Character.Humanoid.PlatformStand = true
+                        p.Character.Humanoid.WalkSpeed = 0
+                        p.Character.Humanoid.JumpPower = 0
+                    end
+                end
             end
         end
         Player.frozenPlayerPositions = newFrozenPositions
@@ -423,13 +525,23 @@ function Player.updatePlayerList()
     updateSpectateButtons()
 end
 
--- Teleport to Spectated Player
+-- Improved Teleport to Spectated Player
 local function teleportToSpectatedPlayer()
     if Player.selectedPlayer and Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
-        Player.rootPart.CFrame = Player.selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+        local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
+        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 3)
         print("Teleported to spectated player: " .. Player.selectedPlayer.Name)
     else
-        print("Cannot teleport: No valid spectated player")
+        print("Cannot teleport: No valid spectated player or missing rootPart")
+        if not Player.selectedPlayer then
+            print("Debug: No player selected")
+        elseif not Player.selectedPlayer.Character then
+            print("Debug: Selected player has no character")
+        elseif not Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            print("Debug: Selected player has no HumanoidRootPart")
+        elseif not Player.rootPart then
+            print("Debug: Local player rootPart is nil")
+        end
     end
 end
 
@@ -663,7 +775,23 @@ function Player.setupPlayerEvents()
     Players.PlayerAdded:Connect(function(p)
         Player.updatePlayerList()
         if Player.freezeEnabled and p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            Player.frozenPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+            local hrp = p.Character.HumanoidRootPart
+            Player.frozenPlayerPositions[p] = {
+                cframe = hrp.CFrame,
+                anchored = hrp.Anchored,
+                velocity = hrp.AssemblyLinearVelocity
+            }
+            
+            -- Apply freeze immediately for new players
+            hrp.Anchored = true
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            
+            if p.Character:FindFirstChild("Humanoid") then
+                p.Character.Humanoid.PlatformStand = true
+                p.Character.Humanoid.WalkSpeed = 0
+                p.Character.Humanoid.JumpPower = 0
+            end
         end
     end)
 

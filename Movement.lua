@@ -325,7 +325,7 @@ function Movement.loadMovementButtons(createToggleButton)
     createToggleButton("Freeze Objects", toggleFreezeObjects)
 end
 
--- Function to reset Movement states and reinitialize active features
+-- Function to reset Movement states
 function Movement.resetStates()
     local wasFlyEnabled = Movement.flyEnabled
     local wasNoclipEnabled = Movement.noclipEnabled
@@ -413,7 +413,7 @@ function Movement.resetStates()
         end
     end
     
-    -- Re-apply active features after reset
+    -- Re-apply active features
     if wasFlyEnabled then toggleFly(true) end
     if wasNoclipEnabled then toggleNoclip(true) end
     if wasSpeedEnabled then toggleSpeed(true) end
@@ -423,7 +423,7 @@ function Movement.resetStates()
     if wasFreezeObjectsEnabled then toggleFreezeObjects(true) end
 end
 
--- Function to set dependencies and handle character respawn
+-- Function to set dependencies
 function Movement.init(deps)
     Players = deps.Players
     UserInputService = deps.UserInputService
@@ -445,24 +445,6 @@ function Movement.init(deps)
     Movement.playerPhaseEnabled = false
     Movement.freezeObjectsEnabled = false
     Movement.frozenObjectPositions = {}
-    
-    -- Handle character respawn
-    local function updateCharacter(newCharacter)
-        character = newCharacter
-        humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        rootPart = character and character:FindFirstChild("HumanoidRootPart")
-        
-        -- Reset states and re-apply active features
-        Movement.resetStates()
-    end
-    
-    -- Initial character setup
-    if Players.LocalPlayer.Character then
-        updateCharacter(Players.LocalPlayer.Character)
-    end
-    
-    -- Listen for character respawn
-    connections.characterAdded = Players.LocalPlayer.CharacterAdded:Connect(updateCharacter)
 end
 
 return Movement

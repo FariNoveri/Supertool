@@ -1,4 +1,3 @@
--- mainloader.lua
 -- Main entry point for MinimalHackGUI by Fari Noveri, integrating all modules
 
 -- Services
@@ -11,7 +10,7 @@ local RenderSettings = game:GetService("Settings")
 
 -- Local Player
 local player = Players.LocalPlayer
-local humanoid, rootPart
+local character, humanoid, rootPart
 
 -- Connections
 local connections = {}
@@ -251,7 +250,6 @@ local function loadModule(moduleName)
             error("Empty response from server")
         end
         
-        -- Check if loadstring is available
         if not loadstring then
             error("loadstring is not available in this environment")
         end
@@ -276,13 +274,10 @@ end
 
 -- Load modules with error handling
 for moduleName, _ in pairs(moduleURLs) do
-    spawn(function() -- Use spawn to prevent blocking
+    spawn(function()
         loadModule(moduleName)
     end)
 end
-
--- Wait a moment for modules to load
-wait(2)
 
 -- Dependencies
 local dependencies = {
@@ -297,8 +292,10 @@ local dependencies = {
     connections = connections,
     buttonStates = buttonStates,
     player = player,
+    character = character,
     humanoid = humanoid,
     rootPart = rootPart,
+    ScrollFrame = FeatureContainer,
     Watermark = Watermark
 }
 
@@ -322,13 +319,13 @@ end
 
 -- Wait for modules to load, then initialize
 spawn(function()
-    wait(3) -- Give more time for modules to load
+    wait(3)
     initializeModules()
 end)
 
 -- AntiAdmin background execution
 spawn(function()
-    wait(4) -- Wait for initialization
+    wait(4)
     if modules.AntiAdmin and type(modules.AntiAdmin.runBackground) == "function" then
         local success, err = pcall(function()
             modules.AntiAdmin.runBackground()
@@ -341,7 +338,7 @@ end)
 
 -- AntiAdminInfo watermark update
 spawn(function()
-    wait(4) -- Wait for initialization
+    wait(4)
     if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
         local success, err = pcall(function()
             local watermarkText = modules.AntiAdminInfo.getWatermarkText()
@@ -384,7 +381,6 @@ local function createButton(name, callback, categoryName)
         button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     end)
     
-    -- Update canvas size
     spawn(function()
         wait(0.01)
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
@@ -406,7 +402,7 @@ local function createToggleButton(name, callback, categoryName)
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 8
     
-    buttonStates[name] = false
+    buttonStates[name] = buttonStates[name] or false
     
     button.MouseButton1Click:Connect(function()
         buttonStates[name] = not buttonStates[name]
@@ -426,7 +422,6 @@ local function createToggleButton(name, callback, categoryName)
         button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     end)
     
-    -- Update canvas size
     spawn(function()
         wait(0.01)
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
@@ -435,14 +430,12 @@ end
 
 -- Load buttons for selected category
 function loadButtons()
-    -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
-    -- Update category button colors
     for _, category in pairs(categoryFrames) do
         category.button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     end
@@ -452,7 +445,6 @@ function loadButtons()
 
     if not selectedCategory then return end
 
-    -- Movement module
     if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
         local success, err = pcall(function()
             modules.Movement.loadMovementButtons(function(name, callback)
@@ -464,7 +456,6 @@ function loadButtons()
         end
     end
     
-    -- Player module
     if selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
         local success, err = pcall(function()
             local selectedPlayer = nil
@@ -482,7 +473,6 @@ function loadButtons()
         end
     end
     
-    -- Teleport module
     if selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
         local success, err = pcall(function()
             local selectedPlayer = nil
@@ -510,7 +500,6 @@ function loadButtons()
         end
     end
     
-    -- Visual module - FIXED TYPO HERE
     if selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
         local success, err = pcall(function()
             modules.Visual.loadVisualButtons(function(name, callback)
@@ -522,7 +511,6 @@ function loadButtons()
         end
     end
     
-    -- Utility module
     if selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
         local success, err = pcall(function()
             modules.Utility.loadUtilityButtons(function(name, callback)
@@ -534,7 +522,6 @@ function loadButtons()
         end
     end
     
-    -- Settings module
     if selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
         local success, err = pcall(function()
             modules.Settings.loadSettingsButtons(function(name, callback)
@@ -546,7 +533,6 @@ function loadButtons()
         end
     end
     
-    -- Info module
     if selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
         local success, err = pcall(function()
             modules.Info.loadInfoButtons(function(name, callback)
@@ -558,7 +544,6 @@ function loadButtons()
         end
     end
     
-    -- AntiAdmin category (placeholder)
     if selectedCategory == "AntiAdmin" then
         local placeholder = Instance.new("TextLabel")
         placeholder.Name = "Placeholder"
@@ -571,7 +556,6 @@ function loadButtons()
         placeholder.TextSize = 8
         placeholder.TextXAlignment = Enum.TextXAlignment.Left
         
-        -- Update canvas size
         spawn(function()
             wait(0.01)
             FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
@@ -597,8 +581,6 @@ end
 
 -- Reset states on character death
 local function resetStates()
-    humanoid = nil
-    rootPart = nil
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
             connection:Disconnect()
@@ -621,7 +603,6 @@ local function resetStates()
     selectedCategory = nil
     loadButtons()
 
-    -- Update watermark on reset
     if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
         local success, err = pcall(function()
             local watermarkText = modules.AntiAdminInfo.getWatermarkText()
@@ -636,10 +617,11 @@ local function resetStates()
 end
 
 -- Character setup
-local function onCharacterAdded(character)
-    if not character then return end
+local function onCharacterAdded(newCharacter)
+    if not newCharacter then return end
     
     local success, err = pcall(function()
+        character = newCharacter
         humanoid = character:FindFirstChild("Humanoid")
         rootPart = character:FindFirstChild("HumanoidRootPart")
         
@@ -661,16 +643,17 @@ local function onCharacterAdded(character)
             return
         end
         
+        -- Update dependencies
+        dependencies.character = character
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
         
-        if humanoid and typeof(humanoid) == "Instance" and humanoid.Died then
-            connections.humanoidDied = humanoid.Died:Connect(function()
-                resetStates()
-            end)
-        end
+        -- Reinitialize modules with updated dependencies
+        initializeModules()
         
-        resetStates()
+        if humanoid and typeof(humanoid) == "Instance" and humanoid.Died then
+            connections.humanoidDied = humanoid.Died:Connect(resetStates)
+        end
     end)
     
     if not success then
