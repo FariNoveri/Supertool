@@ -1,35 +1,80 @@
+-- antiadmin.lua
+-- Anti Admin Protection System by Fari Noveri
+
+local AntiAdmin = {}
+
+-- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+-- Variables
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local rootPart = character:WaitForChild("HumanoidRootPart")
-local backpack = player:WaitForChild("Backpack")
+local character
+local humanoid
+local rootPart
+local backpack
 local camera = Workspace.CurrentCamera
 
--- Variabel untuk Anti Admin dan Anti Exploit
-local antiAdminEnabled = true -- Selalu aktif, tidak bisa dinonaktifkan
-local protectedPlayers = {} -- Daftar pemain yang memiliki Anti Admin aktif (simulasi)
-local lastKnownPosition = rootPart and rootPart.CFrame or CFrame.new(0, 0, 0) -- Cache posisi terakhir
-local lastKnownHealth = humanoid and humanoid.Health or 100 -- Cache kesehatan terakhir
-local lastKnownVelocity = rootPart and rootPart.Velocity or Vector3.new(0, 0, 0) -- Cache kecepatan
-local lastKnownWalkSpeed = humanoid and humanoid.WalkSpeed or 16 -- Cache kecepatan jalan
-local lastKnownJumpPower = humanoid and humanoid.JumpPower or 50 -- Cache lompatan
-local lastKnownAnchored = rootPart and rootPart.Anchored or false -- Cache status anchored
-local lastKnownCameraSubject = camera and camera.CameraSubject or humanoid -- Cache subjek kamera
-local lastKnownTools = {} -- Cache tool di backpack
-local lastKnownCanCollide = rootPart and rootPart.CanCollide or true -- Cache CanCollide
-local lastKnownTransparency = humanoid and humanoid:GetPropertyChangedSignal("Transparency") or 0 -- Cache Transparency
-local effectSources = {} -- Cache sumber efek (untuk pelacakan pelaku)
-local antiAdminConnections = {} -- Koneksi untuk fitur Anti Admin
-local maxReverseAttempts = 10 -- Batas iterasi untuk mencegah loop tak terbatas
-local allowedAnimations = {} -- Daftar animasi yang diizinkan
-local allowedRemotes = {} -- Daftar RemoteEvent/RemoteFunction yang diizinkan
+-- Anti Admin variables
+local antiAdminEnabled = true
+local protectedPlayers = {}
+local lastKnownPosition
+local lastKnownHealth = 100
+local lastKnownVelocity = Vector3.new(0, 0, 0)
+local lastKnownWalkSpeed = 16
+local lastKnownJumpPower = 50
+local lastKnownAnchored = false
+local lastKnownCameraSubject
+local lastKnownTools = {}
+local lastKnownCanCollide = true
+local lastKnownTransparency = 0
+local effectSources = {}
+local antiAdminConnections = {}
+local maxReverseAttempts = 10
+local allowedAnimations = {}
+local allowedRemotes = {}
+local oldNamecall
 
--- Fungsi untuk memperbarui cache tool
+-- Initialize function
+function AntiAdmin.init(dependencies)
+    if dependencies then
+        -- Use dependencies if provided
+        if dependencies.player then player = dependencies.player end
+        if dependencies.humanoid then humanoid = dependencies.humanoid end
+        if dependencies.rootPart then rootPart = dependencies.rootPart end
+    end
+    
+    -- Set up character references
+    character = player.Character
+    if character then
+        humanoid = character:FindFirstChild("Humanoid")
+        rootPart = character:FindFirstChild("HumanoidRootPart")
+        backpack = player:FindFirstChild("Backpack")
+        
+        if humanoid then
+            lastKnownHealth = humanoid.Health
+            lastKnownWalkSpeed = humanoid.WalkSpeed
+            lastKnownJumpPower = humanoid.JumpPower or humanoid.JumpHeight or 50
+            lastKnownTransparency = 0
+        end
+        
+        if rootPart then
+            lastKnownPosition = rootPart.CFrame
+            lastKnownVelocity = rootPart.Velocity
+            lastKnownAnchored = rootPart.Anchored
+            lastKnownCanCollide = rootPart.CanCollide
+        end
+        
+        if camera then
+            lastKnownCameraSubject = camera.CameraSubject
+        end
+    end
+end
+
+-- Function to update tool cache
 local function updateToolCache()
+    if not backpack then return end
     lastKnownTools = {}
     for _, tool in pairs(backpack:GetChildren()) do
         if tool:IsA("Tool") then
@@ -38,27 +83,29 @@ local function updateToolCache()
     end
 end
 
--- Fungsi untuk mendeteksi apakah pemain memiliki Anti Admin aktif (simulasi)
+-- Function to detect if player has anti admin (simulation)
 local function hasAntiAdmin(targetPlayer)
-    return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50 -- 50% peluang untuk simulasi
+    if not targetPlayer then return false end
+    return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
 end
 
--- Fungsi untuk memperbarui daftar pemain yang terlindungi
+-- Function to update protected players
 local function updateProtectedPlayers()
     protectedPlayers = {}
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player then
-            protectedPlayers[p] = math.random(1, 100) <= 50 -- 50% peluang untuk simulasi
+            protectedPlayers[p] = math.random(1, 100) <= 50
         end
     end
 end
 
--- Fungsi untuk menemukan target yang tidak terlindungi
+-- Function to find unprotected target
 local function findUnprotectedTarget(excludePlayers)
     local availablePlayers = {}
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-            if not excludePlayers[p] and not hasAntiAdmin(p) then
+        if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
+            local pHumanoid = p.Character.Humanoid
+            if pHumanoid.Health > 0 and not excludePlayers[p] and not hasAntiAdmin(p) then
                 table.insert(availablePlayers, p)
             end
         end
@@ -69,12 +116,21 @@ local function findUnprotectedTarget(excludePlayers)
     return nil
 end
 
--- Fungsi untuk membalikkan efek dengan logika "hot potato"
+-- Function to reverse effect with "hot potato" logic
 local function reverseEffect(effectType, originalSource)
     if not antiAdminEnabled then return end
 
     local excludePlayers = { [player] = true }
-    local currentTarget = originalSource or Players:GetPlayers()[math.random(1, #Players:GetPlayers())]
+    local currentTarget = originalSource
+    if not currentTarget then
+        local allPlayers = Players:GetPlayers()
+        if #allPlayers > 1 then
+            currentTarget = allPlayers[math.random(1, #allPlayers)]
+        else
+            return
+        end
+    end
+    
     local attempts = 0
 
     while currentTarget and hasAntiAdmin(currentTarget) and attempts < maxReverseAttempts do
@@ -83,335 +139,274 @@ local function reverseEffect(effectType, originalSource)
         attempts = attempts + 1
     end
 
-    if currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild("Humanoid") and currentTarget.Character:FindFirstChild("HumanoidRootPart") then
-        local targetHumanoid = currentTarget.Character.Humanoid
-        local targetRootPart = currentTarget.Character.HumanoidRootPart
-        if effectType == "kill" then
-            targetHumanoid.Health = 0
-            print("Reversed kill effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "teleport" then
-            local randomPos = Vector3.new(
-                math.random(-1000, 1000),
-                math.random(50, 500),
-                math.random(-1000, 1000)
-            )
-            targetRootPart.CFrame = CFrame.new(randomPos)
-            print("Reversed teleport effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "fling" then
-            targetRootPart.Velocity = Vector3.new(
-                math.random(-100, 100),
-                math.random(50, 200),
-                math.random(-100, 100)
-            )
-            print("Reversed fling effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "freeze" then
-            targetRootPart.Anchored = true
-            print("Reversed freeze effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "speed" then
-            targetHumanoid.WalkSpeed = math.random(0, 5)
-            print("Reversed speed change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "jump" then
-            targetHumanoid.JumpPower = 0
-            print("Reversed jump change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "tool" then
-            for _, tool in pairs(currentTarget.Backpack:GetChildren()) do
-                if tool:IsA("Tool") then
-                    tool:Destroy()
+    if currentTarget and currentTarget.Character then
+        local targetHumanoid = currentTarget.Character:FindFirstChild("Humanoid")
+        local targetRootPart = currentTarget.Character:FindFirstChild("HumanoidRootPart")
+        
+        if not targetHumanoid or not targetRootPart then return end
+
+        pcall(function()
+            if effectType == "kill" then
+                targetHumanoid.Health = 0
+                print("Reversed kill effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "teleport" then
+                local randomPos = Vector3.new(
+                    math.random(-1000, 1000),
+                    math.random(50, 500),
+                    math.random(-1000, 1000)
+                )
+                targetRootPart.CFrame = CFrame.new(randomPos)
+                print("Reversed teleport effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "fling" then
+                targetRootPart.Velocity = Vector3.new(
+                    math.random(-100, 100),
+                    math.random(50, 200),
+                    math.random(-100, 100)
+                )
+                print("Reversed fling effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "freeze" then
+                targetRootPart.Anchored = true
+                print("Reversed freeze effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "speed" then
+                targetHumanoid.WalkSpeed = math.random(0, 5)
+                print("Reversed speed change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "jump" then
+                if targetHumanoid.JumpPower then
+                    targetHumanoid.JumpPower = 0
+                elseif targetHumanoid.JumpHeight then
+                    targetHumanoid.JumpHeight = 0
                 end
-            end
-            print("Reversed tool removal to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "camera" then
-            Workspace.CurrentCamera.CameraSubject = targetHumanoid
-            print("Reversed camera change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "effect" then
-            for _, effect in pairs(targetRootPart:GetChildren()) do
-                if effect:IsA("ParticleEmitter") or effect:IsA("Beam") or effect:IsA("Trail") then
-                    effect:Destroy()
+                print("Reversed jump change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "tool" then
+                local targetBackpack = currentTarget:FindFirstChild("Backpack")
+                if targetBackpack then
+                    for _, tool in pairs(targetBackpack:GetChildren()) do
+                        if tool:IsA("Tool") then
+                            tool:Destroy()
+                        end
+                    end
                 end
+                print("Reversed tool removal to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "camera" then
+                if camera then
+                    camera.CameraSubject = targetHumanoid
+                end
+                print("Reversed camera change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
+            elseif effectType == "effect" then
+                for _, effect in pairs(targetRootPart:GetChildren()) do
+                    if effect:IsA("ParticleEmitter") or effect:IsA("Beam") or effect:IsA("Trail") then
+                        effect:Destroy()
+                    end
+                end
+                print("Reversed visual effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
             end
-            print("Reversed visual effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "animation" then
-            for _, anim in pairs(targetHumanoid:GetPlayingAnimationTracks()) do
-                anim:Stop()
-            end
-            print("Reversed animation to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "collision" then
-            targetRootPart.CanCollide = false
-            print("Reversed collision change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        elseif effectType == "godmode" then
-            targetHumanoid.MaxHealth = 100
-            targetHumanoid.Health = 100
-            print("Reversed god mode to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
-        end
+        end)
     else
         print("No unprotected target found for " .. effectType .. " reversal after " .. attempts .. " attempts")
     end
 end
 
--- Fungsi untuk mendeteksi dan menangani efek
+-- Function to handle anti admin protection
 local function handleAntiAdmin()
+    if not humanoid or not rootPart then return end
+
     -- Kill Protection
-    antiAdminConnections.health = humanoid.HealthChanged:Connect(function(health)
-        if not antiAdminEnabled then return end
-        if health < lastKnownHealth and health <= 0 then
-            humanoid.Health = lastKnownHealth
-            print("Detected kill attempt, health restored")
-            reverseEffect("kill", effectSources[player] or nil)
-        end
-        lastKnownHealth = humanoid.Health
-    end)
-
-    -- Teleport Protection
-    antiAdminConnections.position = rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
-        if not antiAdminEnabled then return end
-        local currentPos = rootPart.CFrame
-        local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
-        if distance > 10 then
-            rootPart.CFrame = lastKnownPosition
-            print("Detected teleport attempt, position restored")
-            reverseEffect("teleport", effectSources[player] or nil)
-        end
-        lastKnownPosition = currentPos
-    end)
-
-    -- Fling Protection
-    antiAdminConnections.velocity = rootPart:GetPropertyChangedSignal("Velocity"):Connect(function()
-        if not antiAdminEnabled then return end
-        local currentVelocity = rootPart.Velocity
-        local velocityDiff = (currentVelocity - lastKnownVelocity).Magnitude
-        if velocityDiff > 50 then
-            rootPart.Velocity = lastKnownVelocity
-            print("Detected fling attempt, velocity restored")
-            reverseEffect("fling", effectSources[player] or nil)
-        end
-        lastKnownVelocity = currentVelocity
-    end)
-
-    -- Freeze Protection
-    antiAdminConnections.anchored = rootPart:GetPropertyChangedSignal("Anchored"):Connect(function()
-        if not antiAdminEnabled then return end
-        if rootPart.Anchored and not lastKnownAnchored then
-            rootPart.Anchored = false
-            print("Detected freeze attempt, unanchored")
-            reverseEffect("freeze", effectSources[player] or nil)
-        end
-        lastKnownAnchored = rootPart.Anchored
-    end)
-
-    -- Speed Protection
-    antiAdminConnections.walkSpeed = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-        if not antiAdminEnabled then return end
-        if humanoid.WalkSpeed ~= lastKnownWalkSpeed then
-            humanoid.WalkSpeed = lastKnownWalkSpeed
-            print("Detected speed change attempt, speed restored")
-            reverseEffect("speed", effectSources[player] or nil)
-        end
-        lastKnownWalkSpeed = humanoid.WalkSpeed
-    end)
-
-    -- Jump Protection
-    antiAdminConnections.jumpPower = humanoid:GetPropertyChangedSignal("JumpPower"):Connect(function()
-        if not antiAdminEnabled then return end
-        if humanoid.JumpPower ~= lastKnownJumpPower then
-            humanoid.JumpPower = lastKnownJumpPower
-            print("Detected jump power change attempt, jump power restored")
-            reverseEffect("jump", effectSources[player] or nil)
-        end
-        lastKnownJumpPower = humanoid.JumpPower
-    end)
-
-    -- Tool Protection
-    antiAdminConnections.backpack = backpack.ChildAdded:Connect(function(child)
-        if not antiAdminEnabled then return end
-        if child:IsA("Tool") and not table.find(lastKnownTools, child.Name) then
-            child:Destroy()
-            print("Detected unauthorized tool addition, tool removed")
-            reverseEffect("tool", effectSources[player] or nil)
-        end
-        updateToolCache()
-    end)
-    antiAdminConnections.backpackRemoved = backpack.ChildRemoved:Connect(function(child)
-        if not antiAdminEnabled then return end
-        if child:IsA("Tool") and table.find(lastKnownTools, child.Name) then
-            local newTool = child:Clone()
-            newTool.Parent = backpack
-            print("Detected tool removal attempt, tool restored")
-            reverseEffect("tool", effectSources[player] or nil)
-        end
-        updateToolCache()
-    end)
-
-    -- Camera Protection
-    antiAdminConnections.camera = camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
-        if not antiAdminEnabled then return end
-        if camera.CameraSubject ~= lastKnownCameraSubject then
-            camera.CameraSubject = lastKnownCameraSubject
-            print("Detected camera manipulation attempt, camera restored")
-            reverseEffect("camera", effectSources[player] or nil)
-        end
-        lastKnownCameraSubject = camera.CameraSubject
-    end)
-
-    -- **NEW: Anti-Instance Manipulation Protection**
-    antiAdminConnections.instanceRemoval = character.ChildRemoved:Connect(function(child)
-        if not antiAdminEnabled then return end
-        if child:IsA("Humanoid") or child:IsA("BasePart") then
-            print("Detected attempt to remove critical instance: " .. child.Name)
-            -- Mengembalikan instance dengan respawn karakter jika perlu
-            player:LoadCharacter()
-            reverseEffect("kill", effectSources[player] or nil) -- Anggap sebagai upaya kill
-        end
-    end)
-
-    -- **NEW: Anti-Effect Protection**
-    antiAdminConnections.effectProtection = character.DescendantAdded:Connect(function(descendant)
-        if not antiAdminEnabled then return end
-        if descendant:IsA("ParticleEmitter") or descendant:IsA("Beam") or descendant:IsA("Trail") then
-            descendant:Destroy()
-            print("Detected unauthorized visual effect, removed: " .. descendant.Name)
-            reverseEffect("effect", effectSources[player] or nil)
-        end
-    end)
-
-    -- **NEW: Anti-Animation Protection**
-    antiAdminConnections.animationProtection = humanoid.AnimationPlayed:Connect(function(animationTrack)
-        if not antiAdminEnabled then return end
-        if not allowedAnimations[animationTrack.Animation.AnimationId] then
-            animationTrack:Stop()
-            print("Detected unauthorized animation, stopped: " .. animationTrack.Animation.Name)
-            reverseEffect("animation", effectSources[player] or nil)
-        end
-    end)
-
-    -- **NEW: Anti-Collision Protection**
-    antiAdminConnections.canCollide = rootPart:GetPropertyChangedSignal("CanCollide"):Connect(function()
-        if not antiAdminEnabled then return end
-        if rootPart.CanCollide ~= lastKnownCanCollide then
-            rootPart.CanCollide = lastKnownCanCollide
-            print("Detected CanCollide change attempt, restored")
-            reverseEffect("collision", effectSources[player] or nil)
-        end
-        lastKnownCanCollide = rootPart.CanCollide
-    end)
-
-    -- **NEW: Anti-Transparency Protection**
-    antiAdminConnections.transparency = humanoid:GetPropertyChangedSignal("Transparency"):Connect(function()
-        if not antiAdminEnabled then return end
-        if humanoid.Transparency ~= lastKnownTransparency then
-            humanoid.Transparency = lastKnownTransparency
-            print("Detected transparency change attempt, restored")
-            reverseEffect("collision", effectSources[player] or nil)
-        end
-        lastKnownTransparency = humanoid.Transparency
-    end)
-
-    -- **NEW: Anti-God Mode Protection**
-    antiAdminConnections.godMode = humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(function()
-        if not antiAdminEnabled then return end
-        if humanoid.MaxHealth > 1000 or humanoid.MaxHealth < 100 then
-            humanoid.MaxHealth = 100
-            humanoid.Health = math.min(humanoid.Health, 100)
-            print("Detected god mode attempt, health capped")
-            reverseEffect("godmode", effectSources[player] or nil)
-        end
-    end)
-
-    -- **NEW: Anti-Network Ownership Protection**
-    antiAdminConnections.networkOwnership = RunService.Heartbeat:Connect(function()
-        if not antiAdminEnabled then return end
-        if rootPart:GetNetworkOwner() ~= player then
-            rootPart:SetNetworkOwner(player)
-            print("Detected network ownership change, restored to player")
-            reverseEffect("fling", effectSources[player] or nil) -- Anggap sebagai upaya fling
-        end
-    end)
-end
-
--- **NEW: Anti-Remote Exploit Protection**
-local function setupAntiRemoteExploit()
-    local mt = getrawmetatable(game)
-    local oldNamecall = mt.__namecall
-    setreadonly(mt, false)
-
-    mt.__namecall = function(self, ...)
-        if not antiAdminEnabled then return oldNamecall(self, ...) end
-        local method = getnamecallmethod()
-        if (method == "FireServer" or method == "InvokeServer") and not allowedRemotes[self] then
-            print("Blocked unauthorized Remote call: " .. self.Name)
-            return nil -- Blokir panggilan remote yang tidak diizinkan
-        end
-        return oldNamecall(self, ...)
+    if humanoid and typeof(humanoid) == "Instance" then
+        antiAdminConnections.health = humanoid.HealthChanged:Connect(function(health)
+            if not antiAdminEnabled then return end
+            if health < lastKnownHealth and health <= 0 then
+                pcall(function()
+                    humanoid.Health = lastKnownHealth
+                    print("Detected kill attempt, health restored")
+                    reverseEffect("kill", effectSources[player])
+                end)
+            end
+            lastKnownHealth = humanoid.Health
+        end)
     end
 
-    setreadonly(mt, true)
+    -- Teleport Protection
+    if rootPart and typeof(rootPart) == "Instance" then
+        antiAdminConnections.position = rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
+            if not antiAdminEnabled then return end
+            pcall(function()
+                local currentPos = rootPart.CFrame
+                if lastKnownPosition then
+                    local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
+                    if distance > 50 then -- Increased threshold
+                        rootPart.CFrame = lastKnownPosition
+                        print("Detected teleport attempt, position restored")
+                        reverseEffect("teleport", effectSources[player])
+                    end
+                end
+                lastKnownPosition = currentPos
+            end)
+        end)
+    end
+
+    -- Speed Protection
+    if humanoid and typeof(humanoid) == "Instance" then
+        antiAdminConnections.walkSpeed = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+            if not antiAdminEnabled then return end
+            pcall(function()
+                local currentSpeed = humanoid.WalkSpeed
+                if math.abs(currentSpeed - lastKnownWalkSpeed) > 50 then -- Allow some variation
+                    humanoid.WalkSpeed = lastKnownWalkSpeed
+                    print("Detected speed change attempt, speed restored")
+                    reverseEffect("speed", effectSources[player])
+                else
+                    lastKnownWalkSpeed = currentSpeed
+                end
+            end)
+        end)
+    end
+
+    -- Freeze Protection
+    if rootPart and typeof(rootPart) == "Instance" then
+        antiAdminConnections.anchored = rootPart:GetPropertyChangedSignal("Anchored"):Connect(function()
+            if not antiAdminEnabled then return end
+            pcall(function()
+                if rootPart.Anchored and not lastKnownAnchored then
+                    rootPart.Anchored = false
+                    print("Detected freeze attempt, unanchored")
+                    reverseEffect("freeze", effectSources[player])
+                end
+                lastKnownAnchored = rootPart.Anchored
+            end)
+        end)
+    end
 end
 
--- Inisialisasi Anti Admin
-local function initializeAntiAdmin()
+-- Function to setup anti-remote exploit protection
+local function setupAntiRemoteExploit()
+    pcall(function()
+        local mt = getrawmetatable(game)
+        if not mt then return end
+        
+        oldNamecall = mt.__namecall
+        if not oldNamecall then return end
+        
+        setreadonly(mt, false)
+
+        mt.__namecall = function(self, ...)
+            if not antiAdminEnabled then return oldNamecall(self, ...) end
+            
+            local method = getnamecallmethod()
+            if (method == "FireServer" or method == "InvokeServer") and not allowedRemotes[self] then
+                print("Blocked unauthorized Remote call: " .. tostring(self.Name))
+                return nil
+            end
+            return oldNamecall(self, ...)
+        end
+
+        setreadonly(mt, true)
+    end)
+end
+
+-- Run background function
+function AntiAdmin.runBackground()
     antiAdminEnabled = true
-    print("Anti Admin Protection initialized - Always Active")
+    print("Anti Admin Protection running in background")
 
-    -- Inisialisasi daftar animasi yang diizinkan (tambahkan ID animasi default Roblox)
-    allowedAnimations["rbxassetid://0"] = true -- Contoh: Animasi default Roblox
+    -- Initialize allowed animations
+    allowedAnimations["rbxassetid://0"] = true
 
-    -- Inisialisasi daftar RemoteEvent/RemoteFunction yang diizinkan (tambahkan sesuai kebutuhan game)
-    -- allowedRemotes[game:GetService("ReplicatedStorage").SomeRemote] = true
-
+    -- Start background tasks
     spawn(function()
-        while true do
-            updateProtectedPlayers()
-            updateToolCache()
+        while antiAdminEnabled do
+            pcall(function()
+                updateProtectedPlayers()
+                updateToolCache()
+            end)
             wait(10)
         end
     end)
 
-    handleAntiAdmin()
+    -- Setup protection if character exists
+    if character and humanoid and rootPart then
+        handleAntiAdmin()
+    end
+    
     setupAntiRemoteExploit()
 
+    -- Handle character respawning
     player.CharacterAdded:Connect(function(newCharacter)
+        wait(0.5) -- Wait for character to fully load
         character = newCharacter
-        humanoid = character:WaitForChild("Humanoid")
-        rootPart = character:WaitForChild("HumanoidRootPart")
-        backpack = player:WaitForChild("Backpack")
-        lastKnownPosition = rootPart.CFrame
-        lastKnownHealth = humanoid.Health
-        lastKnownVelocity = rootPart.Velocity
-        lastKnownWalkSpeed = humanoid.WalkSpeed
-        lastKnownJumpPower = humanoid.JumpPower
-        lastKnownAnchored = rootPart.Anchored
-        lastKnownCameraSubject = camera.CameraSubject
-        lastKnownCanCollide = rootPart.CanCollide
-        lastKnownTransparency = humanoid.Transparency
-        updateToolCache()
-
-        for _, conn in pairs(antiAdminConnections) do
-            if conn then
-                conn:Disconnect()
+        humanoid = character:WaitForChild("Humanoid", 10)
+        rootPart = character:WaitForChild("HumanoidRootPart", 10)
+        backpack = player:WaitForChild("Backpack", 10)
+        
+        if humanoid and rootPart then
+            lastKnownPosition = rootPart.CFrame
+            lastKnownHealth = humanoid.Health
+            lastKnownVelocity = rootPart.Velocity
+            lastKnownWalkSpeed = humanoid.WalkSpeed
+            lastKnownJumpPower = humanoid.JumpPower or humanoid.JumpHeight or 50
+            lastKnownAnchored = rootPart.Anchored
+            lastKnownCanCollide = rootPart.CanCollide
+            lastKnownTransparency = 0
+            if camera then
+                lastKnownCameraSubject = camera.CameraSubject
             end
+            updateToolCache()
+
+            -- Clean up old connections
+            for _, conn in pairs(antiAdminConnections) do
+                if conn and typeof(conn) == "RBXScriptConnection" then
+                    conn:Disconnect()
+                end
+            end
+            antiAdminConnections = {}
+            
+            -- Setup new protection
+            handleAntiAdmin()
         end
-        antiAdminConnections = {}
-        handleAntiAdmin()
     end)
 end
 
--- Cleanup
-local function cleanup()
+-- Reset states function
+function AntiAdmin.resetStates()
+    -- Clean up connections
     for _, conn in pairs(antiAdminConnections) do
-        if conn then
+        if conn and typeof(conn) == "RBXScriptConnection" then
             conn:Disconnect()
         end
     end
-    -- Reset metatable untuk anti-remote exploit
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    mt.__namecall = oldNamecall
-    setreadonly(mt, true)
+    antiAdminConnections = {}
+    
+    -- Reset variables
+    lastKnownHealth = 100
+    lastKnownVelocity = Vector3.new(0, 0, 0)
+    lastKnownWalkSpeed = 16
+    lastKnownJumpPower = 50
+    lastKnownAnchored = false
+    lastKnownCanCollide = true
+    lastKnownTransparency = 0
+    lastKnownTools = {}
+    effectSources = {}
 end
 
--- Jalankan inisialisasi
-initializeAntiAdmin()
-print("Anti Admin and Anti Exploit Loaded - By Fari Noveri")
+-- Cleanup function
+function AntiAdmin.cleanup()
+    antiAdminEnabled = false
+    
+    for _, conn in pairs(antiAdminConnections) do
+        if conn and typeof(conn) == "RBXScriptConnection" then
+            conn:Disconnect()
+        end
+    end
+    antiAdminConnections = {}
+    
+    -- Reset metatable if possible
+    pcall(function()
+        if oldNamecall then
+            local mt = getrawmetatable(game)
+            setreadonly(mt, false)
+            mt.__namecall = oldNamecall
+            setreadonly(mt, true)
+        end
+    end)
+end
 
-return {
-    cleanup = cleanup
-}
+return AntiAdmin

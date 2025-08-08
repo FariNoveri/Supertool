@@ -240,10 +240,30 @@ local moduleURLs = {
 -- Load modules
 local modules = {}
 local function loadModule(moduleName)
+    if not moduleURLs[moduleName] then
+        warn("No URL found for module: " .. moduleName)
+        return false
+    end
+    
     local success, result = pcall(function()
         local response = game:HttpGet(moduleURLs[moduleName])
-        return loadstring(response)()
+        if not response or response == "" then
+            error("Empty response from server")
+        end
+        
+        -- Check if loadstring is available
+        if not loadstring then
+            error("loadstring is not available in this environment")
+        end
+        
+        local func = loadstring(response)
+        if not func then
+            error("Failed to compile module code")
+        end
+        
+        return func()
     end)
+    
     if success and result then
         modules[moduleName] = result
         print("Successfully loaded module: " .. moduleName)
@@ -254,9 +274,15 @@ local function loadModule(moduleName)
     end
 end
 
+-- Load modules with error handling
 for moduleName, _ in pairs(moduleURLs) do
-    loadModule(moduleName)
+    spawn(function() -- Use spawn to prevent blocking
+        loadModule(moduleName)
+    end)
 end
+
+-- Wait a moment for modules to load
+wait(2)
 
 -- Dependencies
 local dependencies = {
@@ -276,40 +302,58 @@ local dependencies = {
     Watermark = Watermark
 }
 
--- Initialize modules
-for moduleName, module in pairs(modules) do
-    if module and type(module.init) == "function" then
-        local success, err = pcall(function()
-            module.init(dependencies)
-        end)
-        if not success then
-            warn("Failed to initialize module " .. moduleName .. ": " .. tostring(err))
+-- Initialize modules with better error handling
+local function initializeModules()
+    for moduleName, module in pairs(modules) do
+        if module and type(module) == "table" and type(module.init) == "function" then
+            local success, err = pcall(function()
+                module.init(dependencies)
+            end)
+            if not success then
+                warn("Failed to initialize module " .. moduleName .. ": " .. tostring(err))
+            else
+                print("Successfully initialized module: " .. moduleName)
+            end
+        else
+            warn("Module " .. moduleName .. " is invalid or missing init function")
         end
     end
 end
+
+-- Wait for modules to load, then initialize
+spawn(function()
+    wait(3) -- Give more time for modules to load
+    initializeModules()
+end)
 
 -- AntiAdmin background execution
-if modules.AntiAdmin and type(modules.AntiAdmin.runBackground) == "function" then
-    local success, err = pcall(function()
-        modules.AntiAdmin.runBackground()
-    end)
-    if not success then
-        warn("Failed to run AntiAdmin in background: " .. tostring(err))
+spawn(function()
+    wait(4) -- Wait for initialization
+    if modules.AntiAdmin and type(modules.AntiAdmin.runBackground) == "function" then
+        local success, err = pcall(function()
+            modules.AntiAdmin.runBackground()
+        end)
+        if not success then
+            warn("Failed to run AntiAdmin in background: " .. tostring(err))
+        end
     end
-end
+end)
 
 -- AntiAdminInfo watermark update
-if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
-    local success, err = pcall(function()
-        local watermarkText = modules.AntiAdminInfo.getWatermarkText()
-        if watermarkText then
-            Watermark.Text = watermarkText
+spawn(function()
+    wait(4) -- Wait for initialization
+    if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
+        local success, err = pcall(function()
+            local watermarkText = modules.AntiAdminInfo.getWatermarkText()
+            if watermarkText then
+                Watermark.Text = watermarkText
+            end
+        end)
+        if not success then
+            warn("Failed to update AntiAdminInfo watermark: " .. tostring(err))
         end
-    end)
-    if not success then
-        warn("Failed to update AntiAdminInfo watermark: " .. tostring(err))
     end
-end
+end)
 
 -- Helper function to create a button
 local function createButton(name, callback, categoryName)
@@ -326,7 +370,11 @@ local function createButton(name, callback, categoryName)
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 8
     
-    button.MouseButton1Click:Connect(callback)
+    if type(callback) == "function" then
+        button.MouseButton1Click:Connect(callback)
+    else
+        warn("Invalid callback for button: " .. name)
+    end
     
     button.MouseEnter:Connect(function()
         button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -337,8 +385,10 @@ local function createButton(name, callback, categoryName)
     end)
     
     -- Update canvas size
-    wait(0.01)
-    FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
+    spawn(function()
+        wait(0.01)
+        FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
+    end)
 end
 
 -- Helper function to create a toggle button
@@ -363,6 +413,8 @@ local function createToggleButton(name, callback, categoryName)
         button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
         if type(callback) == "function" then
             callback(buttonStates[name])
+        else
+            warn("Invalid callback for toggle button: " .. name)
         end
     end)
     
@@ -375,15 +427,17 @@ local function createToggleButton(name, callback, categoryName)
     end)
     
     -- Update canvas size
-    wait(0.01)
-    FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
+    spawn(function()
+        wait(0.01)
+        FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
+    end)
 end
 
 -- Load buttons for selected category
-local function loadButtons()
+function loadButtons()
     -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
-        if child:IsA("TextButton") then
+        if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
@@ -456,8 +510,8 @@ local function loadButtons()
         end
     end
     
-    -- Visual module
-    if selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons planting) == "function" then
+    -- Visual module - FIXED TYPO HERE
+    if selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
         local success, err = pcall(function()
             modules.Visual.loadVisualButtons(function(name, callback)
                 createToggleButton(name, callback, "Visual")
@@ -518,8 +572,10 @@ local function loadButtons()
         placeholder.TextXAlignment = Enum.TextXAlignment.Left
         
         -- Update canvas size
-        wait(0.01)
-        FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
+        spawn(function()
+            wait(0.01)
+            FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
+        end)
     end
 end
 
@@ -653,3 +709,5 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
         end
     end
 end)
+
+print("MinimalHackGUI loaded successfully!")
