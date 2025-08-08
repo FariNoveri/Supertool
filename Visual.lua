@@ -1,7 +1,7 @@
--- Visual-related features for MinimalHackGUI by Fari Noveri, including ESP, Freecam, Fullbright, Flashlight, and Low Detail Mode
+-- Visual-related features for MinimalHackGUI by Fari Noveri, including ESP, Freecam, Fullbright, Flashlight, and Low Detail Mode for mobile
 
 -- Dependencies: These must be passed from mainloader.lua
-local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, connections, buttonStates, ScrollFrame, settings, humanoid, rootPart, player
+local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
 
 -- Initialize module
 local Visual = {}
@@ -17,6 +17,81 @@ Visual.espEnabled = false
 local flashlight
 local espHighlights = {} -- Store Highlight instances for ESP
 local defaultLightingSettings = {} -- Store default lighting settings
+local joystickFrame -- Virtual joystick for mobile Freecam
+local joystickKnob
+local touchStartPos -- Track swipe for rotation
+local lastYaw, lastPitch = 0, 0
+
+-- Create virtual joystick for mobile Freecam
+local function createJoystick()
+    joystickFrame = Instance.new("Frame")
+    joystickFrame.Name = "FreecamJoystick"
+    joystickFrame.Size = UDim2.new(0, 100, 0, 100)
+    joystickFrame.Position = UDim2.new(0.1, 0, 0.7, 0)
+    joystickFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    joystickFrame.BackgroundTransparency = 0.5
+    joystickFrame.BorderSizePixel = 0
+    joystickFrame.Visible = false
+    joystickFrame.Parent = ScreenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.5, 0)
+    corner.Parent = joystickFrame
+
+    joystickKnob = Instance.new("Frame")
+    joystickKnob.Name = "Knob"
+    joystickKnob.Size = UDim2.new(0, 40, 0, 40)
+    joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+    joystickKnob.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    joystickKnob.BackgroundTransparency = 0.3
+    joystickKnob.BorderSizePixel = 0
+    joystickKnob.Parent = joystickFrame
+
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = UDim.new(0.5, 0)
+    knobCorner.Parent = joystickKnob
+end
+
+-- Handle joystick input for Freecam movement
+local function handleJoystickInput(input)
+    if not Visual.freecamEnabled or not joystickFrame.Visible then return end
+    if input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputState == Enum.UserInputState.Begin then
+            joystickFrame.Visible = true
+            joystickFrame.Position = UDim2.new(0, input.Position.X - 50, 0, input.Position.Y - 50)
+        elseif input.UserInputState == Enum.UserInputState.Change then
+            local center = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
+            local delta = Vector2.new(input.Position.X - center.X, input.Position.Y - center.Y)
+            local magnitude = delta.Magnitude
+            local maxRadius = 30
+            if magnitude > maxRadius then
+                delta = delta * (maxRadius / magnitude)
+            end
+            joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
+            return delta / maxRadius -- Normalized movement vector
+        elseif input.UserInputState == Enum.UserInputState.End then
+            joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+            joystickFrame.Visible = false
+            return Vector2.new(0, 0)
+        end
+    end
+    return Vector2.new(0, 0)
+end
+
+-- Handle swipe for Freecam rotation
+local function handleSwipe(input)
+    if not Visual.freecamEnabled or input.UserInputType ~= Enum.UserInputType.Touch then return end
+    if input.UserInputState == Enum.UserInputState.Begin then
+        touchStartPos = input.Position
+    elseif input.UserInputState == Enum.UserInputState.Change and touchStartPos then
+        local delta = input.Position - touchStartPos
+        lastYaw = lastYaw - math.rad(delta.X * 0.1)
+        lastPitch = math.clamp(lastPitch - math.rad(delta.Y * 0.1), -math.rad(89), math.rad(89))
+        touchStartPos = input.Position
+    elseif input.UserInputState == Enum.UserInputState.End then
+        touchStartPos = nil
+    end
+end
 
 -- ESP (Wallhack)
 local function toggleESP(enabled)
@@ -46,7 +121,6 @@ local function toggleESP(enabled)
             end
         end)
         
-        -- Handle players leaving
         connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
             if espHighlights[leavingPlayer] then
                 espHighlights[leavingPlayer]:Destroy()
@@ -54,7 +128,6 @@ local function toggleESP(enabled)
             end
         end)
         
-        -- Handle players joining or respawning
         connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
             if Visual.espEnabled and newPlayer ~= player then
                 newPlayer.CharacterAdded:Connect(function(character)
@@ -93,7 +166,7 @@ local function toggleESP(enabled)
     end
 end
 
--- Freecam (Fixed)
+-- Freecam (Mobile)
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -104,46 +177,52 @@ local function toggleFreecam(enabled)
             humanoid.JumpPower = 0
         end
         local camera = Workspace.CurrentCamera
-        Visual.freecamCFrame = camera.CFrame -- Store full CFrame for rotation
+        Visual.freecamCFrame = camera.CFrame
         Visual.freecamPosition = camera.CFrame.Position
         camera.CameraType = Enum.CameraType.Scriptable
+        joystickFrame.Visible = true
         
         connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
             if Visual.freecamEnabled then
                 local moveVector = Vector3.new()
                 local speed = settings.FreecamSpeed and settings.FreecamSpeed.value or 50
-                local cameraCFrame = camera.CFrame
+                local cameraCFrame = Visual.freecamCFrame
                 
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    moveVector = moveVector + cameraCFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    moveVector = moveVector - cameraCFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    moveVector = moveVector + cameraCFrame.RightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    moveVector = moveVector - cameraCFrame.RightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                    moveVector = moveVector + Vector3.new(0, 1, 0)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                    moveVector = moveVector - Vector3.new(0, 1, 0)
+                -- Apply joystick movement
+                local joystickDelta = Vector2.new(0, 0) -- Placeholder, updated via touch input
+                if joystickFrame.Visible then
+                    moveVector = moveVector + cameraCFrame.RightVector * joystickDelta.X
+                    moveVector = moveVector - cameraCFrame.LookVector * joystickDelta.Y
                 end
                 
                 if moveVector.Magnitude > 0 then
                     moveVector = moveVector.Unit * speed * deltaTime * 60 -- Frame-rate independent
                     Visual.freecamPosition = Visual.freecamPosition + moveVector
-                    Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.new(cameraCFrame.Position) * cameraCFrame.Rotation
+                    Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * Visual.freecamCFrame.Rotation
                 end
                 
-                local mouseDelta = UserInputService:GetMouseDelta()
-                local yaw = -math.rad(mouseDelta.X * 0.2)
-                local pitch = math.clamp(-math.rad(mouseDelta.Y * 0.2), -math.rad(89), math.rad(89))
-                Visual.freecamCFrame = Visual.freecamCFrame * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+                -- Apply rotation from swipe
+                Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
                 camera.CFrame = Visual.freecamCFrame
+            end
+        end)
+        
+        connections.touchInput = UserInputService.TouchMoved:Connect(function(input, processed)
+            if not processed then
+                joystickDelta = handleJoystickInput(input)
+                handleSwipe(input)
+            end
+        end)
+        connections.touchBegan = UserInputService.TouchStarted:Connect(function(input, processed)
+            if not processed then
+                handleJoystickInput(input)
+                handleSwipe(input)
+            end
+        end)
+        connections.touchEnded = UserInputService.TouchEnded:Connect(function(input, processed)
+            if not processed then
+                joystickDelta = handleJoystickInput(input)
+                handleSwipe(input)
             end
         end)
     else
@@ -151,6 +230,23 @@ local function toggleFreecam(enabled)
             connections.freecam:Disconnect()
             connections.freecam = nil
         end
+        if connections.touchInput then
+            connections.touchInput:Disconnect()
+            connections.touchInput = nil
+        end
+        if connections.touchBegan then
+            connections.touchBegan:Disconnect()
+            connections.touchBegan = nil
+        end
+        if connections.touchEnded then
+            connections.touchEnded:Disconnect()
+            connections.touchEnded = nil
+        end
+        joystickFrame.Visible = false
+        joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+        lastYaw, lastPitch = 0, 0
+        touchStartPos = nil
+        
         local camera = Workspace.CurrentCamera
         camera.CameraType = Enum.CameraType.Custom
         camera.CameraSubject = humanoid
@@ -222,13 +318,12 @@ local function toggleFlashlight(enabled)
     end
 end
 
--- Low Detail Mode (Enhanced)
+-- Low Detail Mode (Enhanced for Mobile)
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
     
     if enabled then
-        -- Store default settings
         defaultLightingSettings.GlobalShadows = defaultLightingSettings.GlobalShadows or Lighting.GlobalShadows
         pcall(function()
             defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
@@ -237,12 +332,10 @@ local function toggleLowDetail(enabled)
             defaultLightingSettings.StreamingTargetRadius = workspace.StreamingTargetRadius
         end)
         
-        -- Disable shadows and reduce lighting quality
         Lighting.GlobalShadows = false
         Lighting.Brightness = 1
         Lighting.FogEnd = 1000
         
-        -- Set lowest render quality
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
             renderSettings.QualityLevel = Enum.QualityLevel.Level01
@@ -253,28 +346,25 @@ local function toggleLowDetail(enabled)
             gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
         end)
         
-        -- Disable particle effects, trails, decals, and other visual effects
         for _, obj in pairs(Workspace:GetDescendants()) do
             if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                 obj.Enabled = false
             elseif obj:IsA("Decal") then
                 obj.Transparency = 1
             elseif obj:IsA("BasePart") then
-                obj.Material = Enum.Material.SmoothPlastic -- Low-quality material
+                obj.Material = Enum.Material.SmoothPlastic
                 obj.Reflectance = 0
             elseif obj:IsA("MeshPart") then
-                obj.TextureID = "" -- Remove textures
+                obj.TextureID = ""
             end
         end
         
-        -- Aggressive streaming settings
         pcall(function()
             workspace.StreamingEnabled = true
             workspace.StreamingMinRadius = 16
             workspace.StreamingTargetRadius = 32
         end)
         
-        -- Disable terrain details
         pcall(function()
             local terrain = workspace.Terrain
             terrain.WaterWaveSize = 0
@@ -283,7 +373,6 @@ local function toggleLowDetail(enabled)
             terrain.WaterTransparency = 1
         end)
     else
-        -- Restore settings
         Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
         Lighting.Brightness = defaultLightingSettings.Brightness or 1
         Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
@@ -298,28 +387,25 @@ local function toggleLowDetail(enabled)
             gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.Automatic
         end)
         
-        -- Re-enable visual effects
         for _, obj in pairs(Workspace:GetDescendants()) do
             if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                 obj.Enabled = true
             elseif obj:IsA("Decal") then
                 obj.Transparency = 0
             elseif obj:IsA("BasePart") then
-                obj.Material = Enum.Material.Plastic -- Restore default material
-                obj.Reflectance = 0.1 -- Reasonable default
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0.1
             elseif obj:IsA("MeshPart") then
                 obj.TextureID = obj:GetAttribute("OriginalTextureID") or ""
             end
         end
         
-        -- Restore streaming settings
         pcall(function()
             workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
             workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
             workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
         end)
         
-        -- Restore terrain details
         pcall(function()
             local terrain = workspace.Terrain
             terrain.WaterWaveSize = 0.15
@@ -383,15 +469,16 @@ function Visual.init(deps)
     Workspace = deps.Workspace
     Lighting = deps.Lighting
     RenderSettings = deps.RenderSettings
+    ContextActionService = game:GetService("ContextActionService")
     connections = deps.connections
     buttonStates = deps.buttonStates
     ScrollFrame = deps.ScrollFrame
+    ScreenGui = deps.ScreenGui
     settings = deps.settings
     humanoid = deps.humanoid
     rootPart = deps.rootPart
     player = deps.player
     
-    -- Initialize state variables
     Visual.freecamEnabled = false
     Visual.freecamPosition = nil
     Visual.freecamCFrame = nil
@@ -401,12 +488,13 @@ function Visual.init(deps)
     Visual.espEnabled = false
     espHighlights = {}
     
-    -- Store default lighting settings
     defaultLightingSettings.Brightness = Lighting.Brightness
     defaultLightingSettings.ClockTime = Lighting.ClockTime
     defaultLightingSettings.FogEnd = Lighting.FogEnd
     defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
     defaultLightingSettings.Ambient = Lighting.Ambient
+    
+    createJoystick()
     
     print("Visual module initialized successfully")
     return true
@@ -417,7 +505,6 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     humanoid = newHumanoid
     rootPart = newRootPart
     
-    -- Reapply active states
     if Visual.freecamEnabled then
         toggleFreecam(true)
     end
