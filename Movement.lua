@@ -237,14 +237,12 @@ local function toggleFreezeObjects(enabled)
         if not Workspace then return end
         Movement.frozenObjectPositions = {}
         
-        -- Use pcall to handle potential permission errors
         local success, descendants = pcall(function()
             return Workspace:GetDescendants()
         end)
         
         if success then
             for _, obj in pairs(descendants) do
-                -- Check if object is valid and accessible
                 if obj and obj:IsA("BasePart") and obj ~= rootPart and obj.Parent and not obj:IsDescendantOf(character) then
                     local isPlayerPart = false
                     for _, player in pairs(Players:GetPlayers()) do
@@ -254,7 +252,6 @@ local function toggleFreezeObjects(enabled)
                         end
                     end
                     if not isPlayerPart then
-                        -- Use pcall to safely access CFrame
                         local cframeSuccess, cframe = pcall(function()
                             return obj.CFrame
                         end)
@@ -272,15 +269,14 @@ local function toggleFreezeObjects(enabled)
             if Movement.freezeObjectsEnabled then
                 for obj, frozenCFrame in pairs(Movement.frozenObjectPositions) do
                     if obj and obj.Parent and obj:IsA("BasePart") then
-                        -- Use pcall to safely set CFrame
                         local success, err = pcall(function()
                             obj.CFrame = frozenCFrame
                         end)
                         if not success then
-                            Movement.frozenObjectPositions[obj] = nil -- Remove invalid object
+                            Movement.frozenObjectPositions[obj] = nil
                         end
                     else
-                        Movement.frozenObjectPositions[obj] = nil -- Clean up invalid objects
+                        Movement.frozenObjectPositions[obj] = nil
                     end
                 end
             end
@@ -329,8 +325,16 @@ function Movement.loadMovementButtons(createToggleButton)
     createToggleButton("Freeze Objects", toggleFreezeObjects)
 end
 
--- Function to reset Movement states (called when character respawns)
+-- Function to reset Movement states and reinitialize active features
 function Movement.resetStates()
+    local wasFlyEnabled = Movement.flyEnabled
+    local wasNoclipEnabled = Movement.noclipEnabled
+    local wasSpeedEnabled = Movement.speedEnabled
+    local wasJumpHighEnabled = Movement.jumpHighEnabled
+    local wasSpiderEnabled = Movement.spiderEnabled
+    local wasPlayerPhaseEnabled = Movement.playerPhaseEnabled
+    local wasFreezeObjectsEnabled = Movement.freezeObjectsEnabled
+    
     Movement.flyEnabled = false
     Movement.noclipEnabled = false
     Movement.speedEnabled = false
@@ -408,9 +412,18 @@ function Movement.resetStates()
             end
         end
     end
+    
+    -- Re-apply active features after reset
+    if wasFlyEnabled then toggleFly(true) end
+    if wasNoclipEnabled then toggleNoclip(true) end
+    if wasSpeedEnabled then toggleSpeed(true) end
+    if wasJumpHighEnabled then toggleJumpHigh(true) end
+    if wasSpiderEnabled then toggleSpider(true) end
+    if wasPlayerPhaseEnabled then togglePlayerPhase(true) end
+    if wasFreezeObjectsEnabled then toggleFreezeObjects(true) end
 end
 
--- Function to set dependencies
+-- Function to set dependencies and handle character respawn
 function Movement.init(deps)
     Players = deps.Players
     UserInputService = deps.UserInputService
@@ -432,6 +445,24 @@ function Movement.init(deps)
     Movement.playerPhaseEnabled = false
     Movement.freezeObjectsEnabled = false
     Movement.frozenObjectPositions = {}
+    
+    -- Handle character respawn
+    local function updateCharacter(newCharacter)
+        character = newCharacter
+        humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        
+        -- Reset states and re-apply active features
+        Movement.resetStates()
+    end
+    
+    -- Initial character setup
+    if Players.LocalPlayer.Character then
+        updateCharacter(Players.LocalPlayer.Character)
+    end
+    
+    -- Listen for character respawn
+    connections.characterAdded = Players.LocalPlayer.CharacterAdded:Connect(updateCharacter)
 end
 
 return Movement
