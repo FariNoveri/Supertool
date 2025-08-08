@@ -1,5 +1,4 @@
--- player.lua
--- Player-related features for MinimalHackGUI by Fari Noveri, including spectate and player list
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, and freeze players
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -13,6 +12,8 @@ Player.spectatePlayerList = {}
 Player.currentSpectateIndex = 0
 Player.spectateConnections = {}
 Player.playerListVisible = false
+Player.freezeEnabled = false
+Player.frozenPlayerPositions = {}
 
 -- UI Elements (to be initialized in init function)
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
@@ -48,6 +49,33 @@ local function toggleAntiAFK(enabled)
         if connections.antiafk then
             connections.antiafk:Disconnect()
         end
+    end
+end
+
+-- Freeze Players
+local function toggleFreezePlayers(enabled)
+    Player.freezeEnabled = enabled
+    if enabled then
+        Player.frozenPlayerPositions = {}
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                Player.frozenPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+            end
+        end
+        connections.freeze = RunService.RenderStepped:Connect(function()
+            if Player.freezeEnabled then
+                for targetPlayer, frozenCFrame in pairs(Player.frozenPlayerPositions) do
+                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        targetPlayer.Character.HumanoidRootPart.CFrame = frozenCFrame
+                    end
+                end
+            end
+        end)
+    else
+        if connections.freeze then
+            connections.freeze:Disconnect()
+        end
+        Player.frozenPlayerPositions = {}
     end
 end
 
@@ -353,6 +381,17 @@ function Player.updatePlayerList()
         end
     end
     
+    -- Update frozen positions when player list updates
+    if Player.freezeEnabled then
+        local newFrozenPositions = {}
+        for _, p in pairs(players) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                newFrozenPositions[p] = Player.frozenPlayerPositions[p] or p.Character.HumanoidRootPart.CFrame
+            end
+        end
+        Player.frozenPlayerPositions = newFrozenPositions
+    end
+    
     -- Preserve selectedPlayer and update currentSpectateIndex
     if previousSelectedPlayer then
         Player.selectedPlayer = previousSelectedPlayer
@@ -390,15 +429,18 @@ function Player.loadPlayerButtons(createButton, createToggleButton)
     createButton("Select Player", showPlayerSelection)
     createToggleButton("God Mode", toggleGodMode)
     createToggleButton("Anti AFK", toggleAntiAFK)
+    createToggleButton("Freeze Players", toggleFreezePlayers)
 end
 
 -- Function to reset Player states (called when character respawns)
 function Player.resetStates()
     Player.godModeEnabled = false
     Player.antiAFKEnabled = false
+    Player.freezeEnabled = false
     
     toggleGodMode(false)
     toggleAntiAFK(false)
+    toggleFreezePlayers(false)
     stopSpectating()
 end
 
@@ -595,11 +637,13 @@ function Player.init(deps)
     -- Initialize state variables
     Player.godModeEnabled = false
     Player.antiAFKEnabled = false
+    Player.freezeEnabled = false
     Player.selectedPlayer = nil
     Player.spectatePlayerList = {}
     Player.currentSpectateIndex = 0
     Player.spectateConnections = {}
     Player.playerListVisible = false
+    Player.frozenPlayerPositions = {}
     
     -- Initialize UI elements
     initUI()
@@ -607,14 +651,18 @@ end
 
 -- Function to handle player added/removed events
 function Player.setupPlayerEvents()
-    Players.PlayerAdded:Connect(function()
+    Players.PlayerAdded:Connect(function(p)
         Player.updatePlayerList()
+        if Player.freezeEnabled and p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            Player.frozenPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+        end
     end)
 
     Players.PlayerRemoving:Connect(function(p)
         if p == Player.selectedPlayer then
             stopSpectating()
         end
+        Player.frozenPlayerPositions[p] = nil
         Player.updatePlayerList()
     end)
 
