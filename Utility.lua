@@ -166,6 +166,10 @@ local function showMacroManager()
     if MacroFrame then
         MacroFrame.Visible = true
         Utility.updateMacroList()
+    else
+        initUI() -- Reinitialize UI if not already created
+        MacroFrame.Visible = true
+        Utility.updateMacroList()
     end
 end
 
@@ -304,6 +308,8 @@ end
 
 -- Initialize UI elements
 local function initUI()
+    if MacroFrame then return end -- Prevent reinitialization
+    
     MacroFrame = Instance.new("Frame")
     MacroFrame.Name = "MacroFrame"
     MacroFrame.Parent = ScreenGui
@@ -312,7 +318,7 @@ local function initUI()
     MacroFrame.BorderSizePixel = 1
     MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
     MacroFrame.Size = UDim2.new(0, 300, 0, 300)
-    MacroFrame.Visible = false
+    MacroFrame.Visible = macroFrameVisible
     MacroFrame.Active = true
     MacroFrame.Draggable = true
 
@@ -380,7 +386,11 @@ local function initUI()
     MacroLayout.Padding = UDim.new(0, 2)
     MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    SaveMacroButton.MouseButton1Click:Connect(stopMacroRecording)
+    SaveMacroButton.MouseButton1Click:Connect(function()
+        stopMacroRecording()
+        MacroFrame.Visible = true -- Ensure frame remains visible after saving
+    end)
+    
     CloseMacroButton.MouseButton1Click:Connect(function()
         macroFrameVisible = false
         MacroFrame.Visible = false
@@ -417,6 +427,7 @@ function Utility.resetStates()
     currentMacro = {}
     savedMacros = {}
     fileSystem["DCIM/Supertool"] = {}
+    macroFrameVisible = false
     if MacroFrame then
         MacroFrame.Visible = false
     end
@@ -432,12 +443,14 @@ function Utility.init(deps)
     player = deps.player
     RunService = deps.RunService
     settings = deps.settings
+    ScreenGui = deps.ScreenGui
     
     -- Initialize state variables
     macroRecording = false
     macroPlaying = false
     currentMacro = {}
     savedMacros = {}
+    macroFrameVisible = false
     
     -- Initialize UI elements
     initUI()
