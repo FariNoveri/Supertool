@@ -399,9 +399,10 @@ function loadButtons()
         
         if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
             pcall(function()
-                modules.Movement.loadMovementButtons(function(name, callback)
-                    createToggleButton(name, callback, "Movement")
-                end)
+                modules.Movement.loadMovementButtons(
+                    function(name, callback) createButton(name, callback, "Movement") end,
+                    function(name, callback) createToggleButton(name, callback, "Movement") end
+                )
             end)
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
             pcall(function()
