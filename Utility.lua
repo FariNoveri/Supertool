@@ -13,10 +13,12 @@ local autoPlaying = false
 local currentMacro = {}
 local savedMacros = {}
 local macroFrameVisible = false
-local MacroFrame, MacroScrollFrame, MacroLayout, MacroInput, SaveMacroButton
+local MacroFrame, MacroScrollFrame, MacroLayout, MacroInput, SaveMacroButton, MacroStatusLabel
 local recordConnection = nil
 local playbackConnection = nil
 local currentMacroName = nil
+local recordingPaused = false
+local lastFrameTime = 0
 
 -- Mock file system for DCIM/Supertool
 local fileSystem = {
@@ -66,11 +68,29 @@ local function renameInFileSystem(oldName, newName)
     return false
 end
 
+-- Update macro status display
+local function updateMacroStatus()
+    if not MacroStatusLabel then return end
+    if macroRecording then
+        MacroStatusLabel.Text = recordingPaused and "Recording Paused" or "Recording Macro"
+        MacroStatusLabel.Visible = true
+    elseif macroPlaying and currentMacroName then
+        MacroStatusLabel.Text = (autoPlaying and "Auto-Playing Macro: " or "Playing Macro: ") .. currentMacroName
+        MacroStatusLabel.Visible = true
+    else
+        MacroStatusLabel.Visible = false
+    end
+end
+
 -- Update character references after respawn
 local function updateCharacterReferences()
     if player.Character then
         humanoid = player.Character:WaitForChild("Humanoid", 30)
         rootPart = player.Character:WaitForChild("HumanoidRootPart", 30)
+        if macroRecording and recordingPaused then
+            recordingPaused = false
+            updateMacroStatus()
+        end
     end
 end
 
@@ -78,22 +98,33 @@ end
 local function startMacroRecording()
     if macroRecording or macroPlaying then return end
     macroRecording = true
+    recordingPaused = false
     currentMacro = {frames = {}, startTime = tick()}
+    lastFrameTime = 0
     
     updateCharacterReferences()
+    updateMacroStatus()
+    
+    local function setupDeathHandler()
+        if humanoid then
+            humanoid.Died:Connect(function()
+                if macroRecording then
+                    recordingPaused = true
+                    updateMacroStatus()
+                end
+            end)
+        end
+    end
+    
+    setupDeathHandler()
     
     recordConnection = RunService.Heartbeat:Connect(function()
-        if not macroRecording then
-            if recordConnection then
-                recordConnection:Disconnect()
-                recordConnection = nil
-            end
-            return
-        end
+        if not macroRecording or recordingPaused then return end
         
         if not humanoid or not rootPart then
             updateCharacterReferences()
             if not humanoid or not rootPart then return end
+            setupDeathHandler()
         end
         
         local frame = {
@@ -106,6 +137,7 @@ local function startMacroRecording()
             state = humanoid:GetState()
         }
         table.insert(currentMacro.frames, frame)
+        lastFrameTime = frame.time
     end)
 end
 
@@ -113,6 +145,7 @@ end
 local function stopMacroRecording()
     if not macroRecording then return end
     macroRecording = false
+    recordingPaused = false
     if recordConnection then
         recordConnection:Disconnect()
         recordConnection = nil
@@ -127,6 +160,7 @@ local function stopMacroRecording()
     saveToFileSystem(macroName, currentMacro)
     MacroInput.Text = ""
     Utility.updateMacroList()
+    updateMacroStatus()
     if MacroFrame then
         MacroFrame.Visible = true
     end
@@ -146,6 +180,7 @@ local function stopMacroPlayback()
     end
     currentMacroName = nil
     Utility.updateMacroList()
+    updateMacroStatus()
 end
 
 -- Play Macro
@@ -158,6 +193,7 @@ local function playMacro(macroName, autoPlay)
     autoPlaying = autoPlay or false
     currentMacroName = macroName
     humanoid.WalkSpeed = 0
+    updateMacroStatus()
     
     local function playSingleMacro()
         local startTime = tick()
@@ -171,6 +207,7 @@ local function playMacro(macroName, autoPlay)
                 humanoid.WalkSpeed = settings.WalkSpeed.value or 16
                 currentMacroName = nil
                 Utility.updateMacroList()
+                updateMacroStatus()
                 return
             end
             
@@ -183,6 +220,7 @@ local function playMacro(macroName, autoPlay)
                     humanoid.WalkSpeed = settings.WalkSpeed.value or 16
                     currentMacroName = nil
                     Utility.updateMacroList()
+                    updateMacroStatus()
                     return
                 end
             end
@@ -197,18 +235,21 @@ local function playMacro(macroName, autoPlay)
                     humanoid.WalkSpeed = settings.WalkSpeed.value or 16
                     currentMacroName = nil
                     Utility.updateMacroList()
+                    updateMacroStatus()
                     return
                 end
             end
             
             local frame = macro.frames[index]
             while index <= #macro.frames and frame.time <= (tick() - startTime) do
-                rootPart.CFrame = frame.cframe
-                rootPart.Velocity = frame.velocity
-                humanoid.WalkSpeed = frame.walkSpeed
-                humanoid.JumpPower = frame.jumpPower
-                humanoid.HipHeight = frame.hipHeight
-                humanoid:ChangeState(frame.state)
+                if frame.cframe and frame.velocity and frame.walkSpeed and frame.jumpPower and frame.hipHeight and frame.state then
+                    rootPart.CFrame = frame.cframe
+                    rootPart.Velocity = frame.velocity
+                    humanoid.WalkSpeed = frame.walkSpeed
+                    humanoid.JumpPower = frame.jumpPower
+                    humanoid.HipHeight = frame.hipHeight
+                    humanoid:ChangeState(frame.state)
+                end
                 index = index + 1
                 frame = macro.frames[index] or frame
             end
@@ -236,6 +277,7 @@ local function renameMacro(oldName, newName)
         if renameInFileSystem(oldName, newName) then
             if currentMacroName == oldName then
                 currentMacroName = newName
+                updateMacroStatus()
             end
             savedMacros[newName] = savedMacros[oldName]
             savedMacros[oldName] = nil
@@ -513,6 +555,21 @@ local function initUI()
     MacroLayout.Padding = UDim.new(0, 2)
     MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
+    MacroStatusLabel = Instance.new("TextLabel")
+    MacroStatusLabel.Name = "MacroStatusLabel"
+    MacroStatusLabel.Parent = ScreenGui
+    MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroStatusLabel.BorderSizePixel = 1
+    MacroStatusLabel.Position = UDim2.new(1, -200, 0, 10)
+    MacroStatusLabel.Size = UDim2.new(0, 190, 0, 20)
+    MacroStatusLabel.Font = Enum.Font.Gotham
+    MacroStatusLabel.Text = ""
+    MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroStatusLabel.TextSize = 8
+    MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    MacroStatusLabel.Visible = false
+
     SaveMacroButton.MouseButton1Click:Connect(function()
         stopMacroRecording()
         MacroFrame.Visible = true
@@ -552,6 +609,7 @@ function Utility.resetStates()
     macroRecording = false
     macroPlaying = false
     autoPlaying = false
+    recordingPaused = false
     if recordConnection then
         recordConnection:Disconnect()
         recordConnection = nil
@@ -562,10 +620,12 @@ function Utility.resetStates()
     end
     currentMacro = {}
     currentMacroName = nil
+    lastFrameTime = 0
     macroFrameVisible = false
     if MacroFrame then
         MacroFrame.Visible = false
     end
+    updateMacroStatus()
     Utility.updateMacroList()
 end
 
@@ -584,10 +644,12 @@ function Utility.init(deps)
     macroRecording = false
     macroPlaying = false
     autoPlaying = false
+    recordingPaused = false
     currentMacro = {}
     savedMacros = {}
     macroFrameVisible = false
     currentMacroName = nil
+    lastFrameTime = 0
     
     ensureFileSystem()
     for macroName, macroData in pairs(fileSystem["DCIM/Supertool"]) do
@@ -600,6 +662,10 @@ function Utility.init(deps)
         if newCharacter then
             humanoid = newCharacter:WaitForChild("Humanoid", 30)
             rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
+            if macroRecording and recordingPaused then
+                recordingPaused = false
+                updateMacroStatus()
+            end
             if macroPlaying and currentMacroName then
                 if autoPlaying then
                     playMacro(currentMacroName, true)
@@ -607,6 +673,7 @@ function Utility.init(deps)
                     playMacro(currentMacroName, false)
                 end
             end
+            updateMacroStatus()
         end
     end)
 end
