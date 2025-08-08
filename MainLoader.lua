@@ -16,6 +16,7 @@ local humanoid, rootPart
 -- Connections
 local connections = {}
 local buttonStates = {}
+local selectedCategory = nil
 
 -- Settings
 local settings = {
@@ -36,256 +37,176 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 local Frame = Instance.new("Frame")
 Frame.Name = "MainFrame"
 Frame.Parent = ScreenGui
-Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-Frame.BorderSizePixel = 0
-Frame.Position = UDim2.new(0.5, -400, 0.5, -200)
-Frame.Size = UDim2.new(0, 800, 0, 400)
+Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Frame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+Frame.BorderSizePixel = 1
+Frame.Position = UDim2.new(0.5, -400, 0.5, -150)
+Frame.Size = UDim2.new(0, 800, 0, 300)
 Frame.Active = true
 Frame.Draggable = true
 
--- Corner for main frame
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 8)
-MainCorner.Parent = Frame
-
--- Title Bar
-local TitleBar = Instance.new("Frame")
-TitleBar.Name = "TitleBar"
-TitleBar.Parent = Frame
-TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-TitleBar.BorderSizePixel = 0
-TitleBar.Position = UDim2.new(0, 0, 0, 0)
-TitleBar.Size = UDim2.new(1, 0, 0, 35)
-
--- Corner for title bar
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 8)
-TitleCorner.Parent = TitleBar
-
--- Fix corner clipping
-local TitleFix = Instance.new("Frame")
-TitleFix.Parent = TitleBar
-TitleFix.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-TitleFix.BorderSizePixel = 0
-TitleFix.Position = UDim2.new(0, 0, 0.5, 0)
-TitleFix.Size = UDim2.new(1, 0, 0.5, 0)
-
--- Logo in title
-local Logo = Instance.new("Frame")
-Logo.Name = "Logo"
-Logo.Parent = TitleBar
-Logo.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-Logo.BorderSizePixel = 0
-Logo.Position = UDim2.new(0, 10, 0.5, -8)
-Logo.Size = UDim2.new(0, 16, 0, 16)
-
-local LogoCorner = Instance.new("UICorner")
-LogoCorner.CornerRadius = UDim.new(0, 3)
-LogoCorner.Parent = Logo
-
--- Logo text
-local LogoH = Instance.new("TextLabel")
-LogoH.Name = "LogoH"
-LogoH.Parent = Logo
-LogoH.BackgroundTransparency = 1
-LogoH.Size = UDim2.new(1, 0, 1, 0)
-LogoH.Font = Enum.Font.GothamBold
-LogoH.Text = "H"
-LogoH.TextColor3 = Color3.fromRGB(0, 0, 0)
-LogoH.TextSize = 10
-
--- Title Text
-local TitleText = Instance.new("TextLabel")
-TitleText.Name = "TitleText"
-TitleText.Parent = TitleBar
-TitleText.BackgroundTransparency = 1
-TitleText.Position = UDim2.new(0, 35, 0, 0)
-TitleText.Size = UDim2.new(1, -70, 1, 0)
-TitleText.Font = Enum.Font.GothamBold
-TitleText.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
-TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleText.TextSize = 12
-TitleText.TextXAlignment = Enum.TextXAlignment.Left
-
--- Minimize Button
-local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Name = "MinimizeButton"
-MinimizeButton.Parent = TitleBar
-MinimizeButton.BackgroundTransparency = 1
-MinimizeButton.Position = UDim2.new(1, -60, 0, 5)
-MinimizeButton.Size = UDim2.new(0, 25, 0, 25)
-MinimizeButton.Font = Enum.Font.GothamBold
-MinimizeButton.Text = "–"
-MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeButton.TextSize = 14
-
--- Close Button
-local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
-CloseButton.Parent = TitleBar
-CloseButton.BackgroundTransparency = 1
-CloseButton.Position = UDim2.new(1, -30, 0, 5)
-CloseButton.Size = UDim2.new(0, 25, 0, 25)
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.TextSize = 16
-
--- Content Area
-local ContentArea = Instance.new("Frame")
-ContentArea.Name = "ContentArea"
-ContentArea.Parent = Frame
-ContentArea.BackgroundTransparency = 1
-ContentArea.Position = UDim2.new(0, 0, 0, 35)
-ContentArea.Size = UDim2.new(1, 0, 1, -35)
-
--- Sidebar
-local Sidebar = Instance.new("Frame")
-Sidebar.Name = "Sidebar"
-Sidebar.Parent = ContentArea
-Sidebar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-Sidebar.BorderSizePixel = 0
-Sidebar.Position = UDim2.new(0, 0, 0, 0)
-Sidebar.Size = UDim2.new(0, 200, 1, 0)
-
--- Main Content
-local MainContent = Instance.new("Frame")
-MainContent.Name = "MainContent"
-MainContent.Parent = ContentArea
-MainContent.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MainContent.BorderSizePixel = 0
-MainContent.Position = UDim2.new(0, 200, 0, 0)
-MainContent.Size = UDim2.new(1, -200, 1, 0)
-
--- Content header
-local ContentHeader = Instance.new("Frame")
-ContentHeader.Name = "ContentHeader"
-ContentHeader.Parent = MainContent
-ContentHeader.BackgroundTransparency = 1
-ContentHeader.Position = UDim2.new(0, 20, 0, 20)
-ContentHeader.Size = UDim2.new(1, -40, 0, 60)
-
-local ContentTitle = Instance.new("TextLabel")
-ContentTitle.Name = "ContentTitle"
-ContentTitle.Parent = ContentHeader
-ContentTitle.BackgroundTransparency = 1
-ContentTitle.Position = UDim2.new(0, 0, 0, 0)
-ContentTitle.Size = UDim2.new(1, 0, 0, 20)
-ContentTitle.Font = Enum.Font.GothamBold
-ContentTitle.Text = "Created by Fari Noveri for Unknown Block members."
-ContentTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
-ContentTitle.TextSize = 10
-ContentTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-local ContentSubtitle = Instance.new("TextLabel")
-ContentSubtitle.Name = "ContentSubtitle"
-ContentSubtitle.Parent = ContentHeader
-ContentSubtitle.BackgroundTransparency = 1
-ContentSubtitle.Position = UDim2.new(0, 0, 0, 15)
-ContentSubtitle.Size = UDim2.new(1, 0, 0, 15)
-ContentSubtitle.Font = Enum.Font.Gotham
-ContentSubtitle.Text = "Do not sell or distribute."
-ContentSubtitle.TextColor3 = Color3.fromRGB(120, 120, 120)
-ContentSubtitle.TextSize = 9
-ContentSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-
-local ContentDescription = Instance.new("TextLabel")
-ContentDescription.Name = "ContentDescription"
-ContentDescription.Parent = ContentHeader
-ContentDescription.BackgroundTransparency = 1
-ContentDescription.Position = UDim2.new(0, 0, 0, 35)
-ContentDescription.Size = UDim2.new(1, 0, 0, 25)
-ContentDescription.Font = Enum.Font.Gotham
-ContentDescription.Text = "This script is designed for exclusive use by the Unknown Block community to enhance gameplay experiences in Roblox. Please respect the community by using it responsibly and only within the intended group. Unauthorized sharing or commercial use is strictly prohibited."
-ContentDescription.TextColor3 = Color3.fromRGB(100, 100, 100)
-ContentDescription.TextSize = 8
-ContentDescription.TextXAlignment = Enum.TextXAlignment.Left
-ContentDescription.TextWrapped = true
-
--- Content ScrollFrame for buttons
-local ContentScroll = Instance.new("ScrollingFrame")
-ContentScroll.Name = "ContentScroll"
-ContentScroll.Parent = MainContent
-ContentScroll.BackgroundTransparency = 1
-ContentScroll.Position = UDim2.new(0, 20, 0, 90)
-ContentScroll.Size = UDim2.new(1, -40, 1, -110)
-ContentScroll.ScrollBarThickness = 4
-ContentScroll.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-ContentScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-ContentScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-
--- Layout for content buttons
-local ContentLayout = Instance.new("UIListLayout")
-ContentLayout.Parent = ContentScroll
-ContentLayout.Padding = UDim.new(0, 5)
-ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ContentLayout.FillDirection = Enum.FillDirection.Vertical
-
--- Categories for sidebar
-local categories = {
-    {name = "MOVEMENT", id = "Movement"},
-    {name = "PLAYER", id = "Player"},
-    {name = "VISUAL", id = "Visual"},
-    {name = "TELEPORT", id = "Teleport"},
-    {name = "UTILITY", id = "Utility"},
-    {name = "INFO", id = "Info"}
-}
-
-local categoryButtons = {}
-local selectedCategory = "Movement"
-
--- Create category buttons
-for i, category in ipairs(categories) do
-    local categoryButton = Instance.new("TextButton")
-    categoryButton.Name = category.id .. "Button"
-    categoryButton.Parent = Sidebar
-    categoryButton.BackgroundColor3 = category.id == selectedCategory and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(25, 25, 25)
-    categoryButton.BorderSizePixel = 0
-    categoryButton.Position = UDim2.new(0, 0, 0, (i-1) * 45)
-    categoryButton.Size = UDim2.new(1, 0, 0, 40)
-    categoryButton.Font = Enum.Font.GothamBold
-    categoryButton.Text = category.name
-    categoryButton.TextColor3 = category.id == selectedCategory and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-    categoryButton.TextSize = 11
-    categoryButton.TextXAlignment = Enum.TextXAlignment.Left
-    categoryButton.TextXOffset = 20
-    
-    categoryButtons[category.id] = categoryButton
-end
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Parent = Frame
+Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Title.BorderSizePixel = 0
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.Size = UDim2.new(1, 0, 0, 25)
+Title.Font = Enum.Font.Gotham
+Title.Text = "MinimalHackGUI by Fari Noveri"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 10
 
 -- Minimized Logo (hidden by default)
 local MinimizedLogo = Instance.new("Frame")
 MinimizedLogo.Name = "MinimizedLogo"
 MinimizedLogo.Parent = ScreenGui
 MinimizedLogo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-MinimizedLogo.BorderSizePixel = 0
+MinimizedLogo.BorderColor3 = Color3.fromRGB(45, 45, 45)
+MinimizedLogo.BorderSizePixel = 1
 MinimizedLogo.Position = UDim2.new(0, 10, 0, 10)
 MinimizedLogo.Size = UDim2.new(0, 40, 0, 40)
 MinimizedLogo.Visible = false
 MinimizedLogo.Active = true
 MinimizedLogo.Draggable = true
 
-local MinCorner = Instance.new("UICorner")
-MinCorner.CornerRadius = UDim.new(0, 20)
-MinCorner.Parent = MinimizedLogo
+-- Make it circular
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 20)
+Corner.Parent = MinimizedLogo
 
-local MinLogoText = Instance.new("TextLabel")
-MinLogoText.Name = "LogoText"
-MinLogoText.Parent = MinimizedLogo
-MinLogoText.BackgroundTransparency = 1
-MinLogoText.Size = UDim2.new(1, 0, 1, 0)
-MinLogoText.Font = Enum.Font.GothamBold
-MinLogoText.Text = "H"
-MinLogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinLogoText.TextSize = 16
+-- Logo Text
+local LogoText = Instance.new("TextLabel")
+LogoText.Name = "LogoText"
+LogoText.Parent = MinimizedLogo
+LogoText.BackgroundTransparency = 1
+LogoText.Position = UDim2.new(0, 0, 0, 0)
+LogoText.Size = UDim2.new(1, 0, 1, 0)
+LogoText.Font = Enum.Font.GothamBold
+LogoText.Text = "H"
+LogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
+LogoText.TextSize = 16
+LogoText.TextStrokeTransparency = 0.5
+LogoText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
-local MinLogoButton = Instance.new("TextButton")
-MinLogoButton.Name = "LogoButton"
-MinLogoButton.Parent = MinimizedLogo
-MinLogoButton.BackgroundTransparency = 1
-MinLogoButton.Size = UDim2.new(1, 0, 1, 0)
-MinLogoButton.Text = ""
+-- Logo click functionality
+local LogoButton = Instance.new("TextButton")
+LogoButton.Name = "LogoButton"
+LogoButton.Parent = MinimizedLogo
+LogoButton.BackgroundTransparency = 1
+LogoButton.Position = UDim2.new(0, 0, 0, 0)
+LogoButton.Size = UDim2.new(1, 0, 1, 0)
+LogoButton.Text = ""
+
+-- Minimize Button
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Parent = Frame
+MinimizeButton.BackgroundTransparency = 1
+MinimizeButton.Position = UDim2.new(1, -50, 0, 2)
+MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.Text = "-"
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.TextSize = 14
+
+-- Close Button
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Parent = Frame
+CloseButton.BackgroundTransparency = 1
+CloseButton.Position = UDim2.new(1, -25, 0, 2)
+CloseButton.Size = UDim2.new(0, 20, 0, 20)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 10
+
+-- Category Container (Left Side)
+local CategoryContainer = Instance.new("Frame")
+CategoryContainer.Name = "CategoryContainer"
+CategoryContainer.Parent = Frame
+CategoryContainer.BackgroundTransparency = 1
+CategoryContainer.Position = UDim2.new(0, 5, 0, 30)
+CategoryContainer.Size = UDim2.new(0, 100, 1, -35)
+
+-- Category Layout (Vertical)
+local CategoryLayout = Instance.new("UIListLayout")
+CategoryLayout.Parent = CategoryContainer
+CategoryLayout.Padding = UDim.new(0, 5)
+CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CategoryLayout.FillDirection = Enum.FillDirection.Vertical
+
+-- Feature Container (Right Side)
+local FeatureContainer = Instance.new("ScrollingFrame")
+FeatureContainer.Name = "FeatureContainer"
+FeatureContainer.Parent = Frame
+FeatureContainer.BackgroundTransparency = 1
+FeatureContainer.Position = UDim2.new(0, 110, 0, 30)
+FeatureContainer.Size = UDim2.new(1, -115, 1, -35)
+FeatureContainer.ScrollBarThickness = 2
+FeatureContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+FeatureContainer.ScrollingDirection = Enum.ScrollingDirection.Y
+FeatureContainer.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+-- Feature Layout
+local FeatureLayout = Instance.new("UIListLayout")
+FeatureLayout.Parent = FeatureContainer
+FeatureLayout.Padding = UDim.new(0, 1)
+FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
+FeatureLayout.FillDirection = Enum.FillDirection.Vertical
+
+-- Categories
+local categories = {
+    {name = "Movement", order = 1},
+    {name = "Player", order = 2},
+    {name = "Teleport", order = 3},
+    {name = "Visual", order = 4},
+    {name = "Utility", order = 5},
+    {name = "Settings", order = 6},
+    {name = "Info", order = 7},
+    {name = "Admin", order = 8}
+}
+
+local categoryFrames = {}
+local isMinimized = false
+
+-- Create category buttons
+for _, category in ipairs(categories) do
+    local categoryButton = Instance.new("TextButton")
+    categoryButton.Name = category.name .. "Category"
+    categoryButton.Parent = CategoryContainer
+    categoryButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    categoryButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    categoryButton.BorderSizePixel = 1
+    categoryButton.Size = UDim2.new(1, -10, 0, 30)
+    categoryButton.LayoutOrder = category.order
+    categoryButton.Font = Enum.Font.GothamBold
+    categoryButton.Text = category.name
+    categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    categoryButton.TextSize = 10
+
+    categoryButton.MouseButton1Click:Connect(function()
+        selectedCategory = category.name
+        loadButtons()
+    end)
+
+    categoryButton.MouseEnter:Connect(function()
+        categoryButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    end)
+
+    categoryButton.MouseLeave:Connect(function()
+        if selectedCategory ~= category.name then
+            categoryButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        end
+    end)
+
+    categoryFrames[category.name] = {
+        button = categoryButton
+    }
+end
 
 -- Module URLs
 local moduleURLs = {
@@ -350,111 +271,125 @@ for moduleName, module in pairs(modules) do
     end
 end
 
--- Helper functions for buttons
-local function createButton(name, callback)
+-- Helper function to create a button
+local function createButton(name, callback, categoryName)
+    if categoryName ~= selectedCategory then return end
+    
     local button = Instance.new("TextButton")
     button.Name = name
-    button.Parent = ContentScroll
-    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    button.Parent = FeatureContainer
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -10, 0, 30)
+    button.Size = UDim2.new(1, -2, 0, 22)
     button.Font = Enum.Font.Gotham
     button.Text = name
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 10
-    
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 4)
-    buttonCorner.Parent = button
+    button.TextSize = 8
     
     button.MouseButton1Click:Connect(callback)
     
     button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     end)
     
     button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     end)
     
+    -- Update canvas size
     wait(0.01)
-    ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 10)
+    FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
 end
 
-local function createToggleButton(name, callback)
+-- Helper function to create a toggle button
+local function createToggleButton(name, callback, categoryName)
+    if categoryName ~= selectedCategory then return end
+    
     local button = Instance.new("TextButton")
     button.Name = name
-    button.Parent = ContentScroll
-    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    button.Parent = FeatureContainer
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -10, 0, 30)
+    button.Size = UDim2.new(1, -2, 0, 22)
     button.Font = Enum.Font.Gotham
     button.Text = name
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 10
-    
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 4)
-    buttonCorner.Parent = button
+    button.TextSize = 8
     
     buttonStates[name] = false
     
     button.MouseButton1Click:Connect(function()
         buttonStates[name] = not buttonStates[name]
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 120, 40) or Color3.fromRGB(50, 50, 50)
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
         if type(callback) == "function" then
             callback(buttonStates[name])
         end
     end)
     
     button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(50, 140, 50) or Color3.fromRGB(70, 70, 70)
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
     end)
     
     button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 120, 40) or Color3.fromRGB(50, 50, 50)
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     end)
     
+    -- Update canvas size
     wait(0.01)
-    ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 10)
+    FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
 end
 
--- Function to load buttons for selected category
-local function loadCategoryButtons(categoryId)
+-- Load buttons for selected category
+local function loadButtons()
     -- Clear existing buttons
-    for _, child in pairs(ContentScroll:GetChildren()) do
+    for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
         end
     end
     
-    -- Load buttons based on category
-    if categoryId == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
+    -- Update category button colors
+    for _, category in pairs(categoryFrames) do
+        category.button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    end
+    if selectedCategory and categoryFrames[selectedCategory] then
+        categoryFrames[selectedCategory].button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    end
+
+    if not selectedCategory then return end
+
+    -- Movement module
+    if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
         local success, err = pcall(function()
-            modules.Movement.loadMovementButtons(createToggleButton)
+            modules.Movement.loadMovementButtons(function(name, callback)
+                createToggleButton(name, callback, "Movement")
+            end)
         end)
         if not success then
             warn("Error loading Movement buttons: " .. tostring(err))
         end
-    elseif categoryId == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
+    end
+    
+    -- Player module
+    if selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
         local success, err = pcall(function()
             local selectedPlayer = nil
             if type(modules.Player.getSelectedPlayer) == "function" then
                 selectedPlayer = modules.Player.getSelectedPlayer()
             end
-            modules.Player.loadPlayerButtons(createButton, createToggleButton, selectedPlayer)
+            modules.Player.loadPlayerButtons(
+                function(name, callback) createButton(name, callback, "Player") end,
+                function(name, callback) createToggleButton(name, callback, "Player") end,
+                selectedPlayer
+            )
         end)
         if not success then
             warn("Error loading Player buttons: " .. tostring(err))
         end
-    elseif categoryId == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
-        local success, err = pcall(function()
-            modules.Visual.loadVisualButtons(createToggleButton)
-        end)
-        if not success then
-            warn("Error loading Visual buttons: " .. tostring(err))
-        end
-    elseif categoryId == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
+    end
+    
+    -- Teleport module
+    if selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
         local success, err = pcall(function()
             local selectedPlayer = nil
             if modules.Player and type(modules.Player.getSelectedPlayer) == "function" then
@@ -471,79 +406,92 @@ local function loadCategoryButtons(categoryId)
                 toggleFreecam = modules.Visual.toggleFreecam
             end
             
-            modules.Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
+            modules.Teleport.loadTeleportButtons(
+                function(name, callback) createButton(name, callback, "Teleport") end,
+                selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
+            )
         end)
         if not success then
             warn("Error loading Teleport buttons: " .. tostring(err))
         end
-    elseif categoryId == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
+    end
+    
+    -- Visual module
+    if selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
         local success, err = pcall(function()
-            modules.Utility.loadUtilityButtons(createButton)
+            modules.Visual.loadVisualButtons(function(name, callback)
+                createToggleButton(name, callback, "Visual")
+            end)
+        end)
+        if not success then
+            warn("Error loading Visual buttons: " .. tostring(err))
+        end
+    end
+    
+    -- Utility module
+    if selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
+        local success, err = pcall(function()
+            modules.Utility.loadUtilityButtons(function(name, callback)
+                createButton(name, callback, "Utility")
+            end)
         end)
         if not success then
             warn("Error loading Utility buttons: " .. tostring(err))
         end
-    elseif categoryId == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
+    end
+    
+    -- Settings module
+    if selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
         local success, err = pcall(function()
-            modules.Info.loadInfoButtons(createButton)
+            modules.Settings.loadSettingsButtons(function(name, callback)
+                createButton(name, callback, "Settings")
+            end)
+        end)
+        if not success then
+            warn("Error loading Settings buttons: " .. tostring(err))
+        end
+    end
+    
+    -- Info module
+    if selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
+        local success, err = pcall(function()
+            modules.Info.loadInfoButtons(function(name, callback)
+                createButton(name, callback, "Info")
+            end)
         end)
         if not success then
             warn("Error loading Info buttons: " .. tostring(err))
         end
     end
-end
-
--- Category selection logic
-local function selectCategory(categoryId)
-    selectedCategory = categoryId
     
-    -- Update button appearances
-    for id, button in pairs(categoryButtons) do
-        if id == categoryId then
-            button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            button.TextColor3 = Color3.fromRGB(150, 150, 150)
+    -- AntiAdminInfo module (goes to Admin category)
+    if selectedCategory == "Admin" and modules.AntiAdminInfo and type(modules.AntiAdminInfo.loadInfoButtons) == "function" then
+        local success, err = pcall(function()
+            modules.AntiAdminInfo.loadInfoButtons(function(name, callback)
+                createButton(name, callback, "Admin")
+            end)
+        end)
+        if not success then
+            warn("Error loading AntiAdminInfo buttons: " .. tostring(err))
         end
     end
-    
-    loadCategoryButtons(categoryId)
 end
 
--- Connect category buttons
-for id, button in pairs(categoryButtons) do
-    button.MouseButton1Click:Connect(function()
-        selectCategory(id)
-    end)
-    
-    button.MouseEnter:Connect(function()
-        if id ~= selectedCategory then
-            button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        end
-    end)
-    
-    button.MouseLeave:Connect(function()
-        if id ~= selectedCategory then
-            button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        end
-    end)
-end
-
--- Minimize functionality
-local isMinimized = false
+-- Minimize/Maximize functionality
 local function toggleMinimize()
     isMinimized = not isMinimized
     if isMinimized then
         Frame.Visible = false
         MinimizedLogo.Visible = true
+        MinimizeButton.Text = "+"
     else
         Frame.Visible = true
         MinimizedLogo.Visible = false
+        MinimizeButton.Text = "-"
     end
 end
 
--- Reset states function
+-- Reset states on character death
 local function resetStates()
     humanoid = nil
     rootPart = nil
@@ -566,7 +514,8 @@ local function resetStates()
         end
     end
     
-    loadCategoryButtons(selectedCategory)
+    selectedCategory = nil
+    loadButtons()
 end
 
 -- Character setup
@@ -585,7 +534,13 @@ local function onCharacterAdded(character)
             rootPart = character:WaitForChild("HumanoidRootPart", 30)
         end
         
-        if not humanoid or not rootPart then
+        if not humanoid then
+            warn("Failed to get Humanoid from character after waiting")
+            return
+        end
+        
+        if not rootPart then
+            warn("Failed to get HumanoidRootPart from character after waiting")
             return
         end
         
@@ -612,12 +567,9 @@ if player.Character then
 end
 connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 
--- Load initial category
-loadCategoryButtons(selectedCategory)
-
 -- Event connections
 MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
-MinLogoButton.MouseButton1Click:Connect(toggleMinimize)
+LogoButton.MouseButton1Click:Connect(toggleMinimize)
 CloseButton.MouseButton1Click:Connect(function()
     Frame.Visible = false
     MinimizedLogo.Visible = false
@@ -633,6 +585,7 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
             Frame.Visible = true
             MinimizedLogo.Visible = false
             isMinimized = false
+            MinimizeButton.Text = "-"
         end
     end
 end)
