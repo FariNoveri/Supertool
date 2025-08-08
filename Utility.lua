@@ -1,7 +1,7 @@
 -- Utility-related features for MinimalHackGUI by Fari Noveri
 
 -- Dependencies: These must be passed from mainloader.lua
-local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService
+local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
 
 -- Initialize module
 local Utility = {}
@@ -13,6 +13,7 @@ local currentMacro = {}
 local savedMacros = {}
 local macroFrameVisible = false
 local MacroFrame, MacroScrollFrame, MacroLayout, MacroInput, SaveMacroButton
+local recordConnection = nil
 
 -- Mock file system for DCIM/Supertool
 local fileSystem = {
@@ -62,18 +63,34 @@ local function renameInFileSystem(oldName, newName)
     return false
 end
 
+-- Update character references after respawn
+local function updateCharacterReferences()
+    if player.Character then
+        humanoid = player.Character:WaitForChild("Humanoid", 30)
+        rootPart = player.Character:WaitForChild("HumanoidRootPart", 30)
+    end
+end
+
 -- Record Macro
 local function startMacroRecording()
     if macroRecording or macroPlaying then return end
     macroRecording = true
     currentMacro = {frames = {}, startTime = tick()}
     
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not macroRecording or not humanoid or not rootPart then
-            if connection then connection:Disconnect() end
-            macroRecording = false
+    updateCharacterReferences() -- Ensure valid references at start
+    
+    recordConnection = RunService.Heartbeat:Connect(function()
+        if not macroRecording then
+            if recordConnection then
+                recordConnection:Disconnect()
+                recordConnection = nil
+            end
             return
+        end
+        
+        if not humanoid or not rootPart then
+            updateCharacterReferences() -- Update references if invalid
+            if not humanoid or not rootPart then return end
         end
         
         local frame = {
@@ -93,6 +110,10 @@ end
 local function stopMacroRecording()
     if not macroRecording then return end
     macroRecording = false
+    if recordConnection then
+        recordConnection:Disconnect()
+        recordConnection = nil
+    end
     
     local macroName = MacroInput.Text
     if macroName == "" then
@@ -103,6 +124,9 @@ local function stopMacroRecording()
     saveToFileSystem(macroName, currentMacro)
     MacroInput.Text = ""
     Utility.updateMacroList()
+    if MacroFrame then
+        MacroFrame.Visible = true
+    end
 end
 
 -- Play Macro
@@ -119,7 +143,24 @@ local function playMacro(macroName)
     
     local connection
     connection = RunService.Heartbeat:Connect(function()
-        if not macroPlaying or not humanoid or not rootPart or index > #macro.frames then
+        if not macroPlaying or not player.Character then
+            if connection then connection:Disconnect() end
+            macroPlaying = false
+            humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+            return
+        end
+        
+        if not humanoid or not rootPart then
+            updateCharacterReferences()
+            if not humanoid or not rootPart then
+                if connection then connection:Disconnect() end
+                macroPlaying = false
+                humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+                return
+            end
+        end
+        
+        if index > #macro.frames then
             if connection then connection:Disconnect() end
             macroPlaying = false
             humanoid.WalkSpeed = settings.WalkSpeed.value or 16
@@ -163,14 +204,11 @@ end
 -- Show Macro Manager
 local function showMacroManager()
     macroFrameVisible = true
-    if MacroFrame then
-        MacroFrame.Visible = true
-        Utility.updateMacroList()
-    else
-        initUI() -- Reinitialize UI if not already created
-        MacroFrame.Visible = true
-        Utility.updateMacroList()
+    if not MacroFrame then
+        initUI()
     end
+    MacroFrame.Visible = true
+    Utility.updateMacroList()
 end
 
 -- Update Macro List UI
@@ -308,7 +346,7 @@ end
 
 -- Initialize UI elements
 local function initUI()
-    if MacroFrame then return end -- Prevent reinitialization
+    if MacroFrame then return end
     
     MacroFrame = Instance.new("Frame")
     MacroFrame.Name = "MacroFrame"
@@ -388,7 +426,7 @@ local function initUI()
 
     SaveMacroButton.MouseButton1Click:Connect(function()
         stopMacroRecording()
-        MacroFrame.Visible = true -- Ensure frame remains visible after saving
+        MacroFrame.Visible = true
     end)
     
     CloseMacroButton.MouseButton1Click:Connect(function()
@@ -424,6 +462,10 @@ end
 function Utility.resetStates()
     macroRecording = false
     macroPlaying = false
+    if recordConnection then
+        recordConnection:Disconnect()
+        recordConnection = nil
+    end
     currentMacro = {}
     savedMacros = {}
     fileSystem["DCIM/Supertool"] = {}
@@ -433,7 +475,7 @@ function Utility.resetStates()
     end
 end
 
--- Function to set dependencies
+-- Function to set dependencies and handle character respawn
 function Utility.init(deps)
     Players = deps.Players
     humanoid = deps.humanoid
@@ -454,6 +496,14 @@ function Utility.init(deps)
     
     -- Initialize UI elements
     initUI()
+    
+    -- Handle character respawn
+    player.CharacterAdded:Connect(function(newCharacter)
+        if newCharacter then
+            humanoid = newCharacter:WaitForChild("Humanoid", 30)
+            rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
+        end
+    end)
 end
 
 return Utility
