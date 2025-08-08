@@ -137,14 +137,21 @@ local function spectatePlayer(targetPlayer)
         local targetHumanoid = targetPlayer.Character.Humanoid
         Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
             print("Spectated player died, waiting for respawn")
-        end)
-        
-        -- Connect to detect respawn
-        Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
+            -- Wait for respawn and continue spectating
+            local newCharacter = targetPlayer.CharacterAdded:Wait()
             local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
-            if newHumanoid then
+            if newHumanoid and Player.selectedPlayer == targetPlayer then
                 Workspace.CurrentCamera.CameraSubject = newHumanoid
                 print("Spectated player respawned, continuing spectate")
+            end
+        end)
+        
+        -- Connect to detect character added (for initial or subsequent respawns)
+        Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
+            local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
+            if newHumanoid and Player.selectedPlayer == targetPlayer then
+                Workspace.CurrentCamera.CameraSubject = newHumanoid
+                print("Spectated player character added, continuing spectate")
             end
         end)
         
@@ -235,7 +242,7 @@ function Player.updatePlayerList()
         print("Player List Updated: No other players found")
     else
         for _, p in pairs(players) do
-            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
                 playerCount = playerCount + 1
                 table.insert(Player.spectatePlayerList, p)
                 
@@ -337,6 +344,8 @@ function Player.updatePlayerList()
                     if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
                         Player.rootPart.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
                         print("Teleported to: " .. p.Name)
+                    else
+                        print("Cannot teleport: No valid target player")
                     end
                 end)
                 
@@ -398,7 +407,7 @@ function Player.updatePlayerList()
         Player.currentSpectateIndex = table.find(Player.spectatePlayerList, Player.selectedPlayer) or 0
         if Player.currentSpectateIndex == 0 and Player.selectedPlayer then
             -- If selectedPlayer is no longer valid, stop spectating
-            if not (Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("Humanoid") and Player.selectedPlayer.Character.Humanoid.Health > 0) then
+            if not (Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("Humanoid")) then
                 stopSpectating()
             end
         end
