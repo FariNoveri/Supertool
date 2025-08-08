@@ -357,27 +357,47 @@ local function resetStates()
     updateCanvasSize()
 end
 
--- Character setup
+-- Character setup (alternative approach)
 local function onCharacterAdded(character)
     if not character then return end
     
     local success, err = pcall(function()
-        humanoid = character:WaitForChild("Humanoid", 10)
-        rootPart = character:WaitForChild("HumanoidRootPart", 10)
+        -- Try immediate access first
+        humanoid = character:FindFirstChild("Humanoid")
+        rootPart = character:FindFirstChild("HumanoidRootPart")
         
-        if not humanoid or not rootPart then
-            warn("Failed to get humanoid or rootPart")
+        -- If not found immediately, wait for them
+        if not humanoid then
+            humanoid = character:WaitForChild("Humanoid", 30)
+        end
+        
+        if not rootPart then
+            rootPart = character:WaitForChild("HumanoidRootPart", 30)
+        end
+        
+        if not humanoid then
+            warn("Failed to get Humanoid from character after waiting")
+            return
+        end
+        
+        if not rootPart then
+            warn("Failed to get HumanoidRootPart from character after waiting")
             return
         end
         
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
         
-        resetStates()
+        -- Connect to humanoid death with additional safety check
+        if humanoid and typeof(humanoid) == "Instance" and humanoid.Died then
+            connections.humanoidDied = humanoid.Died:Connect(function()
+                resetStates()
+            end)
+        else
+            warn("Humanoid or Died event not available")
+        end
         
-        connections.humanoidDied = humanoid.Died:Connect(function()
-            resetStates()
-        end)
+        resetStates()
     end)
     
     if not success then
