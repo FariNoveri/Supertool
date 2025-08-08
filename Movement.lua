@@ -6,10 +6,23 @@ local Players, UserInputService, RunService, Workspace, settings, character, hum
 -- Initialize module
 local Movement = {}
 
+-- Function to update character references
+local function updateCharacterReferences()
+    local player = Players.LocalPlayer
+    if player and player.Character then
+        character = player.Character
+        humanoid = character:WaitForChild("Humanoid", 5)
+        rootPart = character:WaitForChild("HumanoidRootPart", 5)
+        return true
+    end
+    return false
+end
+
 -- Fly (Improved for smoother control)
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     if enabled then
+        if not updateCharacterReferences() then return end
         if not rootPart or not humanoid or not settings.FlySpeed then return end
         
         local bodyVelocity = Instance.new("BodyVelocity")
@@ -18,7 +31,10 @@ local function toggleFly(enabled)
         bodyVelocity.Parent = rootPart
         
         connections.fly = RunService.Heartbeat:Connect(function(deltaTime)
-            if Movement.flyEnabled and rootPart and humanoid and settings.FlySpeed then
+            if Movement.flyEnabled then
+                if not updateCharacterReferences() then return end
+                if not rootPart or not humanoid or not settings.FlySpeed then return end
+                
                 local camera = Workspace.CurrentCamera
                 local moveVector = humanoid.MoveDirection
                 
@@ -41,7 +57,10 @@ local function toggleFly(enabled)
                     velocity = velocity - (upVector * speed)
                 end
                 
-                bodyVelocity.Velocity = velocity
+                local currentBodyVelocity = rootPart:FindFirstChild("BodyVelocity")
+                if currentBodyVelocity then
+                    currentBodyVelocity.Velocity = velocity
+                end
             end
         end)
     else
@@ -49,7 +68,7 @@ local function toggleFly(enabled)
             connections.fly:Disconnect()
             connections.fly = nil
         end
-        if rootPart and rootPart:FindFirstChild("BodyVelocity") then
+        if updateCharacterReferences() and rootPart and rootPart:FindFirstChild("BodyVelocity") then
             rootPart:FindFirstChild("BodyVelocity"):Destroy()
         end
     end
@@ -60,21 +79,32 @@ local function toggleNoclip(enabled)
     Movement.noclipEnabled = enabled
     if enabled then
         connections.noclip = RunService.Stepped:Connect(function()
-            if Movement.noclipEnabled and character then
-                for _, part in pairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
-                        part.CanCollide = false
+            if Movement.noclipEnabled then
+                if not updateCharacterReferences() then return end
+                if character then
+                    for _, part in pairs(character:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide then
+                            part.CanCollide = false
+                        end
                     end
                 end
             end
         end)
-        if character then
-            connections.noclipChildAdded = character.ChildAdded:Connect(function(child)
-                if Movement.noclipEnabled and child:IsA("BasePart") and child.CanCollide then
-                    child.CanCollide = false
+        
+        -- Handle new parts added to character
+        local function setupChildAddedConnection()
+            if updateCharacterReferences() and character then
+                if connections.noclipChildAdded then
+                    connections.noclipChildAdded:Disconnect()
                 end
-            end)
+                connections.noclipChildAdded = character.ChildAdded:Connect(function(child)
+                    if Movement.noclipEnabled and child:IsA("BasePart") and child.CanCollide then
+                        child.CanCollide = false
+                    end
+                end)
+            end
         end
+        setupChildAddedConnection()
     else
         if connections.noclip then
             connections.noclip:Disconnect()
@@ -84,7 +114,7 @@ local function toggleNoclip(enabled)
             connections.noclipChildAdded:Disconnect()
             connections.noclipChildAdded = nil
         end
-        if character then
+        if updateCharacterReferences() and character then
             for _, part in pairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = true
@@ -98,11 +128,11 @@ end
 local function toggleSpeed(enabled)
     Movement.speedEnabled = enabled
     if enabled then
-        if humanoid and settings.WalkSpeed then
+        if updateCharacterReferences() and humanoid and settings.WalkSpeed then
             humanoid.WalkSpeed = settings.WalkSpeed.value
         end
     else
-        if humanoid then
+        if updateCharacterReferences() and humanoid then
             humanoid.WalkSpeed = 16
         end
     end
@@ -112,16 +142,22 @@ end
 local function toggleJumpHigh(enabled)
     Movement.jumpHighEnabled = enabled
     if enabled then
-        if humanoid and settings.JumpHeight then
+        if updateCharacterReferences() and humanoid and settings.JumpHeight then
             humanoid.JumpPower = settings.JumpHeight.value * 7
+            
+            if connections.jumphigh then
+                connections.jumphigh:Disconnect()
+            end
             connections.jumphigh = humanoid.Jumping:Connect(function()
-                if Movement.jumpHighEnabled and rootPart then
-                    rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 7, rootPart.Velocity.Z)
+                if Movement.jumpHighEnabled then
+                    if updateCharacterReferences() and rootPart then
+                        rootPart.Velocity = Vector3.new(rootPart.Velocity.X, settings.JumpHeight.value * 7, rootPart.Velocity.Z)
+                    end
                 end
             end)
         end
     else
-        if humanoid then
+        if updateCharacterReferences() and humanoid then
             humanoid.JumpPower = 50
         end
         if connections.jumphigh then
@@ -135,6 +171,7 @@ end
 local function toggleSpider(enabled)
     Movement.spiderEnabled = enabled
     if enabled then
+        if not updateCharacterReferences() then return end
         if not rootPart then return end
         
         local bodyPosition = Instance.new("BodyPosition")
@@ -148,20 +185,31 @@ local function toggleSpider(enabled)
         bodyAngularVelocity.Parent = rootPart
         
         connections.spider = RunService.Heartbeat:Connect(function()
-            if Movement.spiderEnabled and rootPart then
-                local rayParams = RaycastParams.new()
-                rayParams.FilterDescendantsInstances = {character}
-                rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-                local rayResult = Workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 5, rayParams)
-                
-                if rayResult then
-                    bodyPosition.Position = rayResult.Position + rayResult.Normal * 1.5
-                    local lookDirection = -rayResult.Normal
-                    local upVector = Vector3.new(0, 1, 0)
-                    local rightVector = lookDirection:Cross(upVector).Unit
-                    local newCFrame = CFrame.fromMatrix(rootPart.Position, rightVector, lookDirection, upVector)
-                    bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
-                    rootPart.CFrame = newCFrame
+            if Movement.spiderEnabled then
+                if not updateCharacterReferences() then return end
+                if rootPart then
+                    local rayParams = RaycastParams.new()
+                    rayParams.FilterDescendantsInstances = {character}
+                    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                    local rayResult = Workspace:Raycast(rootPart.Position, rootPart.CFrame.LookVector * 5, rayParams)
+                    
+                    if rayResult then
+                        local currentBodyPosition = rootPart:FindFirstChild("BodyPosition")
+                        local currentBodyAngularVelocity = rootPart:FindFirstChild("BodyAngularVelocity")
+                        
+                        if currentBodyPosition then
+                            currentBodyPosition.Position = rayResult.Position + rayResult.Normal * 1.5
+                        end
+                        
+                        if currentBodyAngularVelocity then
+                            local lookDirection = -rayResult.Normal
+                            local upVector = Vector3.new(0, 1, 0)
+                            local rightVector = lookDirection:Cross(upVector).Unit
+                            local newCFrame = CFrame.fromMatrix(rootPart.Position, rightVector, lookDirection, upVector)
+                            currentBodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+                            rootPart.CFrame = newCFrame
+                        end
+                    end
                 end
             end
         end)
@@ -170,7 +218,7 @@ local function toggleSpider(enabled)
             connections.spider:Disconnect()
             connections.spider = nil
         end
-        if rootPart then
+        if updateCharacterReferences() and rootPart then
             if rootPart:FindFirstChild("BodyPosition") then
                 rootPart:FindFirstChild("BodyPosition"):Destroy()
             end
@@ -243,20 +291,23 @@ local function toggleFreezeObjects(enabled)
         
         if success then
             for _, obj in pairs(descendants) do
-                if obj and obj:IsA("BasePart") and obj ~= rootPart and obj.Parent and not obj:IsDescendantOf(character) then
-                    local isPlayerPart = false
-                    for _, player in pairs(Players:GetPlayers()) do
-                        if player.Character and obj:IsDescendantOf(player.Character) then
-                            isPlayerPart = true
-                            break
+                if obj and obj:IsA("BasePart") and obj.Parent then
+                    updateCharacterReferences()
+                    if obj ~= rootPart and not obj:IsDescendantOf(character) then
+                        local isPlayerPart = false
+                        for _, player in pairs(Players:GetPlayers()) do
+                            if player.Character and obj:IsDescendantOf(player.Character) then
+                                isPlayerPart = true
+                                break
+                            end
                         end
-                    end
-                    if not isPlayerPart then
-                        local cframeSuccess, cframe = pcall(function()
-                            return obj.CFrame
-                        end)
-                        if cframeSuccess then
-                            Movement.frozenObjectPositions[obj] = cframe
+                        if not isPlayerPart then
+                            local cframeSuccess, cframe = pcall(function()
+                                return obj.CFrame
+                            end)
+                            if cframeSuccess then
+                                Movement.frozenObjectPositions[obj] = cframe
+                            end
                         end
                     end
                 end
@@ -283,20 +334,23 @@ local function toggleFreezeObjects(enabled)
         end)
         
         connections.freezeObjectsAdded = Workspace.DescendantAdded:Connect(function(obj)
-            if Movement.freezeObjectsEnabled and obj:IsA("BasePart") and obj ~= rootPart and not obj:IsDescendantOf(character) then
-                local isPlayerPart = false
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player.Character and obj:IsDescendantOf(player.Character) then
-                        isPlayerPart = true
-                        break
+            if Movement.freezeObjectsEnabled and obj:IsA("BasePart") then
+                updateCharacterReferences()
+                if obj ~= rootPart and not obj:IsDescendantOf(character) then
+                    local isPlayerPart = false
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player.Character and obj:IsDescendantOf(player.Character) then
+                            isPlayerPart = true
+                            break
+                        end
                     end
-                end
-                if not isPlayerPart then
-                    local success, cframe = pcall(function()
-                        return obj.CFrame
-                    end)
-                    if success then
-                        Movement.frozenObjectPositions[obj] = cframe
+                    if not isPlayerPart then
+                        local success, cframe = pcall(function()
+                            return obj.CFrame
+                        end)
+                        if success then
+                            Movement.frozenObjectPositions[obj] = cframe
+                        end
                     end
                 end
             end
@@ -325,16 +379,40 @@ function Movement.loadMovementButtons(createToggleButton)
     createToggleButton("Freeze Objects", toggleFreezeObjects)
 end
 
+-- Function to handle respawn
+function Movement.handleRespawn()
+    -- Store current states
+    local states = {
+        fly = Movement.flyEnabled,
+        noclip = Movement.noclipEnabled,
+        speed = Movement.speedEnabled,
+        jumpHigh = Movement.jumpHighEnabled,
+        spider = Movement.spiderEnabled,
+        playerPhase = Movement.playerPhaseEnabled,
+        freezeObjects = Movement.freezeObjectsEnabled
+    }
+    
+    -- Disable all features first
+    Movement.resetStates()
+    
+    -- Wait a bit for new character to load
+    wait(0.5)
+    
+    -- Update references
+    updateCharacterReferences()
+    
+    -- Re-enable features that were active
+    if states.fly then toggleFly(true) end
+    if states.noclip then toggleNoclip(true) end
+    if states.speed then toggleSpeed(true) end
+    if states.jumpHigh then toggleJumpHigh(true) end
+    if states.spider then toggleSpider(true) end
+    if states.playerPhase then togglePlayerPhase(true) end
+    if states.freezeObjects then toggleFreezeObjects(true) end
+end
+
 -- Function to reset Movement states
 function Movement.resetStates()
-    local wasFlyEnabled = Movement.flyEnabled
-    local wasNoclipEnabled = Movement.noclipEnabled
-    local wasSpeedEnabled = Movement.speedEnabled
-    local wasJumpHighEnabled = Movement.jumpHighEnabled
-    local wasSpiderEnabled = Movement.spiderEnabled
-    local wasPlayerPhaseEnabled = Movement.playerPhaseEnabled
-    local wasFreezeObjectsEnabled = Movement.freezeObjectsEnabled
-    
     Movement.flyEnabled = false
     Movement.noclipEnabled = false
     Movement.speedEnabled = false
@@ -343,66 +421,41 @@ function Movement.resetStates()
     Movement.playerPhaseEnabled = false
     Movement.freezeObjectsEnabled = false
     
-    if connections.fly then
-        connections.fly:Disconnect()
-        connections.fly = nil
-    end
-    if connections.noclip then
-        connections.noclip:Disconnect()
-        connections.noclip = nil
-    end
-    if connections.noclipChildAdded then
-        connections.noclipChildAdded:Disconnect()
-        connections.noclipChildAdded = nil
-    end
-    if connections.jumphigh then
-        connections.jumphigh:Disconnect()
-        connections.jumphigh = nil
-    end
-    if connections.spider then
-        connections.spider:Disconnect()
-        connections.spider = nil
-    end
-    if connections.playerphase then
-        connections.playerphase:Disconnect()
-        connections.playerphase = nil
-    end
-    if connections.playerPhasePlayerAdded then
-        connections.playerPhasePlayerAdded:Disconnect()
-        connections.playerPhasePlayerAdded = nil
-    end
-    if connections.freezeObjects then
-        connections.freezeObjects:Disconnect()
-        connections.freezeObjects = nil
-    end
-    if connections.freezeObjectsAdded then
-        connections.freezeObjectsAdded:Disconnect()
-        connections.freezeObjectsAdded = nil
-    end
-    
-    if rootPart then
-        if rootPart:FindFirstChild("BodyVelocity") then
-            rootPart:FindFirstChild("BodyVelocity"):Destroy()
-        end
-        if rootPart:FindFirstChild("BodyPosition") then
-            rootPart:FindFirstChild("BodyPosition"):Destroy()
-        end
-        if rootPart:FindFirstChild("BodyAngularVelocity") then
-            rootPart:FindFirstChild("BodyAngularVelocity"):Destroy()
+    -- Disconnect all connections
+    for connectionName, connection in pairs(connections) do
+        if connection and typeof(connection) == "RBXScriptConnection" then
+            connection:Disconnect()
+            connections[connectionName] = nil
         end
     end
     
-    if humanoid then
+    -- Clean up body objects
+    if updateCharacterReferences() and rootPart then
+        local objectsToRemove = {"BodyVelocity", "BodyPosition", "BodyAngularVelocity"}
+        for _, objectName in ipairs(objectsToRemove) do
+            local obj = rootPart:FindFirstChild(objectName)
+            if obj then
+                obj:Destroy()
+            end
+        end
+    end
+    
+    -- Reset humanoid properties
+    if updateCharacterReferences() and humanoid then
         humanoid.WalkSpeed = 16
         humanoid.JumpPower = 50
     end
-    if character then
+    
+    -- Reset collision for character
+    if updateCharacterReferences() and character then
         for _, part in pairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = true
             end
         end
     end
+    
+    -- Reset collision for other players
     for _, otherPlayer in pairs(Players:GetPlayers()) do
         if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
             for _, part in pairs(otherPlayer.Character:GetDescendants()) do
@@ -413,14 +466,8 @@ function Movement.resetStates()
         end
     end
     
-    -- Re-apply active features
-    if wasFlyEnabled then toggleFly(true) end
-    if wasNoclipEnabled then toggleNoclip(true) end
-    if wasSpeedEnabled then toggleSpeed(true) end
-    if wasJumpHighEnabled then toggleJumpHigh(true) end
-    if wasSpiderEnabled then toggleSpider(true) end
-    if wasPlayerPhaseEnabled then togglePlayerPhase(true) end
-    if wasFreezeObjectsEnabled then toggleFreezeObjects(true) end
+    -- Clear frozen objects
+    Movement.frozenObjectPositions = {}
 end
 
 -- Function to set dependencies
@@ -445,6 +492,19 @@ function Movement.init(deps)
     Movement.playerPhaseEnabled = false
     Movement.freezeObjectsEnabled = false
     Movement.frozenObjectPositions = {}
+    
+    -- Set up respawn detection
+    local player = Players.LocalPlayer
+    if player then
+        player.CharacterAdded:Connect(function(newCharacter)
+            -- Wait for character to fully load
+            spawn(function()
+                newCharacter:WaitForChild("Humanoid", 10)
+                newCharacter:WaitForChild("HumanoidRootPart", 10)
+                Movement.handleRespawn()
+            end)
+        end)
+    end
 end
 
 return Movement
