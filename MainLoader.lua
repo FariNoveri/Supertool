@@ -7,7 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
-local RenderSettings = game:GetService("StarterGui")
+local RenderSettings = game:GetService("Settings") -- Fixed: Changed from StarterGui to Settings
 
 -- Local Player
 local player = Players.LocalPlayer
@@ -297,6 +297,6 @@ end)
 -- Toggle GUI with Home key
 connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
-        Frame.Visible = not Frame.Visible
+        Frame.Visible = not Frame.visible
     end
 end)
