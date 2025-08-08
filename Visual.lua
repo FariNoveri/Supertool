@@ -1,116 +1,199 @@
-local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
-local Workspace = game:GetService("Workspace")
+-- visual.lua
+-- Visual-related features for MinimalHackGUI by Fari Noveri, including Low Detail Mode
 
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local rootPart = character:WaitForChild("HumanoidRootPart")
+-- Dependencies: These must be passed from mainloader.lua
+local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, connections, buttonStates, ScrollFrame, settings, humanoid, rootPart, player
 
+-- Initialize module
 local Visual = {}
+
+-- Variables
+Visual.freecamEnabled = false
+Visual.freecamPosition = nil
 Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
-local connections = {}
-local settings = {
-    FlashlightBrightness = { value = 5, default = 5, min = 1, max = 10 },
-    FlashlightRange = { value = 100, default = 100, min = 50, max = 200 },
-    FullbrightBrightness = { value = 2, default = 2, min = 0, max = 5 }
-}
-local originalLighting = {
-    Brightness = Lighting.Brightness,
-    GlobalShadows = Lighting.GlobalShadows,
-    FogEnd = Lighting.FogEnd,
-    EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale,
-    EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
-}
+local flashlight
 
-function Visual.toggleFullbright(enabled)
+-- Freecam
+local function toggleFreecam(enabled)
+    Visual.freecamEnabled = enabled
+    if enabled then
+        if humanoid then
+            humanoid.WalkSpeed = 0
+            humanoid.JumpPower = 0
+        end
+        Visual.freecamPosition = rootPart and rootPart.Position or Workspace.CurrentCamera.CFrame.Position
+        local camera = Workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Scriptable
+        camera.CFrame = CFrame.new(Visual.freecamPosition)
+        
+        connections.freecam = RunService.RenderStepped:Connect(function()
+            if Visual.freecamEnabled then
+                local moveVector = Vector3.new()
+                local speed = settings.FreecamSpeed.value
+                local cameraCFrame = camera.CFrame
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    moveVector = moveVector + cameraCFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    moveVector = moveVector - cameraCFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    moveVector = moveVector + cameraCFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    moveVector = moveVector - cameraCFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    moveVector = moveVector + Vector3.new(0, 1, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    moveVector = moveVector - Vector3.new(0, 1, 0)
+                end
+                
+                if moveVector.Magnitude > 0 then
+                    moveVector = moveVector.Unit * speed
+                    Visual.freecamPosition = Visual.freecamPosition + moveVector
+                    camera.CFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(cameraCFrame:ToEulerAnglesXYZ())
+                end
+                
+                local mouseDelta = UserInputService:GetMouseDelta()
+                local rotation = CFrame.Angles(0, -math.rad(mouseDelta.X * 0.2), 0)
+                local pitch = math.rad(-mouseDelta.Y * 0.2)
+                pitch = math.clamp(pitch, -math.rad(89), math.rad(89))
+                camera.CFrame = CFrame.new(camera.CFrame.Position) * (CFrame.Angles(0, cameraCFrame:ToEulerAnglesXYZ()) * rotation * CFrame.Angles(pitch, 0, 0))
+            end
+        end)
+    else
+        if connections.freecam then
+            connections.freecam:Disconnect()
+        end
+        Visual.freecamPosition = Workspace.CurrentCamera.CFrame.Position
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        Workspace.CurrentCamera.CameraSubject = humanoid
+        if humanoid then
+            humanoid.WalkSpeed = settings.WalkSpeed.value
+            humanoid.JumpPower = settings.JumpHeight.value * 2.4 or 50
+        end
+    end
+end
+
+-- Fullbright
+local function toggleFullbright(enabled)
     Visual.fullbrightEnabled = enabled
     if enabled then
-        Lighting.Brightness = settings.FullbrightBrightness.value
-        Lighting.GlobalShadows = false
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
         Lighting.FogEnd = 100000
-        Lighting.EnvironmentDiffuseScale = 0
-        Lighting.EnvironmentSpecularScale = 0
+        Lighting.GlobalShadows = false
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
     else
-        Lighting.Brightness = originalLighting.Brightness
-        Lighting.GlobalShadows = originalLighting.GlobalShadows
-        Lighting.FogEnd = originalLighting.FogEnd
-        Lighting.EnvironmentDiffuseScale = originalLighting.EnvironmentDiffuseScale
-        Lighting.EnvironmentSpecularScale = originalLighting.EnvironmentSpecularScale
+        Lighting.Brightness = 1
+        Lighting.ClockTime = game:GetService("Lighting").ClockTime
+        Lighting.FogEnd = game:GetService("Lighting").FogEnd
+        Lighting.GlobalShadows = true
+        Lighting.Ambient = game:GetService("Lighting").Ambient
     end
 end
 
-function Visual.toggleFlashlight(enabled)
+-- Flashlight
+local function toggleFlashlight(enabled)
     Visual.flashlightEnabled = enabled
     if enabled then
-        local flashlight = Instance.new("PointLight")
+        flashlight = Instance.new("SpotLight")
         flashlight.Name = "Flashlight"
-        flashlight.Brightness = settings.FlashlightBrightness.value
-        flashlight.Range = settings.FlashlightRange.value
-        flashlight.Parent = rootPart
+        flashlight.Brightness = 5
+        flashlight.Range = 60
+        flashlight.Angle = 60
+        flashlight.Parent = Workspace.CurrentCamera
+        
+        connections.flashlight = RunService.RenderStepped:Connect(function()
+            if Visual.flashlightEnabled and flashlight.Parent then
+                flashlight.CFrame = Workspace.CurrentCamera.CFrame
+            end
+        end)
     else
-        if rootPart and rootPart:FindFirstChild("Flashlight") then
-            rootPart:FindFirstChild("Flashlight"):Destroy()
+        if connections.flashlight then
+            connections.flashlight:Disconnect()
+        end
+        if flashlight then
+            flashlight:Destroy()
         end
     end
 end
 
-function Visual.toggleLowDetailMode(enabled)
+-- Low Detail Mode
+local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     if enabled then
-        -- Reduce texture quality by setting MaterialVariant to a lower detail material
-        for _, object in pairs(Workspace:GetDescendants()) do
-            if object:IsA("BasePart") and object.Material ~= Enum.Material.ForceField then
-                object.MaterialVariant = "LowDetail"
-            end
-        end
-        -- Disable shadows
         Lighting.GlobalShadows = false
-        -- Reduce particle effects
-        for _, particle in pairs(Workspace:GetDescendants()) do
-            if particle:IsA("ParticleEmitter") then
-                particle.Enabled = false
+        RenderSettings.QualityLevel = Enum.QualityLevel.Level01
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+                obj.Enabled = false
             end
         end
-        -- Lower render distance for fog
-        Lighting.FogEnd = 50
     else
-        -- Restore default materials
-        for _, object in pairs(Workspace:GetDescendants()) do
-            if object:IsA("BasePart") then
-                object.MaterialVariant = ""
+        Lighting.GlobalShadows = true
+        RenderSettings.QualityLevel = Enum.QualityLevel.Automatic
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+                obj.Enabled = true
             end
-        end
-        -- Restore shadows
-        Lighting.GlobalShadows = originalLighting.GlobalShadows
-        -- Restore particle effects
-        for _, particle in pairs(Workspace:GetDescendants()) do
-            if particle:IsA("ParticleEmitter") then
-                particle.Enabled = true
-            end
-        end
-        -- Restore fog
-        Lighting.FogEnd = originalLighting.FogEnd
-    end
-end
-
-function Visual.cleanup()
-    Visual.toggleFullbright(false)
-    Visual.toggleFlashlight(false)
-    Visual.toggleLowDetailMode(false)
-    for _, connection in pairs(connections) do
-        if connection then
-            connection:Disconnect()
         end
     end
 end
 
--- Update character references when character respawns
-player.CharacterAdded:Connect(function(newCharacter)
-    character = newCharacter
-    rootPart = character:WaitForChild("HumanoidRootPart")
-    Visual.cleanup() -- Reset all visual features on respawn
-end)
+-- Function to create buttons for Visual features
+function Visual.loadVisualButtons(createToggleButton)
+    createToggleButton("Freecam", toggleFreecam)
+    createToggleButton("Fullbright", toggleFullbright)
+    createToggleButton("Flashlight", toggleFlashlight)
+    createToggleButton("Low Detail Mode", toggleLowDetail)
+end
+
+-- Function to reset Visual states
+function Visual.resetStates()
+    Visual.freecamEnabled = false
+    Visual.fullbrightEnabled = false
+    Visual.flashlightEnabled = false
+    Visual.lowDetailEnabled = false
+    
+    toggleFreecam(false)
+    toggleFullbright(false)
+    toggleFlashlight(false)
+    toggleLowDetail(false)
+end
+
+-- Function to get freecam state (for teleport.lua)
+function Visual.getFreecamState()
+    return Visual.freecamEnabled, Visual.freecamPosition
+end
+
+-- Function to set dependencies
+function Visual.init(deps)
+    Players = deps.Players
+    UserInputService = deps.UserInputService
+    RunService = deps.RunService
+    Workspace = deps.Workspace
+    Lighting = deps.Lighting
+    RenderSettings = deps.RenderSettings
+    connections = deps.connections
+    buttonStates = deps.buttonStates
+    ScrollFrame = deps.ScrollFrame
+    settings = deps.settings
+    humanoid = deps.humanoid
+    rootPart = deps.rootPart
+    player = deps.player
+    
+    -- Initialize state variables
+    Visual.freecamEnabled = false
+    Visual.freecamPosition = nil
+    Visual.fullbrightEnabled = false
+    Visual.flashlightEnabled = false
+    Visual.lowDetailEnabled = false
+end
 
 return Visual

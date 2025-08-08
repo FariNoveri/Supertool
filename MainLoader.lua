@@ -1,332 +1,302 @@
--- Console Output: Script Start
-print("MAINLOADER: Script Started")
+-- mainloader.lua
+-- Main entry point for MinimalHackGUI by Fari Noveri, integrating all modules
 
-local CoreGui = game:GetService("CoreGui")
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local RenderSettings = game:GetService("StarterGui")
 
--- Clean up existing GUIs
-for _, gui in pairs(CoreGui:GetChildren()) do
-    if gui.Name == "MinimalHackGUI" or gui.Name == "TestHttpGetGUI" or gui.Name == "ToggleGUI" or gui.Name:match("^Debug") then
-        gui:Destroy()
-    end
-end
+-- Local Player
+local player = Players.LocalPlayer
+local humanoid, rootPart
 
--- Console Output: Cleanup Done
-print("MAINLOADER: Cleanup Done")
+-- Connections
+local connections = {}
+local buttonStates = {}
 
--- Info module variables
-local InfoFrame, InfoScrollFrame, InfoLayout
+-- Settings
+local settings = {
+    FlySpeed = {value = 50, min = 10, max = 200, default = 50},
+    FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
+    JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
+    WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
+}
 
--- Create ScreenGui
+-- ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MinimalHackGUI"
-ScreenGui.Parent = CoreGui
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Enabled = true
 
--- Console Output: ScreenGui Created
-print("MAINLOADER: ScreenGui Created")
+-- Main Frame
+local Frame = Instance.new("Frame")
+Frame.Name = "MainFrame"
+Frame.Parent = ScreenGui
+Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Frame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+Frame.BorderSizePixel = 1
+Frame.Position = UDim2.new(0.5, -150, 0.5, -200)
+Frame.Size = UDim2.new(0, 300, 0, 400)
+Frame.Active = true
+Frame.Draggable = true
 
--- Create MainFrame
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Parent = ScreenGui
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-MainFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-MainFrame.BorderSizePixel = 1
-MainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-MainFrame.Size = UDim2.new(0, 600, 0, 400)
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Visible = true
-
--- Console Output: MainFrame Created
-print("MAINLOADER: MainFrame Created")
-
--- Create TopBar
-local TopBar = Instance.new("Frame")
-TopBar.Name = "TopBar"
-TopBar.Parent = MainFrame
-TopBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-TopBar.BorderSizePixel = 0
-TopBar.Position = UDim2.new(0, 0, 0, 0)
-TopBar.Size = UDim2.new(1, 0, 0, 35)
-
--- Create Logo
-local Logo = Instance.new("TextLabel")
-Logo.Name = "Logo"
-Logo.Parent = TopBar
-Logo.BackgroundTransparency = 1
-Logo.Position = UDim2.new(0, 10, 0, 5)
-Logo.Size = UDim2.new(0, 25, 0, 25)
-Logo.Font = Enum.Font.GothamBold
-Logo.Text = "H"
-Logo.TextColor3 = Color3.fromRGB(255, 255, 255)
-Logo.TextScaled = true
-
--- Create Title
+-- Title
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
-Title.Parent = TopBar
-Title.BackgroundTransparency = 1
-Title.Position = UDim2.new(0, 45, 0, 0)
-Title.Size = UDim2.new(1, -90, 1, 0)
+Title.Parent = Frame
+Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Title.BorderSizePixel = 0
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.Size = UDim2.new(1, 0, 0, 35)
 Title.Font = Enum.Font.Gotham
-Title.Text = "HACK - By Fari Noveri [UNKNOWN BLOCK]"
+Title.Text = "MinimalHackGUI by Fari Noveri"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 14
-Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.TextSize = 12
 
--- Create Toggle ScreenGui
-local ToggleGui = Instance.new("ScreenGui")
-ToggleGui.Name = "ToggleGUI"
-ToggleGui.Parent = CoreGui
-ToggleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ToggleGui.Enabled = true
+-- Close Button
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Parent = Frame
+CloseButton.BackgroundTransparency = 1
+CloseButton.Position = UDim2.new(1, -30, 0, 5)
+CloseButton.Size = UDim2.new(0, 25, 0, 25)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 12
 
--- Create Minimize Button
-local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Name = "MinimizeButton"
-MinimizeButton.Parent = ToggleGui
-MinimizeButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-MinimizeButton.BorderSizePixel = 0
-MinimizeButton.Position = UDim2.new(0.95, -30, 0.05, 0)
-MinimizeButton.Size = UDim2.new(0, 25, 0, 25)
-MinimizeButton.Font = Enum.Font.GothamBold
-MinimizeButton.Text = "-"
-MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeButton.TextSize = 14
-MinimizeButton.Visible = true
-MinimizeButton.ZIndex = 10
-
--- Console Output: Minimize Button Created
-print("MAINLOADER: Minimize Button Created")
-
--- Create CategoryFrame
-local CategoryFrame = Instance.new("Frame")
-CategoryFrame.Name = "CategoryFrame"
-CategoryFrame.Parent = MainFrame
-CategoryFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-CategoryFrame.BorderSizePixel = 0
-CategoryFrame.Position = UDim2.new(0, 0, 0, 35)
-CategoryFrame.Size = UDim2.new(0, 140, 1, -35)
-
-local CategoryList = Instance.new("UIListLayout")
-CategoryList.Parent = CategoryFrame
-CategoryList.Padding = UDim.new(0, 2)
-CategoryList.SortOrder = Enum.SortOrder.LayoutOrder
-
--- Console Output: CategoryFrame Created
-print("MAINLOADER: CategoryFrame Created")
-
--- Create ContentFrame
-local ContentFrame = Instance.new("Frame")
-ContentFrame.Name = "ContentFrame"
-ContentFrame.Parent = MainFrame
-ContentFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-ContentFrame.BorderSizePixel = 0
-ContentFrame.Position = UDim2.new(0, 140, 0, 35)
-ContentFrame.Size = UDim2.new(1, -140, 1, -35)
-
+-- ScrollFrame
 local ScrollFrame = Instance.new("ScrollingFrame")
 ScrollFrame.Name = "ScrollFrame"
-ScrollFrame.Parent = ContentFrame
+ScrollFrame.Parent = Frame
 ScrollFrame.BackgroundTransparency = 1
-ScrollFrame.Position = UDim2.new(0, 10, 0, 10)
-ScrollFrame.Size = UDim2.new(1, -20, 1, -20)
+ScrollFrame.Position = UDim2.new(0, 10, 0, 45)
+ScrollFrame.Size = UDim2.new(1, -20, 1, -55)
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-ScrollFrame.BorderSizePixel = 0
 ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
 ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
-local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Parent = ScrollFrame
-UIListLayout.Padding = UDim.new(0, 5)
-UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+-- Layout
+local Layout = Instance.new("UIListLayout")
+Layout.Parent = ScrollFrame
+Layout.Padding = UDim.new(0, 2)
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.FillDirection = Enum.FillDirection.Vertical
 
--- Console Output: ContentFrame Created
-print("MAINLOADER: ContentFrame Created")
+-- Module URLs
+local moduleURLs = {
+    Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement.lua",
+    Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Player.lua",
+    Teleport = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Teleport.lua",
+    Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Visual.lua",
+    Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Utility.lua",
+    Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Settings.lua",
+    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua",
+    AntiAdminInfo = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdminInfo.lua",
+    AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua"
+}
 
--- Set Info module variables
-local success, err = pcall(function()
-    InfoFrame = ContentFrame
-    InfoScrollFrame = ScrollFrame
-    InfoLayout = UIListLayout
-end)
-if not success then
-    print("MAINLOADER: Info Setup Error: " .. tostring(err))
+-- Load modules
+local modules = {}
+local function loadModule(moduleName)
+    local success, result = pcall(function()
+        local response = game:HttpGet(moduleURLs[moduleName])
+        return loadstring(response)()
+    end)
+    if success then
+        modules[moduleName] = result
+        print("Loaded module: " .. moduleName)
+    else
+        warn("Failed to load module " .. moduleName .. ": " .. tostring(result))
+    end
 end
 
--- Console Output: Info Setup
-print("MAINLOADER: Info Setup Complete")
+for moduleName, _ in pairs(moduleURLs) do
+    loadModule(moduleName)
+end
 
--- Create category button
-local function createCategoryButton(name)
+-- Dependencies for modules
+local dependencies = {
+    Players = Players,
+    UserInputService = UserInputService,
+    RunService = RunService,
+    Workspace = Workspace,
+    Lighting = Lighting,
+    RenderSettings = RenderSettings,
+    ScreenGui = ScreenGui,
+    ScrollFrame = ScrollFrame,
+    settings = settings,
+    connections = connections,
+    buttonStates = buttonStates,
+    player = player,
+    humanoid = humanoid,
+    rootPart = rootPart
+}
+
+-- Initialize modules
+for moduleName, module in pairs(modules) do
+    if module and module.init then
+        module.init(dependencies)
+    end
+end
+
+-- Helper function to create a button
+local function createButton(name, callback)
     local button = Instance.new("TextButton")
-    button.Name = name .. "Category"
-    button.Parent = CategoryFrame
-    button.BackgroundColor3 = name == "Info" and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
+    button.Name = name
+    button.Parent = ScrollFrame
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, 0, 0, 35)
+    button.Size = UDim2.new(1, -5, 0, 30)
     button.Font = Enum.Font.Gotham
     button.Text = name:upper()
-    button.TextColor3 = name == "Info" and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.TextSize = 10
     
-    button.MouseButton1Click:Connect(function()
-        print("MAINLOADER: " .. name .. " Clicked")
-        switchCategory(name)
+    button.MouseButton1Click:Connect(callback)
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     end)
     
-    return button
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    end)
 end
 
--- Clear buttons
-local function clearButtons()
+-- Helper function to create a toggle button
+local function createToggleButton(name, callback)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Parent = ScrollFrame
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, -5, 0, 30)
+    button.Font = Enum.Font.Gotham
+    button.Text = name:upper()
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 10
+    
+    buttonStates[name] = false
+    
+    button.MouseButton1Click:Connect(function()
+        buttonStates[name] = not buttonStates[name]
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        callback(buttonStates[name])
+    end)
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+    end)
+end
+
+-- Load buttons for each module
+local function loadButtons()
+    if modules.Movement and modules.Movement.loadMovementButtons then
+        modules.Movement.loadMovementButtons(createToggleButton)
+    end
+    if modules.Player and modules.Player.loadPlayerButtons then
+        local selectedPlayer = modules.Player.getSelectedPlayer()
+        modules.Player.loadPlayerButtons(createButton, createToggleButton, selectedPlayer)
+    end
+    if modules.Teleport and modules.Teleport.loadTeleportButtons then
+        local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer() or nil
+        local freecamEnabled, freecamPosition = modules.Visual and modules.Visual.getFreecamState() or false, nil
+        local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
+        modules.Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
+    end
+    if modules.Visual and modules.Visual.loadVisualButtons then
+        modules.Visual.loadVisualButtons(createToggleButton)
+    end
+    if modules.Utility and modules.Utility.loadUtilityButtons then
+        modules.Utility.loadUtilityButtons(createButton)
+    end
+    if modules.Settings and modules.Settings.loadSettingsButtons then
+        modules.Settings.loadSettingsButtons(createButton)
+    end
+    if modules.Info and modules.Info.loadInfoButtons then
+        modules.Info.loadInfoButtons(createButton)
+    end
+    if modules.AntiAdminInfo and modules.AntiAdminInfo.loadInfoButtons then
+        modules.AntiAdminInfo.loadInfoButtons(createButton)
+    end
+end
+
+-- Update CanvasSize
+local function updateCanvasSize()
+    wait(0.1)
+    local contentSize = Layout.AbsoluteContentSize
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+end
+
+-- Reset states on character death
+local function resetStates()
+    humanoid = nil
+    rootPart = nil
+    for _, connection in pairs(connections) do
+        connection:Disconnect()
+    end
+    connections = {}
+    buttonStates = {}
+    
+    for _, module in pairs(modules) do
+        if module and module.resetStates then
+            module.resetStates()
+        end
+    end
+    
     for _, child in pairs(ScrollFrame:GetChildren()) do
-        if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
+        if child:IsA("TextButton") then
             child:Destroy()
         end
     end
+    
+    loadButtons()
+    updateCanvasSize()
 end
 
--- Placeholder for other categories
-local function loadPlaceholder(category)
-    local placeholderFrame = Instance.new("Frame")
-    placeholderFrame.Name = category .. "Placeholder"
-    placeholderFrame.Parent = ScrollFrame
-    placeholderFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    placeholderFrame.BorderSizePixel = 0
-    placeholderFrame.Size = UDim2.new(1, 0, 0, 100)
+-- Character setup
+local function onCharacterAdded(character)
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    dependencies.humanoid = humanoid
+    dependencies.rootPart = rootPart
     
-    local placeholderLabel = Instance.new("TextLabel")
-    placeholderLabel.Name = "Label"
-    placeholderLabel.Parent = placeholderFrame
-    placeholderLabel.BackgroundTransparency = 1
-    placeholderLabel.Size = UDim2.new(1, -10, 0, 30)
-    placeholderLabel.Position = UDim2.new(0, 5, 0, 5)
-    placeholderLabel.Font = Enum.Font.Gotham
-    placeholderLabel.Text = category .. " category not yet implemented."
-    placeholderLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    placeholderLabel.TextSize = 10
-    placeholderLabel.TextWrapped = true
-    placeholderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    resetStates()
     
-    local exampleButton = Instance.new("TextButton")
-    exampleButton.Name = "ExampleButton"
-    exampleButton.Parent = placeholderFrame
-    exampleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    exampleButton.BorderSizePixel = 0
-    exampleButton.Position = UDim2.new(0, 5, 0, 40)
-    exampleButton.Size = UDim2.new(1, -10, 0, 30)
-    exampleButton.Font = Enum.Font.Gotham
-    exampleButton.Text = "Example " .. category .. " Feature"
-    exampleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    exampleButton.TextSize = 10
-    
-    exampleButton.MouseButton1Click:Connect(function()
-        print("MAINLOADER: " .. category .. " Example Clicked")
+    connections.humanoidDied = humanoid.Died:Connect(function()
+        resetStates()
     end)
-    
-    wait(0.1)
-    local contentSize = UIListLayout.AbsoluteContentSize
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
 end
 
--- Info category function
-local function loadInfo()
-    if not InfoScrollFrame then
-        print("MAINLOADER: InfoScrollFrame nil")
-        return
-    end
-    local success, err = pcall(function()
-        for _, child in pairs(InfoScrollFrame:GetChildren()) do
-            if child:IsA("TextLabel") or child:IsA("Frame") then
-                child:Destroy()
-            end
-        end
-        local watermarkLabel = Instance.new("TextLabel")
-        watermarkLabel.Name = "WatermarkLabel"
-        watermarkLabel.Parent = InfoScrollFrame
-        watermarkLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        watermarkLabel.BorderSizePixel = 0
-        watermarkLabel.Size = UDim2.new(1, 0, 0, 300)
-        watermarkLabel.Font = Enum.Font.SourceSans
-        watermarkLabel.Text = "TEST INFO WATERMARK"
-        watermarkLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        watermarkLabel.TextSize = 10
-        watermarkLabel.TextWrapped = true
-        watermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
-        watermarkLabel.TextYAlignment = Enum.TextYAlignment.Top
-        
-        wait(0.1)
-        local contentSize = InfoLayout and InfoLayout.AbsoluteContentSize or Vector2.new(0, 0)
-        InfoScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 20)
-    end)
-    if not success then
-        print("MAINLOADER: Info Load Error: " .. tostring(err))
-    else
-        print("MAINLOADER: Info Watermark Created")
-    end
+-- Initialize
+if player.Character then
+    onCharacterAdded(player.Character)
 end
+connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 
--- Minimize button logic
-MinimizeButton.Activated:Connect(function()
-    print("MAINLOADER: Minimize Clicked")
-    MainFrame.Visible = not MainFrame.Visible
-    wait(0.5)
-    MinimizeButton.Text = MainFrame.Visible and "-" or "+"
+-- Load buttons
+loadButtons()
+updateCanvasSize()
+
+-- Close Button
+CloseButton.MouseButton1Click:Connect(function()
+    Frame.Visible = false
 end)
 
--- Category switching
-local currentCategory = "Info"
-function switchCategory(categoryName)
-    currentCategory = categoryName
-    
-    for _, child in pairs(CategoryFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            if child.Name == categoryName .. "Category" then
-                child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                child.TextColor3 = Color3.fromRGB(255, 255, 255)
-            else
-                child.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-                child.TextColor3 = Color3.fromRGB(200, 200, 200)
-            end
-        end
-    end
-    
-    clearButtons()
-    
-    if categoryName == "Info" then
-        loadInfo()
-    else
-        loadPlaceholder(categoryName)
-    end
-end
-
--- Initialize categories
-local success, err = pcall(function()
-    for _, category in ipairs({"Movement", "Player", "Visual", "Teleport", "Utility", "Settings", "Info", "Anti Admin"}) do
-        createCategoryButton(category)
+-- Toggle GUI with Home key
+connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
+        Frame.Visible = not Frame.Visible
     end
 end)
-if not success then
-    print("MAINLOADER: Categories Error: " .. tostring(err))
-end
-
--- Initialize GUI
-local success, err = pcall(function()
-    switchCategory("Info")
-end)
-if not success then
-    print("MAINLOADER: Init Error: " .. tostring(err))
-end
-
--- Update CategoryFrame size
-wait(0.1)
-local categoryContentSize = CategoryList.AbsoluteContentSize
-CategoryFrame.Size = UDim2.new(0, 140, 0, categoryContentSize.Y + 10)
-
--- Console Output: GUI Complete
-print("MAINLOADER: GUI Complete")
