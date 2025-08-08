@@ -102,21 +102,24 @@ local moduleURLs = {
     AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua"
 }
 
--- Load modules
+-- Load modules with better error handling
 local modules = {}
 local function loadModule(moduleName)
     local success, result = pcall(function()
         local response = game:HttpGet(moduleURLs[moduleName])
         return loadstring(response)()
     end)
-    if success then
+    if success and result then
         modules[moduleName] = result
-        print("Loaded module: " .. moduleName)
+        print("Successfully loaded module: " .. moduleName)
+        return true
     else
         warn("Failed to load module " .. moduleName .. ": " .. tostring(result))
+        return false
     end
 end
 
+-- Load all modules
 for moduleName, _ in pairs(moduleURLs) do
     loadModule(moduleName)
 end
@@ -139,10 +142,17 @@ local dependencies = {
     rootPart = rootPart
 }
 
--- Initialize modules
+-- Initialize modules with error handling
 for moduleName, module in pairs(modules) do
-    if module and module.init then
-        module.init(dependencies)
+    if module and type(module.init) == "function" then
+        local success, err = pcall(function()
+            module.init(dependencies)
+        end)
+        if not success then
+            warn("Failed to initialize module " .. moduleName .. ": " .. tostring(err))
+        else
+            print("Initialized module: " .. moduleName)
+        end
     end
 end
 
@@ -188,7 +198,9 @@ local function createToggleButton(name, callback)
     button.MouseButton1Click:Connect(function()
         buttonStates[name] = not buttonStates[name]
         button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
-        callback(buttonStates[name])
+        if type(callback) == "function" then
+            callback(buttonStates[name])
+        end
     end)
     
     button.MouseEnter:Connect(function()
@@ -200,35 +212,105 @@ local function createToggleButton(name, callback)
     end)
 end
 
--- Load buttons for each module
+-- Load buttons for each module with better error handling
 local function loadButtons()
-    if modules.Movement and modules.Movement.loadMovementButtons then
-        modules.Movement.loadMovementButtons(createToggleButton)
+    -- Movement module
+    if modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
+        local success, err = pcall(function()
+            modules.Movement.loadMovementButtons(createToggleButton)
+        end)
+        if not success then
+            warn("Error loading Movement buttons: " .. tostring(err))
+        end
     end
-    if modules.Player and modules.Player.loadPlayerButtons then
-        local selectedPlayer = modules.Player.getSelectedPlayer()
-        modules.Player.loadPlayerButtons(createButton, createToggleButton, selectedPlayer)
+    
+    -- Player module
+    if modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
+        local success, err = pcall(function()
+            local selectedPlayer = nil
+            if type(modules.Player.getSelectedPlayer) == "function" then
+                selectedPlayer = modules.Player.getSelectedPlayer()
+            end
+            modules.Player.loadPlayerButtons(createButton, createToggleButton, selectedPlayer)
+        end)
+        if not success then
+            warn("Error loading Player buttons: " .. tostring(err))
+        end
     end
-    if modules.Teleport and modules.Teleport.loadTeleportButtons then
-        local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer() or nil
-        local freecamEnabled, freecamPosition = modules.Visual and modules.Visual.getFreecamState() or false, nil
-        local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
-        modules.Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
+    
+    -- Teleport module
+    if modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
+        local success, err = pcall(function()
+            local selectedPlayer = nil
+            if modules.Player and type(modules.Player.getSelectedPlayer) == "function" then
+                selectedPlayer = modules.Player.getSelectedPlayer()
+            end
+            
+            local freecamEnabled, freecamPosition = false, nil
+            if modules.Visual and type(modules.Visual.getFreecamState) == "function" then
+                freecamEnabled, freecamPosition = modules.Visual.getFreecamState()
+            end
+            
+            local toggleFreecam = function() end
+            if modules.Visual and type(modules.Visual.toggleFreecam) == "function" then
+                toggleFreecam = modules.Visual.toggleFreecam
+            end
+            
+            modules.Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
+        end)
+        if not success then
+            warn("Error loading Teleport buttons: " .. tostring(err))
+        end
     end
-    if modules.Visual and modules.Visual.loadVisualButtons then
-        modules.Visual.loadVisualButtons(createToggleButton)
+    
+    -- Visual module
+    if modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
+        local success, err = pcall(function()
+            modules.Visual.loadVisualButtons(createToggleButton)
+        end)
+        if not success then
+            warn("Error loading Visual buttons: " .. tostring(err))
+        end
     end
-    if modules.Utility and modules.Utility.loadUtilityButtons then
-        modules.Utility.loadUtilityButtons(createButton)
+    
+    -- Utility module
+    if modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
+        local success, err = pcall(function()
+            modules.Utility.loadUtilityButtons(createButton)
+        end)
+        if not success then
+            warn("Error loading Utility buttons: " .. tostring(err))
+        end
     end
-    if modules.Settings and modules.Settings.loadSettingsButtons then
-        modules.Settings.loadSettingsButtons(createButton)
+    
+    -- Settings module
+    if modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
+        local success, err = pcall(function()
+            modules.Settings.loadSettingsButtons(createButton)
+        end)
+        if not success then
+            warn("Error loading Settings buttons: " .. tostring(err))
+        end
     end
-    if modules.Info and modules.Info.loadInfoButtons then
-        modules.Info.loadInfoButtons(createButton)
+    
+    -- Info module
+    if modules.Info and type(modules.Info.loadInfoButtons) == "function" then
+        local success, err = pcall(function()
+            modules.Info.loadInfoButtons(createButton)
+        end)
+        if not success then
+            warn("Error loading Info buttons: " .. tostring(err))
+        end
     end
-    if modules.AntiAdminInfo and modules.AntiAdminInfo.loadInfoButtons then
-        modules.AntiAdminInfo.loadInfoButtons(createButton)
+    
+    -- AntiAdminInfo module
+    if modules.AntiAdminInfo and type(modules.AntiAdminInfo.loadInfoButtons) == "function" then
+        local success, err = pcall(function()
+            modules.AntiAdminInfo.loadInfoButtons(createButton)
+        end)
+        if not success then
+            warn("Error loading AntiAdminInfo buttons: " .. tostring(err))
+        end
     end
 end
 
@@ -244,39 +326,63 @@ local function resetStates()
     humanoid = nil
     rootPart = nil
     for _, connection in pairs(connections) do
-        connection:Disconnect()
+        if connection and connection.Disconnect then
+            connection:Disconnect()
+        end
     end
     connections = {}
     buttonStates = {}
     
+    -- Reset module states
     for _, module in pairs(modules) do
-        if module and module.resetStates then
-            module.resetStates()
+        if module and type(module.resetStates) == "function" then
+            local success, err = pcall(function()
+                module.resetStates()
+            end)
+            if not success then
+                warn("Error resetting module state: " .. tostring(err))
+            end
         end
     end
     
+    -- Clear existing buttons
     for _, child in pairs(ScrollFrame:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
         end
     end
     
+    -- Reload buttons
     loadButtons()
     updateCanvasSize()
 end
 
 -- Character setup
 local function onCharacterAdded(character)
-    humanoid = character:WaitForChild("Humanoid")
-    rootPart = character:WaitForChild("HumanoidRootPart")
-    dependencies.humanoid = humanoid
-    dependencies.rootPart = rootPart
+    if not character then return end
     
-    resetStates()
-    
-    connections.humanoidDied = humanoid.Died:Connect(function()
+    local success, err = pcall(function()
+        humanoid = character:WaitForChild("Humanoid", 10)
+        rootPart = character:WaitForChild("HumanoidRootPart", 10)
+        
+        if not humanoid or not rootPart then
+            warn("Failed to get humanoid or rootPart")
+            return
+        end
+        
+        dependencies.humanoid = humanoid
+        dependencies.rootPart = rootPart
+        
         resetStates()
+        
+        connections.humanoidDied = humanoid.Died:Connect(function()
+            resetStates()
+        end)
     end)
+    
+    if not success then
+        warn("Error in onCharacterAdded: " .. tostring(err))
+    end
 end
 
 -- Initialize
@@ -285,7 +391,7 @@ if player.Character then
 end
 connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 
--- Load buttons
+-- Load buttons initially
 loadButtons()
 updateCanvasSize()
 
@@ -294,9 +400,9 @@ CloseButton.MouseButton1Click:Connect(function()
     Frame.Visible = false
 end)
 
--- Toggle GUI with Home key
+-- Toggle GUI with Home key (fixed typo)
 connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
-        Frame.Visible = not Frame.visible
+        Frame.Visible = not Frame.Visible  -- Fixed: was Frame.visible (lowercase)
     end
 end)
