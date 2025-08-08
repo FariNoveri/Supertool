@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri, integrating all modules
+-- Main entry point for MinimalHackGUI by Fari Noveri
 
 -- Services
 local Players = game:GetService("Players")
@@ -6,16 +6,16 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
-local RenderSettings = game:GetService("Settings")
 
 -- Local Player
 local player = Players.LocalPlayer
 local character, humanoid, rootPart
 
--- Connections
+-- Connections and states
 local connections = {}
 local buttonStates = {}
-local selectedCategory = "Movement" -- Set default category
+local selectedCategory = "Movement"
+local categoryStates = {} -- Store feature states per category
 
 -- Settings
 local settings = {
@@ -32,15 +32,15 @@ ScreenGui.Parent = player:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- Main Frame (Made smaller)
+-- Main Frame (More compact)
 local Frame = Instance.new("Frame")
 Frame.Name = "MainFrame"
 Frame.Parent = ScreenGui
 Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Frame.BorderColor3 = Color3.fromRGB(45, 45, 45)
 Frame.BorderSizePixel = 1
-Frame.Position = UDim2.new(0.5, -300, 0.5, -125) -- Smaller position
-Frame.Size = UDim2.new(0, 600, 0, 250) -- Reduced from 800x300 to 600x250
+Frame.Position = UDim2.new(0.5, -250, 0.5, -100)
+Frame.Size = UDim2.new(0, 500, 0, 200)
 Frame.Active = true
 Frame.Draggable = true
 
@@ -50,128 +50,110 @@ Title.Name = "Title"
 Title.Parent = Frame
 Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.BorderSizePixel = 0
-Title.Position = UDim2.new(0, 0, 0, 0)
-Title.Size = UDim2.new(1, 0, 0, 25)
+Title.Size = UDim2.new(1, 0, 0, 20)
 Title.Font = Enum.Font.Gotham
 Title.Text = "MinimalHackGUI by Fari Noveri"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 10
+Title.TextSize = 8
 
--- Watermark for AntiAdminInfo (Made smaller)
+-- Watermark
 local Watermark = Instance.new("TextLabel")
 Watermark.Name = "Watermark"
 Watermark.Parent = ScreenGui
 Watermark.BackgroundTransparency = 0.5
 Watermark.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Watermark.BorderColor3 = Color3.fromRGB(45, 45, 45)
-Watermark.BorderSizePixel = 1
-Watermark.Position = UDim2.new(0, 10, 0, 60)
-Watermark.Size = UDim2.new(0, 180, 0, 18) -- Made smaller
+Watermark.Position = UDim2.new(0, 5, 0, 50)
+Watermark.Size = UDim2.new(0, 150, 0, 15)
 Watermark.Font = Enum.Font.Gotham
 Watermark.Text = "AntiAdmin: Initializing..."
 Watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
-Watermark.TextSize = 9
+Watermark.TextSize = 7
 Watermark.TextXAlignment = Enum.TextXAlignment.Left
 
--- Minimized Logo (Made smaller)
+-- Minimized Logo
 local MinimizedLogo = Instance.new("Frame")
 MinimizedLogo.Name = "MinimizedLogo"
 MinimizedLogo.Parent = ScreenGui
 MinimizedLogo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MinimizedLogo.BorderColor3 = Color3.fromRGB(45, 45, 45)
-MinimizedLogo.BorderSizePixel = 1
-MinimizedLogo.Position = UDim2.new(0, 10, 0, 10)
-MinimizedLogo.Size = UDim2.new(0, 35, 0, 35) -- Made smaller
+MinimizedLogo.Position = UDim2.new(0, 5, 0, 5)
+MinimizedLogo.Size = UDim2.new(0, 25, 0, 25)
 MinimizedLogo.Visible = false
 MinimizedLogo.Active = true
 MinimizedLogo.Draggable = true
 
--- Make it circular
 local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0, 17)
+Corner.CornerRadius = UDim.new(0, 12)
 Corner.Parent = MinimizedLogo
 
--- Logo Text
 local LogoText = Instance.new("TextLabel")
-LogoText.Name = "LogoText"
 LogoText.Parent = MinimizedLogo
 LogoText.BackgroundTransparency = 1
-LogoText.Position = UDim2.new(0, 0, 0, 0)
 LogoText.Size = UDim2.new(1, 0, 1, 0)
 LogoText.Font = Enum.Font.GothamBold
 LogoText.Text = "H"
 LogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
-LogoText.TextSize = 14
+LogoText.TextSize = 10
 LogoText.TextStrokeTransparency = 0.5
 LogoText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
--- Logo click functionality
 local LogoButton = Instance.new("TextButton")
-LogoButton.Name = "LogoButton"
 LogoButton.Parent = MinimizedLogo
 LogoButton.BackgroundTransparency = 1
-LogoButton.Position = UDim2.new(0, 0, 0, 0)
 LogoButton.Size = UDim2.new(1, 0, 1, 0)
 LogoButton.Text = ""
 
--- Minimize Button
+-- Minimize/Close Buttons
 local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Name = "MinimizeButton"
 MinimizeButton.Parent = Frame
 MinimizeButton.BackgroundTransparency = 1
-MinimizeButton.Position = UDim2.new(1, -50, 0, 2)
-MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
+MinimizeButton.Position = UDim2.new(1, -40, 0, 0)
+MinimizeButton.Size = UDim2.new(0, 15, 0, 15)
 MinimizeButton.Font = Enum.Font.GothamBold
 MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeButton.TextSize = 14
+MinimizeButton.TextSize = 8
 
--- Close Button
 local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
 CloseButton.Parent = Frame
 CloseButton.BackgroundTransparency = 1
-CloseButton.Position = UDim2.new(1, -25, 0, 2)
-CloseButton.Size = UDim2.new(0, 20, 0, 20)
+CloseButton.Position = UDim2.new(1, -20, 0, 0)
+CloseButton.Size = UDim2.new(0, 15, 0, 15)
 CloseButton.Font = Enum.Font.GothamBold
 CloseButton.Text = "X"
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.TextSize = 10
+CloseButton.TextSize = 8
 
--- Category Container (Left Side) - Made smaller
+-- Category Container
 local CategoryContainer = Instance.new("Frame")
-CategoryContainer.Name = "CategoryContainer"
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
-CategoryContainer.Position = UDim2.new(0, 5, 0, 30)
-CategoryContainer.Size = UDim2.new(0, 85, 1, -35) -- Reduced width
+CategoryContainer.Position = UDim2.new(0, 5, 0, 25)
+CategoryContainer.Size = UDim2.new(0, 70, 1, -30)
 
--- Category Layout (Vertical)
 local CategoryLayout = Instance.new("UIListLayout")
 CategoryLayout.Parent = CategoryContainer
-CategoryLayout.Padding = UDim.new(0, 3) -- Reduced padding
+CategoryLayout.Padding = UDim.new(0, 2)
 CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 CategoryLayout.FillDirection = Enum.FillDirection.Vertical
 
--- Feature Container (Right Side)
+-- Feature Container
 local FeatureContainer = Instance.new("ScrollingFrame")
-FeatureContainer.Name = "FeatureContainer"
 FeatureContainer.Parent = Frame
 FeatureContainer.BackgroundTransparency = 1
-FeatureContainer.Position = UDim2.new(0, 95, 0, 30) -- Adjusted for smaller category container
-FeatureContainer.Size = UDim2.new(1, -100, 1, -35)
+FeatureContainer.Position = UDim2.new(0, 80, 0, 25)
+FeatureContainer.Size = UDim2.new(1, -85, 1, -30)
 FeatureContainer.ScrollBarThickness = 2
 FeatureContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
 FeatureContainer.ScrollingDirection = Enum.ScrollingDirection.Y
 FeatureContainer.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
 FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
 
--- Feature Layout
 local FeatureLayout = Instance.new("UIListLayout")
 FeatureLayout.Parent = FeatureContainer
 FeatureLayout.Padding = UDim.new(0, 1)
 FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
-FeatureLayout.FillDirection = Enum.FillDirection.Vertical
 
 -- Categories
 local categories = {
@@ -195,13 +177,12 @@ for _, category in ipairs(categories) do
     categoryButton.Parent = CategoryContainer
     categoryButton.BackgroundColor3 = selectedCategory == category.name and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(25, 25, 25)
     categoryButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    categoryButton.BorderSizePixel = 1
-    categoryButton.Size = UDim2.new(1, -5, 0, 25) -- Made smaller
+    categoryButton.Size = UDim2.new(1, -5, 0, 20)
     categoryButton.LayoutOrder = category.order
     categoryButton.Font = Enum.Font.GothamBold
     categoryButton.Text = category.name
     categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    categoryButton.TextSize = 9 -- Made smaller
+    categoryButton.TextSize = 7
 
     categoryButton.MouseButton1Click:Connect(function()
         selectedCategory = category.name
@@ -220,9 +201,8 @@ for _, category in ipairs(categories) do
         end
     end)
 
-    categoryFrames[category.name] = {
-        button = categoryButton
-    }
+    categoryFrames[category.name] = {button = categoryButton}
+    categoryStates[category.name] = {} -- Initialize state storage
 end
 
 -- Module URLs
@@ -243,52 +223,28 @@ local modules = {}
 local modulesLoaded = {}
 
 local function loadModule(moduleName)
-    if not moduleURLs[moduleName] then
-        warn("No URL found for module: " .. moduleName)
-        return false
-    end
+    if not moduleURLs[moduleName] then return false end
     
     local success, result = pcall(function()
         local response = game:HttpGet(moduleURLs[moduleName])
-        if not response or response == "" then
-            error("Empty response from server")
-        end
-        
-        if not loadstring then
-            error("loadstring is not available in this environment")
-        end
-        
+        if not response or response == "" then return nil end
         local func = loadstring(response)
-        if not func then
-            error("Failed to compile module code")
-        end
-        
-        return func()
+        return func and func()
     end)
     
     if success and result then
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
-        print("Successfully loaded module: " .. moduleName)
-        
-        -- Auto-load buttons if this is the selected category
-        if selectedCategory and (selectedCategory == moduleName or (moduleName == "AntiAdminInfo" and selectedCategory == "AntiAdmin")) then
+        if selectedCategory == moduleName or (moduleName == "AntiAdminInfo" and selectedCategory == "AntiAdmin") then
             loadButtons()
         end
-        
         return true
-    else
-        warn("Failed to load module " .. moduleName .. ": " .. tostring(result))
-        modulesLoaded[moduleName] = false
-        return false
     end
+    return false
 end
 
--- Load modules with error handling
 for moduleName, _ in pairs(moduleURLs) do
-    spawn(function()
-        loadModule(moduleName)
-    end)
+    task.spawn(function() loadModule(moduleName) end)
 end
 
 -- Dependencies
@@ -298,7 +254,6 @@ local dependencies = {
     RunService = RunService,
     Workspace = Workspace,
     Lighting = Lighting,
-    RenderSettings = RenderSettings,
     ScreenGui = ScreenGui,
     settings = settings,
     connections = connections,
@@ -311,60 +266,35 @@ local dependencies = {
     Watermark = Watermark
 }
 
--- Initialize modules with better error handling
+-- Initialize modules
 local function initializeModules()
     for moduleName, module in pairs(modules) do
-        if module and type(module) == "table" and type(module.init) == "function" then
-            local success, err = pcall(function()
-                module.init(dependencies)
-            end)
-            if not success then
-                warn("Failed to initialize module " .. moduleName .. ": " .. tostring(err))
-            else
-                print("Successfully initialized module: " .. moduleName)
-            end
+        if module and type(module.init) == "function" then
+            pcall(function() module.init(dependencies) end)
         end
     end
 end
 
--- Wait for modules to load, then initialize
-spawn(function()
-    wait(3)
-    initializeModules()
-    -- Load default category buttons
-    loadButtons()
-end)
-
 -- AntiAdmin background execution
-spawn(function()
-    wait(4)
+task.spawn(function()
+    task.wait(4)
     if modules.AntiAdmin and type(modules.AntiAdmin.runBackground) == "function" then
-        local success, err = pcall(function()
-            modules.AntiAdmin.runBackground()
-        end)
-        if not success then
-            warn("Failed to run AntiAdmin in background: " .. tostring(err))
-        end
+        pcall(function() modules.AntiAdmin.runBackground() end)
     end
 end)
 
 -- AntiAdminInfo watermark update
-spawn(function()
-    wait(4)
+task.spawn(function()
+    task.wait(4)
     if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
-        local success, err = pcall(function()
+        pcall(function()
             local watermarkText = modules.AntiAdminInfo.getWatermarkText()
-            if watermarkText then
-                Watermark.Text = watermarkText
-            end
+            if watermarkText then Watermark.Text = watermarkText end
         end)
-        if not success then
-            warn("Failed to update AntiAdminInfo watermark: " .. tostring(err))
-        end
     end
 end)
 
--- Helper function to create a button
+-- Create button
 local function createButton(name, callback, categoryName)
     if categoryName ~= selectedCategory then return end
     
@@ -373,16 +303,14 @@ local function createButton(name, callback, categoryName)
     button.Parent = FeatureContainer
     button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -2, 0, 20) -- Made smaller
+    button.Size = UDim2.new(1, -2, 0, 15)
     button.Font = Enum.Font.Gotham
     button.Text = name
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 8
+    button.TextSize = 7
     
     if type(callback) == "function" then
         button.MouseButton1Click:Connect(callback)
-    else
-        warn("Invalid callback for button: " .. name)
     end
     
     button.MouseEnter:Connect(function()
@@ -393,13 +321,13 @@ local function createButton(name, callback, categoryName)
         button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     end)
     
-    spawn(function()
-        wait(0.01)
+    task.spawn(function()
+        task.wait(0.01)
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
     end)
 end
 
--- Helper function to create a toggle button
+-- Create toggle button
 local function createToggleButton(name, callback, categoryName)
     if categoryName ~= selectedCategory then return end
     
@@ -408,211 +336,147 @@ local function createToggleButton(name, callback, categoryName)
     button.Parent = FeatureContainer
     button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -2, 0, 20) -- Made smaller
+    button.Size = UDim2.new(1, -2, 0, 15)
     button.Font = Enum.Font.Gotham
     button.Text = name
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 8
+    button.TextSize = 7
     
-    -- Initialize button state
-    if buttonStates[name] == nil then
-        buttonStates[name] = false
+    -- Restore or initialize state
+    if categoryStates[categoryName][name] == nil then
+        categoryStates[categoryName][name] = false
     end
-    
-    -- Set initial color based on state
-    button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+    button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     
     button.MouseButton1Click:Connect(function()
-        buttonStates[name] = not buttonStates[name]
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        categoryStates[categoryName][name] = not categoryStates[categoryName][name]
+        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
         if type(callback) == "function" then
-            callback(buttonStates[name])
-        else
-            warn("Invalid callback for toggle button: " .. name)
+            callback(categoryStates[categoryName][name])
         end
     end)
     
     button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
+        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
     end)
     
     button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = buttonStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     end)
     
-    spawn(function()
-        wait(0.01)
+    task.spawn(function()
+        task.wait(0.01)
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 5)
     end)
 end
 
--- Load buttons for selected category (FIXED VERSION)
+-- Load buttons
 function loadButtons()
-    -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
-    -- Update category button colors
     for categoryName, categoryData in pairs(categoryFrames) do
-        if categoryName == selectedCategory then
-            categoryData.button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        else
-            categoryData.button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        end
+        categoryData.button.BackgroundColor3 = categoryName == selectedCategory and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
     end
 
     if not selectedCategory then return end
     
-    -- Add loading indicator
     local loadingLabel = Instance.new("TextLabel")
-    loadingLabel.Name = "LoadingLabel"
     loadingLabel.Parent = FeatureContainer
     loadingLabel.BackgroundTransparency = 1
-    loadingLabel.Size = UDim2.new(1, -2, 0, 20)
+    loadingLabel.Size = UDim2.new(1, -2, 0, 15)
     loadingLabel.Font = Enum.Font.Gotham
-    loadingLabel.Text = "Loading " .. selectedCategory .. " features..."
+    loadingLabel.Text = "Loading..."
     loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    loadingLabel.TextSize = 8
+    loadingLabel.TextSize = 7
     loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Load category-specific buttons
-    spawn(function()
-        wait(0.1) -- Small delay to show loading
+    task.spawn(function()
+        task.wait(0.1)
         
         if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
-            local success, err = pcall(function()
+            pcall(function()
                 modules.Movement.loadMovementButtons(function(name, callback)
                     createToggleButton(name, callback, "Movement")
                 end)
             end)
-            if not success then
-                warn("Error loading Movement buttons: " .. tostring(err))
-            end
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
-            local success, err = pcall(function()
-                local selectedPlayer = nil
-                if type(modules.Player.getSelectedPlayer) == "function" then
-                    selectedPlayer = modules.Player.getSelectedPlayer()
-                end
+            pcall(function()
+                local selectedPlayer = modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer()
                 modules.Player.loadPlayerButtons(
                     function(name, callback) createButton(name, callback, "Player") end,
                     function(name, callback) createToggleButton(name, callback, "Player") end,
                     selectedPlayer
                 )
             end)
-            if not success then
-                warn("Error loading Player buttons: " .. tostring(err))
-            end
         elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
-            local success, err = pcall(function()
-                local selectedPlayer = nil
-                if modules.Player and type(modules.Player.getSelectedPlayer) == "function" then
-                    selectedPlayer = modules.Player.getSelectedPlayer()
-                end
-                
-                local freecamEnabled, freecamPosition = false, nil
-                if modules.Visual and type(modules.Visual.getFreecamState) == "function" then
-                    freecamEnabled, freecamPosition = modules.Visual.getFreecamState()
-                end
-                
-                local toggleFreecam = function() end
-                if modules.Visual and type(modules.Visual.toggleFreecam) == "function" then
-                    toggleFreecam = modules.Visual.toggleFreecam
-                end
-                
+            pcall(function()
+                local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer()
+                local freecamEnabled, freecamPosition = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false, nil
+                local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
                 modules.Teleport.loadTeleportButtons(
                     function(name, callback) createButton(name, callback, "Teleport") end,
                     selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
                 )
             end)
-            if not success then
-                warn("Error loading Teleport buttons: " .. tostring(err))
-            end
         elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
-            local success, err = pcall(function()
+            pcall(function()
                 modules.Visual.loadVisualButtons(function(name, callback)
                     createToggleButton(name, callback, "Visual")
                 end)
             end)
-            if not success then
-                warn("Error loading Visual buttons: " .. tostring(err))
-            end
         elseif selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
-            local success, err = pcall(function()
+            pcall(function()
                 modules.Utility.loadUtilityButtons(function(name, callback)
                     createButton(name, callback, "Utility")
                 end)
             end)
-            if not success then
-                warn("Error loading Utility buttons: " .. tostring(err))
-            end
         elseif selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
-            local success, err = pcall(function()
+            pcall(function()
                 modules.Settings.loadSettingsButtons(function(name, callback)
                     createButton(name, callback, "Settings")
                 end)
             end)
-            if not success then
-                warn("Error loading Settings buttons: " .. tostring(err))
-            end
         elseif selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
-            local success, err = pcall(function()
+            pcall(function()
                 modules.Info.loadInfoButtons(function(name, callback)
                     createButton(name, callback, "Info")
                 end)
             end)
-            if not success then
-                warn("Error loading Info buttons: " .. tostring(err))
-            end
         elseif selectedCategory == "AntiAdmin" then
-            -- Remove loading label first
-            if loadingLabel and loadingLabel.Parent then
-                loadingLabel:Destroy()
-            end
-            
             local placeholder = Instance.new("TextLabel")
-            placeholder.Name = "Placeholder"
             placeholder.Parent = FeatureContainer
             placeholder.BackgroundTransparency = 1
-            placeholder.Size = UDim2.new(1, -2, 0, 20)
+            placeholder.Size = UDim2.new(1, -2, 0, 15)
             placeholder.Font = Enum.Font.Gotham
-            placeholder.Text = "AntiAdmin features run in background"
+            placeholder.Text = "AntiAdmin runs in background"
             placeholder.TextColor3 = Color3.fromRGB(255, 255, 255)
-            placeholder.TextSize = 8
+            placeholder.TextSize = 7
             placeholder.TextXAlignment = Enum.TextXAlignment.Left
         end
         
-        -- Remove loading label
-        if loadingLabel and loadingLabel.Parent then
+        if loadingLabel.Parent then
             loadingLabel:Destroy()
         end
         
-        -- Update canvas size
-        wait(0.01)
+        task.wait(0.01)
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, math.max(FeatureLayout.AbsoluteContentSize.Y + 5, 1))
     end)
 end
 
--- Minimize/Maximize functionality
+-- Minimize/Maximize
 local function toggleMinimize()
     isMinimized = not isMinimized
-    if isMinimized then
-        Frame.Visible = false
-        MinimizedLogo.Visible = true
-        MinimizeButton.Text = "+"
-        Watermark.Visible = false
-    else
-        Frame.Visible = true
-        MinimizedLogo.Visible = false
-        MinimizeButton.Text = "-"
-        Watermark.Visible = true
-    end
+    Frame.Visible = not isMinimized
+    MinimizedLogo.Visible = isMinimized
+    MinimizeButton.Text = isMinimized and "+" or "-"
+    Watermark.Visible = not isMinimized
 end
 
--- Reset states on character death
+-- Reset states
 local function resetStates()
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
@@ -621,33 +485,21 @@ local function resetStates()
     end
     connections = {}
     
-    -- Don't reset button states completely, just reset module states
     for _, module in pairs(modules) do
         if module and type(module.resetStates) == "function" then
-            local success, err = pcall(function()
-                module.resetStates()
-            end)
-            if not success then
-                warn("Error resetting module state: " .. tostring(err))
-            end
+            pcall(function() module.resetStates() end)
         end
     end
     
-    -- Reload current category
     if selectedCategory then
         loadButtons()
     end
 
     if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
-        local success, err = pcall(function()
+        pcall(function()
             local watermarkText = modules.AntiAdminInfo.getWatermarkText()
-            if watermarkText then
-                Watermark.Text = watermarkText
-            end
+            if watermarkText then Watermark.Text = watermarkText end
         end)
-        if not success then
-            warn("Failed to update AntiAdminInfo watermark on reset: " .. tostring(err))
-        end
     end
 end
 
@@ -655,45 +507,21 @@ end
 local function onCharacterAdded(newCharacter)
     if not newCharacter then return end
     
-    local success, err = pcall(function()
+    pcall(function()
         character = newCharacter
-        humanoid = character:FindFirstChild("Humanoid")
-        rootPart = character:FindFirstChild("HumanoidRootPart")
+        humanoid = character:WaitForChild("Humanoid", 30)
+        rootPart = character:WaitForChild("HumanoidRootPart", 30)
         
-        if not humanoid then
-            humanoid = character:WaitForChild("Humanoid", 30)
-        end
-        
-        if not rootPart then
-            rootPart = character:WaitForChild("HumanoidRootPart", 30)
-        end
-        
-        if not humanoid then
-            warn("Failed to get Humanoid from character after waiting")
-            return
-        end
-        
-        if not rootPart then
-            warn("Failed to get HumanoidRootPart from character after waiting")
-            return
-        end
-        
-        -- Update dependencies
         dependencies.character = character
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
         
-        -- Reinitialize modules with updated dependencies
         initializeModules()
         
-        if humanoid and typeof(humanoid) == "Instance" and humanoid.Died then
+        if humanoid and humanoid.Died then
             connections.humanoidDied = humanoid.Died:Connect(resetStates)
         end
     end)
-    
-    if not success then
-        warn("Error in onCharacterAdded: " .. tostring(err))
-    end
 end
 
 -- Initialize
@@ -711,7 +539,6 @@ CloseButton.MouseButton1Click:Connect(function()
     Watermark.Visible = false
 end)
 
--- Toggle GUI with Home key
 connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
         if Frame.Visible or MinimizedLogo.Visible then
@@ -728,4 +555,8 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
     end
 end)
 
-print("MinimalHackGUI loaded successfully!")
+task.spawn(function()
+    task.wait(3)
+    initializeModules()
+    loadButtons()
+end)

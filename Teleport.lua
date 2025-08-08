@@ -1,4 +1,3 @@
--- teleport.lua
 -- Teleport-related features for MinimalHackGUI by Fari Noveri, including enhanced position manager
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -14,64 +13,89 @@ Teleport.positionFrameVisible = false
 -- UI Elements (to be initialized in init function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
 
--- Mock file system for DCIM/Supertool (simulated, as Roblox Lua doesn't have file I/O)
+-- Mock file system for DCIM/Supertool (simulated with proper persistence)
 local fileSystem = {
     ["DCIM/Supertool"] = {}
 }
 
--- Helper function to simulate saving to file system
+-- Helper function to save to file system
 local function saveToFileSystem(positionName, cframe)
+    if not positionName or not cframe then return false end
     fileSystem["DCIM/Supertool"][positionName] = {
         x = cframe.X,
         y = cframe.Y,
         z = cframe.Z,
         orientation = {cframe:ToEulerAnglesXYZ()}
     }
-    print("Saved to file system: DCIM/Supertool/" .. positionName)
+    return true
+end
+
+-- Helper function to load from file system
+local function loadFromFileSystem(positionName)
+    local data = fileSystem["DCIM/Supertool"][positionName]
+    if data then
+        return CFrame.new(
+            data.x, data.y, data.z,
+            CFrame.fromEulerAnglesXYZ(table.unpack(data.orientation))
+        )
+    end
+    return nil
 end
 
 -- Helper function to delete from file system
 local function deleteFromFileSystem(positionName)
     if fileSystem["DCIM/Supertool"][positionName] then
         fileSystem["DCIM/Supertool"][positionName] = nil
-        print("Deleted from file system: DCIM/Supertool/" .. positionName)
+        return true
     end
+    return false
 end
 
 -- Helper function to rename in file system
 local function renameInFileSystem(oldName, newName)
-    if fileSystem["DCIM/Supertool"][oldName] then
+    if fileSystem["DCIM/Supertool"][oldName] and newName ~= "" then
         fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][oldName]
         fileSystem["DCIM/Supertool"][oldName] = nil
-        print("Renamed in file system: DCIM/Supertool/" .. oldName .. " to " .. newName)
+        return true
     end
+    return false
 end
 
 -- Save Position
 local function savePosition()
+    if not rootPart then
+        warn("Cannot save position: No valid HumanoidRootPart")
+        return
+    end
+
     local positionName = PositionInput.Text
     if positionName == "" then
         positionName = "Position " .. (#Teleport.savedPositions + 1)
     end
     
-    if rootPart then
-        Teleport.savedPositions[positionName] = rootPart.CFrame
-        saveToFileSystem(positionName, rootPart.CFrame)
+    Teleport.savedPositions[positionName] = rootPart.CFrame
+    if saveToFileSystem(positionName, rootPart.CFrame) then
         print("Position Saved: " .. positionName)
         PositionInput.Text = ""
         Teleport.updatePositionList()
     else
-        print("Cannot save position: No valid HumanoidRootPart")
+        warn("Failed to save position to file system")
     end
 end
 
 -- Load Position (Teleport to saved position)
 local function loadPosition(positionName)
-    if Teleport.savedPositions[positionName] and rootPart then
-        rootPart.CFrame = Teleport.savedPositions[positionName]
+    if not rootPart then
+        warn("Cannot teleport: No valid HumanoidRootPart")
+        return
+    end
+
+    local cframe = Teleport.savedPositions[positionName] or loadFromFileSystem(positionName)
+    if cframe then
+        rootPart.CFrame = cframe
         print("Teleported to: " .. positionName)
     else
-        print("Cannot teleport: Invalid position or no HumanoidRootPart")
+        warn("Cannot teleport: Invalid position")
     end
 end
 
@@ -79,92 +103,88 @@ end
 local function deletePosition(positionName)
     if Teleport.savedPositions[positionName] then
         Teleport.savedPositions[positionName] = nil
-        deleteFromFileSystem(positionName)
-        print("Deleted position: " .. positionName)
-        Teleport.updatePositionList()
+        if deleteFromFileSystem(positionName) then
+            print("Deleted position: " .. positionName)
+            Teleport.updatePositionList()
+        else
+            warn("Failed to delete position from file system")
+        end
     end
 end
 
 -- Rename Position
 local function renamePosition(oldName, newName)
     if Teleport.savedPositions[oldName] and newName ~= "" then
-        Teleport.savedPositions[newName] = Teleport.savedPositions[oldName]
-        Teleport.savedPositions[oldName] = nil
-        renameInFileSystem(oldName, newName)
-        print("Renamed position: " .. oldName .. " to " .. newName)
-        Teleport.updatePositionList()
+        if renameInFileSystem(oldName, newName) then
+            Teleport.savedPositions[newName] = Teleport.savedPositions[oldName]
+            Teleport.savedPositions[oldName] = nil
+            print("Renamed position: " .. oldName .. " to " .. newName)
+            Teleport.updatePositionList()
+        else
+            warn("Failed to rename position in file system")
+        end
     else
-        print("Cannot rename: Invalid old name or empty new name")
+        warn("Cannot rename: Invalid old name or empty new name")
     end
 end
 
 -- Save Freecam Position to Position Manager
 local function saveFreecamPosition(freecamPosition)
-    if freecamPosition then
-        local positionName = PositionInput.Text
-        if positionName == "" then
-            positionName = "Freecam Position " .. (#Teleport.savedPositions + 1)
-        end
-        Teleport.savedPositions[positionName] = CFrame.new(freecamPosition)
-        saveToFileSystem(positionName, CFrame.new(freecamPosition))
+    if not freecamPosition then
+        warn("Cannot save: Freecam must be enabled to save position")
+        return
+    end
+
+    local positionName = PositionInput.Text
+    if positionName == "" then
+        positionName = "Freecam Position " .. (#Teleport.savedPositions + 1)
+    end
+    
+    local cframe = CFrame.new(freecamPosition)
+    Teleport.savedPositions[positionName] = cframe
+    if saveToFileSystem(positionName, cframe) then
         print("Freecam Position Saved: " .. positionName)
         PositionInput.Text = ""
         Teleport.updatePositionList()
     else
-        print("Cannot save: Freecam must be enabled to save position")
-    end
-end
-
--- Save Selected Player Position to Position Manager
-local function savePlayerPosition(selectedPlayer)
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local positionName = PositionInput.Text
-        if positionName == "" then
-            positionName = selectedPlayer.Name .. " Position " .. (#Teleport.savedPositions + 1)
-        end
-        Teleport.savedPositions[positionName] = selectedPlayer.Character.HumanoidRootPart.CFrame
-        saveToFileSystem(positionName, selectedPlayer.Character.HumanoidRootPart.CFrame)
-        print("Player Position Saved: " .. positionName)
-        PositionInput.Text = ""
-        Teleport.updatePositionList()
-    else
-        print("Select a player first to save their position")
+        warn("Failed to save freecam position")
     end
 end
 
 -- Teleport to Freecam Position
 local function teleportToFreecam(freecamEnabled, freecamPosition, toggleFreecam)
-    if freecamEnabled and freecamPosition and rootPart then
+    if not rootPart then
+        warn("Cannot teleport: No valid HumanoidRootPart")
+        return
+    end
+
+    if freecamEnabled and freecamPosition then
         toggleFreecam(false)
         rootPart.CFrame = CFrame.new(freecamPosition)
         print("Teleported to freecam position")
-    elseif freecamPosition and rootPart then
+    elseif freecamPosition then
         rootPart.CFrame = CFrame.new(freecamPosition)
         print("Teleported to last freecam position")
     else
-        print("Use freecam first to set a position")
-    end
-end
-
--- Teleport to Selected Player
-local function teleportToSelectedPlayer(selectedPlayer)
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and rootPart then
-        rootPart.CFrame = selectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-        print("Teleported to: " .. selectedPlayer.Name)
-    else
-        print("Select a player first")
+        warn("Use freecam first to set a position")
     end
 end
 
 -- Show Position Manager
 local function showPositionManager()
     Teleport.positionFrameVisible = true
-    PositionFrame.Visible = true
-    Teleport.updatePositionList()
+    if PositionFrame then
+        PositionFrame.Visible = true
+        Teleport.updatePositionList()
+    else
+        warn("PositionFrame not initialized")
+    end
 end
 
 -- Update Position List UI
 function Teleport.updatePositionList()
+    if not PositionScrollFrame then return end
+    
     for _, child in pairs(PositionScrollFrame:GetChildren()) do
         if child:IsA("Frame") then
             child:Destroy()
@@ -289,7 +309,7 @@ function Teleport.updatePositionList()
         itemCount = itemCount + 1
     end
     
-    wait(0.1)
+    task.wait(0.1)
     local contentSize = PositionLayout.AbsoluteContentSize
     PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
 end
@@ -395,16 +415,16 @@ end
 -- Function to create buttons for Teleport features
 function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
     createButton("Position Manager", showPositionManager)
-    createButton("TP to Selected Player", function() teleportToSelectedPlayer(selectedPlayer) end)
     createButton("TP to Freecam", function() teleportToFreecam(freecamEnabled, freecamPosition, toggleFreecam) end)
     createButton("Save Freecam Position", function() saveFreecamPosition(freecamPosition) end)
-    createButton("Save Player Position", function() savePlayerPosition(selectedPlayer) end)
+    createButton("Save Current Position", savePosition)
 end
 
 -- Function to reset Teleport states
 function Teleport.resetStates()
     Teleport.savedPositions = {}
     Teleport.positionFrameVisible = false
+    fileSystem["DCIM/Supertool"] = {}
     if PositionFrame then
         PositionFrame.Visible = false
     end
