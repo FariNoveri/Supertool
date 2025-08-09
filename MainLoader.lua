@@ -94,7 +94,6 @@ Watermark.BorderColor3 = Color3.fromRGB(45, 45, 45)
 Watermark.Position = UDim2.new(0, 5, 0, 50)
 Watermark.Size = UDim2.new(0, 150, 0, 20)
 Watermark.Font = Enum.Font.Gotham
-Watermark.Text = "AntiAdmin: Initializing..."
 Watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
 Watermark.TextSize = 8
 Watermark.TextXAlignment = Enum.TextXAlignment.Left
