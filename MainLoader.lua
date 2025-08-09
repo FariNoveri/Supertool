@@ -60,7 +60,7 @@ Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.BorderSizePixel = 0
 Title.Size = UDim2.new(1, 0, 0, 25)
 Title.Font = Enum.Font.Gotham
-Title.Text = "MinimalHackGUI by Fari Noveri eqweq"
+Title.Text = "MinimalHackGUI by Fari Noveri"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
@@ -179,12 +179,7 @@ for _, category in ipairs(categories) do
 
     categoryButton.MouseButton1Click:Connect(function()
         selectedCategory = category.name
-        -- loadButtons() will be defined later
-        task.spawn(function()
-            if loadButtons then
-                loadButtons()
-            end
-        end)
+        loadButtons()
     end)
 
     categoryButton.MouseEnter:Connect(function()
@@ -361,11 +356,13 @@ local function createToggleButton(name, callback, categoryName)
     print("Created toggle button: " .. name .. " for category: " .. categoryName)
 end
 
--- Forward declaration of loadButtons function
+-- Forward declaration
 local loadButtons
 
 -- Load buttons implementation
 loadButtons = function()
+    print("Loading buttons for category: " .. tostring(selectedCategory))
+    
     for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
@@ -383,13 +380,15 @@ loadButtons = function()
     loadingLabel.BackgroundTransparency = 1
     loadingLabel.Size = UDim2.new(1, -2, 0, 20)
     loadingLabel.Font = Enum.Font.Gotham
-    loadingLabel.Text = "Loading..."
+    loadingLabel.Text = "Loading " .. selectedCategory .. " features..."
     loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     loadingLabel.TextSize = 8
     loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
 
     task.spawn(function()
         task.wait(0.1)
+        
+        local moduleLoaded = false
         
         if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
             local success, result = pcall(function()
@@ -399,10 +398,10 @@ loadButtons = function()
                     function(name, callback) createToggleButton(name, callback, "Movement") end
                 )
             end)
-            if not success then
+            if success then
+                moduleLoaded = true
+            else
                 warn("Failed to load Movement buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Movement buttons!"
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
             local success, result = pcall(function()
@@ -414,10 +413,10 @@ loadButtons = function()
                     selectedPlayer
                 )
             end)
-            if not success then
+            if success then
+                moduleLoaded = true
+            else
                 warn("Failed to load Player buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Player buttons!"
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
             local success, result = pcall(function()
@@ -431,10 +430,10 @@ loadButtons = function()
                     selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
                 )
             end)
-            if not success then
+            if success then
+                moduleLoaded = true
+            else
                 warn("Failed to load Teleport buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Teleport buttons!"
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
             local success, result = pcall(function()
@@ -442,10 +441,10 @@ loadButtons = function()
                     createToggleButton(name, callback, "Visual")
                 end)
             end)
-            if not success then
+            if success then
+                moduleLoaded = true
+            else
                 warn("Failed to load Visual buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Visual buttons!"
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
             local success, result = pcall(function()
@@ -453,10 +452,10 @@ loadButtons = function()
                     createButton(name, callback, "Utility")
                 end)
             end)
-            if not success then
+            if success then
+                moduleLoaded = true
+            else
                 warn("Failed to load Utility buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Utility buttons!"
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
             local success, result = pcall(function()
@@ -464,10 +463,10 @@ loadButtons = function()
                     createButton(name, callback, "Settings")
                 end)
             end)
-            if not success then
+            if success then
+                moduleLoaded = true
+            else
                 warn("Failed to load Settings buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Settings buttons!"
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
             local success, result = pcall(function()
@@ -475,15 +474,21 @@ loadButtons = function()
                     createButton(name, callback, "Info")
                 end)
             end)
-            if not success then
+            if success then
+                moduleLoaded = true
+            else
                 warn("Failed to load Info buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Info buttons!"
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         end
         
-        if loadingLabel and loadingLabel.Parent then
-            loadingLabel:Destroy()
+        -- If module not loaded, show message
+        if not moduleLoaded then
+            loadingLabel.Text = selectedCategory .. " module not loaded yet. Please wait..."
+            loadingLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+        else
+            if loadingLabel and loadingLabel.Parent then
+                loadingLabel:Destroy()
+            end
         end
         
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, math.max(FeatureLayout.AbsoluteContentSize.Y + 5, 1))
