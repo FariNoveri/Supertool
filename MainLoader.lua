@@ -254,6 +254,7 @@ local fallbackMovementModule = {
         return true
     end,
     loadMovementButtons = function(createButton, createToggleButton)
+        print("Loading fallback Movement buttons...")
         createButton("Fly (Fallback)", function()
             print("Fallback Fly button clicked")
         end, "Movement")
@@ -273,6 +274,12 @@ local modulesLoaded = {}
 local function loadModule(moduleName)
     if not moduleURLs[moduleName] then
         warn("No URL defined for module: " .. moduleName)
+        if moduleName == "Movement" then
+            modules[moduleName] = fallbackMovementModule
+            modulesLoaded[moduleName] = true
+            print("Assigned fallback for " .. moduleName .. " due to missing URL")
+            return true
+        end
         return false
     end
     
@@ -308,7 +315,7 @@ local function loadModule(moduleName)
         if moduleName == "Movement" then
             modules[moduleName] = fallbackMovementModule
             modulesLoaded[moduleName] = true
-            print("Using fallback Movement module")
+            print("Assigned fallback for " .. moduleName .. " due to load failure")
             if selectedCategory == "Movement" then
                 loadButtons()
             end
@@ -470,17 +477,28 @@ local function loadButtons()
     task.spawn(function()
         task.wait(0.1)
         
-        if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
-            local success, result = pcall(function()
-                print("Calling Movement.loadMovementButtons")
-                modules.Movement.loadMovementButtons(
-                    function(name, callback) createButton(name, callback, "Movement") end,
-                    function(name, callback) createToggleButton(name, callback, "Movement") end
-                )
-            end)
-            if not success then
-                warn("Failed to load Movement buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Movement buttons: " .. tostring(result)
+        if selectedCategory == "Movement" then
+            if not modules.Movement then
+                warn("Movement module not loaded, using fallback")
+                modules.Movement = fallbackMovementModule
+                modulesLoaded.Movement = true
+            end
+            if type(modules.Movement.loadMovementButtons) == "function" then
+                local success, result = pcall(function()
+                    print("Calling Movement.loadMovementButtons")
+                    modules.Movement.loadMovementButtons(
+                        function(name, callback) createButton(name, callback, "Movement") end,
+                        function(name, callback) createToggleButton(name, callback, "Movement") end
+                    )
+                end)
+                if not success then
+                    warn("Failed to load Movement buttons: " .. tostring(result))
+                    loadingLabel.Text = "Failed to load Movement buttons: " .. tostring(result)
+                    loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                end
+            else
+                warn("Movement.loadMovementButtons is not a function")
+                loadingLabel.Text = "Movement module missing loadMovementButtons"
                 loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
@@ -682,19 +700,20 @@ task.spawn(function()
     for _, moduleName in ipairs({"Movement", "Player", "Teleport"}) do
         if not modules[moduleName] then
             warn("Failed to load " .. moduleName .. " module after timeout!")
-            local errorLabel = Instance.new("TextLabel")
-            errorLabel.Parent = FeatureContainer
-            errorLabel.BackgroundTransparency = 1
-            errorLabel.Size = UDim2.new(1, -2, 0, 20)
-            errorLabel.Font = Enum.Font.Gotham
-            errorLabel.Text = "Failed to load " .. moduleName .. " module!"
-            errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-            errorLabel.TextSize = 8
-            errorLabel.TextXAlignment = Enum.TextXAlignment.Left
             if moduleName == "Movement" then
                 modules[moduleName] = fallbackMovementModule
                 modulesLoaded[moduleName] = true
-                print("Applied fallback for " .. moduleName .. " module")
+                print("Applied fallback for " .. moduleName .. " module after timeout")
+            else
+                local errorLabel = Instance.new("TextLabel")
+                errorLabel.Parent = FeatureContainer
+                errorLabel.BackgroundTransparency = 1
+                errorLabel.Size = UDim2.new(1, -2, 0, 20)
+                errorLabel.Font = Enum.Font.Gotham
+                errorLabel.Text = "Failed to load " .. moduleName .. " module!"
+                errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                errorLabel.TextSize = 8
+                errorLabel.TextXAlignment = Enum.TextXAlignment.Left
             end
         end
     end
