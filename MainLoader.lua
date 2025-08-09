@@ -163,42 +163,10 @@ local categories = {
 local categoryFrames = {}
 local isMinimized = false
 
--- Create category buttons
-for _, category in ipairs(categories) do
-    local categoryButton = Instance.new("TextButton")
-    categoryButton.Name = category.name .. "Category"
-    categoryButton.Parent = CategoryContainer
-    categoryButton.BackgroundColor3 = selectedCategory == category.name and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
-    categoryButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    categoryButton.Size = UDim2.new(1, -5, 0, 25)
-    categoryButton.LayoutOrder = category.order
-    categoryButton.Font = Enum.Font.GothamBold
-    categoryButton.Text = category.name
-    categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    categoryButton.TextSize = 8
+-- Load modules
+local modules = {}
+local modulesLoaded = {}
 
-    categoryButton.MouseButton1Click:Connect(function()
-        selectedCategory = category.name
-        task.spawn(loadButtons)
-    end)
-
-    categoryButton.MouseEnter:Connect(function()
-        if selectedCategory ~= category.name then
-            categoryButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        end
-    end)
-
-    categoryButton.MouseLeave:Connect(function()
-        if selectedCategory ~= category.name then
-            categoryButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        end
-    end)
-
-    categoryFrames[category.name] = {button = categoryButton}
-    categoryStates[category.name] = {}
-end
-
--- Module URLs
 local moduleURLs = {
     Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement.lua",
     Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Player.lua",
@@ -208,10 +176,6 @@ local moduleURLs = {
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Settings.lua",
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua"
 }
-
--- Load modules
-local modules = {}
-local modulesLoaded = {}
 
 local function loadModule(moduleName)
     if not moduleURLs[moduleName] then
@@ -469,6 +433,41 @@ local function loadButtons()
         -- Update CanvasSize
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, math.max(FeatureLayout.AbsoluteContentSize.Y + 5, 1))
     end)
+end
+
+-- Create category buttons
+for _, category in ipairs(categories) do
+    local categoryButton = Instance.new("TextButton")
+    categoryButton.Name = category.name .. "Category"
+    categoryButton.Parent = CategoryContainer
+    categoryButton.BackgroundColor3 = selectedCategory == category.name and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
+    categoryButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    categoryButton.Size = UDim2.new(1, -5, 0, 25)
+    categoryButton.LayoutOrder = category.order
+    categoryButton.Font = Enum.Font.GothamBold
+    categoryButton.Text = category.name
+    categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    categoryButton.TextSize = 8
+
+    categoryButton.MouseButton1Click:Connect(function()
+        selectedCategory = category.name
+        task.spawn(loadButtons)
+    end)
+
+    categoryButton.MouseEnter:Connect(function()
+        if selectedCategory ~= category.name then
+            categoryButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        end
+    end)
+
+    categoryButton.MouseLeave:Connect(function()
+        if selectedCategory ~= category.name then
+            categoryButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        end
+    end)
+
+    categoryFrames[category.name] = {button = categoryButton}
+    categoryStates[category.name] = {}
 end
 
 -- Minimize/Maximize
