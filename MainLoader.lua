@@ -42,9 +42,9 @@ local function disablePreviousInstances()
             local success, result = pcall(function()
                 if gui.MainFrame and gui.MainFrame:IsA("Frame") then
                     local resetScript = gui:FindFirstChild("ResetScript")
-                    if resetScript then
+                    if resetScript and resetScript.Source and resetScript.Source ~= "" then
                         local resetFunc = loadstring(resetScript.Source)
-                        if resetFunc then
+                        if resetFunc and type(resetFunc) == "function" then
                             resetFunc()
                         end
                     end
@@ -450,8 +450,11 @@ local function createToggleButton(name, callback, categoryName)
     print("Created toggle button: " .. name .. " for category: " .. categoryName)
 end
 
--- Load buttons
-local function loadButtons()
+-- Forward declaration of loadButtons function
+local loadButtons
+
+-- Load buttons implementation
+loadButtons = function()
     for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
