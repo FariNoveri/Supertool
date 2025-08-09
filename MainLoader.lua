@@ -179,7 +179,12 @@ for _, category in ipairs(categories) do
 
     categoryButton.MouseButton1Click:Connect(function()
         selectedCategory = category.name
-        loadButtons()
+        -- loadButtons() will be defined later
+        task.spawn(function()
+            if loadButtons then
+                loadButtons()
+            end
+        end)
     end)
 
     categoryButton.MouseEnter:Connect(function()
