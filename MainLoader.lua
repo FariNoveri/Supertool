@@ -34,17 +34,11 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
 
 -- Check for existing script instances (simplified)
-local function disablePreviousInstances()
-    local existingGuis = player.PlayerGui:GetChildren()
-    for _, gui in ipairs(existingGuis) do
-        if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
-            warn("Another MinimalHackGUI instance detected. Disabling previous instance.")
-            gui.Enabled = false
-        end
+for _, gui in pairs(player.PlayerGui:GetChildren()) do
+    if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
+        gui:Destroy()
     end
 end
-
-disablePreviousInstances()
 
 -- Main Frame
 local Frame = Instance.new("Frame")
