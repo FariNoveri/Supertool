@@ -1,3 +1,4 @@
+-- -- antiadmin.lua
 -- -- Anti Admin Protection System by Fari Noveri
 
 -- local AntiAdmin = {}
@@ -14,11 +15,10 @@
 -- local rootPart
 -- local backpack
 -- local camera = Workspace.CurrentCamera
--- local ScreenGui -- Will be set via dependencies
 
 -- -- Anti Admin variables
 -- local antiAdminEnabled = true
--- local protectedPlayers = {} -- Players marked as admins
+-- local protectedPlayers = {}
 -- local lastKnownPosition
 -- local lastKnownHealth = 100
 -- local lastKnownVelocity = Vector3.new(0, 0, 0)
@@ -29,23 +29,23 @@
 -- local lastKnownTools = {}
 -- local lastKnownCanCollide = true
 -- local lastKnownTransparency = 0
--- local effectSources = {} -- Tracks source of effects (e.g., admin causing kill)
+-- local effectSources = {}
 -- local antiAdminConnections = {}
 -- local maxReverseAttempts = 10
 -- local allowedAnimations = {}
 -- local allowedRemotes = {}
 -- local oldNamecall
--- local adminNotificationLabel -- For admin detection notification
 
 -- -- Initialize function
 -- function AntiAdmin.init(dependencies)
 --     if dependencies then
+--         -- Use dependencies if provided
 --         if dependencies.player then player = dependencies.player end
 --         if dependencies.humanoid then humanoid = dependencies.humanoid end
 --         if dependencies.rootPart then rootPart = dependencies.rootPart end
---         if dependencies.ScreenGui then ScreenGui = dependencies.ScreenGui end
 --     end
     
+--     -- Set up character references
 --     character = player.Character
 --     if character then
 --         humanoid = character:FindFirstChild("Humanoid")
@@ -70,46 +70,6 @@
 --             lastKnownCameraSubject = camera.CameraSubject
 --         end
 --     end
-
---     -- Create admin notification UI
---     if ScreenGui then
---         adminNotificationLabel = Instance.new("TextLabel")
---         adminNotificationLabel.Name = "AdminNotification"
---         adminNotificationLabel.Parent = ScreenGui
---         adminNotificationLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
---         adminNotificationLabel.BackgroundTransparency = 0.5
---         adminNotificationLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
---         adminNotificationLabel.Position = UDim2.new(1, -205, 0, 5)
---         adminNotificationLabel.Size = UDim2.new(0, 200, 0, 30)
---         adminNotificationLabel.Font = Enum.Font.Gotham
---         adminNotificationLabel.Text = ""
---         adminNotificationLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
---         adminNotificationLabel.TextSize = 12
---         adminNotificationLabel.TextXAlignment = Enum.TextXAlignment.Left
---         adminNotificationLabel.Visible = false
---         print("Admin notification UI created")
---     else
---         warn("Cannot create admin notification UI: ScreenGui not available")
---     end
--- end
-
--- -- Function to show admin notification
--- local function showAdminNotification(message)
---     if not adminNotificationLabel then
---         warn("Cannot show admin notification: UI not initialized")
---         return
---     end
---     adminNotificationLabel.Text = message
---     adminNotificationLabel.Visible = true
---     print("Showing notification: " .. message)
---     spawn(function()
---         wait(3)
---         if adminNotificationLabel then
---             adminNotificationLabel.Visible = false
---             adminNotificationLabel.Text = ""
---             print("Admin notification hidden")
---         end
---     end)
 -- end
 
 -- -- Function to update tool cache
@@ -123,22 +83,18 @@
 --     end
 -- end
 
--- -- Function to detect if player is an admin (simulation)
+-- -- Function to detect if player has anti admin (simulation)
 -- local function hasAntiAdmin(targetPlayer)
 --     if not targetPlayer then return false end
---     return protectedPlayers[targetPlayer] or false -- Use protectedPlayers to check admin status
+--     return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
 -- end
 
--- -- Function to update protected players and detect admins
+-- -- Function to update protected players
 -- local function updateProtectedPlayers()
 --     protectedPlayers = {}
 --     for _, p in pairs(Players:GetPlayers()) do
 --         if p ~= player then
---             local isAdmin = math.random(1, 100) <= 50 -- Simulated admin check
---             protectedPlayers[p] = isAdmin
---             if isAdmin then
---                 showAdminNotification("Detected Admin: " .. p.Name)
---             end
+--             protectedPlayers[p] = math.random(1, 100) <= 50
 --         end
 --     end
 -- end
@@ -176,6 +132,7 @@
 --     end
     
 --     local attempts = 0
+
 --     while currentTarget and hasAntiAdmin(currentTarget) and attempts < maxReverseAttempts do
 --         excludePlayers[currentTarget] = true
 --         currentTarget = findUnprotectedTarget(excludePlayers)
@@ -192,7 +149,6 @@
 --             if effectType == "kill" then
 --                 targetHumanoid.Health = 0
 --                 print("Reversed kill effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---                 showAdminNotification("Kill attempt by " .. (originalSource and originalSource.Name or "unknown") .. " reversed to " .. currentTarget.Name)
 --             elseif effectType == "teleport" then
 --                 local randomPos = Vector3.new(
 --                     math.random(-1000, 1000),
@@ -250,15 +206,6 @@
 --     end
 -- end
 
--- -- Function to check if death was likely from falling
--- local function isFallDeath()
---     if not humanoid or not rootPart then return false end
---     -- Check if player is in the air (no floor) or has high downward velocity
---     local isInAir = humanoid.FloorMaterial == Enum.Material.Air
---     local downwardVelocity = rootPart.Velocity.Y < -50 -- Typical fall velocity threshold
---     return isInAir or downwardVelocity
--- end
-
 -- -- Function to handle anti admin protection
 -- local function handleAntiAdmin()
 --     if not humanoid or not rootPart then return end
@@ -269,33 +216,9 @@
 --             if not antiAdminEnabled then return end
 --             if health < lastKnownHealth and health <= 0 then
 --                 pcall(function()
---                     -- Check if death is likely from falling
---                     if isFallDeath() then
---                         print("Detected accidental death (likely fall), not reversing")
---                         return
---                     end
---                     -- Check for admin involvement
---                     local adminDetected = false
---                     local sourcePlayer = effectSources[player]
---                     if sourcePlayer and hasAntiAdmin(sourcePlayer) then
---                         adminDetected = true
---                     else
---                         -- Check if any admin is present (as a fallback)
---                         for _, p in pairs(Players:GetPlayers()) do
---                             if p ~= player and hasAntiAdmin(p) then
---                                 adminDetected = true
---                                 sourcePlayer = p
---                                 break
---                             end
---                         end
---                     end
---                     if adminDetected then
---                         humanoid.Health = lastKnownHealth
---                         print("Detected admin/exploit kill attempt, health restored")
---                         reverseEffect("kill", sourcePlayer)
---                     else
---                         print("No admin detected for kill attempt, not reversing")
---                     end
+--                     humanoid.Health = lastKnownHealth
+--                     print("Detected kill attempt, health restored")
+--                     reverseEffect("kill", effectSources[player])
 --                 end)
 --             end
 --             lastKnownHealth = humanoid.Health
@@ -310,7 +233,7 @@
 --                 local currentPos = rootPart.CFrame
 --                 if lastKnownPosition then
 --                     local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
---                     if distance > 50 then
+--                     if distance > 50 then -- Increased threshold
 --                         rootPart.CFrame = lastKnownPosition
 --                         print("Detected teleport attempt, position restored")
 --                         reverseEffect("teleport", effectSources[player])
@@ -327,7 +250,7 @@
 --             if not antiAdminEnabled then return end
 --             pcall(function()
 --                 local currentSpeed = humanoid.WalkSpeed
---                 if math.abs(currentSpeed - lastKnownWalkSpeed) > 50 then
+--                 if math.abs(currentSpeed - lastKnownWalkSpeed) > 50 then -- Allow some variation
 --                     humanoid.WalkSpeed = lastKnownWalkSpeed
 --                     print("Detected speed change attempt, speed restored")
 --                     reverseEffect("speed", effectSources[player])
@@ -371,14 +294,6 @@
 --             local method = getnamecallmethod()
 --             if (method == "FireServer" or method == "InvokeServer") and not allowedRemotes[self] then
 --                 print("Blocked unauthorized Remote call: " .. tostring(self.Name))
---                 -- Attempt to identify the source player (simulated)
---                 for _, p in pairs(Players:GetPlayers()) do
---                     if p ~= player and hasAntiAdmin(p) then
---                         effectSources[player] = p
---                         print("Suspected admin remote from: " .. p.Name)
---                         break
---                     end
---                 end
 --                 return nil
 --             end
 --             return oldNamecall(self, ...)
@@ -416,7 +331,7 @@
 
 --     -- Handle character respawning
 --     player.CharacterAdded:Connect(function(newCharacter)
---         wait(0.5)
+--         wait(0.5) -- Wait for character to fully load
 --         character = newCharacter
 --         humanoid = character:WaitForChild("Humanoid", 10)
 --         rootPart = character:WaitForChild("HumanoidRootPart", 10)
@@ -452,7 +367,7 @@
 
 -- -- Reset states function
 -- function AntiAdmin.resetStates()
---     print("Resetting AntiAdmin states...")
+--     -- Clean up connections
 --     for _, conn in pairs(antiAdminConnections) do
 --         if conn and typeof(conn) == "RBXScriptConnection" then
 --             conn:Disconnect()
@@ -460,6 +375,7 @@
 --     end
 --     antiAdminConnections = {}
     
+--     -- Reset variables
 --     lastKnownHealth = 100
 --     lastKnownVelocity = Vector3.new(0, 0, 0)
 --     lastKnownWalkSpeed = 16
@@ -469,12 +385,6 @@
 --     lastKnownTransparency = 0
 --     lastKnownTools = {}
 --     effectSources = {}
-    
---     if adminNotificationLabel then
---         adminNotificationLabel:Destroy()
---         adminNotificationLabel = nil
---         print("Admin notification UI destroyed")
---     end
 -- end
 
 -- -- Cleanup function
@@ -488,6 +398,7 @@
 --     end
 --     antiAdminConnections = {}
     
+--     -- Reset metatable if possible
 --     pcall(function()
 --         if oldNamecall then
 --             local mt = getrawmetatable(game)
@@ -496,12 +407,6 @@
 --             setreadonly(mt, true)
 --         end
 --     end)
-    
---     if adminNotificationLabel then
---         adminNotificationLabel:Destroy()
---         adminNotificationLabel = nil
---         print("Admin notification UI destroyed during cleanup")
---     end
 -- end
 
 -- return AntiAdmin
