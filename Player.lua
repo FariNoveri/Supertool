@@ -396,7 +396,6 @@ function Player.updatePlayerList()
         noPlayersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         noPlayersLabel.TextSize = 11
         noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
-        print("Player List Updated: No other players found")
     else
         for _, p in pairs(players) do
             if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
@@ -571,7 +570,6 @@ function Player.updatePlayerList()
         local contentSize = PlayerListLayout.AbsoluteContentSize
         PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
     end)
-    print("Player List Updated: " .. playerCount .. " players listed")
     updateSpectateButtons()
 end
 
