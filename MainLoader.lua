@@ -33,26 +33,12 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
 
--- Check for existing script instances
+-- Check for existing script instances (simplified)
 local function disablePreviousInstances()
     local existingGuis = player.PlayerGui:GetChildren()
     for _, gui in ipairs(existingGuis) do
         if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
             warn("Another MinimalHackGUI instance detected. Disabling previous instance.")
-            local success, result = pcall(function()
-                if gui.MainFrame and gui.MainFrame:IsA("Frame") then
-                    local resetScript = gui:FindFirstChild("ResetScript")
-                    if resetScript and resetScript.Source and resetScript.Source ~= "" then
-                        local resetFunc = loadstring(resetScript.Source)
-                        if resetFunc and type(resetFunc) == "function" then
-                            resetFunc()
-                        end
-                    end
-                end
-            end)
-            if not success then
-                warn("Failed to reset previous instance states: " .. tostring(result))
-            end
             gui.Enabled = false
         end
     end
@@ -83,21 +69,6 @@ Title.Font = Enum.Font.Gotham
 Title.Text = "MinimalHackGUI by Fari Noveri"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
-
--- Watermark
-local Watermark = Instance.new("TextLabel")
-Watermark.Name = "Watermark"
-Watermark.Parent = ScreenGui
-Watermark.BackgroundTransparency = 0.5
-Watermark.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-Watermark.BorderColor3 = Color3.fromRGB(45, 45, 45)
-Watermark.Position = UDim2.new(0, 5, 0, 50)
-Watermark.Size = UDim2.new(0, 150, 0, 20)
-Watermark.Font = Enum.Font.Gotham
-Watermark.Text = "AntiAdmin: Initializing..."
-Watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
-Watermark.TextSize = 8
-Watermark.TextXAlignment = Enum.TextXAlignment.Left
 
 -- Minimized Logo
 local MinimizedLogo = Instance.new("Frame")
@@ -184,7 +155,7 @@ FeatureLayout.Parent = FeatureContainer
 FeatureLayout.Padding = UDim.new(0, 2)
 FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Categories
+-- Categories (removed AntiAdmin)
 local categories = {
     {name = "Movement", order = 1},
     {name = "Player", order = 2},
@@ -192,8 +163,7 @@ local categories = {
     {name = "Visual", order = 4},
     {name = "Utility", order = 5},
     {name = "Settings", order = 6},
-    {name = "Info", order = 7},
-    {name = "AntiAdmin", order = 8}
+    {name = "Info", order = 7}
 }
 
 local categoryFrames = {}
@@ -234,7 +204,7 @@ for _, category in ipairs(categories) do
     categoryStates[category.name] = {}
 end
 
--- Module URLs
+-- Module URLs (removed AntiAdmin)
 local moduleURLs = {
     Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement.lua",
     Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Player.lua",
@@ -242,29 +212,7 @@ local moduleURLs = {
     Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Visual.lua",
     Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Utility.lua",
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Settings.lua",
-    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua",
-    AntiAdminInfo = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdminInfo.lua",
-    AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua"
-}
-
--- Fallback Movement module
-local fallbackMovementModule = {
-    init = function(deps)
-        print("Using fallback Movement module")
-        return true
-    end,
-    loadMovementButtons = function(createButton, createToggleButton)
-        print("Loading fallback Movement buttons...")
-        createButton("Fly (Fallback)", function()
-            print("Fallback Fly button clicked")
-        end, "Movement")
-        createToggleButton("Toggle Fly (Fallback)", function(state)
-            print("Fallback Toggle Fly: " .. tostring(state))
-        end, "Movement")
-    end,
-    resetStates = function()
-        print("Resetting fallback Movement states")
-    end
+    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua"
 }
 
 -- Load modules
@@ -274,12 +222,6 @@ local modulesLoaded = {}
 local function loadModule(moduleName)
     if not moduleURLs[moduleName] then
         warn("No URL defined for module: " .. moduleName)
-        if moduleName == "Movement" then
-            modules[moduleName] = fallbackMovementModule
-            modulesLoaded[moduleName] = true
-            print("Assigned fallback for " .. moduleName .. " due to missing URL")
-            return true
-        end
         return false
     end
     
@@ -306,25 +248,14 @@ local function loadModule(moduleName)
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
         print("Loaded module: " .. moduleName)
-        if selectedCategory == moduleName or (moduleName == "AntiAdminInfo" and selectedCategory == "AntiAdmin") then
-            loadButtons()
-        end
         return true
     else
         warn("Failed to load module: " .. moduleName .. " Error: " .. tostring(result))
-        if moduleName == "Movement" then
-            modules[moduleName] = fallbackMovementModule
-            modulesLoaded[moduleName] = true
-            print("Assigned fallback for " .. moduleName .. " due to load failure")
-            if selectedCategory == "Movement" then
-                loadButtons()
-            end
-            return true
-        end
+        return false
     end
-    return false
 end
 
+-- Load all modules
 for moduleName, _ in pairs(moduleURLs) do
     task.spawn(function() loadModule(moduleName) end)
 end
@@ -361,25 +292,6 @@ local function initializeModules()
         end
     end
 end
-
--- AntiAdmin background execution
-task.spawn(function()
-    task.wait(4)
-    if modules.AntiAdmin and type(modules.AntiAdmin.runBackground) == "function" then
-        pcall(function() modules.AntiAdmin.runBackground() end)
-    end
-end)
-
--- AntiAdminInfo watermark update
-task.spawn(function()
-    task.wait(4)
-    if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
-        pcall(function()
-            local watermarkText = modules.AntiAdminInfo.getWatermarkText()
-            if watermarkText then Watermark.Text = watermarkText end
-        end)
-    end
-end)
 
 -- Create button
 local function createButton(name, callback, categoryName)
@@ -480,33 +392,22 @@ loadButtons = function()
     task.spawn(function()
         task.wait(0.1)
         
-        if selectedCategory == "Movement" then
-            if not modules.Movement then
-                warn("Movement module not loaded, using fallback")
-                modules.Movement = fallbackMovementModule
-                modulesLoaded.Movement = true
-            end
-            if type(modules.Movement.loadMovementButtons) == "function" then
-                local success, result = pcall(function()
-                    print("Calling Movement.loadMovementButtons")
-                    modules.Movement.loadMovementButtons(
-                        function(name, callback) createButton(name, callback, "Movement") end,
-                        function(name, callback) createToggleButton(name, callback, "Movement") end
-                    )
-                end)
-                if not success then
-                    warn("Failed to load Movement buttons: " .. tostring(result))
-                    loadingLabel.Text = "Failed to load Movement buttons: " .. tostring(result)
-                    loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                end
-            else
-                warn("Movement.loadMovementButtons is not a function")
-                loadingLabel.Text = "Movement module missing loadMovementButtons"
+        if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
+            local success, result = pcall(function()
+                print("Calling Movement.loadMovementButtons")
+                modules.Movement.loadMovementButtons(
+                    function(name, callback) createButton(name, callback, "Movement") end,
+                    function(name, callback) createToggleButton(name, callback, "Movement") end
+                )
+            end)
+            if not success then
+                warn("Failed to load Movement buttons: " .. tostring(result))
+                loadingLabel.Text = "Failed to load Movement buttons!"
                 loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
             local success, result = pcall(function()
-                local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
+                local selectedPlayer = modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
                 print("Calling Player.loadPlayerButtons with selectedPlayer: " .. tostring(selectedPlayer))
                 modules.Player.loadPlayerButtons(
                     function(name, callback) createButton(name, callback, "Player") end,
@@ -580,19 +481,9 @@ loadButtons = function()
                 loadingLabel.Text = "Failed to load Info buttons!"
                 loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
-        elseif selectedCategory == "AntiAdmin" then
-            local placeholder = Instance.new("TextLabel")
-            placeholder.Parent = FeatureContainer
-            placeholder.BackgroundTransparency = 1
-            placeholder.Size = UDim2.new(1, -2, 0, 20)
-            placeholder.Font = Enum.Font.Gotham
-            placeholder.Text = "AntiAdmin runs in background"
-            placeholder.TextColor3 = Color3.fromRGB(255, 255, 255)
-            placeholder.TextSize = 8
-            placeholder.TextXAlignment = Enum.TextXAlignment.Left
         end
         
-        if loadingLabel.Parent then
+        if loadingLabel and loadingLabel.Parent then
             loadingLabel:Destroy()
         end
         
@@ -606,7 +497,6 @@ local function toggleMinimize()
     Frame.Visible = not isMinimized
     MinimizedLogo.Visible = isMinimized
     MinimizeButton.Text = isMinimized and "+" or "-"
-    Watermark.Visible = not isMinimized
 end
 
 -- Reset states
@@ -627,13 +517,6 @@ local function resetStates()
     
     if selectedCategory then
         loadButtons()
-    end
-
-    if modules.AntiAdminInfo and type(modules.AntiAdminInfo.getWatermarkText) == "function" then
-        pcall(function()
-            local watermarkText = modules.AntiAdminInfo.getWatermarkText()
-            if watermarkText then Watermark.Text = watermarkText end
-        end)
     end
 end
 
@@ -673,7 +556,6 @@ LogoButton.MouseButton1Click:Connect(toggleMinimize)
 CloseButton.MouseButton1Click:Connect(function()
     Frame.Visible = false
     MinimizedLogo.Visible = false
-    Watermark.Visible = false
 end)
 
 connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -681,43 +563,31 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
         if Frame.Visible or MinimizedLogo.Visible then
             Frame.Visible = false
             MinimizedLogo.Visible = false
-            Watermark.Visible = false
         else
             Frame.Visible = true
             MinimizedLogo.Visible = false
             isMinimized = false
             MinimizeButton.Text = "-"
-            Watermark.Visible = true
         end
     end
 end)
 
 -- Start initialization
 task.spawn(function()
-    local timeout = 10
+    local timeout = 15
     local startTime = tick()
+    
+    -- Wait for critical modules to load
     while (not modules.Movement or not modules.Player or not modules.Teleport) and tick() - startTime < timeout do
         task.wait(0.1)
     end
 
+    -- Check if modules loaded successfully
     for _, moduleName in ipairs({"Movement", "Player", "Teleport"}) do
         if not modules[moduleName] then
             warn("Failed to load " .. moduleName .. " module after timeout!")
-            if moduleName == "Movement" then
-                modules[moduleName] = fallbackMovementModule
-                modulesLoaded[moduleName] = true
-                print("Applied fallback for " .. moduleName .. " module after timeout")
-            else
-                local errorLabel = Instance.new("TextLabel")
-                errorLabel.Parent = FeatureContainer
-                errorLabel.BackgroundTransparency = 1
-                errorLabel.Size = UDim2.new(1, -2, 0, 20)
-                errorLabel.Font = Enum.Font.Gotham
-                errorLabel.Text = "Failed to load " .. moduleName .. " module!"
-                errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                errorLabel.TextSize = 8
-                errorLabel.TextXAlignment = Enum.TextXAlignment.Left
-            end
+        else
+            print(moduleName .. " module loaded successfully")
         end
     end
 
