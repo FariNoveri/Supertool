@@ -1,5 +1,5 @@
 -- Teleport-related features for MinimalHackGUI by Fari Noveri
--- FIXED VERSION - Handles respawn/character reset properly + bugfix loadFromFileSystem
+-- FIXED VERSION - Handles respawn/character reset properly + UI creation fix
 
 -- Dependencies: Passed from mainloader.lua
 local Players, Workspace, ScreenGui, player, rootPart, ScrollFrame, settings
@@ -35,6 +35,506 @@ local function getRootPart()
         currentRootPart = player.Character.HumanoidRootPart
         return currentRootPart
     end
+    return nil
+end
+
+-- Save to mock filesystem
+local function saveToFileSystem(positionName, cframe)
+    if not positionName or not cframe then return false end
+    fileSystem["DCIM/Supertool"][positionName] = {
+        x = cframe.X,
+        y = cframe.Y,
+        z = cframe.Z,
+        orientation = {cframe:ToEulerAnglesXYZ()}
+    }
+    return true
+end
+
+-- Load from mock filesystem (FIXED variable names)
+local function loadFromFileSystem(positionName)
+    local data = fileSystem["DCIM/Supertool"][positionName]
+    if data then
+        local rx, ry, rz = unpack(data.orientation)
+        return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
+    end
+    return nil
+end
+
+-- Get positions ordered by name
+local function getOrderedPositions()
+    local orderedPositions = {}
+    for name, cframe in pairs(Teleport.savedPositions) do
+        table.insert(orderedPositions, {name = name, cframe = cframe})
+    end
+    table.sort(orderedPositions, function(a, b) return a.name < b.name end)
+    return orderedPositions
+end
+
+-- Safe teleport
+local function safeTeleport(targetCFrame)
+    local root = getRootPart()
+    if not root then
+        warn("Cannot teleport: Character or HumanoidRootPart not found")
+        return false
+    end
+    if not root.Parent then
+        wait(0.1)
+        root = getRootPart()
+        if not root then return false end
+    end
+    root.CFrame = targetCFrame
+    return true
+end
+
+-- Auto teleport loop
+local function doAutoTeleport()
+    return coroutine.create(function()
+        local positions = getOrderedPositions()
+        if #positions == 0 then
+            warn("No saved positions for auto teleport")
+            Teleport.autoTeleportActive = false
+            return
+        end
+        repeat
+            for i = Teleport.currentAutoIndex, #positions do
+                if not Teleport.autoTeleportActive then return end
+                local position = positions[i]
+                if safeTeleport(position.cframe) then
+                    print("Auto teleported to: " .. position.name .. " (" .. i .. "/" .. #positions .. ")")
+                else
+                    warn("Failed to auto teleport to: " .. position.name)
+                end
+                Teleport.currentAutoIndex = i + 1
+                if i < #positions or Teleport.autoTeleportMode == "repeat" then
+                    wait(Teleport.autoTeleportDelay)
+                end
+            end
+            if Teleport.autoTeleportMode == "repeat" and Teleport.autoTeleportActive then
+                Teleport.currentAutoIndex = 1
+                print("Auto teleport cycle completed, restarting...")
+            end
+        until Teleport.autoTeleportMode ~= "repeat" or not Teleport.autoTeleportActive
+        Teleport.autoTeleportActive = false
+        Teleport.currentAutoIndex = 1
+    end)
+end
+
+-- Start auto teleport
+function Teleport.startAutoTeleport()
+    if Teleport.autoTeleportActive then return end
+    if #getOrderedPositions() == 0 then
+        warn("No saved positions for auto teleport")
+        return
+    end
+    Teleport.autoTeleportActive = true
+    Teleport.currentAutoIndex = 1
+    Teleport.autoTeleportCoroutine = doAutoTeleport()
+    spawn(function()
+        local success, err = coroutine.resume(Teleport.autoTeleportCoroutine)
+        if not success then
+            warn("Auto teleport error: " .. tostring(err))
+            Teleport.autoTeleportActive = false
+        end
+    end)
+end
+
+-- Stop auto teleport
+function Teleport.stopAutoTeleport()
+    if not Teleport.autoTeleportActive then return end
+    Teleport.autoTeleportActive = false
+    Teleport.currentAutoIndex = 1
+    Teleport.autoTeleportCoroutine = nil
+end
+
+-- Toggle auto mode
+function Teleport.toggleAutoMode()
+    Teleport.autoTeleportMode = (Teleport.autoTeleportMode == "once") and "repeat" or "once"
+    return Teleport.autoTeleportMode
+end
+
+-- Create position button
+local function createPositionButton(positionName, cframe)
+    if not PositionScrollFrame then return end
+    
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -10, 0, 25)
+    button.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    button.BorderSizePixel = 1
+    button.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    button.Text = positionName
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.TextScaled = true
+    button.Font = Enum.Font.SourceSans
+    button.Parent = PositionScrollFrame
+
+    -- Left click to teleport
+    button.MouseButton1Click:Connect(function()
+        if safeTeleport(cframe) then
+            print("Teleported to: " .. positionName)
+        end
+    end)
+    
+    -- Right click to delete
+    button.MouseButton2Click:Connect(function()
+        Teleport.savedPositions[positionName] = nil
+        fileSystem["DCIM/Supertool"][positionName] = nil
+        button:Destroy()
+        print("Deleted position: " .. positionName)
+        -- Update canvas size after deletion
+        if PositionScrollFrame and PositionLayout then
+            PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PositionLayout.AbsoluteContentSize.Y)
+        end
+    end)
+end
+
+-- Refresh UI buttons
+local function refreshPositionButtons()
+    if not PositionScrollFrame then return end
+    
+    -- Clear existing buttons
+    for _, child in pairs(PositionScrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then 
+            child:Destroy() 
+        end
+    end
+    
+    -- Recreate all buttons
+    for positionName, cframe in pairs(Teleport.savedPositions) do
+        createPositionButton(positionName, cframe)
+    end
+    
+    -- Update canvas size
+    if PositionLayout then
+        wait(0.1) -- Wait for layout to update
+        PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PositionLayout.AbsoluteContentSize.Y)
+    end
+end
+
+-- Create Position Manager UI - FIXED
+function Teleport.createPositionManagerUI()
+    if not ScreenGui then 
+        warn("ScreenGui not available for Position Manager")
+        return 
+    end
+
+    -- Main Position Frame
+    PositionFrame = Instance.new("Frame")
+    PositionFrame.Size = UDim2.new(0, 300, 0, 400)
+    PositionFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
+    PositionFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    PositionFrame.BorderSizePixel = 2
+    PositionFrame.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    PositionFrame.Visible = false
+    PositionFrame.Parent = ScreenGui
+
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    title.BorderSizePixel = 0
+    title.Text = "Position Manager"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextScaled = true
+    title.Font = Enum.Font.SourceSansBold
+    title.Parent = PositionFrame
+
+    -- Input for position name
+    PositionInput = Instance.new("TextBox")
+    PositionInput.Size = UDim2.new(1, -10, 0, 30)
+    PositionInput.Position = UDim2.new(0, 5, 0, 35)
+    PositionInput.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    PositionInput.BorderSizePixel = 1
+    PositionInput.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    PositionInput.Text = ""
+    PositionInput.PlaceholderText = "Enter position name..."
+    PositionInput.TextColor3 = Color3.new(1, 1, 1)
+    PositionInput.TextScaled = true
+    PositionInput.Font = Enum.Font.SourceSans
+    PositionInput.Parent = PositionFrame
+
+    -- Save Position Button
+    SavePositionButton = Instance.new("TextButton")
+    SavePositionButton.Size = UDim2.new(1, -10, 0, 30)
+    SavePositionButton.Position = UDim2.new(0, 5, 0, 70)
+    SavePositionButton.BackgroundColor3 = Color3.new(0, 0.7, 0)
+    SavePositionButton.BorderSizePixel = 1
+    SavePositionButton.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    SavePositionButton.Text = "Save Current Position"
+    SavePositionButton.TextColor3 = Color3.new(1, 1, 1)
+    SavePositionButton.TextScaled = true
+    SavePositionButton.Font = Enum.Font.SourceSansBold
+    SavePositionButton.Parent = PositionFrame
+
+    -- Scroll Frame for saved positions
+    PositionScrollFrame = Instance.new("ScrollingFrame")
+    PositionScrollFrame.Size = UDim2.new(1, -10, 1, -210)
+    PositionScrollFrame.Position = UDim2.new(0, 5, 0, 105)
+    PositionScrollFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    PositionScrollFrame.BorderSizePixel = 1
+    PositionScrollFrame.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    PositionScrollFrame.ScrollBarThickness = 10
+    PositionScrollFrame.Parent = PositionFrame
+
+    -- Layout for scroll frame
+    PositionLayout = Instance.new("UIListLayout")
+    PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    PositionLayout.Padding = UDim.new(0, 2)
+    PositionLayout.Parent = PositionScrollFrame
+
+    -- Auto Teleport Frame
+    AutoTeleportFrame = Instance.new("Frame")
+    AutoTeleportFrame.Size = UDim2.new(1, -10, 0, 90)
+    AutoTeleportFrame.Position = UDim2.new(0, 5, 1, -95)
+    AutoTeleportFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    AutoTeleportFrame.BorderSizePixel = 1
+    AutoTeleportFrame.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    AutoTeleportFrame.Parent = PositionFrame
+
+    -- Auto Teleport Button
+    AutoTeleportButton = Instance.new("TextButton")
+    AutoTeleportButton.Size = UDim2.new(0.48, 0, 0, 25)
+    AutoTeleportButton.Position = UDim2.new(0, 5, 0, 5)
+    AutoTeleportButton.BackgroundColor3 = Color3.new(0, 0.5, 1)
+    AutoTeleportButton.BorderSizePixel = 1
+    AutoTeleportButton.Text = "Start Auto"
+    AutoTeleportButton.TextColor3 = Color3.new(1, 1, 1)
+    AutoTeleportButton.TextScaled = true
+    AutoTeleportButton.Font = Enum.Font.SourceSans
+    AutoTeleportButton.Parent = AutoTeleportFrame
+
+    -- Stop Auto Button
+    StopAutoButton = Instance.new("TextButton")
+    StopAutoButton.Size = UDim2.new(0.48, 0, 0, 25)
+    StopAutoButton.Position = UDim2.new(0.52, 0, 0, 5)
+    StopAutoButton.BackgroundColor3 = Color3.new(1, 0, 0)
+    StopAutoButton.BorderSizePixel = 1
+    StopAutoButton.Text = "Stop Auto"
+    StopAutoButton.TextColor3 = Color3.new(1, 1, 1)
+    StopAutoButton.TextScaled = true
+    StopAutoButton.Font = Enum.Font.SourceSans
+    StopAutoButton.Parent = AutoTeleportFrame
+
+    -- Mode Toggle Button
+    AutoModeToggle = Instance.new("TextButton")
+    AutoModeToggle.Size = UDim2.new(0.48, 0, 0, 25)
+    AutoModeToggle.Position = UDim2.new(0, 5, 0, 35)
+    AutoModeToggle.BackgroundColor3 = Color3.new(0.5, 0.5, 0)
+    AutoModeToggle.BorderSizePixel = 1
+    AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
+    AutoModeToggle.TextColor3 = Color3.new(1, 1, 1)
+    AutoModeToggle.TextScaled = true
+    AutoModeToggle.Font = Enum.Font.SourceSans
+    AutoModeToggle.Parent = AutoTeleportFrame
+
+    -- Delay Input
+    DelayInput = Instance.new("TextBox")
+    DelayInput.Size = UDim2.new(0.48, 0, 0, 25)
+    DelayInput.Position = UDim2.new(0.52, 0, 0, 35)
+    DelayInput.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+    DelayInput.BorderSizePixel = 1
+    DelayInput.Text = tostring(Teleport.autoTeleportDelay)
+    DelayInput.PlaceholderText = "Delay (s)"
+    DelayInput.TextColor3 = Color3.new(1, 1, 1)
+    DelayInput.TextScaled = true
+    DelayInput.Font = Enum.Font.SourceSans
+    DelayInput.Parent = AutoTeleportFrame
+
+    -- Close Button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0, 20, 0, 20)
+    closeButton.Position = UDim2.new(1, -25, 0, 5)
+    closeButton.BackgroundColor3 = Color3.new(1, 0, 0)
+    closeButton.BorderSizePixel = 0
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.new(1, 1, 1)
+    closeButton.TextScaled = true
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.Parent = PositionFrame
+
+    -- Connect events
+    SavePositionButton.MouseButton1Click:Connect(function()
+        Teleport.saveCurrentPosition()
+    end)
+
+    AutoTeleportButton.MouseButton1Click:Connect(function()
+        Teleport.startAutoTeleport()
+    end)
+
+    StopAutoButton.MouseButton1Click:Connect(function()
+        Teleport.stopAutoTeleport()
+    end)
+
+    AutoModeToggle.MouseButton1Click:Connect(function()
+        local newMode = Teleport.toggleAutoMode()
+        AutoModeToggle.Text = "Mode: " .. newMode
+    end)
+
+    DelayInput.FocusLost:Connect(function(enterPressed)
+        local newDelay = tonumber(DelayInput.Text)
+        if newDelay and newDelay > 0 then
+            Teleport.autoTeleportDelay = newDelay
+        else
+            DelayInput.Text = tostring(Teleport.autoTeleportDelay)
+        end
+    end)
+
+    closeButton.MouseButton1Click:Connect(function()
+        Teleport.togglePositionManager()
+    end)
+
+    -- Update canvas size when layout changes
+    PositionLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PositionLayout.AbsoluteContentSize.Y)
+    end)
+
+    print("Position Manager UI created successfully")
+end
+
+-- On character respawn
+local function onCharacterAdded(character)
+    currentCharacter = character
+    if Teleport.autoTeleportActive then 
+        Teleport.stopAutoTeleport()
+        print("Auto teleport stopped due to character respawn")
+    end
+    
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
+    if humanoidRootPart then
+        currentRootPart = humanoidRootPart
+        wait(1) -- Wait for character to fully load
+        if PositionFrame and PositionFrame.Visible then
+            refreshPositionButtons()
+        end
+    end
+end
+
+-- Save current position
+function Teleport.saveCurrentPosition()
+    local root = getRootPart()
+    if not root then 
+        warn("Cannot save position: Character not found")
+        return false 
+    end
+    
+    local positionName = PositionInput and PositionInput.Text or ""
+    if positionName == "" then
+        positionName = "Position_" .. (table.maxn(Teleport.savedPositions) + 1)
+    end
+    
+    local currentCFrame = root.CFrame
+    Teleport.savedPositions[positionName] = currentCFrame
+    saveToFileSystem(positionName, currentCFrame)
+    createPositionButton(positionName, currentCFrame)
+    
+    if PositionInput then
+        PositionInput.Text = ""
+    end
+    
+    print("Position saved: " .. positionName)
+    return true
+end
+
+-- Load saved positions
+function Teleport.loadSavedPositions()
+    for positionName in pairs(fileSystem["DCIM/Supertool"]) do
+        local cframe = loadFromFileSystem(positionName)
+        if cframe then
+            Teleport.savedPositions[positionName] = cframe
+        end
+    end
+    refreshPositionButtons()
+    print("Loaded " .. table.maxn(Teleport.savedPositions) .. " saved positions")
+end
+
+-- Toggle position manager UI
+function Teleport.togglePositionManager()
+    if not PositionFrame then 
+        warn("Position Manager UI not created")
+        return 
+    end
+    
+    Teleport.positionFrameVisible = not Teleport.positionFrameVisible
+    PositionFrame.Visible = Teleport.positionFrameVisible
+    
+    if Teleport.positionFrameVisible then
+        refreshPositionButtons() -- Refresh when showing
+        print("Position Manager opened")
+    else
+        print("Position Manager closed")
+    end
+end
+
+-- Init function - FIXED
+function Teleport.init(dependencies)
+    -- Validate dependencies
+    if not dependencies then
+        warn("Teleport.init: No dependencies provided")
+        return false
+    end
+
+    Players = dependencies.Players
+    Workspace = dependencies.Workspace
+    ScreenGui = dependencies.ScreenGui
+    player = dependencies.player
+    rootPart = dependencies.rootPart
+    ScrollFrame = dependencies.ScrollFrame
+    settings = dependencies.settings
+
+    -- Validate critical dependencies
+    if not Players or not player or not ScreenGui then
+        warn("Teleport.init: Missing critical dependencies")
+        return false
+    end
+
+    -- Set up character tracking
+    currentCharacter = player.Character
+    currentRootPart = getRootPart()
+    
+    -- Connect character events
+    player.CharacterAdded:Connect(onCharacterAdded)
+    if player.Character then 
+        onCharacterAdded(player.Character) 
+    end
+
+    -- Create UI and load positions
+    Teleport.createPositionManagerUI()
+    Teleport.loadSavedPositions()
+    
+    print("Teleport module initialized successfully")
+    return true
+end
+
+-- Quick teleport functions
+function Teleport.teleportToSpawn()
+    local spawnLocation = Workspace:FindFirstChild("SpawnLocation")
+    if spawnLocation then 
+        if safeTeleport(spawnLocation.CFrame + Vector3.new(0, 5, 0)) then
+            print("Teleported to spawn")
+        end
+    else
+        warn("Spawn location not found")
+    end
+end
+
+function Teleport.teleportToPosition(x, y, z)
+    if safeTeleport(CFrame.new(x, y, z)) then
+        print("Teleported to coordinates: " .. x .. ", " .. y .. ", " .. z)
+    end
+end
+
+-- Get module status
+function Teleport.getStatus()
+    return {
+        initialized = PositionFrame ~= nil,
+        savedPositions = table.maxn(Teleport.savedPositions),
+        autoTeleportActive = Teleport.autoTeleportActive,
+        autoTeleportMode = Teleport.autoTeleportMode,
+        uiVisible = Teleport.positionFrameVisible
+    }
+end
+
+return Teleport    end
     return nil
 end
 
