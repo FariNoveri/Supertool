@@ -94,6 +94,7 @@ Watermark.BorderColor3 = Color3.fromRGB(45, 45, 45)
 Watermark.Position = UDim2.new(0, 5, 0, 50)
 Watermark.Size = UDim2.new(0, 150, 0, 20)
 Watermark.Font = Enum.Font.Gotham
+Watermark.Text = "AntiAdmin: Initializing..."
 Watermark.TextColor3 = Color3.fromRGB(255, 255, 255)
 Watermark.TextSize = 8
 Watermark.TextXAlignment = Enum.TextXAlignment.Left
@@ -246,6 +247,25 @@ local moduleURLs = {
     AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiAdmin.lua"
 }
 
+-- Fallback Movement module
+local fallbackMovementModule = {
+    init = function(deps)
+        print("Using fallback Movement module")
+        return true
+    end,
+    loadMovementButtons = function(createButton, createToggleButton)
+        createButton("Fly (Fallback)", function()
+            print("Fallback Fly button clicked")
+        end, "Movement")
+        createToggleButton("Toggle Fly (Fallback)", function(state)
+            print("Fallback Toggle Fly: " .. tostring(state))
+        end, "Movement")
+    end,
+    resetStates = function()
+        print("Resetting fallback Movement states")
+    end
+}
+
 -- Load modules
 local modules = {}
 local modulesLoaded = {}
@@ -263,7 +283,16 @@ local function loadModule(moduleName)
             return nil
         end
         local func = loadstring(response)
-        return func and func()
+        if not func then
+            warn("Failed to compile module: " .. moduleName)
+            return nil
+        end
+        local module = func()
+        if not module then
+            warn("Module " .. moduleName .. " returned nil")
+            return nil
+        end
+        return module
     end)
     
     if success and result then
@@ -276,6 +305,15 @@ local function loadModule(moduleName)
         return true
     else
         warn("Failed to load module: " .. moduleName .. " Error: " .. tostring(result))
+        if moduleName == "Movement" then
+            modules[moduleName] = fallbackMovementModule
+            modulesLoaded[moduleName] = true
+            print("Using fallback Movement module")
+            if selectedCategory == "Movement" then
+                loadButtons()
+            end
+            return true
+        end
     end
     return false
 end
@@ -442,7 +480,7 @@ local function loadButtons()
             end)
             if not success then
                 warn("Failed to load Movement buttons: " .. tostring(result))
-                loadingLabel.Text = "Failed to load Movement buttons!"
+                loadingLabel.Text = "Failed to load Movement buttons: " .. tostring(result)
                 loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             end
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
@@ -641,41 +679,24 @@ task.spawn(function()
         task.wait(0.1)
     end
 
-    if not modules.Movement then
-        warn("Failed to load Movement module after timeout!")
-        local errorLabel = Instance.new("TextLabel")
-        errorLabel.Parent = FeatureContainer
-        errorLabel.BackgroundTransparency = 1
-        errorLabel.Size = UDim2.new(1, -2, 0, 20)
-        errorLabel.Font = Enum.Font.Gotham
-        errorLabel.Text = "Failed to load Movement module!"
-        errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        errorLabel.TextSize = 8
-        errorLabel.TextXAlignment = Enum.TextXAlignment.Left
-    end
-    if not modules.Player then
-        warn("Failed to load Player module after timeout!")
-        local errorLabel = Instance.new("TextLabel")
-        errorLabel.Parent = FeatureContainer
-        errorLabel.BackgroundTransparency = 1
-        errorLabel.Size = UDim2.new(1, -2, 0, 20)
-        errorLabel.Font = Enum.Font.Gotham
-        errorLabel.Text = "Failed to load Player module!"
-        errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        errorLabel.TextSize = 8
-        errorLabel.TextXAlignment = Enum.TextXAlignment.Left
-    end
-    if not modules.Teleport then
-        warn("Failed to load Teleport module after timeout!")
-        local errorLabel = Instance.new("TextLabel")
-        errorLabel.Parent = FeatureContainer
-        errorLabel.BackgroundTransparency = 1
-        errorLabel.Size = UDim2.new(1, -2, 0, 20)
-        errorLabel.Font = Enum.Font.Gotham
-        errorLabel.Text = "Failed to load Teleport module!"
-        errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        errorLabel.TextSize = 8
-        errorLabel.TextXAlignment = Enum.TextXAlignment.Left
+    for _, moduleName in ipairs({"Movement", "Player", "Teleport"}) do
+        if not modules[moduleName] then
+            warn("Failed to load " .. moduleName .. " module after timeout!")
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Parent = FeatureContainer
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Size = UDim2.new(1, -2, 0, 20)
+            errorLabel.Font = Enum.Font.Gotham
+            errorLabel.Text = "Failed to load " .. moduleName .. " module!"
+            errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            errorLabel.TextSize = 8
+            errorLabel.TextXAlignment = Enum.TextXAlignment.Left
+            if moduleName == "Movement" then
+                modules[moduleName] = fallbackMovementModule
+                modulesLoaded[moduleName] = true
+                print("Applied fallback for " .. moduleName .. " module")
+            end
+        end
     end
 
     initializeModules()
