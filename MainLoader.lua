@@ -33,7 +33,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
 
--- Check for existing script instances (simplified)
+-- Check for existing script instances
 for _, gui in pairs(player.PlayerGui:GetChildren()) do
     if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
         gui:Destroy()
@@ -149,7 +149,7 @@ FeatureLayout.Parent = FeatureContainer
 FeatureLayout.Padding = UDim.new(0, 2)
 FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Categories (removed AntiAdmin)
+-- Categories
 local categories = {
     {name = "Movement", order = 1},
     {name = "Player", order = 2},
@@ -179,7 +179,7 @@ for _, category in ipairs(categories) do
 
     categoryButton.MouseButton1Click:Connect(function()
         selectedCategory = category.name
-        loadButtons()
+        task.spawn(loadButtons)
     end)
 
     categoryButton.MouseEnter:Connect(function()
@@ -198,7 +198,7 @@ for _, category in ipairs(categories) do
     categoryStates[category.name] = {}
 end
 
--- Module URLs (removed AntiAdmin)
+-- Module URLs
 local moduleURLs = {
     Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement.lua",
     Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Player.lua",
@@ -242,6 +242,9 @@ local function loadModule(moduleName)
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
         print("Loaded module: " .. moduleName)
+        if selectedCategory == moduleName then
+            task.spawn(loadButtons)
+        end
         return true
     else
         warn("Failed to load module: " .. moduleName .. " Error: " .. tostring(result))
@@ -289,8 +292,6 @@ end
 
 -- Create button
 local function createButton(name, callback, categoryName)
-    if categoryName ~= selectedCategory then return end
-    
     local button = Instance.new("TextButton")
     button.Name = name
     button.Parent = FeatureContainer
@@ -319,8 +320,6 @@ end
 
 -- Create toggle button
 local function createToggleButton(name, callback, categoryName)
-    if categoryName ~= selectedCategory then return end
-    
     local button = Instance.new("TextButton")
     button.Name = name
     button.Parent = FeatureContainer
@@ -356,141 +355,118 @@ local function createToggleButton(name, callback, categoryName)
     print("Created toggle button: " .. name .. " for category: " .. categoryName)
 end
 
--- Forward declaration
-local loadButtons
-
 -- Load buttons implementation
-loadButtons = function()
-    print("Loading buttons for category: " .. tostring(selectedCategory))
-    
+local function loadButtons()
+    -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
+    -- Update category button backgrounds
     for categoryName, categoryData in pairs(categoryFrames) do
         categoryData.button.BackgroundColor3 = categoryName == selectedCategory and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
     end
 
-    if not selectedCategory then return end
+    if not selectedCategory then
+        warn("No category selected!")
+        return
+    end
     
+    -- Show loading label
     local loadingLabel = Instance.new("TextLabel")
     loadingLabel.Parent = FeatureContainer
     loadingLabel.BackgroundTransparency = 1
     loadingLabel.Size = UDim2.new(1, -2, 0, 20)
     loadingLabel.Font = Enum.Font.Gotham
-    loadingLabel.Text = "Loading " .. selectedCategory .. " features..."
+    loadingLabel.Text = "Loading " .. selectedCategory .. "..."
     loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     loadingLabel.TextSize = 8
     loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
 
     task.spawn(function()
-        task.wait(0.1)
+        -- Small delay to ensure UI updates
+        task.wait(0.2)
         
-        local moduleLoaded = false
-        
+        local success = false
+        local errorMessage = nil
+
+        -- Load buttons based on selected category
         if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
-            local success, result = pcall(function()
-                print("Calling Movement.loadMovementButtons")
+            success, errorMessage = pcall(function()
+                print("Loading Movement buttons...")
                 modules.Movement.loadMovementButtons(
                     function(name, callback) createButton(name, callback, "Movement") end,
                     function(name, callback) createToggleButton(name, callback, "Movement") end
                 )
             end)
-            if success then
-                moduleLoaded = true
-            else
-                warn("Failed to load Movement buttons: " .. tostring(result))
-            end
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
-            local success, result = pcall(function()
+            success, errorMessage = pcall(function()
                 local selectedPlayer = modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
-                print("Calling Player.loadPlayerButtons with selectedPlayer: " .. tostring(selectedPlayer))
+                print("Loading Player buttons with selectedPlayer: " .. tostring(selectedPlayer))
                 modules.Player.loadPlayerButtons(
                     function(name, callback) createButton(name, callback, "Player") end,
                     function(name, callback) createToggleButton(name, callback, "Player") end,
                     selectedPlayer
                 )
             end)
-            if success then
-                moduleLoaded = true
-            else
-                warn("Failed to load Player buttons: " .. tostring(result))
-            end
         elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
-            local success, result = pcall(function()
+            success, errorMessage = pcall(function()
                 local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
                 local freecamEnabled = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false
                 local freecamPosition = modules.Visual and modules.Visual.getFreecamState and select(2, modules.Visual.getFreecamState()) or nil
                 local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
-                print("Calling Teleport.loadTeleportButtons with selectedPlayer: " .. tostring(selectedPlayer))
+                print("Loading Teleport buttons with selectedPlayer: " .. tostring(selectedPlayer))
                 modules.Teleport.loadTeleportButtons(
                     function(name, callback) createButton(name, callback, "Teleport") end,
                     selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
                 )
             end)
-            if success then
-                moduleLoaded = true
-            else
-                warn("Failed to load Teleport buttons: " .. tostring(result))
-            end
         elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
-            local success, result = pcall(function()
+            success, errorMessage = pcall(function()
+                print("Loading Visual buttons...")
                 modules.Visual.loadVisualButtons(function(name, callback)
                     createToggleButton(name, callback, "Visual")
                 end)
             end)
-            if success then
-                moduleLoaded = true
-            else
-                warn("Failed to load Visual buttons: " .. tostring(result))
-            end
         elseif selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
-            local success, result = pcall(function()
+            success, errorMessage = pcall(function()
+                print("Loading Utility buttons...")
                 modules.Utility.loadUtilityButtons(function(name, callback)
                     createButton(name, callback, "Utility")
                 end)
             end)
-            if success then
-                moduleLoaded = true
-            else
-                warn("Failed to load Utility buttons: " .. tostring(result))
-            end
         elseif selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
-            local success, result = pcall(function()
+            success, errorMessage = pcall(function()
+                print("Loading Settings buttons...")
                 modules.Settings.loadSettingsButtons(function(name, callback)
                     createButton(name, callback, "Settings")
                 end)
             end)
-            if success then
-                moduleLoaded = true
-            else
-                warn("Failed to load Settings buttons: " .. tostring(result))
-            end
         elseif selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
-            local success, result = pcall(function()
+            success, errorMessage = pcall(function()
+                print("Loading Info buttons...")
                 modules.Info.loadInfoButtons(function(name, callback)
                     createButton(name, callback, "Info")
                 end)
             end)
-            if success then
-                moduleLoaded = true
-            else
-                warn("Failed to load Info buttons: " .. tostring(result))
-            end
-        end
-        
-        -- If module not loaded, show message
-        if not moduleLoaded then
-            loadingLabel.Text = selectedCategory .. " module not loaded yet. Please wait..."
-            loadingLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
         else
-            if loadingLabel and loadingLabel.Parent then
+            errorMessage = "Module for " .. selectedCategory .. " not loaded or invalid!"
+            warn(errorMessage)
+        end
+
+        -- Update UI based on result
+        if loadingLabel and loadingLabel.Parent then
+            if not success or errorMessage then
+                loadingLabel.Text = "Failed to load " .. selectedCategory .. " buttons: " .. tostring(errorMessage)
+                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            else
                 loadingLabel:Destroy()
             end
         end
-        
+
+        -- Update CanvasSize
         FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, math.max(FeatureLayout.AbsoluteContentSize.Y + 5, 1))
     end)
 end
@@ -520,7 +496,7 @@ local function resetStates()
     end
     
     if selectedCategory then
-        loadButtons()
+        task.spawn(loadButtons)
     end
 end
 
@@ -596,5 +572,5 @@ task.spawn(function()
     end
 
     initializeModules()
-    loadButtons()
+    task.spawn(loadButtons)
 end)
