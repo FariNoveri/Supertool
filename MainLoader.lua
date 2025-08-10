@@ -16,6 +16,8 @@ local connections = {}
 local buttonStates = {}
 local selectedCategory = "Movement"
 local categoryStates = {} -- Store feature states per category
+local activeFeature = nil -- Track currently active exclusive feature
+local exclusiveFeatures = {} -- List of features that should be exclusive
 
 -- Settings
 local settings = {
@@ -118,18 +120,28 @@ CloseButton.Text = "X"
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.TextSize = 10
 
--- Category Container
-local CategoryContainer = Instance.new("Frame")
+-- Category Container with Scrolling
+local CategoryContainer = Instance.new("ScrollingFrame")
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
 CategoryContainer.Position = UDim2.new(0, 5, 0, 30)
 CategoryContainer.Size = UDim2.new(0, 80, 1, -35)
+CategoryContainer.ScrollBarThickness = 4
+CategoryContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+CategoryContainer.ScrollingDirection = Enum.ScrollingDirection.Y
+CategoryContainer.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+CategoryContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
 
 local CategoryLayout = Instance.new("UIListLayout")
 CategoryLayout.Parent = CategoryContainer
 CategoryLayout.Padding = UDim.new(0, 3)
 CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 CategoryLayout.FillDirection = Enum.FillDirection.Vertical
+
+-- Update category canvas size when content changes
+CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    CategoryContainer.CanvasSize = UDim2.new(0, 0, 0, CategoryLayout.AbsoluteContentSize.Y + 10)
+end)
 
 -- Feature Container
 local FeatureContainer = Instance.new("ScrollingFrame")
@@ -149,6 +161,11 @@ FeatureLayout.Parent = FeatureContainer
 FeatureLayout.Padding = UDim.new(0, 2)
 FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
+-- Update feature canvas size when content changes
+FeatureLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 10)
+end)
+
 -- Categories
 local categories = {
     {name = "Movement", order = 1},
@@ -162,6 +179,51 @@ local categories = {
 
 local categoryFrames = {}
 local isMinimized = false
+
+-- Define exclusive features (features that can't run together)
+exclusiveFeatures = {
+    "Fly", "Noclip", "Speed", "JumpHeight", "InfiniteJump", 
+    "Freecam", "FullBright", "ESP", "Tracers", "AutoFarm"
+}
+
+-- Function to disable active feature
+local function disableActiveFeature()
+    if activeFeature then
+        local categoryName = activeFeature.category
+        local featureName = activeFeature.name
+        
+        -- Set state to false
+        if categoryStates[categoryName] and categoryStates[categoryName][featureName] ~= nil then
+            categoryStates[categoryName][featureName] = false
+        end
+        
+        -- Find and update button appearance
+        for _, child in pairs(FeatureContainer:GetChildren()) do
+            if child:IsA("TextButton") and child.Name == featureName then
+                child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                break
+            end
+        end
+        
+        -- Call disable callback if available
+        if activeFeature.disableCallback then
+            pcall(activeFeature.disableCallback)
+        end
+        
+        print("Disabled active feature: " .. featureName)
+        activeFeature = nil
+    end
+end
+
+-- Function to check if feature is exclusive
+local function isExclusiveFeature(featureName)
+    for _, exclusive in pairs(exclusiveFeatures) do
+        if string.find(featureName, exclusive) then
+            return true
+        end
+    end
+    return false
+end
 
 -- Load modules
 local modules = {}
@@ -232,7 +294,9 @@ local dependencies = {
     settings = settings,
     connections = connections,
     buttonStates = buttonStates,
-    player = player
+    player = player,
+    disableActiveFeature = disableActiveFeature,
+    isExclusiveFeature = isExclusiveFeature
 }
 
 -- Initialize modules
@@ -269,7 +333,22 @@ local function createButton(name, callback, categoryName)
     button.LayoutOrder = #FeatureContainer:GetChildren()
     
     if type(callback) == "function" then
-        button.MouseButton1Click:Connect(callback)
+        button.MouseButton1Click:Connect(function()
+            -- Check if this is an exclusive feature
+            if isExclusiveFeature(name) then
+                -- Disable currently active feature if any
+                disableActiveFeature()
+                
+                -- Set this as the new active feature
+                activeFeature = {
+                    name = name,
+                    category = categoryName,
+                    disableCallback = nil -- Regular buttons don't have disable callbacks
+                }
+            end
+            
+            callback()
+        end)
     end
     
     button.MouseEnter:Connect(function()
@@ -282,8 +361,8 @@ local function createButton(name, callback, categoryName)
     print("Created button: " .. name .. " for category: " .. categoryName)
 end
 
--- Create toggle button
-local function createToggleButton(name, callback, categoryName)
+-- Create toggle button with exclusive feature support
+local function createToggleButton(name, callback, categoryName, disableCallback)
     local button = Instance.new("TextButton")
     button.Name = name
     button.Parent = FeatureContainer
@@ -302,10 +381,29 @@ local function createToggleButton(name, callback, categoryName)
     button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     
     button.MouseButton1Click:Connect(function()
-        categoryStates[categoryName][name] = not categoryStates[categoryName][name]
-        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        local newState = not categoryStates[categoryName][name]
+        
+        -- If enabling an exclusive feature
+        if newState and isExclusiveFeature(name) then
+            -- Disable currently active feature if any
+            disableActiveFeature()
+            
+            -- Set this as the new active feature
+            activeFeature = {
+                name = name,
+                category = categoryName,
+                disableCallback = disableCallback
+            }
+        elseif not newState and activeFeature and activeFeature.name == name then
+            -- If disabling the current active feature
+            activeFeature = nil
+        end
+        
+        categoryStates[categoryName][name] = newState
+        button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        
         if type(callback) == "function" then
-            callback(categoryStates[categoryName][name])
+            callback(newState)
         end
     end)
     
@@ -362,7 +460,7 @@ local function loadButtons()
                 print("Loading Movement buttons...")
                 modules.Movement.loadMovementButtons(
                     function(name, callback) createButton(name, callback, "Movement") end,
-                    function(name, callback) createToggleButton(name, callback, "Movement") end
+                    function(name, callback, disableCallback) createToggleButton(name, callback, "Movement", disableCallback) end
                 )
             end)
         elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
@@ -371,7 +469,7 @@ local function loadButtons()
                 print("Loading Player buttons with selectedPlayer: " .. tostring(selectedPlayer))
                 modules.Player.loadPlayerButtons(
                     function(name, callback) createButton(name, callback, "Player") end,
-                    function(name, callback) createToggleButton(name, callback, "Player") end,
+                    function(name, callback, disableCallback) createToggleButton(name, callback, "Player", disableCallback) end,
                     selectedPlayer
                 )
             end)
@@ -390,8 +488,8 @@ local function loadButtons()
         elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
             success, errorMessage = pcall(function()
                 print("Loading Visual buttons...")
-                modules.Visual.loadVisualButtons(function(name, callback)
-                    createToggleButton(name, callback, "Visual")
+                modules.Visual.loadVisualButtons(function(name, callback, disableCallback)
+                    createToggleButton(name, callback, "Visual", disableCallback)
                 end)
             end)
         elseif selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
@@ -429,9 +527,6 @@ local function loadButtons()
                 loadingLabel:Destroy()
             end
         end
-
-        -- Update CanvasSize
-        FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, math.max(FeatureLayout.AbsoluteContentSize.Y + 5, 1))
     end)
 end
 
@@ -481,6 +576,8 @@ end
 -- Reset states
 local function resetStates()
     print("Resetting all states")
+    activeFeature = nil -- Reset active feature
+    
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
             connection:Disconnect()

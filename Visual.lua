@@ -93,7 +93,7 @@ local function handleSwipe(input)
     end
 end
 
--- ESP (Wallhack)
+-- ESP (Wallhack with Invisible Player Detection)
 local function toggleESP(enabled)
     Visual.espEnabled = enabled
     print("ESP:", enabled)
@@ -104,12 +104,28 @@ local function toggleESP(enabled)
                 for _, otherPlayer in pairs(Players:GetPlayers()) do
                     if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
                         local character = otherPlayer.Character
+                        local isInvisible = false
+                        
+                        -- Check for invisibility (transparent parts or custom attributes)
+                        pcall(function()
+                            for _, part in pairs(character:GetDescendants()) do
+                                if part:IsA("BasePart") and part.Transparency >= 0.9 then
+                                    isInvisible = true
+                                    break
+                                end
+                            end
+                            -- Check for custom invisibility attributes (game-specific)
+                            if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
+                                isInvisible = true
+                            end
+                        end)
+                        
                         if not espHighlights[otherPlayer] then
                             local highlight = Instance.new("Highlight")
                             highlight.Name = "ESPHighlight"
-                            highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Red glow
+                            highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0) -- Blue for invisible, red for visible
                             highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- White outline
-                            highlight.FillTransparency = 0.5
+                            highlight.FillTransparency = isInvisible and 0.3 or 0.5 -- Less transparent for invisible players
                             highlight.OutlineTransparency = 0
                             highlight.Adornee = character
                             highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Visible through walls
@@ -132,11 +148,24 @@ local function toggleESP(enabled)
             if Visual.espEnabled and newPlayer ~= player then
                 newPlayer.CharacterAdded:Connect(function(character)
                     if Visual.espEnabled then
+                        local isInvisible = false
+                        pcall(function()
+                            for _, part in pairs(character:GetDescendants()) do
+                                if part:IsA("BasePart") and part.Transparency >= 0.9 then
+                                    isInvisible = true
+                                    break
+                                end
+                            end
+                            if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
+                                isInvisible = true
+                            end
+                        end)
+                        
                         local highlight = Instance.new("Highlight")
                         highlight.Name = "ESPHighlight"
-                        highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                        highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
                         highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        highlight.FillTransparency = 0.5
+                        highlight.FillTransparency = isInvisible and 0.3 or 0.5
                         highlight.OutlineTransparency = 0
                         highlight.Adornee = character
                         highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -286,44 +315,68 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Flashlight (Fixed)
+-- Only the toggleFlashlight function is updated
 local function toggleFlashlight(enabled)
     Visual.flashlightEnabled = enabled
     print("Flashlight:", enabled)
     
     if enabled then
-        flashlight = Instance.new("SpotLight")
-        flashlight.Name = "Flashlight"
-        flashlight.Brightness = 5
-        flashlight.Range = 60
-        flashlight.Angle = 60
-        flashlight.Parent = Workspace.CurrentCamera
+        -- Create or reuse flashlight
+        if not flashlight then
+            flashlight = Instance.new("SpotLight")
+            flashlight.Name = "Flashlight"
+            flashlight.Brightness = 10 -- Increased brightness for better visibility
+            flashlight.Range = 80 -- Increased range for better effect
+            flashlight.Angle = 45 -- Narrower angle for focused beam
+            flashlight.Face = Enum.NormalId.Front -- Ensure light projects forward
+            flashlight.Enabled = true
+        end
         
+        -- Parent to camera and ensure it persists
+        pcall(function()
+            flashlight.Parent = Workspace.CurrentCamera
+        end)
+        
+        -- Update flashlight position and direction every frame
         connections.flashlight = RunService.RenderStepped:Connect(function()
             if Visual.flashlightEnabled and flashlight and flashlight.Parent then
-                local cameraCFrame = Workspace.CurrentCamera.CFrame
-                flashlight.Enabled = true
-                flashlight.CFrame = CFrame.new(Vector3.new(0, 0, 0), cameraCFrame.LookVector)
+                pcall(function()
+                    local camera = Workspace.CurrentCamera
+                    if camera then
+                        -- Ensure flashlight is parented to current camera
+                        if flashlight.Parent ~= camera then
+                            flashlight.Parent = camera
+                        end
+                        -- Align flashlight with camera's look vector
+                        flashlight.CFrame = camera.CFrame * CFrame.new(0, 0, -1) -- Slightly offset forward
+                        flashlight.Enabled = true
+                    end
+                end)
+            elseif flashlight then
+                flashlight.Enabled = false
             end
         end)
     else
+        -- Clean up flashlight and connection
         if connections.flashlight then
             connections.flashlight:Disconnect()
             connections.flashlight = nil
         end
         if flashlight then
+            flashlight.Enabled = false
             flashlight:Destroy()
             flashlight = nil
         end
     end
 end
 
--- Low Detail Mode (Enhanced for Mobile)
+-- Low Detail Mode (Brutally Low for Mobile)
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
     
     if enabled then
+        -- Store default settings
         defaultLightingSettings.GlobalShadows = defaultLightingSettings.GlobalShadows or Lighting.GlobalShadows
         pcall(function()
             defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
@@ -332,86 +385,148 @@ local function toggleLowDetail(enabled)
             defaultLightingSettings.StreamingTargetRadius = workspace.StreamingTargetRadius
         end)
         
+        -- Disable all shadows and set minimal lighting
         Lighting.GlobalShadows = false
-        Lighting.Brightness = 1
-        Lighting.FogEnd = 1000
+        Lighting.Brightness = 0.5 -- Reduced brightness for minimal processing
+        Lighting.FogEnd = 500 -- Tighter fog to reduce rendering
+        Lighting.FogStart = 0
+        Lighting.FogColor = Color3.fromRGB(100, 100, 100) -- Gray fog to simplify visuals
         
+        -- Set absolute minimum rendering quality
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
-            renderSettings.QualityLevel = Enum.QualityLevel.Level01
+            renderSettings.QualityLevel = Enum.QualityLevel.Level01 -- Lowest possible quality
+            renderSettings.EnableFRM = false -- Disable fancy rendering modes
+            renderSettings.EnableParticles = false -- Disable particle rendering
+            renderSettings.EnableClouds = false -- Disable clouds
         end)
         pcall(function()
             local userSettings = UserSettings()
             local gameSettings = userSettings.GameSettings
             gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+            gameSettings.RenderDistance = 50 -- Ultra-low render distance
         end)
         
+        -- Disable all visual effects and simplify objects
         for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                 obj.Enabled = false
-            elseif obj:IsA("Decal") then
-                obj.Transparency = 1
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = 1 -- Remove all decals and textures
             elseif obj:IsA("BasePart") then
-                obj.Material = Enum.Material.SmoothPlastic
+                obj.Material = Enum.Material.SmoothPlastic -- Simplest material
                 obj.Reflectance = 0
+                obj.CastShadow = false -- Disable shadows
+                obj.Transparency = obj.Transparency > 0 and obj.Transparency or 0 -- Preserve transparency for gameplay
             elseif obj:IsA("MeshPart") then
-                obj.TextureID = ""
+                obj.TextureID = "" -- Remove all textures
+                obj.Material = Enum.Material.SmoothPlastic
+            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                obj.Enabled = false -- Disable all lights
+            elseif obj:IsA("Model") and obj ~= player.Character then
+                -- Simplify non-player models (e.g., disable animations if possible)
+                pcall(function()
+                    local animator = obj:FindFirstChildOfClass("Animator")
+                    if animator then
+                        animator:Destroy() -- Remove animations for non-player models
+                    end
+                end)
             end
         end
         
+        -- Ultra-low streaming settings
         pcall(function()
             workspace.StreamingEnabled = true
-            workspace.StreamingMinRadius = 16
-            workspace.StreamingTargetRadius = 32
+            workspace.StreamingMinRadius = 8 -- Extremely low for mobile
+            workspace.StreamingTargetRadius = 16
         end)
         
+        -- Disable all terrain details
         pcall(function()
             local terrain = workspace.Terrain
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
             terrain.WaterTransparency = 1
+            terrain.Material = Enum.Material.SmoothPlastic -- Simplify terrain
+            terrain:ClearAllChildren() -- Remove terrain decorations (grass, etc.)
         end)
+        
+        -- Disable post-processing effects
+        pcall(function()
+            for _, effect in pairs(Lighting:GetChildren()) do
+                if effect:IsA("PostEffect") then
+                    effect.Enabled = false
+                end
+            end
+        end)
+        
     else
+        -- Restore default settings
         Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
         Lighting.Brightness = defaultLightingSettings.Brightness or 1
         Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
+        Lighting.FogStart = defaultLightingSettings.FogStart or 0
+        Lighting.FogColor = defaultLightingSettings.FogColor or Color3.fromRGB(192, 192, 192)
         
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
             renderSettings.QualityLevel = defaultLightingSettings.QualityLevel or Enum.QualityLevel.Automatic
+            renderSettings.EnableFRM = true
+            renderSettings.EnableParticles = true
+            renderSettings.EnableClouds = true
         end)
         pcall(function()
             local userSettings = UserSettings()
             local gameSettings = userSettings.GameSettings
             gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.Automatic
+            gameSettings.RenderDistance = 500
         end)
         
+        -- Restore objects
         for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                 obj.Enabled = true
-            elseif obj:IsA("Decal") then
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
                 obj.Transparency = 0
             elseif obj:IsA("BasePart") then
                 obj.Material = Enum.Material.Plastic
                 obj.Reflectance = 0.1
+                obj.CastShadow = true
             elseif obj:IsA("MeshPart") then
                 obj.TextureID = obj:GetAttribute("OriginalTextureID") or ""
+                obj.Material = Enum.Material.Plastic
+            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                obj.Enabled = true
             end
         end
         
+        -- Restore streaming settings
         pcall(function()
             workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
             workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
             workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
         end)
         
+        -- Restore terrain
         pcall(function()
             local terrain = workspace.Terrain
             terrain.WaterWaveSize = 0.15
             terrain.WaterWaveSpeed = 10
             terrain.WaterReflectance = 0.3
             terrain.WaterTransparency = 0.5
+            terrain.Material = Enum.Material.Grass -- Restore default material
+        end)
+        
+        -- Restore post-processing effects
+        pcall(function()
+            for _, effect in pairs(Lighting:GetChildren()) do
+                if effect:IsA("PostEffect") then
+                    effect.Enabled = true
+                end
+            end
         end)
     end
 end

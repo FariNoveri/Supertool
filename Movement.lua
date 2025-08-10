@@ -38,7 +38,26 @@ local flyVerticalInput = 0
 local isTouchingJoystick = false
 local joystickTouchId = nil
 
--- Create virtual controls
+-- Reference refresh function
+local function refreshReferences()
+    if not player or not player.Character then 
+        return false 
+    end
+    
+    local newHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    local newRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+    
+    if newHumanoid ~= humanoid then
+        humanoid = newHumanoid
+    end
+    if newRootPart ~= rootPart then
+        rootPart = newRootPart
+    end
+    
+    return humanoid ~= nil and rootPart ~= nil
+end
+
+-- Create virtual controls with better positioning
 local function createMobileControls()
     print("Creating mobile controls")
     
@@ -48,15 +67,16 @@ local function createMobileControls()
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
 
-    -- Fly Joystick
+    -- Fly Joystick - Better positioning and size
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
-    flyJoystickFrame.Size = UDim2.new(0, 120, 0, 120)
-    flyJoystickFrame.Position = UDim2.new(0.05, 0, 0.65, 0)
-    flyJoystickFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    flyJoystickFrame.BackgroundTransparency = 0.6
+    flyJoystickFrame.Size = UDim2.new(0, 100, 0, 100)
+    flyJoystickFrame.Position = UDim2.new(0, 20, 1, -130)
+    flyJoystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    flyJoystickFrame.BackgroundTransparency = 0.3
     flyJoystickFrame.BorderSizePixel = 0
     flyJoystickFrame.Visible = false
+    flyJoystickFrame.ZIndex = 10
     flyJoystickFrame.Parent = ScreenGui
 
     local corner = Instance.new("UICorner")
@@ -65,11 +85,12 @@ local function createMobileControls()
 
     flyJoystickKnob = Instance.new("Frame")
     flyJoystickKnob.Name = "Knob"
-    flyJoystickKnob.Size = UDim2.new(0, 50, 0, 50)
-    flyJoystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
-    flyJoystickKnob.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-    flyJoystickKnob.BackgroundTransparency = 0.2
+    flyJoystickKnob.Size = UDim2.new(0, 40, 0, 40)
+    flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+    flyJoystickKnob.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    flyJoystickKnob.BackgroundTransparency = 0.1
     flyJoystickKnob.BorderSizePixel = 0
+    flyJoystickKnob.ZIndex = 11
     flyJoystickKnob.Parent = flyJoystickFrame
 
     local knobCorner = Instance.new("UICorner")
@@ -79,16 +100,17 @@ local function createMobileControls()
     -- Wall Climb Button
     wallClimbButton = Instance.new("TextButton")
     wallClimbButton.Name = "WallClimbButton"
-    wallClimbButton.Size = UDim2.new(0, 70, 0, 70)
-    wallClimbButton.Position = UDim2.new(0.82, -35, 0.65, 0)
-    wallClimbButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    wallClimbButton.BackgroundTransparency = 0.5
+    wallClimbButton.Size = UDim2.new(0, 60, 0, 60)
+    wallClimbButton.Position = UDim2.new(1, -80, 1, -130)
+    wallClimbButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    wallClimbButton.BackgroundTransparency = 0.3
     wallClimbButton.BorderSizePixel = 0
     wallClimbButton.Text = "Climb"
     wallClimbButton.Font = Enum.Font.GothamBold
     wallClimbButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    wallClimbButton.TextSize = 14
+    wallClimbButton.TextSize = 12
     wallClimbButton.Visible = false
+    wallClimbButton.ZIndex = 10
     wallClimbButton.Parent = ScreenGui
 
     local buttonCorner = Instance.new("UICorner")
@@ -98,16 +120,17 @@ local function createMobileControls()
     -- Fly Up Button
     flyUpButton = Instance.new("TextButton")
     flyUpButton.Name = "FlyUpButton"
-    flyUpButton.Size = UDim2.new(0, 60, 0, 60)
-    flyUpButton.Position = UDim2.new(0.82, -30, 0.45, 0)
-    flyUpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    flyUpButton.BackgroundTransparency = 0.5
+    flyUpButton.Size = UDim2.new(0, 50, 0, 50)
+    flyUpButton.Position = UDim2.new(1, -70, 1, -200)
+    flyUpButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    flyUpButton.BackgroundTransparency = 0.3
     flyUpButton.BorderSizePixel = 0
     flyUpButton.Text = "▲"
     flyUpButton.Font = Enum.Font.GothamBold
     flyUpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    flyUpButton.TextSize = 20
+    flyUpButton.TextSize = 16
     flyUpButton.Visible = false
+    flyUpButton.ZIndex = 10
     flyUpButton.Parent = ScreenGui
 
     local upCorner = Instance.new("UICorner")
@@ -117,16 +140,17 @@ local function createMobileControls()
     -- Fly Down Button
     flyDownButton = Instance.new("TextButton")
     flyDownButton.Name = "FlyDownButton"
-    flyDownButton.Size = UDim2.new(0, 60, 0, 60)
-    flyDownButton.Position = UDim2.new(0.82, -30, 0.55, 0)
-    flyDownButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    flyDownButton.BackgroundTransparency = 0.5
+    flyDownButton.Size = UDim2.new(0, 50, 0, 50)
+    flyDownButton.Position = UDim2.new(1, -70, 1, -140)
+    flyDownButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    flyDownButton.BackgroundTransparency = 0.3
     flyDownButton.BorderSizePixel = 0
     flyDownButton.Text = "▼"
     flyDownButton.Font = Enum.Font.GothamBold
     flyDownButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    flyDownButton.TextSize = 20
+    flyDownButton.TextSize = 16
     flyDownButton.Visible = false
+    flyDownButton.ZIndex = 10
     flyDownButton.Parent = ScreenGui
 
     local downCorner = Instance.new("UICorner")
@@ -136,7 +160,7 @@ local function createMobileControls()
     print("Mobile controls created successfully")
 end
 
--- Handle fly joystick input with better touch tracking
+-- Improved joystick handling
 local function handleFlyJoystick(input, gameProcessed)
     if not Movement.flyEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
         return 
@@ -148,89 +172,91 @@ local function handleFlyJoystick(input, gameProcessed)
         local distanceFromCenter = (inputPos - joystickCenter).Magnitude
         
         if input.UserInputState == Enum.UserInputState.Begin then
-            -- Check if touch is within joystick area
-            if distanceFromCenter <= 60 and not isTouchingJoystick then
+            if distanceFromCenter <= 50 and not isTouchingJoystick then
                 isTouchingJoystick = true
                 joystickTouchId = input
-                print("Started touching joystick")
             end
         elseif input.UserInputState == Enum.UserInputState.Change and isTouchingJoystick and input == joystickTouchId then
             local delta = inputPos - joystickCenter
             local magnitude = delta.Magnitude
-            local maxRadius = 35
+            local maxRadius = 30
             
             if magnitude > maxRadius then
                 delta = delta * (maxRadius / magnitude)
             end
             
-            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 25, 0.5, delta.Y - 25)
+            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
             joystickDelta = delta / maxRadius
-            print("Joystick delta:", joystickDelta)
             
         elseif input.UserInputState == Enum.UserInputState.End and input == joystickTouchId then
             isTouchingJoystick = false
             joystickTouchId = nil
-            flyJoystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
             joystickDelta = Vector2.new(0, 0)
-            print("Stopped touching joystick")
         end
     end
 end
 
--- Speed Hack with respawn fix
+-- Speed Hack with better reference handling
 local function toggleSpeed(enabled)
     Movement.speedEnabled = enabled
-    print("Speed:", enabled, "Humanoid:", humanoid ~= nil)
     
-    -- Get fresh references if needed
-    if not humanoid and player.Character then
-        humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    end
-    
-    if humanoid then
-        if enabled then
-            humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 50
-        else
-            humanoid.WalkSpeed = Movement.defaultWalkSpeed
+    if enabled then
+        local function applySpeed()
+            if refreshReferences() and humanoid then
+                humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 50
+                return true
+            end
+            return false
+        end
+        
+        if not applySpeed() then
+            -- Retry after a short delay
+            task.wait(0.1)
+            applySpeed()
         end
     else
-        warn("No humanoid found for speed hack")
+        if refreshReferences() and humanoid then
+            humanoid.WalkSpeed = Movement.defaultWalkSpeed
+        end
     end
 end
 
--- Jump Hack with respawn fix
+-- Jump Hack with better reference handling
 local function toggleJump(enabled)
     Movement.jumpEnabled = enabled
-    print("Jump:", enabled, "Humanoid:", humanoid ~= nil)
     
-    -- Get fresh references if needed
-    if not humanoid and player.Character then
-        humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    end
-    
-    if humanoid then
-        if enabled then
-            if humanoid:FindFirstChild("JumpHeight") then
-                humanoid.JumpHeight = settings.JumpHeight and settings.JumpHeight.value or 50
-            else
-                humanoid.JumpPower = (settings.JumpHeight and settings.JumpHeight.value * 2.4) or 150
+    if enabled then
+        local function applyJump()
+            if refreshReferences() and humanoid then
+                if humanoid:FindFirstChild("JumpHeight") then
+                    humanoid.JumpHeight = settings.JumpHeight and settings.JumpHeight.value or 50
+                else
+                    humanoid.JumpPower = (settings.JumpHeight and settings.JumpHeight.value * 2.4) or 150
+                end
+                return true
             end
-        else
+            return false
+        end
+        
+        if not applyJump() then
+            task.wait(0.1)
+            applyJump()
+        end
+    else
+        if refreshReferences() and humanoid then
             if humanoid:FindFirstChild("JumpHeight") then
                 humanoid.JumpHeight = Movement.defaultJumpHeight
             else
                 humanoid.JumpPower = Movement.defaultJumpPower
             end
         end
-    else
-        warn("No humanoid found for jump hack")
     end
 end
 
 -- Moon Gravity
 local function toggleMoonGravity(enabled)
     Movement.moonGravityEnabled = enabled
-    print("Moon Gravity:", enabled)
     if enabled then
         Workspace.Gravity = Movement.defaultGravity / 6
     else
@@ -238,12 +264,10 @@ local function toggleMoonGravity(enabled)
     end
 end
 
--- Double Jump with better respawn handling
+-- Double Jump with improved respawn handling
 local function toggleDoubleJump(enabled)
     Movement.doubleJumpEnabled = enabled
-    print("Double Jump:", enabled)
     
-    -- Disconnect old connection
     if connections.doubleJump then
         connections.doubleJump:Disconnect()
         connections.doubleJump = nil
@@ -251,12 +275,8 @@ local function toggleDoubleJump(enabled)
     
     if enabled then
         connections.doubleJump = UserInputService.JumpRequest:Connect(function()
-            -- Get fresh humanoid reference
-            if not humanoid and player.Character then
-                humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            end
-            
-            if not humanoid or not Movement.doubleJumpEnabled then return end
+            if not Movement.doubleJumpEnabled then return end
+            if not refreshReferences() or not humanoid then return end
             
             if humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
                 Movement.jumpCount = 0
@@ -270,12 +290,10 @@ local function toggleDoubleJump(enabled)
     end
 end
 
--- Infinite Jump with better respawn handling
+-- Infinite Jump with improved respawn handling
 local function toggleInfiniteJump(enabled)
     Movement.infiniteJumpEnabled = enabled
-    print("Infinite Jump:", enabled)
     
-    -- Disconnect old connection
     if connections.infiniteJump then
         connections.infiniteJump:Disconnect()
         connections.infiniteJump = nil
@@ -283,23 +301,18 @@ local function toggleInfiniteJump(enabled)
     
     if enabled then
         connections.infiniteJump = UserInputService.JumpRequest:Connect(function()
-            -- Get fresh humanoid reference
-            if not humanoid and player.Character then
-                humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            end
-            
-            if not humanoid or not Movement.infiniteJumpEnabled then return end
+            if not Movement.infiniteJumpEnabled then return end
+            if not refreshReferences() or not humanoid then return end
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
         end)
     end
 end
 
--- Wall Climbing with better respawn handling
+-- Wall Climbing with improved respawn handling
 local function toggleWallClimb(enabled)
     Movement.wallClimbEnabled = enabled
-    print("Wall Climb:", enabled, "RootPart:", rootPart ~= nil)
     
-    -- Disconnect old connections
+    -- Clean up connections
     if connections.wallClimb then
         connections.wallClimb:Disconnect()
         connections.wallClimb = nil
@@ -309,27 +322,12 @@ local function toggleWallClimb(enabled)
         connections.wallClimbInput = nil
     end
     
-    -- Get fresh references if needed
-    if not rootPart and player.Character then
-        rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-    end
-    if not humanoid and player.Character then
-        humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    end
-    
-    if enabled and rootPart and wallClimbButton then
+    if enabled and wallClimbButton then
         wallClimbButton.Visible = true
         
         connections.wallClimb = RunService.Heartbeat:Connect(function()
-            -- Refresh references if character changed
-            if not humanoid and player.Character then
-                humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            end
-            if not rootPart and player.Character then
-                rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-            end
-            
-            if not humanoid or not rootPart or not Movement.wallClimbEnabled then return end
+            if not Movement.wallClimbEnabled then return end
+            if not refreshReferences() or not humanoid or not rootPart then return end
             
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {player.Character}
@@ -368,12 +366,12 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Improved Fly Hack with 3D movement
+-- Improved Fly Hack - Fixed the main issue
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
-    print("Fly:", enabled, "RootPart:", rootPart ~= nil)
+    print("Fly toggle:", enabled)
     
-    -- Disconnect old connections
+    -- Clean up all fly connections
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
     for _, connName in ipairs(flyConnections) do
         if connections[connName] then
@@ -382,15 +380,20 @@ local function toggleFly(enabled)
         end
     end
     
-    -- Get fresh references if needed
-    if not rootPart and player.Character then
-        rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+    -- Clean up BodyVelocity
+    if flyBodyVelocity then
+        flyBodyVelocity:Destroy()
+        flyBodyVelocity = nil
     end
     
-    if enabled and rootPart then
-        -- Clean up old BodyVelocity
-        if flyBodyVelocity then
-            flyBodyVelocity:Destroy()
+    if enabled then
+        -- Wait a moment for character to be ready
+        task.wait(0.1)
+        
+        if not refreshReferences() or not rootPart then
+            print("Failed to get rootPart for fly")
+            Movement.flyEnabled = false
+            return
         end
         
         -- Create new BodyVelocity
@@ -404,18 +407,18 @@ local function toggleFly(enabled)
         if flyUpButton then flyUpButton.Visible = true end
         if flyDownButton then flyDownButton.Visible = true end
         
-        -- Main fly loop with improved 3D movement
+        -- Main fly loop - simplified and more reliable
         connections.fly = RunService.Heartbeat:Connect(function()
-            -- Refresh references if character changed
-            if not rootPart and player.Character then
-                rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-                if rootPart and flyBodyVelocity then
-                    flyBodyVelocity.Parent = rootPart
-                end
-            end
+            if not Movement.flyEnabled then return end
+            if not refreshReferences() or not rootPart then return end
             
-            if not rootPart or not Movement.flyEnabled or not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then 
-                return 
+            -- Recreate BodyVelocity if it's missing
+            if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
+                if flyBodyVelocity then flyBodyVelocity:Destroy() end
+                flyBodyVelocity = Instance.new("BodyVelocity")
+                flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                flyBodyVelocity.Parent = rootPart
             end
             
             local camera = Workspace.CurrentCamera
@@ -424,88 +427,77 @@ local function toggleFly(enabled)
             local flyDirection = Vector3.new(0, 0, 0)
             flySpeed = settings.FlySpeed and settings.FlySpeed.value or 50
             
-            -- Horizontal movement from joystick
-            if joystickDelta.Magnitude > 0.1 then
+            -- Horizontal movement
+            if joystickDelta.Magnitude > 0.05 then
                 local forward = camera.CFrame.LookVector
                 local right = camera.CFrame.RightVector
+                
+                -- Remove Y component for cleaner horizontal movement
+                forward = Vector3.new(forward.X, 0, forward.Z).Unit
+                right = Vector3.new(right.X, 0, right.Z).Unit
                 
                 flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
             end
             
-            -- Vertical movement from buttons
+            -- Vertical movement
             if flyVerticalInput ~= 0 then
                 flyDirection = flyDirection + Vector3.new(0, flyVerticalInput, 0)
             end
             
-            -- Apply movement
-            flyBodyVelocity.Velocity = flyDirection.Unit * flySpeed * math.min(flyDirection.Magnitude, 1)
-        end)
-        
-        -- Touch input handling
-        connections.flyInput = UserInputService.InputChanged:Connect(function(input, processed)
-            if not processed then
-                handleFlyJoystick(input, processed)
+            -- Apply movement with proper magnitude
+            if flyDirection.Magnitude > 0 then
+                flyBodyVelocity.Velocity = flyDirection.Unit * flySpeed
+            else
+                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             end
         end)
         
-        connections.flyBegan = UserInputService.InputBegan:Connect(function(input, processed)
-            if not processed then
-                handleFlyJoystick(input, processed)
-            end
-        end)
+        -- Input handling
+        connections.flyInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
+        connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
+        connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
         
-        connections.flyEnded = UserInputService.InputEnded:Connect(function(input, processed)
-            if not processed then
-                handleFlyJoystick(input, processed)
-            end
-        end)
-        
-        -- Up/Down button connections
+        -- Up/Down button handling
         if flyUpButton then
             connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
                 flyVerticalInput = 1
-                flyUpButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                flyUpButton.BackgroundTransparency = 0.1
             end)
             connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
                 flyVerticalInput = 0
-                flyUpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                flyUpButton.BackgroundTransparency = 0.3
             end)
         end
         
         if flyDownButton then
             connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
                 flyVerticalInput = -1
-                flyDownButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                flyDownButton.BackgroundTransparency = 0.1
             end)
             connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
                 flyVerticalInput = 0
-                flyDownButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                flyDownButton.BackgroundTransparency = 0.3
             end)
         end
         
-        print("Fly enabled with 3D movement")
+        print("Fly enabled successfully")
     else
         -- Disable fly
-        if flyBodyVelocity then
-            flyBodyVelocity:Destroy()
-            flyBodyVelocity = nil
-        end
-        
-        -- Hide fly controls
+        -- Hide controls
         if flyJoystickFrame then 
             flyJoystickFrame.Visible = false
-            flyJoystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
         end
         if flyUpButton then 
             flyUpButton.Visible = false
-            flyUpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            flyUpButton.BackgroundTransparency = 0.3
         end
         if flyDownButton then 
             flyDownButton.Visible = false
-            flyDownButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            flyDownButton.BackgroundTransparency = 0.3
         end
         
-        -- Reset fly variables
+        -- Reset variables
         flyVerticalInput = 0
         joystickDelta = Vector2.new(0, 0)
         isTouchingJoystick = false
@@ -518,9 +510,7 @@ end
 -- NoClip with better respawn handling
 local function toggleNoclip(enabled)
     Movement.noclipEnabled = enabled
-    print("NoClip:", enabled)
     
-    -- Disconnect old connection
     if connections.noclip then
         connections.noclip:Disconnect()
         connections.noclip = nil
@@ -528,12 +518,8 @@ local function toggleNoclip(enabled)
     
     if enabled then
         connections.noclip = RunService.Stepped:Connect(function()
-            -- Refresh character reference
-            if not player.Character then
-                player.Character = Players.LocalPlayer.Character
-            end
-            
-            if not player.Character or not Movement.noclipEnabled then return end
+            if not Movement.noclipEnabled then return end
+            if not refreshReferences() or not player.Character then return end
             
             for _, part in pairs(player.Character:GetChildren()) do
                 if part:IsA("BasePart") and part.CanCollide then
@@ -542,8 +528,7 @@ local function toggleNoclip(enabled)
             end
         end)
     else
-        -- Re-enable collision
-        if player.Character then
+        if refreshReferences() and player.Character then
             for _, part in pairs(player.Character:GetChildren()) do
                 if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                     part.CanCollide = true
@@ -556,9 +541,7 @@ end
 -- Walk on Water with better respawn handling
 local function toggleWalkOnWater(enabled)
     Movement.walkOnWaterEnabled = enabled
-    print("Walk on Water:", enabled, "RootPart:", rootPart ~= nil)
     
-    -- Disconnect old connection
     if connections.walkOnWater then
         connections.walkOnWater:Disconnect()
         connections.walkOnWater = nil
@@ -566,12 +549,8 @@ local function toggleWalkOnWater(enabled)
     
     if enabled then
         connections.walkOnWater = RunService.Heartbeat:Connect(function()
-            -- Refresh rootPart reference
-            if not rootPart and player.Character then
-                rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-            end
-            
-            if not rootPart or not Movement.walkOnWaterEnabled then return end
+            if not Movement.walkOnWaterEnabled then return end
+            if not refreshReferences() or not rootPart or not player.Character then return end
             
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {player.Character}
@@ -592,20 +571,13 @@ local function toggleWalkOnWater(enabled)
                 end
             end
         end)
-    else
-        -- Clean up water walk parts
-        if rootPart and rootPart:FindFirstChild("WaterWalkPart") then
-            rootPart.WaterWalkPart:Destroy()
-        end
     end
 end
 
--- Player NoClip - Pass through other players without physics
+-- Player NoClip with better handling
 local function togglePlayerNoclip(enabled)
     Movement.playerNoclipEnabled = enabled
-    print("Player NoClip:", enabled)
     
-    -- Disconnect old connection
     if connections.playerNoclip then
         connections.playerNoclip:Disconnect()
         connections.playerNoclip = nil
@@ -613,14 +585,9 @@ local function togglePlayerNoclip(enabled)
     
     if enabled then
         connections.playerNoclip = RunService.Heartbeat:Connect(function()
-            -- Refresh character reference
-            if not player.Character then
-                player.Character = Players.LocalPlayer.Character
-            end
+            if not Movement.playerNoclipEnabled then return end
+            if not refreshReferences() or not player.Character then return end
             
-            if not player.Character or not Movement.playerNoclipEnabled then return end
-            
-            -- Make all player parts non-collidable with other players
             for _, otherPlayer in pairs(Players:GetPlayers()) do
                 if otherPlayer ~= player and otherPlayer.Character then
                     for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -632,7 +599,6 @@ local function togglePlayerNoclip(enabled)
             end
         end)
     else
-        -- Re-enable collision for all other players
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player and otherPlayer.Character then
                 for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -645,30 +611,31 @@ local function togglePlayerNoclip(enabled)
     end
 end
 
--- Super Swim with better respawn handling
+-- Super Swim with better reference handling
 local function toggleSwim(enabled)
     Movement.swimEnabled = enabled
-    print("Super Swim:", enabled, "Humanoid:", humanoid ~= nil)
     
-    -- Get fresh humanoid reference
-    if not humanoid and player.Character then
-        humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    local function applySwim()
+        if refreshReferences() and humanoid then
+            if enabled then
+                pcall(function()
+                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+                    humanoid.WalkSpeed = 50
+                end)
+            else
+                pcall(function()
+                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+                    humanoid.WalkSpeed = Movement.defaultWalkSpeed
+                end)
+            end
+            return true
+        end
+        return false
     end
     
-    if humanoid then
-        if enabled then
-            pcall(function()
-                humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
-                humanoid.WalkSpeed = 50
-            end)
-        else
-            pcall(function()
-                humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
-                humanoid.WalkSpeed = Movement.defaultWalkSpeed
-            end)
-        end
-    else
-        warn("No humanoid found for super swim")
+    if not applySwim() then
+        task.wait(0.1)
+        applySwim()
     end
 end
 
@@ -676,8 +643,7 @@ end
 function Movement.loadMovementButtons(createButton, createToggleButton)
     print("Loading movement buttons")
     if not createButton or not createToggleButton then
-        warn("Error: createButton or createToggleButton not provided! Buttons will not be created.")
-        print("Debug: createButton =", createButton, "createToggleButton =", createToggleButton)
+        warn("Error: createButton or createToggleButton not provided!")
         return
     end
     
@@ -694,9 +660,11 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Super Swim", toggleSwim)
 end
 
--- Function to reset Movement states
+-- Improved reset function
 function Movement.resetStates()
     print("Resetting Movement states")
+    
+    -- Reset all states
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -714,44 +682,52 @@ function Movement.resetStates()
     isTouchingJoystick = false
     joystickTouchId = nil
     
+    -- Disconnect all connections
     local movementConnections = {"fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "wallClimbInput"}
     for _, connName in ipairs(movementConnections) do
         if connections[connName] then
-            print("Disconnecting:", connName)
             connections[connName]:Disconnect()
             connections[connName] = nil
         end
     end
     
+    -- Clean up fly objects
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
     end
     
-    if humanoid then
-        humanoid.WalkSpeed = Movement.defaultWalkSpeed
-        if humanoid:FindFirstChild("JumpHeight") then
-            humanoid.JumpHeight = Movement.defaultJumpHeight
-        else
-            humanoid.JumpPower = Movement.defaultJumpPower
-        end
-        pcall(function()
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+    -- Reset character properties
+    if refreshReferences() then
+        if humanoid then
             humanoid.WalkSpeed = Movement.defaultWalkSpeed
-        end)
+            if humanoid:FindFirstChild("JumpHeight") then
+                humanoid.JumpHeight = Movement.defaultJumpHeight
+            else
+                humanoid.JumpPower = Movement.defaultJumpPower
+            end
+            pcall(function()
+                humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+            end)
+        end
+        
+        -- Re-enable collision
+        if player.Character then
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
+            end
+        end
     end
     
+    -- Reset workspace properties
     Workspace.Gravity = Movement.defaultGravity
     
-    if rootPart then
-        if rootPart:FindFirstChild("WaterWalkPart") then
-            rootPart.WaterWalkPart:Destroy()
-        end
-    end
-    
+    -- Hide UI elements
     if flyJoystickFrame then
         flyJoystickFrame.Visible = false
-        flyJoystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+        flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
     end
     if wallClimbButton then
         wallClimbButton.Visible = false
@@ -759,17 +735,17 @@ function Movement.resetStates()
     end
     if flyUpButton then
         flyUpButton.Visible = false
-        flyUpButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        flyUpButton.BackgroundTransparency = 0.3
     end
     if flyDownButton then
         flyDownButton.Visible = false
-        flyDownButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        flyDownButton.BackgroundTransparency = 0.3
     end
 end
 
--- Function to update references when character respawns
+-- Improved reference update function
 function Movement.updateReferences(newHumanoid, newRootPart)
-    print("Updating Movement references: Humanoid =", newHumanoid ~= nil, "RootPart =", newRootPart ~= nil)
+    print("Updating Movement references")
     humanoid = newHumanoid
     rootPart = newRootPart
     
@@ -780,58 +756,35 @@ function Movement.updateReferences(newHumanoid, newRootPart)
         else
             Movement.defaultJumpPower = humanoid.JumpPower or 50
         end
-        Movement.defaultGravity = Workspace.Gravity or 196.2
-    else
-        warn("No humanoid provided in updateReferences!")
     end
     
-    -- Reset and recreate mobile controls
+    Movement.defaultGravity = Workspace.Gravity or 196.2
+    
+    -- Recreate mobile controls
     createMobileControls()
     
-    -- Reapply active states
-    if Movement.speedEnabled then
-        print("Reapplying Speed")
-        toggleSpeed(true)
-    end
-    if Movement.jumpEnabled then
-        print("Reapplying Jump")
-        toggleJump(true)
-    end
-    if Movement.moonGravityEnabled then
-        print("Reapplying Moon Gravity")
-        toggleMoonGravity(true)
-    end
-    if Movement.doubleJumpEnabled then
-        print("Reapplying Double Jump")
-        toggleDoubleJump(true)
-    end
-    if Movement.infiniteJumpEnabled then
-        print("Reapplying Infinite Jump")
-        toggleInfiniteJump(true)
-    end
-    if Movement.wallClimbEnabled then
-        print("Reapplying Wall Climb")
-        toggleWallClimb(true)
-    end
-    if Movement.playerNoclipEnabled then
-        print("Reapplying Player NoClip")
-        togglePlayerNoclip(true)
-    end
-    if Movement.flyEnabled then
-        print("Reapplying Fly")
-        toggleFly(true)
-    end
-    if Movement.noclipEnabled then
-        print("Reapplying NoClip")
-        toggleNoclip(true)
-    end
-    if Movement.walkOnWaterEnabled then
-        print("Reapplying Walk on Water")
-        toggleWalkOnWater(true)
-    end
-    if Movement.swimEnabled then
-        print("Reapplying Super Swim")
-        toggleSwim(true)
+    -- Reapply active states with delay to ensure character is ready
+    task.wait(0.2)
+    
+    local statesToReapply = {
+        {Movement.speedEnabled, toggleSpeed, "Speed"},
+        {Movement.jumpEnabled, toggleJump, "Jump"},
+        {Movement.moonGravityEnabled, toggleMoonGravity, "Moon Gravity"},
+        {Movement.doubleJumpEnabled, toggleDoubleJump, "Double Jump"},
+        {Movement.infiniteJumpEnabled, toggleInfiniteJump, "Infinite Jump"},
+        {Movement.wallClimbEnabled, toggleWallClimb, "Wall Climb"},
+        {Movement.playerNoclipEnabled, togglePlayerNoclip, "Player NoClip"},
+        {Movement.noclipEnabled, toggleNoclip, "NoClip"},
+        {Movement.walkOnWaterEnabled, toggleWalkOnWater, "Walk on Water"},
+        {Movement.swimEnabled, toggleSwim, "Super Swim"},
+        {Movement.flyEnabled, toggleFly, "Fly"} -- Fly last to ensure other states are ready
+    }
+    
+    for _, state in ipairs(statesToReapply) do
+        if state[1] then -- if enabled
+            print("Reapplying", state[3])
+            state[2](true) -- call toggle function
+        end
     end
 end
 
@@ -856,7 +809,28 @@ function Movement.init(deps)
     settings = deps.settings
     player = deps.player
     
-    -- Initialize movement states
+    -- Validate critical dependencies
+    if not Players or not RunService or not Workspace or not UserInputService then
+        warn("Critical services missing!")
+        return false
+    end
+    
+    if not player then
+        player = Players.LocalPlayer
+    end
+    
+    -- Initialize default values
+    if humanoid then
+        Movement.defaultWalkSpeed = humanoid.WalkSpeed or 16
+        if humanoid:FindFirstChild("JumpHeight") then
+            Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
+        else
+            Movement.defaultJumpPower = humanoid.JumpPower or 50
+        end
+    end
+    Movement.defaultGravity = Workspace.Gravity or 196.2
+    
+    -- Reset all states
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -874,46 +848,86 @@ function Movement.init(deps)
     isTouchingJoystick = false
     joystickTouchId = nil
     
-    if humanoid then
-        Movement.defaultWalkSpeed = humanoid.WalkSpeed or 16
-        if humanoid:FindFirstChild("JumpHeight") then
-            Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
-        else
-            Movement.defaultJumpPower = humanoid.JumpPower or 50
-        end
-        Movement.defaultGravity = Workspace.Gravity or 196.2
-    end
-    
     createMobileControls()
     
     print("Movement module initialized successfully")
     return true
 end
 
--- Debug function
+-- Enhanced debug function
 function Movement.debug()
     print("=== Movement Module Debug Info ===")
-    print("speedEnabled:", Movement.speedEnabled)
-    print("jumpEnabled:", Movement.jumpEnabled)
-    print("flyEnabled:", Movement.flyEnabled)
-    print("noclipEnabled:", Movement.noclipEnabled)
-    print("infiniteJumpEnabled:", Movement.infiniteJumpEnabled)
-    print("walkOnWaterEnabled:", Movement.walkOnWaterEnabled)
-    print("swimEnabled:", Movement.swimEnabled)
-    print("moonGravityEnabled:", Movement.moonGravityEnabled)
-    print("doubleJumpEnabled:", Movement.doubleJumpEnabled)
-    print("wallClimbEnabled:", Movement.wallClimbEnabled)
-    print("playerNoclipEnabled:", Movement.playerNoclipEnabled)
-    print("humanoid:", humanoid ~= nil)
-    print("rootPart:", rootPart ~= nil)
-    print("jumpCount:", Movement.jumpCount)
-    print("flyVerticalInput:", flyVerticalInput)
-    print("joystickDelta:", joystickDelta)
-    print("flyJoystickFrame:", flyJoystickFrame ~= nil)
-    print("wallClimbButton:", wallClimbButton ~= nil)
-    print("flyUpButton:", flyUpButton ~= nil)
-    print("flyDownButton:", flyDownButton ~= nil)
+    print("Module States:")
+    print("  speedEnabled:", Movement.speedEnabled)
+    print("  jumpEnabled:", Movement.jumpEnabled)
+    print("  flyEnabled:", Movement.flyEnabled)
+    print("  noclipEnabled:", Movement.noclipEnabled)
+    print("  infiniteJumpEnabled:", Movement.infiniteJumpEnabled)
+    print("  walkOnWaterEnabled:", Movement.walkOnWaterEnabled)
+    print("  swimEnabled:", Movement.swimEnabled)
+    print("  moonGravityEnabled:", Movement.moonGravityEnabled)
+    print("  doubleJumpEnabled:", Movement.doubleJumpEnabled)
+    print("  wallClimbEnabled:", Movement.wallClimbEnabled)
+    print("  playerNoclipEnabled:", Movement.playerNoclipEnabled)
+    
+    print("References:")
+    print("  player:", player ~= nil)
+    print("  humanoid:", humanoid ~= nil)
+    print("  rootPart:", rootPart ~= nil)
+    print("  player.Character:", player and player.Character ~= nil)
+    
+    print("Fly System:")
+    print("  flyBodyVelocity:", flyBodyVelocity ~= nil)
+    print("  joystickDelta:", joystickDelta)
+    print("  flyVerticalInput:", flyVerticalInput)
+    print("  isTouchingJoystick:", isTouchingJoystick)
+    
+    print("UI Elements:")
+    print("  flyJoystickFrame:", flyJoystickFrame ~= nil)
+    print("  wallClimbButton:", wallClimbButton ~= nil)
+    print("  flyUpButton:", flyUpButton ~= nil)
+    print("  flyDownButton:", flyDownButton ~= nil)
+    
+    print("Active Connections:")
+    local activeConnections = 0
+    for name, conn in pairs(connections) do
+        if conn and conn.Connected then
+            activeConnections = activeConnections + 1
+            print("  " .. name .. ": connected")
+        end
+    end
+    print("  Total active:", activeConnections)
+    
+    print("Default Values:")
+    print("  defaultWalkSpeed:", Movement.defaultWalkSpeed)
+    print("  defaultJumpPower:", Movement.defaultJumpPower)
+    print("  defaultJumpHeight:", Movement.defaultJumpHeight)
+    print("  defaultGravity:", Movement.defaultGravity)
     print("===================================")
+end
+
+-- Add cleanup function for when module is unloaded
+function Movement.cleanup()
+    print("Cleaning up Movement module")
+    
+    -- Reset all states first
+    Movement.resetStates()
+    
+    -- Destroy UI elements
+    if flyJoystickFrame then flyJoystickFrame:Destroy() end
+    if wallClimbButton then wallClimbButton:Destroy() end
+    if flyUpButton then flyUpButton:Destroy() end
+    if flyDownButton then flyDownButton:Destroy() end
+    
+    -- Clear references
+    flyJoystickFrame = nil
+    flyJoystickKnob = nil
+    wallClimbButton = nil
+    flyUpButton = nil
+    flyDownButton = nil
+    flyBodyVelocity = nil
+    
+    print("Movement module cleaned up")
 end
 
 return Movement
