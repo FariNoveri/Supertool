@@ -75,7 +75,9 @@ local function updateMacroStatus()
         MacroStatusLabel.Text = recordingPaused and "Recording Paused" or "Recording Macro"
         MacroStatusLabel.Visible = true
     elseif macroPlaying and currentMacroName then
-        MacroStatusLabel.Text = (autoPlaying and "Auto-Playing Macro: " or "Playing Macro: ") .. currentMacroName
+        local macro = savedMacros[currentMacroName] or loadFromFileSystem(currentMacroName)
+        local speed = macro and macro.speed or 1
+        MacroStatusLabel.Text = (autoPlaying and "Auto-Playing Macro: " or "Playing Macro: ") .. currentMacroName .. " (Speed: " .. speed .. "x)"
         MacroStatusLabel.Visible = true
     else
         MacroStatusLabel.Visible = false
@@ -99,7 +101,7 @@ local function startMacroRecording()
     if macroRecording or macroPlaying then return end
     macroRecording = true
     recordingPaused = false
-    currentMacro = {frames = {}, startTime = tick()}
+    currentMacro = {frames = {}, startTime = tick(), speed = 1} -- Default speed 1x
     lastFrameTime = 0
     
     updateCharacterReferences()
@@ -183,7 +185,7 @@ local function stopMacroPlayback()
     updateMacroStatus()
 end
 
--- Play Macro
+-- Play Macro with Adjustable Speed
 local function playMacro(macroName, autoPlay)
     if macroRecording or macroPlaying or not humanoid or not rootPart then return end
     local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
@@ -198,6 +200,7 @@ local function playMacro(macroName, autoPlay)
     local function playSingleMacro()
         local startTime = tick()
         local index = 1
+        local speed = macro.speed or 1 -- Use stored speed, default to 1x
         
         playbackConnection = RunService.Heartbeat:Connect(function()
             if not macroPlaying or not player.Character then
@@ -241,7 +244,8 @@ local function playMacro(macroName, autoPlay)
             end
             
             local frame = macro.frames[index]
-            while index <= #macro.frames and frame.time <= (tick() - startTime) do
+            local scaledTime = frame.time / speed -- Scale time by speed multiplier
+            while index <= #macro.frames and scaledTime <= (tick() - startTime) do
                 if frame.cframe and frame.velocity and frame.walkSpeed and frame.jumpPower and frame.hipHeight and frame.state then
                     rootPart.CFrame = frame.cframe
                     rootPart.Velocity = frame.velocity
@@ -252,6 +256,7 @@ local function playMacro(macroName, autoPlay)
                 end
                 index = index + 1
                 frame = macro.frames[index] or frame
+                scaledTime = frame.time / speed
             end
         end)
     end
@@ -308,13 +313,13 @@ function Utility.updateMacroList()
     
     local itemCount = 0
     
-    for macroName, _ in pairs(savedMacros) do
+    for macroName, macro in pairs(savedMacros) do
         local macroItem = Instance.new("Frame")
         macroItem.Name = macroName .. "Item"
         macroItem.Parent = MacroScrollFrame
         macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         macroItem.BorderSizePixel = 0
-        macroItem.Size = UDim2.new(1, -5, 0, 70)
+        macroItem.Size = UDim2.new(1, -5, 0, 90) -- Increased height for speed selector
         macroItem.LayoutOrder = itemCount
         
         local nameLabel = Instance.new("TextLabel")
@@ -342,11 +347,36 @@ function Utility.updateMacroList()
         renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
         renameInput.TextSize = 7
         
+        local speedLabel = Instance.new("TextLabel")
+        speedLabel.Name = "SpeedLabel"
+        speedLabel.Parent = macroItem
+        speedLabel.BackgroundTransparency = 1
+        speedLabel.Position = UDim2.new(0, 5, 0, 45)
+        speedLabel.Size = UDim2.new(0, 50, 0, 15)
+        speedLabel.Font = Enum.Font.Gotham
+        speedLabel.Text = "Speed:"
+        speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        speedLabel.TextSize = 7
+        speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local speedInput = Instance.new("TextBox")
+        speedInput.Name = "SpeedInput"
+        speedInput.Parent = macroItem
+        speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        speedInput.BorderSizePixel = 0
+        speedInput.Position = UDim2.new(0, 60, 0, 45)
+        speedInput.Size = UDim2.new(0, 40, 0, 15)
+        speedInput.Font = Enum.Font.Gotham
+        speedInput.Text = tostring(macro.speed or 1)
+        speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        speedInput.TextSize = 7
+        speedInput.TextXAlignment = Enum.TextXAlignment.Center
+        
         local buttonFrame = Instance.new("Frame")
         buttonFrame.Name = "ButtonFrame"
         buttonFrame.Parent = macroItem
         buttonFrame.BackgroundTransparency = 1
-        buttonFrame.Position = UDim2.new(0, 5, 0, 45)
+        buttonFrame.Position = UDim2.new(0, 5, 0, 65)
         buttonFrame.Size = UDim2.new(1, -10, 0, 15)
         
         local playButton = Instance.new("TextButton")
@@ -396,6 +426,19 @@ function Utility.updateMacroList()
         renameButton.Text = "RENAME"
         renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         renameButton.TextSize = 7
+        
+        speedInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                local newSpeed = tonumber(speedInput.Text)
+                if newSpeed and newSpeed > 0 then
+                    macro.speed = newSpeed
+                    saveToFileSystem(macroName, macro)
+                    updateMacroStatus()
+                else
+                    speedInput.Text = tostring(macro.speed or 1)
+                end
+            end
+        end)
         
         playButton.MouseButton1Click:Connect(function()
             if macroPlaying and currentMacroName == macroName and not autoPlaying then
