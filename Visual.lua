@@ -14,6 +14,8 @@ Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.espEnabled = false
+Visual.joystickDelta = Vector2.new(0, 0) -- Global for Freecam movement
+Visual.character = nil
 local flashlight
 local pointLight -- Fallback for broader illumination
 local espHighlights = {} -- Store Highlight instances for ESP
@@ -220,10 +222,9 @@ local function toggleFreecam(enabled)
                 local cameraCFrame = Visual.freecamCFrame
                 
                 -- Apply joystick movement
-                local joystickDelta = Vector2.new(0, 0) -- Placeholder, updated via touch input
                 if joystickFrame.Visible then
-                    moveVector = moveVector + cameraCFrame.RightVector * joystickDelta.X
-                    moveVector = moveVector - cameraCFrame.LookVector * joystickDelta.Y
+                    moveVector = moveVector + cameraCFrame.RightVector * Visual.joystickDelta.X
+                    moveVector = moveVector - cameraCFrame.LookVector * Visual.joystickDelta.Y
                 end
                 
                 if moveVector.Magnitude > 0 then
@@ -240,19 +241,19 @@ local function toggleFreecam(enabled)
         
         connections.touchInput = UserInputService.TouchMoved:Connect(function(input, processed)
             if not processed then
-                joystickDelta = handleJoystickInput(input)
+                Visual.joystickDelta = handleJoystickInput(input) or Vector2.new(0, 0)
                 handleSwipe(input)
             end
         end)
         connections.touchBegan = UserInputService.TouchStarted:Connect(function(input, processed)
             if not processed then
-                handleJoystickInput(input)
+                Visual.joystickDelta = handleJoystickInput(input) or Vector2.new(0, 0)
                 handleSwipe(input)
             end
         end)
         connections.touchEnded = UserInputService.TouchEnded:Connect(function(input, processed)
             if not processed then
-                joystickDelta = handleJoystickInput(input)
+                Visual.joystickDelta = handleJoystickInput(input) or Vector2.new(0, 0)
                 handleSwipe(input)
             end
         end)
@@ -277,12 +278,13 @@ local function toggleFreecam(enabled)
         joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
         lastYaw, lastPitch = 0, 0
         touchStartPos = nil
+        Visual.joystickDelta = Vector2.new(0, 0)
         
         local camera = Workspace.CurrentCamera
         camera.CameraType = Enum.CameraType.Custom
         camera.CameraSubject = humanoid
         if humanoid and rootPart then
-            camera.CFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 10)) * CFrame.lookAt(Vector3.new(0, 2, 10), rootPart.Position)
+            camera.CFrame = CFrame.lookAt(rootPart.Position + Vector3.new(0, 2, 10), rootPart.Position)
             humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 16
             humanoid.JumpPower = (settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50
         end
@@ -345,7 +347,7 @@ local function toggleFlashlight(enabled)
         
         -- Parent to player's head if available, else camera
         pcall(function()
-            local head = character and character:FindFirstChild("Head")
+            local head = Visual.character and Visual.character:FindFirstChild("Head")
             if head then
                 flashlight.Parent = head
                 pointLight.Parent = head
@@ -360,14 +362,14 @@ local function toggleFlashlight(enabled)
             if Visual.flashlightEnabled and flashlight and flashlight.Parent then
                 pcall(function()
                     local camera = Workspace.CurrentCamera
-                    local head = character and character:FindFirstChild("Head")
+                    local head = Visual.character and Visual.character:FindFirstChild("Head")
                     local parent = head or camera
                     if parent then
                         -- Ensure lights are parented correctly
-                        if flashlight.Parent != parent then
+                        if flashlight.Parent ~= parent then
                             flashlight.Parent = parent
                         end
-                        if pointLight.Parent != parent then
+                        if pointLight.Parent ~= parent then
                             pointLight.Parent = parent
                         end
                         -- Align with camera or head direction
@@ -414,12 +416,12 @@ local function toggleLowDetail(enabled)
     if enabled then
         -- Store default settings
         defaultLightingSettings.GlobalShadows = defaultLightingSettings.GlobalShadows or Lighting.GlobalShadows
-        defaultLightingSettings.TerrainDecoration = workspace.Terrain.Decoration -- Store terrain decoration setting
+        defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration -- Store terrain decoration setting
         pcall(function()
             defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
-            defaultLightingSettings.StreamingEnabled = workspace.StreamingEnabled
-            defaultLightingSettings.StreamingMinRadius = workspace.StreamingMinRadius
-            defaultLightingSettings.StreamingTargetRadius = workspace.StreamingTargetRadius
+            defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
+            defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
+            defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
         end)
         
         -- Disable all shadows and set minimal lighting
@@ -495,7 +497,7 @@ local function toggleLowDetail(enabled)
                     foliageStates[obj] = { Enabled = obj.Enabled }
                 end
                 obj.Enabled = false
-            elseif obj:IsA("Model") and obj ~= player.Character then
+            elseif obj:IsA("Model") and obj ~= Visual.character then
                 -- Check if model is a tree or foliage
                 local isTreeModel = obj.Name:lower():match("tree") or obj.Name:lower():match("bush") or 
                                     obj.Name:lower():match("foliage") or obj:GetAttribute("IsTree")
@@ -520,14 +522,14 @@ local function toggleLowDetail(enabled)
         
         -- Ultra-low streaming settings
         pcall(function()
-            workspace.StreamingEnabled = true
-            workspace.StreamingMinRadius = 8
-            workspace.StreamingTargetRadius = 16
+            Workspace.StreamingEnabled = true
+            Workspace.StreamingMinRadius = 8
+            Workspace.StreamingTargetRadius = 16
         end)
         
         -- Disable all terrain details, including grass
         pcall(function()
-            local terrain = workspace.Terrain
+            local terrain = Workspace.Terrain
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
@@ -599,14 +601,14 @@ local function toggleLowDetail(enabled)
         
         -- Restore streaming settings
         pcall(function()
-            workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
-            workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
-            workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
+            Workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
+            Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
+            Workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
         end)
         
         -- Restore terrain
         pcall(function()
-            local terrain = workspace.Terrain
+            local terrain = Workspace.Terrain
             terrain.WaterWaveSize = 0.15
             terrain.WaterWaveSpeed = 10
             terrain.WaterReflectance = 0.3
@@ -688,6 +690,7 @@ function Visual.init(deps)
     humanoid = deps.humanoid
     rootPart = deps.rootPart
     player = deps.player
+    Visual.character = deps.character or (player and player.Character)
     
     Visual.freecamEnabled = false
     Visual.freecamPosition = nil
@@ -696,6 +699,7 @@ function Visual.init(deps)
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
     foliageStates = {}
     
@@ -715,6 +719,7 @@ end
 function Visual.updateReferences(newHumanoid, newRootPart)
     humanoid = newHumanoid
     rootPart = newRootPart
+    Visual.character = newHumanoid and newHumanoid.Parent
     
     if Visual.freecamEnabled then
         toggleFreecam(true)

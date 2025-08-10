@@ -20,6 +20,14 @@ local currentMacroName = nil
 local recordingPaused = false
 local lastFrameTime = 0
 
+-- Memory Scanner Variables
+local memoryFrameVisible = false
+local MemoryFrame, MemoryScrollFrame, MemoryLayout, SearchInput, SearchButton, MemoryStatusLabel
+local foundAddresses = {}
+local isScanning = false
+local currentSearchValue = nil
+local searchHistory = {}
+
 -- Mock file system for DCIM/Supertool
 local fileSystem = {
     ["DCIM/Supertool"] = {}
@@ -68,6 +76,548 @@ local function renameInFileSystem(oldName, newName)
     return false
 end
 
+-- Memory Scanner Functions - Auto Detection
+local function getAllProperties(obj)
+    local properties = {}
+    local success, result = pcall(function()
+        -- Get all properties dynamically
+        for prop, _ in pairs(getrawmetatable(obj).__index) do
+            pcall(function()
+                local value = obj[prop]
+                if typeof(value) == "number" or typeof(value) == "string" or typeof(value) == "boolean" then
+                    properties[prop] = value
+                end
+            end)
+        end
+    end)
+    
+    -- Fallback: Common properties that usually exist
+    local commonProps = {
+        "Health", "MaxHealth", "WalkSpeed", "JumpPower", "HipHeight", 
+        "Size", "Transparency", "Volume", "Pitch", "Value", "StudsOffset"
+    }
+    
+    for _, prop in pairs(commonProps) do
+        pcall(function()
+            local value = obj[prop]
+            if value ~= nil and (typeof(value) == "number" or typeof(value) == "string" or typeof(value) == "boolean") then
+                properties[prop] = value
+            end
+        end)
+    end
+    
+    return properties
+end
+
+local function scanMemory(searchValue)
+    if isScanning then return end
+    isScanning = true
+    foundAddresses = {}
+    
+    MemoryStatusLabel.Text = "Scanning memory for: " .. tostring(searchValue)
+    MemoryStatusLabel.Visible = true
+    
+    local function recursiveScan(obj, path)
+        if not obj or typeof(obj) ~= "Instance" then return end
+        
+        local properties = getAllProperties(obj)
+        for propName, propValue in pairs(properties) do
+            local numValue = tonumber(propValue)
+            if numValue and math.abs(numValue - searchValue) < 0.001 then
+                table.insert(foundAddresses, {
+                    object = obj,
+                    property = propName,
+                    value = propValue,
+                    path = path .. "." .. propName,
+                    address = tostring(obj) .. ":" .. propName -- Mock address
+                })
+            elseif propValue == tostring(searchValue) then
+                table.insert(foundAddresses, {
+                    object = obj,
+                    property = propName,
+                    value = propValue,
+                    path = path .. "." .. propName,
+                    address = tostring(obj) .. ":" .. propName
+                })
+            end
+        end
+        
+        -- Scan children
+        for _, child in pairs(obj:GetChildren()) do
+            recursiveScan(child, path .. "/" .. child.Name)
+        end
+    end
+    
+    task.spawn(function()
+        -- Scan game areas
+        recursiveScan(workspace, "Workspace")
+        
+        if player then
+            recursiveScan(player, "LocalPlayer")
+            if player.Character then
+                recursiveScan(player.Character, "Character")
+            end
+            if player.PlayerGui then
+                recursiveScan(player.PlayerGui, "PlayerGui")
+            end
+        end
+        
+        -- Scan other players
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character then
+                recursiveScan(otherPlayer.Character, otherPlayer.Name)
+            end
+        end
+        
+        isScanning = false
+        currentSearchValue = searchValue
+        table.insert(searchHistory, {value = searchValue, count = #foundAddresses, time = tick()})
+        
+        MemoryStatusLabel.Text = "Found " .. #foundAddresses .. " addresses with value: " .. tostring(searchValue)
+        Utility.updateMemoryList()
+    end)
+end
+
+local function refineSearch(newValue)
+    if isScanning or #foundAddresses == 0 then return end
+    
+    local refinedAddresses = {}
+    MemoryStatusLabel.Text = "Refining search..."
+    
+    for _, addr in pairs(foundAddresses) do
+        local success, currentValue = pcall(function()
+            return addr.object[addr.property]
+        end)
+        
+        if success then
+            local numValue = tonumber(currentValue)
+            if (numValue and math.abs(numValue - newValue) < 0.001) or 
+               (currentValue == tostring(newValue)) then
+                addr.value = currentValue
+                table.insert(refinedAddresses, addr)
+            end
+        end
+    end
+    
+    foundAddresses = refinedAddresses
+    currentSearchValue = newValue
+    table.insert(searchHistory, {value = newValue, count = #foundAddresses, time = tick()})
+    
+    MemoryStatusLabel.Text = "Refined to " .. #foundAddresses .. " addresses"
+    Utility.updateMemoryList()
+end
+
+local function modifyValue(addr, newValue)
+    local success, err = pcall(function()
+        local convertedValue = newValue
+        local currentValue = addr.object[addr.property]
+        
+        -- Auto type conversion
+        if typeof(currentValue) == "number" then
+            convertedValue = tonumber(newValue) or 0
+        elseif typeof(currentValue) == "boolean" then
+            convertedValue = (newValue ~= 0 and newValue ~= "false" and newValue ~= false)
+        else
+            convertedValue = tostring(newValue)
+        end
+        
+        addr.object[addr.property] = convertedValue
+        addr.value = convertedValue
+        
+        return true
+    end)
+    
+    if success then
+        MemoryStatusLabel.Text = "Modified " .. addr.property .. " = " .. tostring(newValue)
+    else
+        MemoryStatusLabel.Text = "Failed to modify: " .. tostring(err)
+    end
+    
+    task.wait(0.1)
+    Utility.updateMemoryList()
+end
+
+-- Batch modify all visible values
+local function batchModify(newValue)
+    local count = 0
+    for _, addr in pairs(foundAddresses) do
+        if count >= 50 then break end -- Limit for safety
+        pcall(function()
+            local convertedValue = newValue
+            local currentValue = addr.object[addr.property]
+            
+            if typeof(currentValue) == "number" then
+                convertedValue = tonumber(newValue) or 0
+            elseif typeof(currentValue) == "boolean" then
+                convertedValue = (newValue ~= 0)
+            else
+                convertedValue = tostring(newValue)
+            end
+            
+            addr.object[addr.property] = convertedValue
+            addr.value = convertedValue
+            count = count + 1
+        end)
+    end
+    
+    MemoryStatusLabel.Text = "Modified " .. count .. " values to " .. tostring(newValue)
+    Utility.updateMemoryList()
+end
+
+-- Update Memory List UI
+function Utility.updateMemoryList()
+    if not MemoryScrollFrame then return end
+    
+    for _, child in pairs(MemoryScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    -- Show search history first
+    if #searchHistory > 0 then
+        local historyFrame = Instance.new("Frame")
+        historyFrame.Name = "HistoryFrame"
+        historyFrame.Parent = MemoryScrollFrame
+        historyFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        historyFrame.BorderSizePixel = 0
+        historyFrame.Size = UDim2.new(1, -5, 0, 25)
+        historyFrame.LayoutOrder = -1
+        
+        local historyLabel = Instance.new("TextLabel")
+        historyLabel.Parent = historyFrame
+        historyLabel.BackgroundTransparency = 1
+        historyLabel.Size = UDim2.new(1, 0, 1, 0)
+        historyLabel.Font = Enum.Font.Gotham
+        historyLabel.Text = "Search History: " .. table.concat((function()
+            local vals = {}
+            for i = math.max(1, #searchHistory-2), #searchHistory do
+                table.insert(vals, searchHistory[i].value .. "(" .. searchHistory[i].count .. ")")
+            end
+            return vals
+        end)(), " → ")
+        historyLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+        historyLabel.TextSize = 7
+        historyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    -- Limit display to prevent lag
+    local maxDisplay = math.min(#foundAddresses, 20)
+    
+    for i = 1, maxDisplay do
+        local addr = foundAddresses[i]
+        
+        local addrFrame = Instance.new("Frame")
+        addrFrame.Name = "Address" .. i
+        addrFrame.Parent = MemoryScrollFrame
+        addrFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        addrFrame.BorderSizePixel = 0
+        addrFrame.Size = UDim2.new(1, -5, 0, 70)
+        addrFrame.LayoutOrder = i
+        
+        local addressLabel = Instance.new("TextLabel")
+        addressLabel.Parent = addrFrame
+        addressLabel.BackgroundTransparency = 1
+        addressLabel.Position = UDim2.new(0, 5, 0, 2)
+        addressLabel.Size = UDim2.new(1, -10, 0, 12)
+        addressLabel.Font = Enum.Font.Gotham
+        addressLabel.Text = addr.address
+        addressLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        addressLabel.TextSize = 6
+        addressLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local pathLabel = Instance.new("TextLabel")
+        pathLabel.Parent = addrFrame
+        pathLabel.BackgroundTransparency = 1
+        pathLabel.Position = UDim2.new(0, 5, 0, 14)
+        pathLabel.Size = UDim2.new(0.6, 0, 0, 12)
+        pathLabel.Font = Enum.Font.Gotham
+        pathLabel.Text = addr.path
+        pathLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
+        pathLabel.TextSize = 7
+        pathLabel.TextXAlignment = Enum.TextXAlignment.Left
+        pathLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        
+        local valueLabel = Instance.new("TextLabel")
+        valueLabel.Parent = addrFrame
+        valueLabel.BackgroundTransparency = 1
+        valueLabel.Position = UDim2.new(0.6, 0, 0, 14)
+        valueLabel.Size = UDim2.new(0.4, -5, 0, 12)
+        valueLabel.Font = Enum.Font.Gotham
+        valueLabel.Text = "Value: " .. tostring(addr.value)
+        valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        valueLabel.TextSize = 7
+        valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+        
+        local inputBox = Instance.new("TextBox")
+        inputBox.Parent = addrFrame
+        inputBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        inputBox.BorderSizePixel = 0
+        inputBox.Position = UDim2.new(0, 5, 0, 28)
+        inputBox.Size = UDim2.new(0.6, -5, 0, 18)
+        inputBox.Font = Enum.Font.Gotham
+        inputBox.PlaceholderText = "New value..."
+        inputBox.Text = ""
+        inputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+        inputBox.TextSize = 7
+        
+        local modifyBtn = Instance.new("TextButton")
+        modifyBtn.Parent = addrFrame
+        modifyBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
+        modifyBtn.BorderSizePixel = 0
+        modifyBtn.Position = UDim2.new(0.6, 5, 0, 28)
+        modifyBtn.Size = UDim2.new(0.4, -10, 0, 18)
+        modifyBtn.Font = Enum.Font.Gotham
+        modifyBtn.Text = "MODIFY"
+        modifyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        modifyBtn.TextSize = 7
+        
+        local freezeBtn = Instance.new("TextButton")
+        freezeBtn.Parent = addrFrame
+        freezeBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 60)
+        freezeBtn.BorderSizePixel = 0
+        freezeBtn.Position = UDim2.new(0, 5, 0, 48)
+        freezeBtn.Size = UDim2.new(0.5, -5, 0, 16)
+        freezeBtn.Font = Enum.Font.Gotham
+        freezeBtn.Text = "FREEZE"
+        freezeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        freezeBtn.TextSize = 6
+        
+        local copyBtn = Instance.new("TextButton")
+        copyBtn.Parent = addrFrame
+        copyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 100)
+        copyBtn.BorderSizePixel = 0
+        copyBtn.Position = UDim2.new(0.5, 5, 0, 48)
+        copyBtn.Size = UDim2.new(0.5, -10, 0, 16)
+        copyBtn.Font = Enum.Font.Gotham
+        copyBtn.Text = "COPY ADDR"
+        copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        copyBtn.TextSize = 6
+        
+        -- Event handlers
+        modifyBtn.MouseButton1Click:Connect(function()
+            local newVal = tonumber(inputBox.Text) or inputBox.Text
+            if newVal ~= "" then
+                modifyValue(addr, newVal)
+                inputBox.Text = ""
+            end
+        end)
+        
+        inputBox.FocusLost:Connect(function(enterPressed)
+            if enterPressed and inputBox.Text ~= "" then
+                local newVal = tonumber(inputBox.Text) or inputBox.Text
+                modifyValue(addr, newVal)
+                inputBox.Text = ""
+            end
+        end)
+        
+        freezeBtn.MouseButton1Click:Connect(function()
+            -- TODO: Implement freeze functionality
+            MemoryStatusLabel.Text = "Freeze feature coming soon!"
+        end)
+        
+        copyBtn.MouseButton1Click:Connect(function()
+            -- Copy address to "clipboard" (show in status)
+            MemoryStatusLabel.Text = "Copied: " .. addr.address
+        end)
+    end
+    
+    if #foundAddresses > maxDisplay then
+        local moreLabel = Instance.new("TextLabel")
+        moreLabel.Parent = MemoryScrollFrame
+        moreLabel.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
+        moreLabel.BorderSizePixel = 0
+        moreLabel.Size = UDim2.new(1, -5, 0, 25)
+        moreLabel.LayoutOrder = maxDisplay + 1
+        moreLabel.Font = Enum.Font.Gotham
+        moreLabel.Text = "+" .. (#foundAddresses - maxDisplay) .. " more addresses (refine search to see them)"
+        moreLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+        moreLabel.TextSize = 7
+    end
+    
+    task.wait(0.1)
+    if MemoryLayout then
+        local contentSize = MemoryLayout.AbsoluteContentSize
+        MemoryScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
+    end
+end
+
+-- Show Memory Scanner
+local function showMemoryScanner()
+    memoryFrameVisible = true
+    if not MemoryFrame then
+        initMemoryUI()
+    end
+    MemoryFrame.Visible = true
+    Utility.updateMemoryList()
+end
+
+-- Initialize Memory Scanner UI
+local function initMemoryUI()
+    if MemoryFrame then return end
+    
+    MemoryFrame = Instance.new("Frame")
+    MemoryFrame.Name = "MemoryFrame"
+    MemoryFrame.Parent = ScreenGui
+    MemoryFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MemoryFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MemoryFrame.BorderSizePixel = 1
+    MemoryFrame.Position = UDim2.new(0.35, 0, 0.1, 0)
+    MemoryFrame.Size = UDim2.new(0, 450, 0, 500)
+    MemoryFrame.Visible = memoryFrameVisible
+    MemoryFrame.Active = true
+    MemoryFrame.Draggable = true
+
+    local title = Instance.new("TextLabel")
+    title.Parent = MemoryFrame
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.BorderSizePixel = 0
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.Font = Enum.Font.GothamBold
+    title.Text = "MEMORY SCANNER - GameGuardian Style"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 9
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Parent = MemoryFrame
+    closeBtn.BackgroundTransparency = 1
+    closeBtn.Position = UDim2.new(1, -25, 0, 2)
+    closeBtn.Size = UDim2.new(0, 20, 0, 20)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.TextSize = 10
+
+    SearchInput = Instance.new("TextBox")
+    SearchInput.Parent = MemoryFrame
+    SearchInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    SearchInput.BorderSizePixel = 0
+    SearchInput.Position = UDim2.new(0, 10, 0, 35)
+    SearchInput.Size = UDim2.new(1, -120, 0, 30)
+    SearchInput.Font = Enum.Font.Gotham
+    SearchInput.PlaceholderText = "Enter value (auto-detect type)"
+    SearchInput.Text = ""
+    SearchInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SearchInput.TextSize = 8
+
+    SearchButton = Instance.new("TextButton")
+    SearchButton.Parent = MemoryFrame
+    SearchButton.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
+    SearchButton.BorderSizePixel = 0
+    SearchButton.Position = UDim2.new(1, -100, 0, 35)
+    SearchButton.Size = UDim2.new(0, 90, 0, 30)
+    SearchButton.Font = Enum.Font.GothamBold
+    SearchButton.Text = "SCAN"
+    SearchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SearchButton.TextSize = 9
+    
+    local refineBtn = Instance.new("TextButton")
+    refineBtn.Parent = MemoryFrame
+    refineBtn.BackgroundColor3 = Color3.fromRGB(120, 80, 80)
+    refineBtn.BorderSizePixel = 0
+    refineBtn.Position = UDim2.new(0, 10, 0, 75)
+    refineBtn.Size = UDim2.new(0, 80, 0, 25)
+    refineBtn.Font = Enum.Font.Gotham
+    refineBtn.Text = "REFINE"
+    refineBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    refineBtn.TextSize = 8
+    
+    local batchBtn = Instance.new("TextButton")
+    batchBtn.Parent = MemoryFrame
+    batchBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
+    batchBtn.BorderSizePixel = 0
+    batchBtn.Position = UDim2.new(0, 100, 0, 75)
+    batchBtn.Size = UDim2.new(0, 80, 0, 25)
+    batchBtn.Font = Enum.Font.Gotham
+    batchBtn.Text = "BATCH"
+    batchBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    batchBtn.TextSize = 8
+    
+    local clearBtn = Instance.new("TextButton")
+    clearBtn.Parent = MemoryFrame
+    clearBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+    clearBtn.BorderSizePixel = 0
+    clearBtn.Position = UDim2.new(1, -100, 0, 75)
+    clearBtn.Size = UDim2.new(0, 90, 0, 25)
+    clearBtn.Font = Enum.Font.Gotham
+    clearBtn.Text = "CLEAR"
+    clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    clearBtn.TextSize = 8
+
+    MemoryStatusLabel = Instance.new("TextLabel")
+    MemoryStatusLabel.Parent = MemoryFrame
+    MemoryStatusLabel.BackgroundTransparency = 1
+    MemoryStatusLabel.Position = UDim2.new(0, 10, 0, 105)
+    MemoryStatusLabel.Size = UDim2.new(1, -20, 0, 15)
+    MemoryStatusLabel.Font = Enum.Font.Gotham
+    MemoryStatusLabel.Text = "Ready to scan memory"
+    MemoryStatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    MemoryStatusLabel.TextSize = 7
+    MemoryStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    MemoryScrollFrame = Instance.new("ScrollingFrame")
+    MemoryScrollFrame.Parent = MemoryFrame
+    MemoryScrollFrame.BackgroundTransparency = 1
+    MemoryScrollFrame.Position = UDim2.new(0, 10, 0, 125)
+    MemoryScrollFrame.Size = UDim2.new(1, -20, 1, -135)
+    MemoryScrollFrame.ScrollBarThickness = 4
+    MemoryScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    MemoryScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    MemoryScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    MemoryLayout = Instance.new("UIListLayout")
+    MemoryLayout.Parent = MemoryScrollFrame
+    MemoryLayout.Padding = UDim.new(0, 3)
+    MemoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    -- Event handlers
+    SearchButton.MouseButton1Click:Connect(function()
+        local val = tonumber(SearchInput.Text) or SearchInput.Text
+        if val ~= "" then
+            scanMemory(val)
+        end
+    end)
+    
+    refineBtn.MouseButton1Click:Connect(function()
+        local val = tonumber(SearchInput.Text) or SearchInput.Text
+        if val ~= "" and #foundAddresses > 0 then
+            refineSearch(val)
+        end
+    end)
+    
+    batchBtn.MouseButton1Click:Connect(function()
+        local val = tonumber(SearchInput.Text) or SearchInput.Text
+        if val ~= "" and #foundAddresses > 0 then
+            batchModify(val)
+        end
+    end)
+    
+    clearBtn.MouseButton1Click:Connect(function()
+        foundAddresses = {}
+        searchHistory = {}
+        currentSearchValue = nil
+        SearchInput.Text = ""
+        MemoryStatusLabel.Text = "Memory cleared"
+        Utility.updateMemoryList()
+    end)
+    
+    SearchInput.FocusLost:Connect(function(enterPressed)
+        if enterPressed and SearchInput.Text ~= "" then
+            local val = tonumber(SearchInput.Text) or SearchInput.Text
+            if #foundAddresses > 0 then
+                refineSearch(val)
+            else
+                scanMemory(val)
+            end
+        end
+    end)
+    
+    closeBtn.MouseButton1Click:Connect(function()
+        memoryFrameVisible = false
+        MemoryFrame.Visible = false
+    end)
+end
+
 -- Update macro status display
 local function updateMacroStatus()
     if not MacroStatusLabel then return end
@@ -101,7 +651,7 @@ local function startMacroRecording()
     if macroRecording or macroPlaying then return end
     macroRecording = true
     recordingPaused = false
-    currentMacro = {frames = {}, startTime = tick(), speed = 1} -- Default speed 1x
+    currentMacro = {frames = {}, startTime = tick(), speed = 1}
     lastFrameTime = 0
     
     updateCharacterReferences()
@@ -155,7 +705,7 @@ local function stopMacroRecording()
     
     local macroName = MacroInput.Text
     if macroName == "" then
-        macroName = "Macro " .. (#savedMacros + 1)
+        macroName = "Macro " .. (table.maxn(savedMacros) + 1)
     end
     
     savedMacros[macroName] = currentMacro
@@ -200,7 +750,7 @@ local function playMacro(macroName, autoPlay)
     local function playSingleMacro()
         local startTime = tick()
         local index = 1
-        local speed = macro.speed or 1 -- Use stored speed, default to 1x
+        local speed = macro.speed or 1
         
         playbackConnection = RunService.Heartbeat:Connect(function()
             if not macroPlaying or not player.Character then
@@ -244,7 +794,7 @@ local function playMacro(macroName, autoPlay)
             end
             
             local frame = macro.frames[index]
-            local scaledTime = frame.time / speed -- Scale time by speed multiplier
+            local scaledTime = frame.time / speed
             while index <= #macro.frames and scaledTime <= (tick() - startTime) do
                 if frame.cframe and frame.velocity and frame.walkSpeed and frame.jumpPower and frame.hipHeight and frame.state then
                     rootPart.CFrame = frame.cframe
@@ -295,7 +845,7 @@ end
 local function showMacroManager()
     macroFrameVisible = true
     if not MacroFrame then
-        initUI()
+        initMacroUI()
     end
     MacroFrame.Visible = true
     Utility.updateMacroList()
@@ -319,7 +869,7 @@ function Utility.updateMacroList()
         macroItem.Parent = MacroScrollFrame
         macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         macroItem.BorderSizePixel = 0
-        macroItem.Size = UDim2.new(1, -5, 0, 90) -- Increased height for speed selector
+        macroItem.Size = UDim2.new(1, -5, 0, 90)
         macroItem.LayoutOrder = itemCount
         
         local nameLabel = Instance.new("TextLabel")
@@ -466,6 +1016,7 @@ function Utility.updateMacroList()
             renameMacro(macroName, renameInput.Text)
         end)
         
+        -- Hover effects
         playButton.MouseEnter:Connect(function()
             if not (macroPlaying and currentMacroName == macroName and not autoPlaying) then
                 playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -514,12 +1065,14 @@ function Utility.updateMacroList()
     end
     
     task.wait(0.1)
-    local contentSize = MacroLayout.AbsoluteContentSize
-    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 5)
+    if MacroLayout then
+        local contentSize = MacroLayout.AbsoluteContentSize
+        MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 5)
+    end
 end
 
--- Initialize UI elements
-local function initUI()
+-- Initialize Macro UI elements
+local function initMacroUI()
     if MacroFrame then return end
     
     MacroFrame = Instance.new("Frame")
@@ -645,6 +1198,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Record Macro", startMacroRecording)
     createButton("Stop Macro", stopMacroRecording)
     createButton("Macro Manager", showMacroManager)
+    createButton("Memory Scanner", showMemoryScanner)
 end
 
 -- Function to reset Utility states
@@ -668,6 +1222,17 @@ function Utility.resetStates()
     if MacroFrame then
         MacroFrame.Visible = false
     end
+    
+    -- Reset memory scanner
+    memoryFrameVisible = false
+    foundAddresses = {}
+    isScanning = false
+    currentSearchValue = nil
+    searchHistory = {}
+    if MemoryFrame then
+        MemoryFrame.Visible = false
+    end
+    
     updateMacroStatus()
     Utility.updateMacroList()
 end
@@ -694,12 +1259,20 @@ function Utility.init(deps)
     currentMacroName = nil
     lastFrameTime = 0
     
+    -- Initialize memory scanner variables
+    memoryFrameVisible = false
+    foundAddresses = {}
+    isScanning = false
+    currentSearchValue = nil
+    searchHistory = {}
+    
     ensureFileSystem()
     for macroName, macroData in pairs(fileSystem["DCIM/Supertool"]) do
         savedMacros[macroName] = macroData
     end
     
-    initUI()
+    initMacroUI()
+    initMemoryUI()
     
     player.CharacterAdded:Connect(function(newCharacter)
         if newCharacter then
