@@ -1,5 +1,5 @@
 -- Teleport-related features for MinimalHackGUI by Fari Noveri
--- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling, persistent positions on respawn, and auto-teleport status label
+-- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling, persistent positions on respawn, auto-teleport status label, and pause on death with auto-resume
 
 -- Dependencies: Passed from mainloader.lua
 local Players, Workspace, ScreenGui, player, rootPart, settings
@@ -11,6 +11,7 @@ Teleport.savedPositions = Teleport.savedPositions or {} -- Preserve existing pos
 Teleport.positionNumbers = Teleport.positionNumbers or {} -- Preserve existing position numbers
 Teleport.positionFrameVisible = false
 Teleport.autoTeleportActive = false
+Teleport.autoTeleportPaused = false -- New flag for pausing auto-teleport
 Teleport.autoTeleportMode = "once" -- "once" or "repeat"
 Teleport.autoTeleportDelay = 2 -- seconds between teleports
 Teleport.currentAutoIndex = 1
@@ -369,6 +370,10 @@ local function doAutoTeleport()
         repeat
             for i = Teleport.currentAutoIndex, #positions do
                 if not Teleport.autoTeleportActive then return end
+                -- Check for pause
+                while Teleport.autoTeleportPaused do
+                    wait(0.1)
+                end
                 local position = positions[i]
                 if safeTeleport(position.cframe) then
                     print("Auto teleported to: " .. position.name .. " (" .. i .. "/" .. #positions .. ")")
@@ -439,6 +444,7 @@ end
 function Teleport.stopAutoTeleport()
     if not Teleport.autoTeleportActive then return end
     Teleport.autoTeleportActive = false
+    Teleport.autoTeleportPaused = false
     Teleport.currentAutoIndex = 1
     Teleport.autoTeleportCoroutine = nil
     if AutoStatusLabel then
@@ -635,14 +641,31 @@ end
 -- On character respawn
 local function onCharacterAdded(character)
     if Teleport.autoTeleportActive then
-        Teleport.stopAutoTeleport()
-        print("Auto teleport stopped due to character respawn")
+        Teleport.autoTeleportPaused = true
+        print("Auto teleport paused due to character respawn")
+        if AutoStatusLabel then
+            AutoStatusLabel.Text = "Auto teleport paused"
+        end
     end
     local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
     if humanoidRootPart then
         wait(1)
         -- Only refresh UI, do not reset savedPositions or fileSystem
         refreshPositionButtons()
+        if Teleport.autoTeleportActive and Teleport.autoTeleportPaused then
+            Teleport.autoTeleportPaused = false
+            print("Auto teleport resumed after respawn")
+            -- Update status label back to normal
+            if AutoStatusLabel then
+                local positions = getOrderedPositions()
+                if positions[Teleport.currentAutoIndex] then
+                    local position = positions[Teleport.currentAutoIndex]
+                    local number = Teleport.positionNumbers[position.name] or 0
+                    local numberText = number > 0 and "#" .. number or ""
+                    AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+                end
+            end
+        end
         print("Character respawned, teleport UI updated")
     else
         warn("HumanoidRootPart not found after respawn")
