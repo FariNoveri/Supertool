@@ -1,736 +1,650 @@
--- Visual-related features for MinimalHackGUI by Fari Noveri, including ESP, Freecam, Fullbright, Flashlight, and Low Detail Mode for mobile
+-- Main entry point for MinimalHackGUI by Fari Noveri
 
--- Dependencies: These must be passed from mainloader.lua
-local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
 
--- Initialize module
-local Visual = {}
+-- Local Player
+local player = Players.LocalPlayer
+local character, humanoid, rootPart
 
--- Variables
-Visual.freecamEnabled = false
-Visual.freecamPosition = nil
-Visual.freecamCFrame = nil
-Visual.fullbrightEnabled = false
-Visual.flashlightEnabled = false
-Visual.lowDetailEnabled = false
-Visual.espEnabled = false
-local flashlight
-local pointLight -- Fallback for broader illumination
-local espHighlights = {} -- Store Highlight instances for ESP
-local defaultLightingSettings = {} -- Store default lighting settings
-local joystickFrame -- Virtual joystick for mobile Freecam
-local joystickKnob
-local touchStartPos -- Track swipe for rotation
-local lastYaw, lastPitch = 0, 0
-local foliageStates = {} -- Store original foliage properties for restoration
+-- Connections and states
+local connections = {}
+local buttonStates = {}
+local selectedCategory = "Movement"
+local categoryStates = {} -- Store feature states per category
+local activeFeature = nil -- Track currently active exclusive feature
+local exclusiveFeatures = {} -- List of features that should be exclusive
 
--- Create virtual joystick for mobile Freecam
-local function createJoystick()
-    joystickFrame = Instance.new("Frame")
-    joystickFrame.Name = "FreecamJoystick"
-    joystickFrame.Size = UDim2.new(0, 100, 0, 100)
-    joystickFrame.Position = UDim2.new(0.1, 0, 0.7, 0)
-    joystickFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    joystickFrame.BackgroundTransparency = 0.5
-    joystickFrame.BorderSizePixel = 0
-    joystickFrame.Visible = false
-    joystickFrame.Parent = ScreenGui
+-- Settings
+local settings = {
+    FlySpeed = {value = 50, min = 10, max = 200, default = 50},
+    FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
+    JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
+    WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
+}
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0.5, 0)
-    corner.Parent = joystickFrame
+-- ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MinimalHackGUI"
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Enabled = true
 
-    joystickKnob = Instance.new("Frame")
-    joystickKnob.Name = "Knob"
-    joystickKnob.Size = UDim2.new(0, 40, 0, 40)
-    joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-    joystickKnob.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    joystickKnob.BackgroundTransparency = 0.3
-    joystickKnob.BorderSizePixel = 0
-    joystickKnob.Parent = joystickFrame
-
-    local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(0.5, 0)
-    knobCorner.Parent = joystickKnob
-end
-
--- Handle joystick input for Freecam movement
-local function handleJoystickInput(input)
-    if not Visual.freecamEnabled or not joystickFrame.Visible then return end
-    if input.UserInputType == Enum.UserInputType.Touch then
-        if input.UserInputState == Enum.UserInputState.Begin then
-            joystickFrame.Visible = true
-            joystickFrame.Position = UDim2.new(0, input.Position.X - 50, 0, input.Position.Y - 50)
-        elseif input.UserInputState == Enum.UserInputState.Change then
-            local center = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
-            local delta = Vector2.new(input.Position.X - center.X, input.Position.Y - center.Y)
-            local magnitude = delta.Magnitude
-            local maxRadius = 30
-            if magnitude > maxRadius then
-                delta = delta * (maxRadius / magnitude)
-            end
-            joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
-            return delta / maxRadius -- Normalized movement vector
-        elseif input.UserInputState == Enum.UserInputState.End then
-            joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-            joystickFrame.Visible = false
-            return Vector2.new(0, 0)
-        end
-    end
-    return Vector2.new(0, 0)
-end
-
--- Handle swipe for Freecam rotation
-local function handleSwipe(input)
-    if not Visual.freecamEnabled or input.UserInputType ~= Enum.UserInputType.Touch then return end
-    if input.UserInputState == Enum.UserInputState.Begin then
-        touchStartPos = input.Position
-    elseif input.UserInputState == Enum.UserInputState.Change and touchStartPos then
-        local delta = input.Position - touchStartPos
-        lastYaw = lastYaw - math.rad(delta.X * 0.1)
-        lastPitch = math.clamp(lastPitch - math.rad(delta.Y * 0.1), -math.rad(89), math.rad(89))
-        touchStartPos = input.Position
-    elseif input.UserInputState == Enum.UserInputState.End then
-        touchStartPos = nil
+-- Check for existing script instances
+for _, gui in pairs(player.PlayerGui:GetChildren()) do
+    if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
+        gui:Destroy()
     end
 end
 
--- ESP (Wallhack with Invisible Player Detection)
-local function toggleESP(enabled)
-    Visual.espEnabled = enabled
-    print("ESP:", enabled)
-    
-    if enabled then
-        connections.esp = RunService.RenderStepped:Connect(function()
-            if Visual.espEnabled then
-                for _, otherPlayer in pairs(Players:GetPlayers()) do
-                    if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        local character = otherPlayer.Character
-                        local isInvisible = false
-                        
-                        -- Check for invisibility (transparent parts or custom attributes)
-                        pcall(function()
-                            for _, part in pairs(character:GetDescendants()) do
-                                if part:IsA("BasePart") and part.Transparency >= 0.9 then
-                                    isInvisible = true
-                                    break
-                                end
-                            end
-                            -- Check for custom invisibility attributes (game-specific)
-                            if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
-                                isInvisible = true
-                            end
-                        end)
-                        
-                        if not espHighlights[otherPlayer] then
-                            local highlight = Instance.new("Highlight")
-                            highlight.Name = "ESPHighlight"
-                            highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
-                            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                            highlight.FillTransparency = isInvisible and 0.3 or 0.5
-                            highlight.OutlineTransparency = 0
-                            highlight.Adornee = character
-                            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            highlight.Parent = character
-                            espHighlights[otherPlayer] = highlight
-                        end
-                    end
-                end
-            end
-        end)
+-- Main Frame
+local Frame = Instance.new("Frame")
+Frame.Name = "MainFrame"
+Frame.Parent = ScreenGui
+Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Frame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+Frame.BorderSizePixel = 1
+Frame.Position = UDim2.new(0.5, -250, 0.5, -150)
+Frame.Size = UDim2.new(0, 500, 0, 300)
+Frame.Active = true
+Frame.Draggable = true
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Parent = Frame
+Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Title.BorderSizePixel = 0
+Title.Size = UDim2.new(1, 0, 0, 25)
+Title.Font = Enum.Font.Gotham
+Title.Text = "MinimalHackGUI by Fari Noveri"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 10
+
+-- Minimized Logo
+local MinimizedLogo = Instance.new("Frame")
+MinimizedLogo.Name = "MinimizedLogo"
+MinimizedLogo.Parent = ScreenGui
+MinimizedLogo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MinimizedLogo.BorderColor3 = Color3.fromRGB(45, 45, 45)
+MinimizedLogo.Position = UDim2.new(0, 5, 0, 5)
+MinimizedLogo.Size = UDim2.new(0, 30, 0, 30)
+MinimizedLogo.Visible = false
+MinimizedLogo.Active = true
+MinimizedLogo.Draggable = true
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 12)
+Corner.Parent = MinimizedLogo
+
+local LogoText = Instance.new("TextLabel")
+LogoText.Parent = MinimizedLogo
+LogoText.BackgroundTransparency = 1
+LogoText.Size = UDim2.new(1, 0, 1, 0)
+LogoText.Font = Enum.Font.GothamBold
+LogoText.Text = "H"
+LogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
+LogoText.TextSize = 12
+LogoText.TextStrokeTransparency = 0.5
+LogoText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+local LogoButton = Instance.new("TextButton")
+LogoButton.Parent = MinimizedLogo
+LogoButton.BackgroundTransparency = 1
+LogoButton.Size = UDim2.new(1, 0, 1, 0)
+LogoButton.Text = ""
+
+-- Minimize Button
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Parent = Frame
+MinimizeButton.BackgroundTransparency = 1
+MinimizeButton.Position = UDim2.new(1, -20, 0, 5) -- Adjusted position since CloseButton is removed
+MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.Text = "-"
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.TextSize = 10
+
+-- Category Container with Scrolling
+local CategoryContainer = Instance.new("ScrollingFrame")
+CategoryContainer.Parent = Frame
+CategoryContainer.BackgroundTransparency = 1
+CategoryContainer.Position = UDim2.new(0, 5, 0, 30)
+CategoryContainer.Size = UDim2.new(0, 80, 1, -35)
+CategoryContainer.ScrollBarThickness = 4
+CategoryContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+CategoryContainer.ScrollingDirection = Enum.ScrollingDirection.Y
+CategoryContainer.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+CategoryContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local CategoryLayout = Instance.new("UIListLayout")
+CategoryLayout.Parent = CategoryContainer
+CategoryLayout.Padding = UDim.new(0, 3)
+CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CategoryLayout.FillDirection = Enum.FillDirection.Vertical
+
+-- Update category canvas size when content changes
+CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    CategoryContainer.CanvasSize = UDim2.new(0, 0, 0, CategoryLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- Feature Container
+local FeatureContainer = Instance.new("ScrollingFrame")
+FeatureContainer.Parent = Frame
+FeatureContainer.BackgroundTransparency = 1
+FeatureContainer.Position = UDim2.new(0, 90, 0, 30)
+FeatureContainer.Size = UDim2.new(1, -95, 1, -35)
+FeatureContainer.ScrollBarThickness = 4
+FeatureContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+FeatureContainer.ScrollingDirection = Enum.ScrollingDirection.Y
+FeatureContainer.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+FeatureContainer.Visible = true
+
+local FeatureLayout = Instance.new("UIListLayout")
+FeatureLayout.Parent = FeatureContainer
+FeatureLayout.Padding = UDim.new(0, 2)
+FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Update feature canvas size when content changes
+FeatureLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- Categories
+local categories = {
+    {name = "Movement", order = 1},
+    {name = "Player", order = 2},
+    {name = "Teleport", order = 3},
+    {name = "Visual", order = 4},
+    {name = "Utility", order = 5},
+    {name = "Settings", order = 6},
+    {name = "Info", order = 7}
+}
+
+local categoryFrames = {}
+local isMinimized = false
+
+-- Define exclusive features (features that can't run together)
+exclusiveFeatures = {
+    "Fly", "Noclip", "Speed", "JumpHeight", "InfiniteJump", 
+    "Freecam", "FullBright", "ESP", "Tracers", "AutoFarm"
+}
+
+-- Function to disable active feature
+local function disableActiveFeature()
+    if activeFeature then
+        local categoryName = activeFeature.category
+        local featureName = activeFeature.name
         
-        connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
-            if espHighlights[leavingPlayer] then
-                espHighlights[leavingPlayer]:Destroy()
-                espHighlights[leavingPlayer] = nil
-            end
-        end)
+        -- Set state to false
+        if categoryStates[categoryName] and categoryStates[categoryName][featureName] ~= nil then
+            categoryStates[categoryName][featureName] = false
+        end
         
-        connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
-            if Visual.espEnabled and newPlayer ~= player then
-                newPlayer.CharacterAdded:Connect(function(character)
-                    if Visual.espEnabled then
-                        local isInvisible = false
-                        pcall(function()
-                            for _, part in pairs(character:GetDescendants()) do
-                                if part:IsA("BasePart") and part.Transparency >= 0.9 then
-                                    isInvisible = true
-                                    break
-                                end
-                            end
-                            if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
-                                isInvisible = true
-                            end
-                        end)
-                        
-                        local highlight = Instance.new("Highlight")
-                        highlight.Name = "ESPHighlight"
-                        highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
-                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        highlight.FillTransparency = isInvisible and 0.3 or 0.5
-                        highlight.OutlineTransparency = 0
-                        highlight.Adornee = character
-                        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        highlight.Parent = character
-                        espHighlights[newPlayer] = highlight
-                    end
-                end)
+        -- Find and update button appearance
+        for _, child in pairs(FeatureContainer:GetChildren()) do
+            if child:IsA("TextButton") and child.Name == featureName then
+                child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                break
             end
-        end)
-    else
-        if connections.esp then
-            connections.esp:Disconnect()
-            connections.esp = nil
         end
-        if connections.espPlayerLeaving then
-            connections.espPlayerLeaving:Disconnect()
-            connections.espPlayerLeaving = nil
+        
+        -- Call disable callback if available
+        if activeFeature.disableCallback then
+            pcall(activeFeature.disableCallback)
         end
-        if connections.espPlayerAdded then
-            connections.espPlayerAdded:Disconnect()
-            connections.espPlayerAdded = nil
-        end
-        for _, highlight in pairs(espHighlights) do
-            highlight:Destroy()
-        end
-        espHighlights = {}
+        
+        print("Disabled active feature: " .. featureName)
+        activeFeature = nil
     end
 end
 
--- Freecam (Mobile)
-local function toggleFreecam(enabled)
-    Visual.freecamEnabled = enabled
-    print("Freecam:", enabled)
-    
-    if enabled then
-        if humanoid then
-            humanoid.WalkSpeed = 0
-            humanoid.JumpPower = 0
-        end
-        local camera = Workspace.CurrentCamera
-        Visual.freecamCFrame = camera.CFrame
-        Visual.freecamPosition = camera.CFrame.Position
-        camera.CameraType = Enum.CameraType.Scriptable
-        joystickFrame.Visible = true
-        
-        connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
-            if Visual.freecamEnabled then
-                local moveVector = Vector3.new()
-                local speed = settings.FreecamSpeed and settings.FreecamSpeed.value or 50
-                local cameraCFrame = Visual.freecamCFrame
-                
-                -- Apply joystick movement
-                local joystickDelta = Vector2.new(0, 0) -- Placeholder, updated via touch input
-                if joystickFrame.Visible then
-                    moveVector = moveVector + cameraCFrame.RightVector * joystickDelta.X
-                    moveVector = moveVector - cameraCFrame.LookVector * joystickDelta.Y
-                end
-                
-                if moveVector.Magnitude > 0 then
-                    moveVector = moveVector.Unit * speed * deltaTime * 60 -- Frame-rate independent
-                    Visual.freecamPosition = Visual.freecamPosition + moveVector
-                    Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * Visual.freecamCFrame.Rotation
-                end
-                
-                -- Apply rotation from swipe
-                Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
-                camera.CFrame = Visual.freecamCFrame
-            end
-        end)
-        
-        connections.touchInput = UserInputService.TouchMoved:Connect(function(input, processed)
-            if not processed then
-                joystickDelta = handleJoystickInput(input)
-                handleSwipe(input)
-            end
-        end)
-        connections.touchBegan = UserInputService.TouchStarted:Connect(function(input, processed)
-            if not processed then
-                handleJoystickInput(input)
-                handleSwipe(input)
-            end
-        end)
-        connections.touchEnded = UserInputService.TouchEnded:Connect(function(input, processed)
-            if not processed then
-                joystickDelta = handleJoystickInput(input)
-                handleSwipe(input)
-            end
-        end)
-    else
-        if connections.freecam then
-            connections.freecam:Disconnect()
-            connections.freecam = nil
-        end
-        if connections.touchInput then
-            connections.touchInput:Disconnect()
-            connections.touchInput = nil
-        end
-        if connections.touchBegan then
-            connections.touchBegan:Disconnect()
-            connections.touchBegan = nil
-        end
-        if connections.touchEnded then
-            connections.touchEnded:Disconnect()
-            connections.touchEnded = nil
-        end
-        joystickFrame.Visible = false
-        joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-        lastYaw, lastPitch = 0, 0
-        touchStartPos = nil
-        
-        local camera = Workspace.CurrentCamera
-        camera.CameraType = Enum.CameraType.Custom
-        camera.CameraSubject = humanoid
-        if humanoid and rootPart then
-            camera.CFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 10)) * CFrame.lookAt(Vector3.new(0, 2, 10), rootPart.Position)
-            humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 16
-            humanoid.JumpPower = (settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50
-        end
-        Visual.freecamPosition = nil
-        Visual.freecamCFrame = nil
-    end
-end
-
--- Fullbright
-local function toggleFullbright(enabled)
-    Visual.fullbrightEnabled = enabled
-    print("Fullbright:", enabled)
-    
-    if enabled then
-        defaultLightingSettings.Brightness = Lighting.Brightness
-        defaultLightingSettings.ClockTime = Lighting.ClockTime
-        defaultLightingSettings.FogEnd = Lighting.FogEnd
-        defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
-        defaultLightingSettings.Ambient = Lighting.Ambient
-        
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
-        Lighting.GlobalShadows = false
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-    else
-        Lighting.Brightness = defaultLightingSettings.Brightness or 1
-        Lighting.ClockTime = defaultLightingSettings.ClockTime or 12
-        Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
-        Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
-        Lighting.Ambient = defaultLightingSettings.Ambient or Color3.fromRGB(100, 100, 100)
-    end
-end
-
--- Flashlight (Fixed)
-local function toggleFlashlight(enabled)
-    Visual.flashlightEnabled = enabled
-    print("Flashlight:", enabled)
-    
-    if enabled then
-        -- Create or reuse flashlight (SpotLight)
-        if not flashlight then
-            flashlight = Instance.new("SpotLight")
-            flashlight.Name = "Flashlight"
-            flashlight.Brightness = 15
-            flashlight.Range = 100
-            flashlight.Angle = 30
-            flashlight.Face = Enum.NormalId.Front
-            flashlight.Enabled = true
-        end
-        
-        -- Create or reuse PointLight for broader illumination
-        if not pointLight then
-            pointLight = Instance.new("PointLight")
-            pointLight.Name = "FlashlightPoint"
-            pointLight.Brightness = 5
-            pointLight.Range = 50
-            pointLight.Enabled = true
-        end
-        
-        -- Parent to player's head if available, else camera
-        pcall(function()
-            local head = character and character:FindFirstChild("Head")
-            if head then
-                flashlight.Parent = head
-                pointLight.Parent = head
-            else
-                flashlight.Parent = Workspace.CurrentCamera
-                pointLight.Parent = Workspace.CurrentCamera
-            end
-        end)
-        
-        -- Update flashlight direction
-        connections.flashlight = RunService.RenderStepped:Connect(function()
-            if Visual.flashlightEnabled and flashlight and flashlight.Parent then
-                pcall(function()
-                    local camera = Workspace.CurrentCamera
-                    local head = character and character:FindFirstChild("Head")
-                    local parent = head or camera
-                    if parent then
-                        -- Ensure lights are parented correctly
-                        if flashlight.Parent != parent then
-                            flashlight.Parent = parent
-                        end
-                        if pointLight.Parent != parent then
-                            pointLight.Parent = parent
-                        end
-                        -- Align with camera or head direction
-                        local cframe = parent:IsA("Camera") and camera.CFrame or CFrame.new(head.Position, head.Position + head.CFrame.LookVector)
-                        flashlight.CFrame = cframe * CFrame.new(0, 0, -0.5)
-                        pointLight.CFrame = cframe
-                        flashlight.Enabled = true
-                        pointLight.Enabled = true
-                    else
-                        flashlight.Enabled = false
-                        pointLight.Enabled = false
-                        warn("Flashlight parent (head or camera) not found!")
-                    end
-                end)
-            elseif flashlight then
-                flashlight.Enabled = false
-                pointLight.Enabled = false
-            end
-        end)
-    else
-        -- Clean up
-        if connections.flashlight then
-            connections.flashlight:Disconnect()
-            connections.flashlight = nil
-        end
-        if flashlight then
-            flashlight.Enabled = false
-            flashlight:Destroy()
-            flashlight = nil
-        end
-        if pointLight then
-            pointLight.Enabled = false
-            pointLight:Destroy()
-            pointLight = nil
+-- Function to check if feature is exclusive
+local function isExclusiveFeature(featureName)
+    for _, exclusive in pairs(exclusiveFeatures) do
+        if string.find(featureName, exclusive) then
+            return true
         end
     end
+    return false
 end
 
--- Low Detail Mode (Brutally Low for Mobile with No Grass and No Leaves)
-local function toggleLowDetail(enabled)
-    Visual.lowDetailEnabled = enabled
-    print("Low Detail Mode:", enabled)
-    
-    if enabled then
-        -- Store default settings
-        defaultLightingSettings.GlobalShadows = defaultLightingSettings.GlobalShadows or Lighting.GlobalShadows
-        defaultLightingSettings.TerrainDecoration = workspace.Terrain.Decoration -- Store terrain decoration setting
-        pcall(function()
-            defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
-            defaultLightingSettings.StreamingEnabled = workspace.StreamingEnabled
-            defaultLightingSettings.StreamingMinRadius = workspace.StreamingMinRadius
-            defaultLightingSettings.StreamingTargetRadius = workspace.StreamingTargetRadius
-        end)
-        
-        -- Disable all shadows and set minimal lighting
-        Lighting.GlobalShadows = false
-        Lighting.Brightness = 0.5
-        Lighting.FogEnd = 500
-        Lighting.FogStart = 0
-        Lighting.FogColor = Color3.fromRGB(100, 100, 100)
-        
-        -- Set absolute minimum rendering quality
-        pcall(function()
-            local renderSettings = game:GetService("Settings").Rendering
-            renderSettings.QualityLevel = Enum.QualityLevel.Level01
-            renderSettings.EnableFRM = false
-            renderSettings.EnableParticles = false
-            renderSettings.EnableClouds = false
-        end)
-        pcall(function()
-            local userSettings = UserSettings()
-            local gameSettings = userSettings.GameSettings
-            gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-            gameSettings.RenderDistance = 50
-        end)
-        
-        -- Disable all visual effects and simplify objects, including foliage
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
-               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                if not foliageStates[obj] then
-                    foliageStates[obj] = { Enabled = obj.Enabled }
-                end
-                obj.Enabled = false
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                if not foliageStates[obj] then
-                    foliageStates[obj] = { Transparency = obj.Transparency }
-                end
-                obj.Transparency = 1
-            elseif obj:IsA("BasePart") then
-                -- Check for leaf-related parts (by name or tag)
-                local isFoliage = obj.Name:lower():match("leaf") or obj.Name:lower():match("leaves") or 
-                                  obj.Name:lower():match("foliage") or obj:GetAttribute("IsFoliage")
-                if isFoliage then
-                    if not foliageStates[obj] then
-                        foliageStates[obj] = { Transparency = obj.Transparency }
-                    end
-                    obj.Transparency = 1
-                else
-                    if not foliageStates[obj] then
-                        foliageStates[obj] = { Material = obj.Material, Reflectance = obj.Reflectance, CastShadow = obj.CastShadow, Transparency = obj.Transparency }
-                    end
-                    obj.Material = Enum.Material.SmoothPlastic
-                    obj.Reflectance = 0
-                    obj.CastShadow = false
-                    obj.Transparency = obj.Transparency > 0 and obj.Transparency or 0
-                end
-            elseif obj:IsA("MeshPart") then
-                local isFoliage = obj.Name:lower():match("leaf") or obj.Name:lower():match("leaves") or 
-                                  obj.Name:lower():match("foliage") or obj:GetAttribute("IsFoliage")
-                if isFoliage then
-                    if not foliageStates[obj] then
-                        foliageStates[obj] = { Transparency = obj.Transparency }
-                    end
-                    obj.Transparency = 1
-                else
-                    if not foliageStates[obj] then
-                        foliageStates[obj] = { TextureID = obj.TextureID, Material = obj.Material }
-                    end
-                    obj.TextureID = ""
-                    obj.Material = Enum.Material.SmoothPlastic
-                end
-            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                if not foliageStates[obj] then
-                    foliageStates[obj] = { Enabled = obj.Enabled }
-                end
-                obj.Enabled = false
-            elseif obj:IsA("Model") and obj ~= player.Character then
-                -- Check if model is a tree or foliage
-                local isTreeModel = obj.Name:lower():match("tree") or obj.Name:lower():match("bush") or 
-                                    obj.Name:lower():match("foliage") or obj:GetAttribute("IsTree")
-                if isTreeModel then
-                    for _, part in pairs(obj:GetDescendants()) do
-                        if part:IsA("BasePart") or part:IsA("MeshPart") then
-                            if not foliageStates[part] then
-                                foliageStates[part] = { Transparency = part.Transparency }
-                            end
-                            part.Transparency = 1
-                        end
-                    end
-                end
-                pcall(function()
-                    local animator = obj:FindFirstChildOfClass("Animator")
-                    if animator then
-                        animator:Destroy()
-                    end
-                end)
-            end
-        end
-        
-        -- Ultra-low streaming settings
-        pcall(function()
-            workspace.StreamingEnabled = true
-            workspace.StreamingMinRadius = 8
-            workspace.StreamingTargetRadius = 16
-        end)
-        
-        -- Disable all terrain details, including grass
-        pcall(function()
-            local terrain = workspace.Terrain
-            terrain.WaterWaveSize = 0
-            terrain.WaterWaveSpeed = 0
-            terrain.WaterReflectance = 0
-            terrain.WaterTransparency = 1
-            terrain.Material = Enum.Material.SmoothPlastic
-            terrain.Decoration = false -- Disable grass and foliage
-            terrain:ClearAllChildren() -- Remove all terrain decorations
-        end)
-        
-        -- Disable post-processing effects
-        pcall(function()
-            for _, effect in pairs(Lighting:GetChildren()) do
-                if effect:IsA("PostEffect") then
-                    if not foliageStates[effect] then
-                        foliageStates[effect] = { Enabled = effect.Enabled }
-                    end
-                    effect.Enabled = false
-                end
-            end
-        end)
-        
-    else
-        -- Restore default settings
-        Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
-        Lighting.Brightness = defaultLightingSettings.Brightness or 1
-        Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
-        Lighting.FogStart = defaultLightingSettings.FogStart or 0
-        Lighting.FogColor = defaultLightingSettings.FogColor or Color3.fromRGB(192, 192, 192)
-        
-        pcall(function()
-            local renderSettings = game:GetService("Settings").Rendering
-            renderSettings.QualityLevel = defaultLightingSettings.QualityLevel or Enum.QualityLevel.Automatic
-            renderSettings.EnableFRM = true
-            renderSettings.EnableParticles = true
-            renderSettings.EnableClouds = true
-        end)
-        pcall(function()
-            local userSettings = UserSettings()
-            local gameSettings = userSettings.GameSettings
-            gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.Automatic
-            gameSettings.RenderDistance = 500
-        end)
-        
-        -- Restore objects
-        for obj, state in pairs(foliageStates) do
-            pcall(function()
-                if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
-                   obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                    obj.Enabled = state.Enabled or true
-                elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                    obj.Transparency = state.Transparency or 0
-                elseif obj:IsA("BasePart") then
-                    obj.Material = state.Material or Enum.Material.Plastic
-                    obj.Reflectance = state.Reflectance or 0.1
-                    obj.CastShadow = state.CastShadow or true
-                    obj.Transparency = state.Transparency or 0
-                elseif obj:IsA("MeshPart") then
-                    obj.TextureID = state.TextureID or ""
-                    obj.Material = state.Material or Enum.Material.Plastic
-                    obj.Transparency = state.Transparency or 0
-                elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                    obj.Enabled = state.Enabled or true
-                elseif obj:IsA("PostEffect") then
-                    obj.Enabled = state.Enabled or true
-                end
-            end)
-        end
-        foliageStates = {} -- Clear stored states
-        
-        -- Restore streaming settings
-        pcall(function()
-            workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
-            workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
-            workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
-        end)
-        
-        -- Restore terrain
-        pcall(function()
-            local terrain = workspace.Terrain
-            terrain.WaterWaveSize = 0.15
-            terrain.WaterWaveSpeed = 10
-            terrain.WaterReflectance = 0.3
-            terrain.WaterTransparency = 0.5
-            terrain.Material = Enum.Material.Grass
-            terrain.Decoration = defaultLightingSettings.TerrainDecoration or true -- Restore grass
-        end)
-        
-        -- Restore post-processing effects
-        pcall(function()
-            for _, effect in pairs(Lighting:GetChildren()) do
-                if effect:IsA("PostEffect") then
-                    effect.Enabled = true
-                end
-            end
-        end)
-    end
-end
+-- Load modules
+local modules = {}
+local modulesLoaded = {}
 
--- Function to create buttons for Visual features
-function Visual.loadVisualButtons(createToggleButton)
-    print("Loading visual buttons")
-    if not createToggleButton then
-        warn("Error: createToggleButton not provided! Buttons will not be created.")
-        return
-    end
-    createToggleButton("Freecam", toggleFreecam)
-    createToggleButton("Fullbright", toggleFullbright)
-    createToggleButton("Flashlight", toggleFlashlight)
-    createToggleButton("Low Detail Mode", toggleLowDetail)
-    createToggleButton("ESP", toggleESP)
-end
+local moduleURLs = {
+    Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement.lua",
+    Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Player.lua",
+    Teleport = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Teleport.lua",
+    Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Visual.lua",
+    Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Utility.lua",
+    Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Settings.lua",
+    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua"
+}
 
--- Function to reset Visual states
-function Visual.resetStates()
-    Visual.freecamEnabled = false
-    Visual.fullbrightEnabled = false
-    Visual.flashlightEnabled = false
-    Visual.lowDetailEnabled = false
-    Visual.espEnabled = false
-    
-    toggleFreecam(false)
-    toggleFullbright(false)
-    toggleFlashlight(false)
-    toggleLowDetail(false)
-    toggleESP(false)
-end
-
--- Function to get freecam state (for teleport.lua)
-function Visual.getFreecamState()
-    return Visual.freecamEnabled, Visual.freecamPosition
-end
-
--- Function to toggle freecam (for teleport.lua)
-function Visual.toggleFreecam(enabled)
-    toggleFreecam(enabled)
-end
-
--- Function to set dependencies
-function Visual.init(deps)
-    print("Initializing Visual module")
-    if not deps then
-        warn("Error: No dependencies provided!")
+local function loadModule(moduleName)
+    if not moduleURLs[moduleName] then
+        warn("No URL defined for module: " .. moduleName)
         return false
     end
     
-    Players = deps.Players
-    UserInputService = deps.UserInputService
-    RunService = deps.RunService
-    Workspace = deps.Workspace
-    Lighting = deps.Lighting
-    RenderSettings = deps.RenderSettings
-    ContextActionService = game:GetService("ContextActionService")
-    connections = deps.connections
-    buttonStates = deps.buttonStates
-    ScrollFrame = deps.ScrollFrame
-    ScreenGui = deps.ScreenGui
-    settings = deps.settings
-    humanoid = deps.humanoid
-    rootPart = deps.rootPart
-    player = deps.player
+    local success, result = pcall(function()
+        local response = game:HttpGet(moduleURLs[moduleName])
+        if not response or response == "" then
+            warn("Empty or invalid response for module: " .. moduleName)
+            return nil
+        end
+        local func = loadstring(response)
+        if not func then
+            warn("Failed to compile module: " .. moduleName)
+            return nil
+        end
+        local module = func()
+        if not module then
+            warn("Module " .. moduleName .. " returned nil")
+            return nil
+        end
+        return module
+    end)
     
-    Visual.freecamEnabled = false
-    Visual.freecamPosition = nil
-    Visual.freecamCFrame = nil
-    Visual.fullbrightEnabled = false
-    Visual.flashlightEnabled = false
-    Visual.lowDetailEnabled = false
-    Visual.espEnabled = false
-    espHighlights = {}
-    foliageStates = {}
-    
-    defaultLightingSettings.Brightness = Lighting.Brightness
-    defaultLightingSettings.ClockTime = Lighting.ClockTime
-    defaultLightingSettings.FogEnd = Lighting.FogEnd
-    defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
-    defaultLightingSettings.Ambient = Lighting.Ambient
-    
-    createJoystick()
-    
-    print("Visual module initialized successfully")
-    return true
-end
-
--- Function to update references when character respawns
-function Visual.updateReferences(newHumanoid, newRootPart)
-    humanoid = newHumanoid
-    rootPart = newRootPart
-    
-    if Visual.freecamEnabled then
-        toggleFreecam(true)
-    end
-    if Visual.fullbrightEnabled then
-        toggleFullbright(true)
-    end
-    if Visual.flashlightEnabled then
-        toggleFlashlight(true)
-    end
-    if Visual.lowDetailEnabled then
-        toggleLowDetail(true)
-    end
-    if Visual.espEnabled then
-        toggleESP(true)
+    if success and result then
+        modules[moduleName] = result
+        modulesLoaded[moduleName] = true
+        print("Loaded module: " .. moduleName)
+        if selectedCategory == moduleName then
+            task.spawn(loadButtons)
+        end
+        return true
+    else
+        warn("Failed to load module: " .. moduleName .. " Error: " .. tostring(result))
+        return false
     end
 end
 
-return Visual
+-- Load all modules
+for moduleName, _ in pairs(moduleURLs) do
+    task.spawn(function() loadModule(moduleName) end)
+end
+
+-- Dependencies
+local dependencies = {
+    Players = Players,
+    UserInputService = UserInputService,
+    RunService = RunService,
+    Workspace = Workspace,
+    Lighting = Lighting,
+    ScreenGui = ScreenGui,
+    settings = settings,
+    connections = connections,
+    buttonStates = buttonStates,
+    player = player,
+    disableActiveFeature = disableActiveFeature,
+    isExclusiveFeature = isExclusiveFeature
+}
+
+-- Initialize modules
+local function initializeModules()
+    for moduleName, module in pairs(modules) do
+        if module and type(module.init) == "function" then
+            local success, result = pcall(function()
+                dependencies.character = character
+                dependencies.humanoid = humanoid
+                dependencies.rootPart = rootPart
+                return module.init(dependencies)
+            end)
+            if not success then
+                warn("Failed to initialize module " .. moduleName .. ": " .. tostring(result))
+            else
+                print("Initialized module: " .. moduleName)
+            end
+        end
+    end
+end
+
+-- Create button
+local function createButton(name, callback, categoryName)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Parent = FeatureContainer
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, -2, 0, 20)
+    button.Font = Enum.Font.Gotham
+    button.Text = name
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 8
+    button.LayoutOrder = #FeatureContainer:GetChildren()
+    
+    if type(callback) == "function" then
+        button.MouseButton1Click:Connect(function()
+            -- Check if this is an exclusive feature
+            if isExclusiveFeature(name) then
+                -- Disable currently active feature if any
+                disableActiveFeature()
+                
+                -- Set this as the new active feature
+                activeFeature = {
+                    name = name,
+                    category = categoryName,
+                    disableCallback = nil -- Regular buttons don't have disable callbacks
+                }
+            end
+            
+            callback()
+        end)
+    end
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    end)
+    print("Created button: " .. name .. " for category: " .. categoryName)
+end
+
+-- Create toggle button with exclusive feature support
+local function createToggleButton(name, callback, categoryName, disableCallback)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Parent = FeatureContainer
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, -2, 0, 20)
+    button.Font = Enum.Font.Gotham
+    button.Text = name
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 8
+    button.LayoutOrder = #FeatureContainer:GetChildren()
+    
+    if categoryStates[categoryName][name] == nil then
+        categoryStates[categoryName][name] = false
+    end
+    button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+    
+    button.MouseButton1Click:Connect(function()
+        local newState = not categoryStates[categoryName][name]
+        
+        -- If enabling an exclusive feature
+        if newState and isExclusiveFeature(name) then
+            -- Disable currently active feature if any
+            disableActiveFeature()
+            
+            -- Set this as the new active feature
+            activeFeature = {
+                name = name,
+                category = categoryName,
+                disableCallback = disableCallback
+            }
+        elseif not newState and activeFeature and activeFeature.name == name then
+            -- If disabling the current active feature
+            activeFeature = nil
+        end
+        
+        categoryStates[categoryName][name] = newState
+        button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        
+        if type(callback) == "function" then
+            callback(newState)
+        end
+    end)
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+    end)
+    print("Created toggle button: " .. name .. " for category: " .. categoryName)
+end
+
+-- Load buttons implementation
+local function loadButtons()
+    -- Clear existing buttons
+    for _, child in pairs(FeatureContainer:GetChildren()) do
+        if child:IsA("TextButton") or child:IsA("TextLabel") then
+            child:Destroy()
+        end
+    end
+    
+    -- Update category button backgrounds
+    for categoryName, categoryData in pairs(categoryFrames) do
+        categoryData.button.BackgroundColor3 = categoryName == selectedCategory and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
+    end
+
+    if not selectedCategory then
+        warn("No category selected!")
+        return
+    end
+    
+    -- Show loading label
+    local loadingLabel = Instance.new("TextLabel")
+    loadingLabel.Parent = FeatureContainer
+    loadingLabel.BackgroundTransparency = 1
+    loadingLabel.Size = UDim2.new(1, -2, 0, 20)
+    loadingLabel.Font = Enum.Font.Gotham
+    loadingLabel.Text = "Loading " .. selectedCategory .. "..."
+    loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    loadingLabel.TextSize = 8
+    loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    task.spawn(function()
+        -- Small delay to ensure UI updates
+        task.wait(0.2)
+        
+        local success = false
+        local errorMessage = nil
+
+        -- Load buttons based on selected category
+        if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
+            success, errorMessage = pcall(function()
+                print("Loading Movement buttons...")
+                modules.Movement.loadMovementButtons(
+                    function(name, callback) createButton(name, callback, "Movement") end,
+                    function(name, callback, disableCallback) createToggleButton(name, callback, "Movement", disableCallback) end
+                )
+            end)
+        elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
+            success, errorMessage = pcall(function()
+                local selectedPlayer = modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
+                print("Loading Player buttons with selectedPlayer: " .. tostring(selectedPlayer))
+                modules.Player.loadPlayerButtons(
+                    function(name, callback) createButton(name, callback, "Player") end,
+                    function(name, callback, disableCallback) createToggleButton(name, callback, "Player", disableCallback) end,
+                    selectedPlayer
+                )
+            end)
+        elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
+            success, errorMessage = pcall(function()
+                local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
+                local freecamEnabled = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false
+                local freecamPosition = modules.Visual and modules.Visual.getFreecamState and select(2, modules.Visual.getFreecamState()) or nil
+                local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
+                print("Loading Teleport buttons with selectedPlayer: " .. tostring(selectedPlayer))
+                modules.Teleport.loadTeleportButtons(
+                    function(name, callback) createButton(name, callback, "Teleport") end,
+                    selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
+                )
+            end)
+        elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
+            success, errorMessage = pcall(function()
+                print("Loading Visual buttons...")
+                modules.Visual.loadVisualButtons(function(name, callback, disableCallback)
+                    createToggleButton(name, callback, "Visual", disableCallback)
+                end)
+            end)
+        elseif selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
+            success, errorMessage = pcall(function()
+                print("Loading Utility buttons...")
+                modules.Utility.loadUtilityButtons(function(name, callback)
+                    createButton(name, callback, "Utility")
+                end)
+            end)
+        elseif selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
+            success, errorMessage = pcall(function()
+                print("Loading Settings buttons...")
+                modules.Settings.loadSettingsButtons(function(name, callback)
+                    createButton(name, callback, "Settings")
+                end)
+            end)
+        elseif selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
+            success, errorMessage = pcall(function()
+                print("Loading Info buttons...")
+                modules.Info.loadInfoButtons(function(name, callback)
+                    createButton(name, callback, "Info")
+                end)
+            end)
+        else
+            errorMessage = "Module for " .. selectedCategory .. " not loaded or invalid!"
+            warn(errorMessage)
+        end
+
+        -- Update UI based on result
+        if loadingLabel and loadingLabel.Parent then
+            if not success or errorMessage then
+                loadingLabel.Text = "Failed to load " .. selectedCategory .. " buttons: " .. tostring(errorMessage)
+                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            else
+                loadingLabel:Destroy()
+            end
+        end
+    end)
+end
+
+-- Create category buttons
+for _, category in ipairs(categories) do
+    local categoryButton = Instance.new("TextButton")
+    categoryButton.Name = category.name .. "Category"
+    categoryButton.Parent = CategoryContainer
+    categoryButton.BackgroundColor3 = selectedCategory == category.name and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
+    categoryButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    categoryButton.Size = UDim2.new(1, -5, 0, 25)
+    categoryButton.LayoutOrder = category.order
+    categoryButton.Font = Enum.Font.GothamBold
+    categoryButton.Text = category.name
+    categoryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    categoryButton.TextSize = 8
+
+    categoryButton.MouseButton1Click:Connect(function()
+        selectedCategory = category.name
+        task.spawn(loadButtons)
+    end)
+
+    categoryButton.MouseEnter:Connect(function()
+        if selectedCategory ~= category.name then
+            categoryButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        end
+    end)
+
+    categoryButton.MouseLeave:Connect(function()
+        if selectedCategory ~= category.name then
+            categoryButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        end
+    end)
+
+    categoryFrames[category.name] = {button = categoryButton}
+    categoryStates[category.name] = {}
+end
+
+-- Minimize/Maximize
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    Frame.Visible = not isMinimized
+    MinimizedLogo.Visible = isMinimized
+    MinimizeButton.Text = isMinimized and "+" or "-"
+end
+
+-- Reset states
+local function resetStates()
+    print("Resetting all states")
+    activeFeature = nil -- Reset active feature
+    
+    for _, connection in pairs(connections) do
+        if connection and connection.Disconnect then
+            connection:Disconnect()
+        end
+    end
+    connections = {}
+    
+    for _, module in pairs(modules) do
+        if module and type(module.resetStates) == "function" then
+            pcall(function() module.resetStates() end)
+        end
+    end
+    
+    if selectedCategory then
+        task.spawn(loadButtons)
+    end
+end
+
+-- Character setup
+local function onCharacterAdded(newCharacter)
+    if not newCharacter then return end
+    
+    local success, result = pcall(function()
+        character = newCharacter
+        humanoid = character:WaitForChild("Humanoid", 30)
+        rootPart = character:WaitForChild("HumanoidRootPart", 30)
+        
+        dependencies.character = character
+        dependencies.humanoid = humanoid
+        dependencies.rootPart = rootPart
+        
+        initializeModules()
+        
+        if humanoid and humanoid.Died then
+            connections.humanoidDied = humanoid.Died:Connect(resetStates)
+        end
+    end)
+    if not success then
+        warn("Failed to set up character: " .. tostring(result))
+    end
+end
+
+-- Initialize
+if player.Character then
+    onCharacterAdded(player.Character)
+end
+connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
+
+-- Event connections
+MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
+LogoButton.MouseButton1Click:Connect(toggleMinimize)
+
+connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
+        toggleMinimize()
+    end
+end)
+
+-- Start initialization
+task.spawn(function()
+    local timeout = 15
+    local startTime = tick()
+    
+    -- Wait for critical modules to load
+    while (not modules.Movement or not modules.Player or not modules.Teleport) and tick() - startTime < timeout do
+        task.wait(0.1)
+    end
+
+    -- Check if modules loaded successfully
+    for _, moduleName in ipairs({"Movement", "Player", "Teleport"}) do
+        if not modules[moduleName] then
+            warn("Failed to load " .. moduleName .. " module after timeout!")
+        else
+            print(moduleName .. " module loaded successfully")
+        end
+    end
+
+    initializeModules()
+    task.spawn(loadButtons)
+end)
