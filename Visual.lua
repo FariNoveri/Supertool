@@ -15,12 +15,14 @@ Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.espEnabled = false
 local flashlight
+local pointLight -- Fallback for broader illumination
 local espHighlights = {} -- Store Highlight instances for ESP
 local defaultLightingSettings = {} -- Store default lighting settings
 local joystickFrame -- Virtual joystick for mobile Freecam
 local joystickKnob
 local touchStartPos -- Track swipe for rotation
 local lastYaw, lastPitch = 0, 0
+local foliageStates = {} -- Store original foliage properties for restoration
 
 -- Create virtual joystick for mobile Freecam
 local function createJoystick()
@@ -123,12 +125,12 @@ local function toggleESP(enabled)
                         if not espHighlights[otherPlayer] then
                             local highlight = Instance.new("Highlight")
                             highlight.Name = "ESPHighlight"
-                            highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0) -- Blue for invisible, red for visible
-                            highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- White outline
-                            highlight.FillTransparency = isInvisible and 0.3 or 0.5 -- Less transparent for invisible players
+                            highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
+                            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                            highlight.FillTransparency = isInvisible and 0.3 or 0.5
                             highlight.OutlineTransparency = 0
                             highlight.Adornee = character
-                            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Visible through walls
+                            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                             highlight.Parent = character
                             espHighlights[otherPlayer] = highlight
                         end
@@ -315,49 +317,78 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Only the toggleFlashlight function is updated
+-- Flashlight (Fixed)
 local function toggleFlashlight(enabled)
     Visual.flashlightEnabled = enabled
     print("Flashlight:", enabled)
     
     if enabled then
-        -- Create or reuse flashlight
+        -- Create or reuse flashlight (SpotLight)
         if not flashlight then
             flashlight = Instance.new("SpotLight")
             flashlight.Name = "Flashlight"
-            flashlight.Brightness = 10 -- Increased brightness for better visibility
-            flashlight.Range = 80 -- Increased range for better effect
-            flashlight.Angle = 45 -- Narrower angle for focused beam
-            flashlight.Face = Enum.NormalId.Front -- Ensure light projects forward
+            flashlight.Brightness = 15
+            flashlight.Range = 100
+            flashlight.Angle = 30
+            flashlight.Face = Enum.NormalId.Front
             flashlight.Enabled = true
         end
         
-        -- Parent to camera and ensure it persists
+        -- Create or reuse PointLight for broader illumination
+        if not pointLight then
+            pointLight = Instance.new("PointLight")
+            pointLight.Name = "FlashlightPoint"
+            pointLight.Brightness = 5
+            pointLight.Range = 50
+            pointLight.Enabled = true
+        end
+        
+        -- Parent to player's head if available, else camera
         pcall(function()
-            flashlight.Parent = Workspace.CurrentCamera
+            local head = character and character:FindFirstChild("Head")
+            if head then
+                flashlight.Parent = head
+                pointLight.Parent = head
+            else
+                flashlight.Parent = Workspace.CurrentCamera
+                pointLight.Parent = Workspace.CurrentCamera
+            end
         end)
         
-        -- Update flashlight position and direction every frame
+        -- Update flashlight direction
         connections.flashlight = RunService.RenderStepped:Connect(function()
             if Visual.flashlightEnabled and flashlight and flashlight.Parent then
                 pcall(function()
                     local camera = Workspace.CurrentCamera
-                    if camera then
-                        -- Ensure flashlight is parented to current camera
-                        if flashlight.Parent ~= camera then
-                            flashlight.Parent = camera
+                    local head = character and character:FindFirstChild("Head")
+                    local parent = head or camera
+                    if parent then
+                        -- Ensure lights are parented correctly
+                        if flashlight.Parent != parent then
+                            flashlight.Parent = parent
                         end
-                        -- Align flashlight with camera's look vector
-                        flashlight.CFrame = camera.CFrame * CFrame.new(0, 0, -1) -- Slightly offset forward
+                        if pointLight.Parent != parent then
+                            pointLight.Parent = parent
+                        end
+                        -- Align with camera or head direction
+                        local cframe = parent:IsA("Camera") and camera.CFrame or CFrame.new(head.Position, head.Position + head.CFrame.LookVector)
+                        flashlight.CFrame = cframe * CFrame.new(0, 0, -0.5)
+                        pointLight.CFrame = cframe
                         flashlight.Enabled = true
+                        pointLight.Enabled = true
+                    else
+                        flashlight.Enabled = false
+                        pointLight.Enabled = false
+                        warn("Flashlight parent (head or camera) not found!")
                     end
                 end)
             elseif flashlight then
                 flashlight.Enabled = false
+                pointLight.Enabled = false
             end
         end)
     else
-        -- Clean up flashlight and connection
+        -- Clean up
         if connections.flashlight then
             connections.flashlight:Disconnect()
             connections.flashlight = nil
@@ -367,10 +398,15 @@ local function toggleFlashlight(enabled)
             flashlight:Destroy()
             flashlight = nil
         end
+        if pointLight then
+            pointLight.Enabled = false
+            pointLight:Destroy()
+            pointLight = nil
+        end
     end
 end
 
--- Low Detail Mode (Brutally Low for Mobile)
+-- Low Detail Mode (Brutally Low for Mobile with No Grass and No Leaves)
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
@@ -378,6 +414,7 @@ local function toggleLowDetail(enabled)
     if enabled then
         -- Store default settings
         defaultLightingSettings.GlobalShadows = defaultLightingSettings.GlobalShadows or Lighting.GlobalShadows
+        defaultLightingSettings.TerrainDecoration = workspace.Terrain.Decoration -- Store terrain decoration setting
         pcall(function()
             defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
             defaultLightingSettings.StreamingEnabled = workspace.StreamingEnabled
@@ -387,49 +424,95 @@ local function toggleLowDetail(enabled)
         
         -- Disable all shadows and set minimal lighting
         Lighting.GlobalShadows = false
-        Lighting.Brightness = 0.5 -- Reduced brightness for minimal processing
-        Lighting.FogEnd = 500 -- Tighter fog to reduce rendering
+        Lighting.Brightness = 0.5
+        Lighting.FogEnd = 500
         Lighting.FogStart = 0
-        Lighting.FogColor = Color3.fromRGB(100, 100, 100) -- Gray fog to simplify visuals
+        Lighting.FogColor = Color3.fromRGB(100, 100, 100)
         
         -- Set absolute minimum rendering quality
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
-            renderSettings.QualityLevel = Enum.QualityLevel.Level01 -- Lowest possible quality
-            renderSettings.EnableFRM = false -- Disable fancy rendering modes
-            renderSettings.EnableParticles = false -- Disable particle rendering
-            renderSettings.EnableClouds = false -- Disable clouds
+            renderSettings.QualityLevel = Enum.QualityLevel.Level01
+            renderSettings.EnableFRM = false
+            renderSettings.EnableParticles = false
+            renderSettings.EnableClouds = false
         end)
         pcall(function()
             local userSettings = UserSettings()
             local gameSettings = userSettings.GameSettings
             gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-            gameSettings.RenderDistance = 50 -- Ultra-low render distance
+            gameSettings.RenderDistance = 50
         end)
         
-        -- Disable all visual effects and simplify objects
+        -- Disable all visual effects and simplify objects, including foliage
         for _, obj in pairs(Workspace:GetDescendants()) do
             if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
                obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                if not foliageStates[obj] then
+                    foliageStates[obj] = { Enabled = obj.Enabled }
+                end
                 obj.Enabled = false
             elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                obj.Transparency = 1 -- Remove all decals and textures
+                if not foliageStates[obj] then
+                    foliageStates[obj] = { Transparency = obj.Transparency }
+                end
+                obj.Transparency = 1
             elseif obj:IsA("BasePart") then
-                obj.Material = Enum.Material.SmoothPlastic -- Simplest material
-                obj.Reflectance = 0
-                obj.CastShadow = false -- Disable shadows
-                obj.Transparency = obj.Transparency > 0 and obj.Transparency or 0 -- Preserve transparency for gameplay
+                -- Check for leaf-related parts (by name or tag)
+                local isFoliage = obj.Name:lower():match("leaf") or obj.Name:lower():match("leaves") or 
+                                  obj.Name:lower():match("foliage") or obj:GetAttribute("IsFoliage")
+                if isFoliage then
+                    if not foliageStates[obj] then
+                        foliageStates[obj] = { Transparency = obj.Transparency }
+                    end
+                    obj.Transparency = 1
+                else
+                    if not foliageStates[obj] then
+                        foliageStates[obj] = { Material = obj.Material, Reflectance = obj.Reflectance, CastShadow = obj.CastShadow, Transparency = obj.Transparency }
+                    end
+                    obj.Material = Enum.Material.SmoothPlastic
+                    obj.Reflectance = 0
+                    obj.CastShadow = false
+                    obj.Transparency = obj.Transparency > 0 and obj.Transparency or 0
+                end
             elseif obj:IsA("MeshPart") then
-                obj.TextureID = "" -- Remove all textures
-                obj.Material = Enum.Material.SmoothPlastic
+                local isFoliage = obj.Name:lower():match("leaf") or obj.Name:lower():match("leaves") or 
+                                  obj.Name:lower():match("foliage") or obj:GetAttribute("IsFoliage")
+                if isFoliage then
+                    if not foliageStates[obj] then
+                        foliageStates[obj] = { Transparency = obj.Transparency }
+                    end
+                    obj.Transparency = 1
+                else
+                    if not foliageStates[obj] then
+                        foliageStates[obj] = { TextureID = obj.TextureID, Material = obj.Material }
+                    end
+                    obj.TextureID = ""
+                    obj.Material = Enum.Material.SmoothPlastic
+                end
             elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                obj.Enabled = false -- Disable all lights
+                if not foliageStates[obj] then
+                    foliageStates[obj] = { Enabled = obj.Enabled }
+                end
+                obj.Enabled = false
             elseif obj:IsA("Model") and obj ~= player.Character then
-                -- Simplify non-player models (e.g., disable animations if possible)
+                -- Check if model is a tree or foliage
+                local isTreeModel = obj.Name:lower():match("tree") or obj.Name:lower():match("bush") or 
+                                    obj.Name:lower():match("foliage") or obj:GetAttribute("IsTree")
+                if isTreeModel then
+                    for _, part in pairs(obj:GetDescendants()) do
+                        if part:IsA("BasePart") or part:IsA("MeshPart") then
+                            if not foliageStates[part] then
+                                foliageStates[part] = { Transparency = part.Transparency }
+                            end
+                            part.Transparency = 1
+                        end
+                    end
+                end
                 pcall(function()
                     local animator = obj:FindFirstChildOfClass("Animator")
                     if animator then
-                        animator:Destroy() -- Remove animations for non-player models
+                        animator:Destroy()
                     end
                 end)
             end
@@ -438,25 +521,29 @@ local function toggleLowDetail(enabled)
         -- Ultra-low streaming settings
         pcall(function()
             workspace.StreamingEnabled = true
-            workspace.StreamingMinRadius = 8 -- Extremely low for mobile
+            workspace.StreamingMinRadius = 8
             workspace.StreamingTargetRadius = 16
         end)
         
-        -- Disable all terrain details
+        -- Disable all terrain details, including grass
         pcall(function()
             local terrain = workspace.Terrain
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
             terrain.WaterTransparency = 1
-            terrain.Material = Enum.Material.SmoothPlastic -- Simplify terrain
-            terrain:ClearAllChildren() -- Remove terrain decorations (grass, etc.)
+            terrain.Material = Enum.Material.SmoothPlastic
+            terrain.Decoration = false -- Disable grass and foliage
+            terrain:ClearAllChildren() -- Remove all terrain decorations
         end)
         
         -- Disable post-processing effects
         pcall(function()
             for _, effect in pairs(Lighting:GetChildren()) do
                 if effect:IsA("PostEffect") then
+                    if not foliageStates[effect] then
+                        foliageStates[effect] = { Enabled = effect.Enabled }
+                    end
                     effect.Enabled = false
                 end
             end
@@ -485,23 +572,30 @@ local function toggleLowDetail(enabled)
         end)
         
         -- Restore objects
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
-               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                obj.Enabled = true
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                obj.Transparency = 0
-            elseif obj:IsA("BasePart") then
-                obj.Material = Enum.Material.Plastic
-                obj.Reflectance = 0.1
-                obj.CastShadow = true
-            elseif obj:IsA("MeshPart") then
-                obj.TextureID = obj:GetAttribute("OriginalTextureID") or ""
-                obj.Material = Enum.Material.Plastic
-            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                obj.Enabled = true
-            end
+        for obj, state in pairs(foliageStates) do
+            pcall(function()
+                if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                   obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                    obj.Enabled = state.Enabled or true
+                elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                    obj.Transparency = state.Transparency or 0
+                elseif obj:IsA("BasePart") then
+                    obj.Material = state.Material or Enum.Material.Plastic
+                    obj.Reflectance = state.Reflectance or 0.1
+                    obj.CastShadow = state.CastShadow or true
+                    obj.Transparency = state.Transparency or 0
+                elseif obj:IsA("MeshPart") then
+                    obj.TextureID = state.TextureID or ""
+                    obj.Material = state.Material or Enum.Material.Plastic
+                    obj.Transparency = state.Transparency or 0
+                elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                    obj.Enabled = state.Enabled or true
+                elseif obj:IsA("PostEffect") then
+                    obj.Enabled = state.Enabled or true
+                end
+            end)
         end
+        foliageStates = {} -- Clear stored states
         
         -- Restore streaming settings
         pcall(function()
@@ -517,7 +611,8 @@ local function toggleLowDetail(enabled)
             terrain.WaterWaveSpeed = 10
             terrain.WaterReflectance = 0.3
             terrain.WaterTransparency = 0.5
-            terrain.Material = Enum.Material.Grass -- Restore default material
+            terrain.Material = Enum.Material.Grass
+            terrain.Decoration = defaultLightingSettings.TerrainDecoration or true -- Restore grass
         end)
         
         -- Restore post-processing effects
@@ -602,6 +697,7 @@ function Visual.init(deps)
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
     espHighlights = {}
+    foliageStates = {}
     
     defaultLightingSettings.Brightness = Lighting.Brightness
     defaultLightingSettings.ClockTime = Lighting.ClockTime
