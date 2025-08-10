@@ -1,5 +1,5 @@
 -- Teleport-related features for MinimalHackGUI by Fari Noveri
--- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling
+-- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling, and persistent positions on respawn
 
 -- Dependencies: Passed from mainloader.lua
 local Players, Workspace, ScreenGui, player, rootPart, settings
@@ -7,8 +7,8 @@ local Players, Workspace, ScreenGui, player, rootPart, settings
 local Teleport = {}
 
 -- Variables
-Teleport.savedPositions = {}
-Teleport.positionNumbers = {} -- Store manual numbering for positions
+Teleport.savedPositions = Teleport.savedPositions or {} -- Preserve existing positions
+Teleport.positionNumbers = Teleport.positionNumbers or {} -- Preserve existing position numbers
 Teleport.positionFrameVisible = false
 Teleport.autoTeleportActive = false
 Teleport.autoTeleportMode = "once" -- "once" or "repeat"
@@ -21,7 +21,7 @@ local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePos
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
 
 -- Mock file system
-local fileSystem = { ["DCIM/Supertool"] = {} }
+local fileSystem = fileSystem or { ["DCIM/Supertool"] = {} } -- Preserve existing filesystem
 
 -- Get root part
 local function getRootPart()
@@ -234,7 +234,89 @@ local function createNumberInputDialog(positionName, currentNumber, onNumberSet)
     NumberInput:CaptureFocus()
 end
 
+-- Create rename dialog
+local function createRenameDialog(positionName, onRename)
+    local RenameFrame = Instance.new("Frame")
+    RenameFrame.Name = "RenameDialog"
+    RenameFrame.Parent = ScreenGui
+    RenameFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    RenameFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    RenameFrame.BorderSizePixel = 1
+    RenameFrame.Position = UDim2.new(0.5, -125, 0.5, -50)
+    RenameFrame.Size = UDim2.new(0, 250, 0, 100)
+    RenameFrame.Active = true
+    RenameFrame.Draggable = true
 
+    local RenameTitle = Instance.new("TextLabel")
+    RenameTitle.Parent = RenameFrame
+    RenameTitle.BackgroundTransparency = 1
+    RenameTitle.Position = UDim2.new(0, 10, 0, 5)
+    RenameTitle.Size = UDim2.new(1, -20, 0, 20)
+    RenameTitle.Font = Enum.Font.Gotham
+    RenameTitle.Text = "Rename Position: " .. positionName
+    RenameTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    RenameTitle.TextSize = 10
+    RenameTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local RenameInput = Instance.new("TextBox")
+    RenameInput.Parent = RenameFrame
+    RenameInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    RenameInput.BorderSizePixel = 0
+    RenameInput.Position = UDim2.new(0, 10, 0, 30)
+    RenameInput.Size = UDim2.new(1, -20, 0, 25)
+    RenameInput.Font = Enum.Font.Gotham
+    RenameInput.Text = positionName
+    RenameInput.PlaceholderText = "Enter new name"
+    RenameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    RenameInput.TextSize = 11
+
+    local ConfirmButton = Instance.new("TextButton")
+    ConfirmButton.Parent = RenameFrame
+    ConfirmButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    ConfirmButton.BorderSizePixel = 0
+    ConfirmButton.Position = UDim2.new(0, 10, 0, 65)
+    ConfirmButton.Size = UDim2.new(0.5, -15, 0, 25)
+    ConfirmButton.Font = Enum.Font.Gotham
+    ConfirmButton.Text = "Rename"
+    ConfirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ConfirmButton.TextSize = 10
+
+    local CancelButton = Instance.new("TextButton")
+    CancelButton.Parent = RenameFrame
+    CancelButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    CancelButton.BorderSizePixel = 0
+    CancelButton.Position = UDim2.new(0.5, 5, 0, 65)
+    CancelButton.Size = UDim2.new(0.5, -15, 0, 25)
+    CancelButton.Font = Enum.Font.Gotham
+    CancelButton.Text = "Cancel"
+    CancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CancelButton.TextSize = 10
+
+    ConfirmButton.MouseButton1Click:Connect(function()
+        local newName = RenameInput.Text:gsub("^%s*(.-)%s*$", "%1")
+        if newName == "" then
+            warn("New name cannot be empty")
+            return
+        end
+        if newName == positionName then
+            warn("New name is the same as current name")
+            RenameFrame:Destroy()
+            return
+        end
+        if positionExists(newName) then
+            warn("Position name already exists: " .. newName)
+            return
+        end
+        onRename(newName)
+        RenameFrame:Destroy()
+    end)
+
+    CancelButton.MouseButton1Click:Connect(function()
+        RenameFrame:Destroy()
+    end)
+
+    RenameInput:CaptureFocus()
+end
 
 -- Forward declarations for functions that reference each other
 local refreshPositionButtons
@@ -495,7 +577,7 @@ createPositionButton = function(positionName, cframe)
     end)
 end
 
--- Refresh position buttons (moved earlier in the code)
+-- Refresh position buttons
 refreshPositionButtons = function()
     if not PositionScrollFrame then
         warn("Cannot refresh position buttons: PositionScrollFrame not initialized")
@@ -521,14 +603,15 @@ local function onCharacterAdded(character)
     local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
     if humanoidRootPart then
         wait(1)
+        -- Only refresh UI, do not reset savedPositions or fileSystem
         refreshPositionButtons()
-        print("Character respawned, teleport system updated")
+        print("Character respawned, teleport UI updated")
     else
         warn("HumanoidRootPart not found after respawn")
     end
 end
 
--- Save current position (FIXED)
+-- Save current position
 function Teleport.saveCurrentPosition()
     local root = getRootPart()
     if not root then
@@ -559,7 +642,7 @@ function Teleport.saveCurrentPosition()
     return true
 end
 
--- Save freecam position (fixed duplicate prevention)
+-- Save freecam position
 function Teleport.saveFreecamPosition(freecamPosition)
     if not freecamPosition then
         warn("Cannot save: No freecam position available")
@@ -617,7 +700,7 @@ function Teleport.togglePositionManager()
     end
 end
 
--- Create position manager UI (optimized size and layout)
+-- Create position manager UI
 function Teleport.createPositionManagerUI()
     if not ScreenGui then
         warn("Cannot create Position Manager UI: ScreenGui not available")
@@ -632,7 +715,7 @@ function Teleport.createPositionManagerUI()
     PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PositionFrame.BorderSizePixel = 1
     PositionFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
-    PositionFrame.Size = UDim2.new(0, 300, 0, 320) -- Reduced size
+    PositionFrame.Size = UDim2.new(0, 300, 0, 320)
     PositionFrame.Visible = false
     PositionFrame.Active = true
     PositionFrame.Draggable = true
@@ -643,7 +726,7 @@ function Teleport.createPositionManagerUI()
     PositionTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     PositionTitle.BorderSizePixel = 0
     PositionTitle.Position = UDim2.new(0, 0, 0, 0)
-    PositionTitle.Size = UDim2.new(1, 0, 0, 28) -- Reduced height
+    PositionTitle.Size = UDim2.new(1, 0, 0, 28)
     PositionTitle.Font = Enum.Font.Gotham
     PositionTitle.Text = "POSITION MANAGER"
     PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -666,7 +749,7 @@ function Teleport.createPositionManagerUI()
     PositionInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     PositionInput.BorderSizePixel = 0
     PositionInput.Position = UDim2.new(0, 8, 0, 35)
-    PositionInput.Size = UDim2.new(1, -70, 0, 25) -- Reduced height
+    PositionInput.Size = UDim2.new(1, -70, 0, 25)
     PositionInput.Font = Enum.Font.Gotham
     PositionInput.PlaceholderText = "Position name..."
     PositionInput.Text = ""
@@ -679,7 +762,7 @@ function Teleport.createPositionManagerUI()
     SavePositionButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     SavePositionButton.BorderSizePixel = 0
     SavePositionButton.Position = UDim2.new(1, -55, 0, 35)
-    SavePositionButton.Size = UDim2.new(0, 50, 0, 25) -- Reduced size
+    SavePositionButton.Size = UDim2.new(0, 50, 0, 25)
     SavePositionButton.Font = Enum.Font.Gotham
     SavePositionButton.Text = "SAVE"
     SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -690,7 +773,7 @@ function Teleport.createPositionManagerUI()
     PositionScrollFrame.Parent = PositionFrame
     PositionScrollFrame.BackgroundTransparency = 1
     PositionScrollFrame.Position = UDim2.new(0, 8, 0, 68)
-    PositionScrollFrame.Size = UDim2.new(1, -16, 1, -135) -- Adjusted for smaller frame
+    PositionScrollFrame.Size = UDim2.new(1, -16, 1, -135)
     PositionScrollFrame.ScrollBarThickness = 3
     PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
     PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -710,14 +793,14 @@ function Teleport.createPositionManagerUI()
     AutoTeleportFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     AutoTeleportFrame.BorderSizePixel = 0
     AutoTeleportFrame.Position = UDim2.new(0, 8, 1, -62)
-    AutoTeleportFrame.Size = UDim2.new(1, -16, 0, 58) -- Reduced height
+    AutoTeleportFrame.Size = UDim2.new(1, -16, 0, 58)
 
     local AutoTeleportTitle = Instance.new("TextLabel")
     AutoTeleportTitle.Name = "AutoTeleportTitle"
     AutoTeleportTitle.Parent = AutoTeleportFrame
     AutoTeleportTitle.BackgroundTransparency = 1
     AutoTeleportTitle.Position = UDim2.new(0, 0, 0, 0)
-    AutoTeleportTitle.Size = UDim2.new(1, 0, 0, 15) -- Reduced height
+    AutoTeleportTitle.Size = UDim2.new(1, 0, 0, 15)
     AutoTeleportTitle.Font = Enum.Font.Gotham
     AutoTeleportTitle.Text = "AUTO TELEPORT"
     AutoTeleportTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -729,7 +812,7 @@ function Teleport.createPositionManagerUI()
     AutoModeToggle.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
     AutoModeToggle.BorderSizePixel = 0
     AutoModeToggle.Position = UDim2.new(0, 3, 0, 18)
-    AutoModeToggle.Size = UDim2.new(0.5, -5, 0, 18) -- Reduced height
+    AutoModeToggle.Size = UDim2.new(0.5, -5, 0, 18)
     AutoModeToggle.Font = Enum.Font.Gotham
     AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
     AutoModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -741,7 +824,7 @@ function Teleport.createPositionManagerUI()
     DelayInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     DelayInput.BorderSizePixel = 0
     DelayInput.Position = UDim2.new(0.5, 2, 0, 18)
-    DelayInput.Size = UDim2.new(0.5, -5, 0, 18) -- Reduced height
+    DelayInput.Size = UDim2.new(0.5, -5, 0, 18)
     DelayInput.Font = Enum.Font.Gotham
     DelayInput.Text = tostring(Teleport.autoTeleportDelay)
     DelayInput.PlaceholderText = "Delay (s)"
@@ -754,7 +837,7 @@ function Teleport.createPositionManagerUI()
     AutoTeleportButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     AutoTeleportButton.BorderSizePixel = 0
     AutoTeleportButton.Position = UDim2.new(0, 3, 0, 40)
-    AutoTeleportButton.Size = UDim2.new(0.5, -5, 0, 15) -- Reduced height
+    AutoTeleportButton.Size = UDim2.new(0.5, -5, 0, 15)
     AutoTeleportButton.Font = Enum.Font.Gotham
     AutoTeleportButton.Text = "Start Auto"
     AutoTeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -766,7 +849,7 @@ function Teleport.createPositionManagerUI()
     StopAutoButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
     StopAutoButton.BorderSizePixel = 0
     StopAutoButton.Position = UDim2.new(0.5, 2, 0, 40)
-    StopAutoButton.Size = UDim2.new(0.5, -5, 0, 15) -- Reduced height
+    StopAutoButton.Size = UDim2.new(0.5, -5, 0, 15)
     StopAutoButton.Font = Enum.Font.Gotham
     StopAutoButton.Text = "Stop Auto"
     StopAutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -825,8 +908,9 @@ function Teleport.init(deps)
         return false
     end
 
-    Teleport.savedPositions = {}
-    Teleport.positionNumbers = {} -- Initialize position numbers
+    -- Only initialize tables if they don't exist to preserve data
+    Teleport.savedPositions = Teleport.savedPositions or {}
+    Teleport.positionNumbers = Teleport.positionNumbers or {}
     Teleport.positionFrameVisible = false
     player.CharacterAdded:Connect(onCharacterAdded)
     if player.Character then
@@ -862,7 +946,7 @@ function Teleport.teleportToPosition(x, y, z)
     end
 end
 
--- Load teleport buttons (updated with fixed freecam save)
+-- Load teleport buttons
 function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
     print("Loading Teleport buttons...")
     
@@ -902,6 +986,7 @@ end
 function Teleport.resetStates()
     print("Resetting Teleport states...")
     Teleport.savedPositions = {}
+    Teleport.positionNumbers = {}
     Teleport.positionFrameVisible = false
     fileSystem["DCIM/Supertool"] = {}
     if PositionFrame then
