@@ -1,4 +1,12 @@
--- Teleport-related features for MinimalHackGUI by Fari Noveri
+-- Save current position (fixed duplicate prevention)
+function Teleport.saveCurrentPosition()
+    local root = getRootPart()
+    if not root then
+        warn("Cannot save position: Character not found")
+        return false
+    end
+    
+    local positionName = PositionInput and PositionInput.Text:gsub("^%s*-- Teleport-related features for MinimalHackGUI by Fari Noveri
 -- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling
 
 -- Dependencies: Passed from mainloader.lua
@@ -8,6 +16,7 @@ local Teleport = {}
 
 -- Variables
 Teleport.savedPositions = {}
+Teleport.positionNumbers = {} -- Store manual numbering for positions
 Teleport.positionFrameVisible = false
 Teleport.autoTeleportActive = false
 Teleport.autoTeleportMode = "once" -- "once" or "repeat"
@@ -32,7 +41,7 @@ local function getRootPart()
 end
 
 -- Save to mock filesystem
-local function saveToFileSystem(positionName, cframe)
+local function saveToFileSystem(positionName, cframe, number)
     if not positionName or not cframe then
         warn("Cannot save to file system: Invalid positionName or cframe")
         return false
@@ -41,7 +50,8 @@ local function saveToFileSystem(positionName, cframe)
         x = cframe.X,
         y = cframe.Y,
         z = cframe.Z,
-        orientation = {cframe:ToEulerAnglesXYZ()}
+        orientation = {cframe:ToEulerAnglesXYZ()},
+        number = number or 0
     }
     print("Saved to file system: " .. positionName)
     return true
@@ -52,20 +62,65 @@ local function loadFromFileSystem(positionName)
     local data = fileSystem["DCIM/Supertool"][positionName]
     if data then
         local rx, ry, rz = unpack(data.orientation)
+        Teleport.positionNumbers[positionName] = data.number or 0 -- Load number
         return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
     end
     warn("Cannot load from file system: Position " .. tostring(positionName) .. " not found")
     return nil
 end
 
--- Get ordered positions
+-- Get ordered positions (now based on manual numbering)
 local function getOrderedPositions()
     local orderedPositions = {}
     for name, cframe in pairs(Teleport.savedPositions) do
-        table.insert(orderedPositions, {name = name, cframe = cframe})
+        local number = Teleport.positionNumbers[name] or 0
+        table.insert(orderedPositions, {name = name, cframe = cframe, number = number})
     end
-    table.sort(orderedPositions, function(a, b) return a.name < b.name end)
+    
+    -- Sort by number first, then by name for positions with same number or 0
+    table.sort(orderedPositions, function(a, b)
+        if a.number == 0 and b.number == 0 then
+            return a.name < b.name -- Alphabetical for unnumbered
+        elseif a.number == 0 then
+            return false -- Unnumbered goes to end
+        elseif b.number == 0 then
+            return true -- Numbered comes first
+        elseif a.number == b.number then
+            return a.name < b.name -- Same number, sort by name
+        else
+            return a.number < b.number -- Sort by number
+        end
+    end)
+    
     return orderedPositions
+end
+
+-- Check for duplicate numbers
+local function getDuplicateNumbers()
+    local numberCount = {}
+    local duplicates = {}
+    
+    for name, number in pairs(Teleport.positionNumbers) do
+        if number > 0 then -- Only check numbered positions
+            if numberCount[number] then
+                table.insert(numberCount[number], name)
+                if not duplicates[number] then
+                    duplicates[number] = true
+                end
+            else
+                numberCount[number] = {name}
+            end
+        end
+    end
+    
+    local duplicateList = {}
+    for number, isDupe in pairs(duplicates) do
+        for _, name in ipairs(numberCount[number]) do
+            duplicateList[name] = true
+        end
+    end
+    
+    return duplicateList
 end
 
 -- Safe teleport
@@ -103,6 +158,159 @@ local function generateUniqueName(baseName)
     end
     return newName
 end
+
+-- Create number input dialog
+local function createNumberInputDialog(positionName, currentNumber, onNumberSet)
+    local NumberFrame = Instance.new("Frame")
+    NumberFrame.Name = "NumberInputDialog"
+    NumberFrame.Parent = ScreenGui
+    NumberFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    NumberFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    NumberFrame.BorderSizePixel = 1
+    NumberFrame.Position = UDim2.new(0.5, -125, 0.5, -50)
+    NumberFrame.Size = UDim2.new(0, 250, 0, 100)
+    NumberFrame.Active = true
+    NumberFrame.Draggable = true
+
+    local NumberTitle = Instance.new("TextLabel")
+    NumberTitle.Parent = NumberFrame
+    NumberTitle.BackgroundTransparency = 1
+    NumberTitle.Position = UDim2.new(0, 10, 0, 5)
+    NumberTitle.Size = UDim2.new(1, -20, 0, 20)
+    NumberTitle.Font = Enum.Font.Gotham
+    NumberTitle.Text = "Set Position Number: " .. positionName
+    NumberTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    NumberTitle.TextSize = 10
+    NumberTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local NumberInput = Instance.new("TextBox")
+    NumberInput.Parent = NumberFrame
+    NumberInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    NumberInput.BorderSizePixel = 0
+    NumberInput.Position = UDim2.new(0, 10, 0, 30)
+    NumberInput.Size = UDim2.new(1, -20, 0, 25)
+    NumberInput.Font = Enum.Font.Gotham
+    NumberInput.Text = currentNumber > 0 and tostring(currentNumber) or ""
+    NumberInput.PlaceholderText = "Enter number (0 = no number)"
+    NumberInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    NumberInput.TextSize = 11
+
+    local ConfirmButton = Instance.new("TextButton")
+    ConfirmButton.Parent = NumberFrame
+    ConfirmButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    ConfirmButton.BorderSizePixel = 0
+    ConfirmButton.Position = UDim2.new(0, 10, 0, 65)
+    ConfirmButton.Size = UDim2.new(0.5, -15, 0, 25)
+    ConfirmButton.Font = Enum.Font.Gotham
+    ConfirmButton.Text = "Set"
+    ConfirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ConfirmButton.TextSize = 10
+
+    local CancelButton = Instance.new("TextButton")
+    CancelButton.Parent = NumberFrame
+    CancelButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    CancelButton.BorderSizePixel = 0
+    CancelButton.Position = UDim2.new(0.5, 5, 0, 65)
+    CancelButton.Size = UDim2.new(0.5, -15, 0, 25)
+    CancelButton.Font = Enum.Font.Gotham
+    CancelButton.Text = "Cancel"
+    CancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CancelButton.TextSize = 10
+
+    ConfirmButton.MouseButton1Click:Connect(function()
+        local numberText = NumberInput.Text:gsub("^%s*(.-)%s*$", "%1")
+        local number = 0
+        
+        if numberText ~= "" then
+            local parsedNumber = tonumber(numberText)
+            if parsedNumber and parsedNumber >= 0 and parsedNumber == math.floor(parsedNumber) then
+                number = parsedNumber
+            else
+                warn("Invalid number format! Use whole numbers >= 0")
+                return
+            end
+        end
+        
+        onNumberSet(number)
+        NumberFrame:Destroy()
+    end)
+
+    CancelButton.MouseButton1Click:Connect(function()
+        NumberFrame:Destroy()
+    end)
+
+    NumberInput:CaptureFocus()
+end
+    local RenameFrame = Instance.new("Frame")
+    RenameFrame.Name = "RenameDialog"
+    RenameFrame.Parent = ScreenGui
+    RenameFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    RenameFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    RenameFrame.BorderSizePixel = 1
+    RenameFrame.Position = UDim2.new(0.5, -125, 0.5, -50)
+    RenameFrame.Size = UDim2.new(0, 250, 0, 100)
+    RenameFrame.Active = true
+    RenameFrame.Draggable = true
+
+    local RenameTitle = Instance.new("TextLabel")
+    RenameTitle.Parent = RenameFrame
+    RenameTitle.BackgroundTransparency = 1
+    RenameTitle.Position = UDim2.new(0, 10, 0, 5)
+    RenameTitle.Size = UDim2.new(1, -20, 0, 20)
+    RenameTitle.Font = Enum.Font.Gotham
+    RenameTitle.Text = "Rename Position"
+    RenameTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    RenameTitle.TextSize = 12
+    RenameTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local RenameInput = Instance.new("TextBox")
+    RenameInput.Parent = RenameFrame
+    RenameInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    RenameInput.BorderSizePixel = 0
+    RenameInput.Position = UDim2.new(0, 10, 0, 30)
+    RenameInput.Size = UDim2.new(1, -20, 0, 25)
+    RenameInput.Font = Enum.Font.Gotham
+    RenameInput.Text = oldName
+    RenameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    RenameInput.TextSize = 11
+
+    local ConfirmButton = Instance.new("TextButton")
+    ConfirmButton.Parent = RenameFrame
+    ConfirmButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    ConfirmButton.BorderSizePixel = 0
+    ConfirmButton.Position = UDim2.new(0, 10, 0, 65)
+    ConfirmButton.Size = UDim2.new(0.5, -15, 0, 25)
+    ConfirmButton.Font = Enum.Font.Gotham
+    ConfirmButton.Text = "Confirm"
+    ConfirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ConfirmButton.TextSize = 10
+
+    local CancelButton = Instance.new("TextButton")
+    CancelButton.Parent = RenameFrame
+    CancelButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    CancelButton.BorderSizePixel = 0
+    CancelButton.Position = UDim2.new(0.5, 5, 0, 65)
+    CancelButton.Size = UDim2.new(0.5, -15, 0, 25)
+    CancelButton.Font = Enum.Font.Gotham
+    CancelButton.Text = "Cancel"
+    CancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CancelButton.TextSize = 10
+
+    ConfirmButton.MouseButton1Click:Connect(function()
+        local newName = RenameInput.Text:gsub("^%s*(.-)%s*$", "%1") -- Trim whitespace
+        if newName ~= "" and newName ~= oldName then
+            if positionExists(newName) then
+                warn("Position name '" .. newName .. "' already exists!")
+                return
+            end
+            onRename(newName)
+        end
+        RenameFrame:Destroy()
+    end)
+
+    CancelButton.MouseButton1Click:Connect(function()
+        RenameFrame:Destroy()
+    end)
 
 -- Create rename dialog
 local function createRenameDialog(oldName, onRename)
@@ -187,10 +395,13 @@ local function deletePositionWithConfirmation(positionName, button)
     -- Simple confirmation by requiring double-click
     if button.Text == "Delete?" then
         Teleport.savedPositions[positionName] = nil
+        Teleport.positionNumbers[positionName] = nil -- Remove number too
         fileSystem["DCIM/Supertool"][positionName] = nil
         button.Parent:Destroy()
         print("Deleted position: " .. positionName)
         updateScrollCanvasSize()
+        -- Refresh all buttons to update duplicate highlighting
+        refreshPositionButtons()
     else
         button.Text = "Delete?"
         button.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
@@ -285,7 +496,7 @@ function Teleport.toggleAutoMode()
     return Teleport.autoTeleportMode
 end
 
--- Create position button with rename and delete functionality
+-- Create position button with rename, delete, and numbering functionality
 local function createPositionButton(positionName, cframe)
     if not PositionScrollFrame then
         warn("Cannot create position button: PositionScrollFrame not initialized")
@@ -297,12 +508,32 @@ local function createPositionButton(positionName, cframe)
     ButtonFrame.BackgroundTransparency = 1
     ButtonFrame.Parent = PositionScrollFrame
 
+    local number = Teleport.positionNumbers[positionName] or 0
+    local duplicates = getDuplicateNumbers()
+    local isDuplicate = duplicates[positionName] or false
+    local displayText = positionName
+    
+    if number > 0 then
+        displayText = "[" .. number .. "] " .. positionName
+    end
+
+    local NumberButton = Instance.new("TextButton")
+    NumberButton.Size = UDim2.new(0, 25, 1, 0)
+    NumberButton.Position = UDim2.new(0, 0, 0, 0)
+    NumberButton.BackgroundColor3 = isDuplicate and Color3.fromRGB(120, 40, 40) or Color3.fromRGB(40, 80, 120)
+    NumberButton.BorderSizePixel = 0
+    NumberButton.Text = number > 0 and tostring(number) or "#"
+    NumberButton.TextColor3 = isDuplicate and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(255, 255, 255)
+    NumberButton.TextSize = 8
+    NumberButton.Font = Enum.Font.GothamBold
+    NumberButton.Parent = ButtonFrame
+
     local TeleportButton = Instance.new("TextButton")
-    TeleportButton.Size = UDim2.new(1, -70, 1, 0)
-    TeleportButton.Position = UDim2.new(0, 0, 0, 0)
+    TeleportButton.Size = UDim2.new(1, -95, 1, 0)
+    TeleportButton.Position = UDim2.new(0, 28, 0, 0)
     TeleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     TeleportButton.BorderSizePixel = 0
-    TeleportButton.Text = positionName
+    TeleportButton.Text = displayText
     TeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     TeleportButton.TextSize = 9
     TeleportButton.Font = Enum.Font.Gotham
@@ -311,7 +542,7 @@ local function createPositionButton(positionName, cframe)
 
     local RenameButton = Instance.new("TextButton")
     RenameButton.Size = UDim2.new(0, 32, 1, 0)
-    RenameButton.Position = UDim2.new(1, -70, 0, 0)
+    RenameButton.Position = UDim2.new(1, -67, 0, 0)
     RenameButton.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
     RenameButton.BorderSizePixel = 0
     RenameButton.Text = "Ren"
@@ -322,7 +553,7 @@ local function createPositionButton(positionName, cframe)
 
     local DeleteButton = Instance.new("TextButton")
     DeleteButton.Size = UDim2.new(0, 32, 1, 0)
-    DeleteButton.Position = UDim2.new(1, -35, 0, 0)
+    DeleteButton.Position = UDim2.new(1, -32, 0, 0)
     DeleteButton.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
     DeleteButton.BorderSizePixel = 0
     DeleteButton.Text = "Del"
@@ -332,6 +563,15 @@ local function createPositionButton(positionName, cframe)
     DeleteButton.Parent = ButtonFrame
 
     -- Event connections
+    NumberButton.MouseButton1Click:Connect(function()
+        createNumberInputDialog(positionName, number, function(newNumber)
+            Teleport.positionNumbers[positionName] = newNumber
+            saveToFileSystem(positionName, cframe, newNumber)
+            print("Set number " .. newNumber .. " for position: " .. positionName)
+            refreshPositionButtons() -- Refresh to update display and check duplicates
+        end)
+    end)
+
     TeleportButton.MouseButton1Click:Connect(function()
         if safeTeleport(cframe) then
             print("Teleported to: " .. positionName)
@@ -344,15 +584,19 @@ local function createPositionButton(positionName, cframe)
             Teleport.savedPositions[newName] = Teleport.savedPositions[positionName]
             Teleport.savedPositions[positionName] = nil
             
+            -- Update number data
+            Teleport.positionNumbers[newName] = Teleport.positionNumbers[positionName]
+            Teleport.positionNumbers[positionName] = nil
+            
             -- Update file system
             fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][positionName]
             fileSystem["DCIM/Supertool"][positionName] = nil
             
-            -- Update button text
-            TeleportButton.Text = newName
-            positionName = newName -- Update local variable
+            -- Save with number
+            saveToFileSystem(newName, cframe, Teleport.positionNumbers[newName])
             
             print("Renamed position to: " .. newName)
+            refreshPositionButtons() -- Refresh all buttons
         end)
     end)
 
@@ -361,6 +605,16 @@ local function createPositionButton(positionName, cframe)
     end)
 
     -- Hover effects
+    NumberButton.MouseEnter:Connect(function()
+        if not isDuplicate then
+            NumberButton.BackgroundColor3 = Color3.fromRGB(60, 100, 140)
+        end
+    end)
+
+    NumberButton.MouseLeave:Connect(function()
+        NumberButton.BackgroundColor3 = isDuplicate and Color3.fromRGB(120, 40, 40) or Color3.fromRGB(40, 80, 120)
+    end)
+
     TeleportButton.MouseEnter:Connect(function()
         TeleportButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
     end)
@@ -441,7 +695,8 @@ function Teleport.saveCurrentPosition()
     
     local currentCFrame = root.CFrame
     Teleport.savedPositions[positionName] = currentCFrame
-    saveToFileSystem(positionName, currentCFrame)
+    Teleport.positionNumbers[positionName] = 0 -- Default number
+    saveToFileSystem(positionName, currentCFrame, 0)
     createPositionButton(positionName, currentCFrame)
     
     if PositionInput then
@@ -470,7 +725,8 @@ function Teleport.saveFreecamPosition(freecamPosition)
     
     local cframe = CFrame.new(freecamPosition)
     Teleport.savedPositions[positionName] = cframe
-    saveToFileSystem(positionName, cframe)
+    Teleport.positionNumbers[positionName] = 0 -- Default number
+    saveToFileSystem(positionName, cframe, 0)
     createPositionButton(positionName, cframe)
     
     if PositionInput then
@@ -719,6 +975,7 @@ function Teleport.init(deps)
     end
 
     Teleport.savedPositions = {}
+    Teleport.positionNumbers = {} -- Initialize position numbers
     Teleport.positionFrameVisible = false
     player.CharacterAdded:Connect(onCharacterAdded)
     if player.Character then
