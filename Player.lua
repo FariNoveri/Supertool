@@ -1,4 +1,4 @@
--- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, and freeze players
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, and follow player
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -15,6 +15,14 @@ Player.playerListVisible = false
 Player.freezeEnabled = false
 Player.frozenPlayerPositions = {}
 Player.playerConnections = {}
+
+-- Variables for follow player feature
+Player.followEnabled = false
+Player.followTarget = nil
+Player.followConnections = {}
+Player.followOffset = Vector3.new(0, 0, 3) -- Follow from behind by 3 studs
+Player.lastTargetPosition = nil
+Player.followSpeed = 1.2 -- Multiplier for follow speed to keep up
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
@@ -151,6 +159,171 @@ local function cleanupPlayerMonitoring(targetPlayer)
     end
     
     Player.frozenPlayerPositions[targetPlayer] = nil
+end
+
+-- Stop Following Player
+local function stopFollowing()
+    Player.followEnabled = false
+    Player.followTarget = nil
+    Player.lastTargetPosition = nil
+    
+    -- Disconnect all follow connections
+    for _, connection in pairs(Player.followConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    Player.followConnections = {}
+    
+    -- Reset humanoid properties to normal
+    if humanoid then
+        humanoid.WalkSpeed = 16
+        humanoid.JumpPower = 50
+        humanoid.PlatformStand = false
+    end
+    
+    print("Stopped following player")
+end
+
+-- Follow Player function
+local function followPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot follow: Invalid target player")
+        return
+    end
+    
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        print("Cannot follow: Target player has no character or HumanoidRootPart")
+        return
+    end
+    
+    if not Player.rootPart or not humanoid then
+        print("Cannot follow: Missing rootPart or humanoid")
+        return
+    end
+    
+    -- Stop any previous following
+    stopFollowing()
+    
+    Player.followEnabled = true
+    Player.followTarget = targetPlayer
+    
+    local targetRootPart = targetPlayer.Character.HumanoidRootPart
+    local targetHumanoid = targetPlayer.Character.Humanoid
+    
+    print("Started following: " .. targetPlayer.Name)
+    
+    -- Main follow loop using Heartbeat for smooth movement
+    Player.followConnections.heartbeat = RunService.Heartbeat:Connect(function()
+        if not Player.followEnabled or not Player.followTarget then
+            stopFollowing()
+            return
+        end
+        
+        -- Check if target still exists and has character
+        if not Player.followTarget.Character or not Player.followTarget.Character:FindFirstChild("HumanoidRootPart") or not Player.followTarget.Character:FindFirstChild("Humanoid") then
+            return -- Wait for respawn
+        end
+        
+        local currentTargetRootPart = Player.followTarget.Character.HumanoidRootPart
+        local currentTargetHumanoid = Player.followTarget.Character.Humanoid
+        
+        if not Player.rootPart or not humanoid then
+            stopFollowing()
+            return
+        end
+        
+        -- Calculate follow position (behind the target)
+        local targetPosition = currentTargetRootPart.Position
+        local targetLookVector = currentTargetRootPart.CFrame.LookVector
+        local followPosition = targetPosition - (targetLookVector * Player.followOffset.Z)
+        followPosition = followPosition + Vector3.new(0, Player.followOffset.Y, 0)
+        
+        -- Calculate distance to target
+        local distance = (Player.rootPart.Position - followPosition).Magnitude
+        
+        -- Only move if distance is significant to avoid jittery movement
+        if distance > 2 then
+            -- Set humanoid to walk towards the follow position
+            humanoid:MoveTo(followPosition)
+            
+            -- Match target's walk speed but slightly faster to keep up
+            humanoid.WalkSpeed = math.max(currentTargetHumanoid.WalkSpeed * Player.followSpeed, 16)
+        else
+            -- Stop moving if we're close enough
+            humanoid:MoveTo(Player.rootPart.Position)
+        end
+        
+        -- Copy jump behavior
+        if currentTargetHumanoid.Jump and not humanoid.Jump then
+            humanoid.Jump = true
+        end
+        
+        -- Copy sit behavior
+        if currentTargetHumanoid.Sit ~= humanoid.Sit then
+            humanoid.Sit = currentTargetHumanoid.Sit
+        end
+        
+        -- Store current position for next frame
+        Player.lastTargetPosition = targetPosition
+    end)
+    
+    -- Handle target character respawn
+    Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
+        if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
+        
+        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
+        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+        
+        if newRootPart and newHumanoid then
+            print("Target respawned, continuing follow: " .. Player.followTarget.Name)
+            -- The heartbeat connection will automatically handle the new character
+        else
+            print("Failed to get new character parts for follow target")
+            stopFollowing()
+        end
+    end)
+    
+    -- Handle target leaving
+    Player.followConnections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+        if leavingPlayer == Player.followTarget then
+            print("Follow target left the game")
+            stopFollowing()
+        end
+    end)
+    
+    -- Handle our own character respawn
+    Player.followConnections.ourCharacterAdded = player.CharacterAdded:Connect(function(newCharacter)
+        if not Player.followEnabled then return end
+        
+        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
+        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+        
+        if newRootPart and newHumanoid then
+            Player.rootPart = newRootPart
+            humanoid = newHumanoid
+            print("Our character respawned, continuing follow")
+        else
+            print("Failed to get our new character parts")
+            stopFollowing()
+        end
+    end)
+end
+
+-- Toggle Follow Player
+local function toggleFollowPlayer(enabled)
+    if enabled then
+        if Player.selectedPlayer then
+            followPlayer(Player.selectedPlayer)
+        else
+            print("No player selected to follow")
+            -- Return false to prevent toggle button from staying enabled
+            return false
+        end
+    else
+        stopFollowing()
+    end
+    return true
 end
 
 -- Freeze Players function
@@ -407,7 +580,7 @@ function Player.updatePlayerList()
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 90)
+                playerItem.Size = UDim2.new(1, -5, 0, 120) -- Increased height for follow button
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -470,6 +643,32 @@ function Player.updatePlayerList()
                 teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 teleportButton.TextSize = 9
                 
+                -- New Follow Button
+                local followButton = Instance.new("TextButton")
+                followButton.Name = "FollowButton"
+                followButton.Parent = playerItem
+                followButton.BackgroundColor3 = Player.followTarget == p and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
+                followButton.BorderSizePixel = 0
+                followButton.Position = UDim2.new(0, 5, 0, 90)
+                followButton.Size = UDim2.new(0, 70, 0, 25)
+                followButton.Font = Enum.Font.Gotham
+                followButton.Text = Player.followTarget == p and "FOLLOWING" or "FOLLOW"
+                followButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                followButton.TextSize = 9
+                
+                -- New Stop Follow Button
+                local stopFollowButton = Instance.new("TextButton")
+                stopFollowButton.Name = "StopFollowButton"
+                stopFollowButton.Parent = playerItem
+                stopFollowButton.BackgroundColor3 = Color3.fromRGB(80, 40, 60)
+                stopFollowButton.BorderSizePixel = 0
+                stopFollowButton.Position = UDim2.new(0, 80, 0, 90)
+                stopFollowButton.Size = UDim2.new(0, 70, 0, 25)
+                stopFollowButton.Font = Enum.Font.Gotham
+                stopFollowButton.Text = "STOP FOLLOW"
+                stopFollowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                stopFollowButton.TextSize = 8
+                
                 selectButton.MouseButton1Click:Connect(function()
                     Player.selectedPlayer = p
                     Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
@@ -509,6 +708,25 @@ function Player.updatePlayerList()
                     end
                 end)
                 
+                followButton.MouseButton1Click:Connect(function()
+                    if Player.followTarget == p then
+                        print("Already following this player")
+                    else
+                        followPlayer(p)
+                        -- Update UI
+                        Player.updatePlayerList()
+                    end
+                end)
+                
+                stopFollowButton.MouseButton1Click:Connect(function()
+                    if Player.followTarget == p then
+                        stopFollowing()
+                        -- Update UI
+                        Player.updatePlayerList()
+                    end
+                end)
+                
+                -- Mouse enter/leave effects for all buttons
                 selectButton.MouseEnter:Connect(function()
                     if Player.selectedPlayer ~= p then
                         selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -545,6 +763,30 @@ function Player.updatePlayerList()
                 
                 teleportButton.MouseLeave:Connect(function()
                     teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+                end)
+                
+                followButton.MouseEnter:Connect(function()
+                    if Player.followTarget == p then
+                        followButton.BackgroundColor3 = Color3.fromRGB(100, 80, 60)
+                    else
+                        followButton.BackgroundColor3 = Color3.fromRGB(80, 60, 100)
+                    end
+                end)
+                
+                followButton.MouseLeave:Connect(function()
+                    if Player.followTarget == p then
+                        followButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                    else
+                        followButton.BackgroundColor3 = Color3.fromRGB(60, 40, 80)
+                    end
+                end)
+                
+                stopFollowButton.MouseEnter:Connect(function()
+                    stopFollowButton.BackgroundColor3 = Color3.fromRGB(100, 60, 80)
+                end)
+                
+                stopFollowButton.MouseLeave:Connect(function()
+                    stopFollowButton.BackgroundColor3 = Color3.fromRGB(80, 40, 60)
                 end)
             end
         end
@@ -589,6 +831,11 @@ function Player.getSelectedPlayer()
     return Player.selectedPlayer
 end
 
+-- Get Follow Target
+function Player.getFollowTarget()
+    return Player.followTarget
+end
+
 -- Load Player Buttons
 function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlayer)
     print("Loading Player buttons...")
@@ -596,6 +843,7 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("God Mode", toggleGodMode, "Player")
     createToggleButton("Anti AFK", toggleAntiAFK, "Player")
     createToggleButton("Freeze Players", toggleFreezePlayers, "Player")
+    createToggleButton("Follow Player", toggleFollowPlayer, "Player")
     print("Player buttons loaded successfully")
 end
 
@@ -605,10 +853,12 @@ function Player.resetStates()
     Player.godModeEnabled = false
     Player.antiAFKEnabled = false
     Player.freezeEnabled = false
+    Player.followEnabled = false
     
     toggleGodMode(false)
     toggleAntiAFK(false)
     toggleFreezePlayers(false)
+    stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
 end
@@ -629,7 +879,7 @@ local function initUI()
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
     PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 350)
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased height for follow buttons
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
@@ -812,6 +1062,7 @@ function Player.init(deps)
     Player.godModeEnabled = false
     Player.antiAFKEnabled = false
     Player.freezeEnabled = false
+    Player.followEnabled = false
     Player.selectedPlayer = nil
     Player.spectatePlayerList = {}
     Player.currentSpectateIndex = 0
@@ -819,6 +1070,11 @@ function Player.init(deps)
     Player.playerListVisible = false
     Player.frozenPlayerPositions = {}
     Player.playerConnections = {}
+    Player.followTarget = nil
+    Player.followConnections = {}
+    Player.followOffset = Vector3.new(0, 0, 3)
+    Player.lastTargetPosition = nil
+    Player.followSpeed = 1.2
     
     pcall(initUI)
     pcall(Player.setupPlayerEvents)
@@ -847,6 +1103,9 @@ function Player.setupPlayerEvents()
     Players.PlayerRemoving:Connect(function(p)
         if p == Player.selectedPlayer then
             stopSpectating()
+        end
+        if p == Player.followTarget then
+            stopFollowing()
         end
         cleanupPlayerMonitoring(p)
         Player.updatePlayerList()
