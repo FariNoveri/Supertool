@@ -99,26 +99,16 @@ LogoButton.BackgroundTransparency = 1
 LogoButton.Size = UDim2.new(1, 0, 1, 0)
 LogoButton.Text = ""
 
--- Minimize/Close Buttons
+-- Minimize Button
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Parent = Frame
 MinimizeButton.BackgroundTransparency = 1
-MinimizeButton.Position = UDim2.new(1, -40, 0, 5)
+MinimizeButton.Position = UDim2.new(1, -20, 0, 5) -- Adjusted position since CloseButton is removed
 MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
 MinimizeButton.Font = Enum.Font.GothamBold
 MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 10
-
-local CloseButton = Instance.new("TextButton")
-CloseButton.Parent = Frame
-CloseButton.BackgroundTransparency = 1
-CloseButton.Position = UDim2.new(1, -20, 0, 5)
-CloseButton.Size = UDim2.new(0, 20, 0, 20)
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Text = "X"
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.TextSize = 10
 
 -- Category Container with Scrolling
 local CategoryContainer = Instance.new("ScrollingFrame")
@@ -629,22 +619,10 @@ connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 -- Event connections
 MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
 LogoButton.MouseButton1Click:Connect(toggleMinimize)
-CloseButton.MouseButton1Click:Connect(function()
-    Frame.Visible = false
-    MinimizedLogo.Visible = false
-end)
 
 connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
-        if Frame.Visible or MinimizedLogo.Visible then
-            Frame.Visible = false
-            MinimizedLogo.Visible = false
-        else
-            Frame.Visible = true
-            MinimizedLogo.Visible = false
-            isMinimized = false
-            MinimizeButton.Text = "-"
-        end
+        toggleMinimize()
     end
 end)
 
