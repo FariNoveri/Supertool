@@ -1,12 +1,4 @@
--- Save current position (fixed duplicate prevention)
-function Teleport.saveCurrentPosition()
-    local root = getRootPart()
-    if not root then
-        warn("Cannot save position: Character not found")
-        return false
-    end
-    
-    local positionName = PositionInput and PositionInput.Text:gsub("^%s*-- Teleport-related features for MinimalHackGUI by Fari Noveri
+-- Teleport-related features for MinimalHackGUI by Fari Noveri
 -- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling
 
 -- Dependencies: Passed from mainloader.lua
@@ -241,76 +233,6 @@ local function createNumberInputDialog(positionName, currentNumber, onNumberSet)
 
     NumberInput:CaptureFocus()
 end
-    local RenameFrame = Instance.new("Frame")
-    RenameFrame.Name = "RenameDialog"
-    RenameFrame.Parent = ScreenGui
-    RenameFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    RenameFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    RenameFrame.BorderSizePixel = 1
-    RenameFrame.Position = UDim2.new(0.5, -125, 0.5, -50)
-    RenameFrame.Size = UDim2.new(0, 250, 0, 100)
-    RenameFrame.Active = true
-    RenameFrame.Draggable = true
-
-    local RenameTitle = Instance.new("TextLabel")
-    RenameTitle.Parent = RenameFrame
-    RenameTitle.BackgroundTransparency = 1
-    RenameTitle.Position = UDim2.new(0, 10, 0, 5)
-    RenameTitle.Size = UDim2.new(1, -20, 0, 20)
-    RenameTitle.Font = Enum.Font.Gotham
-    RenameTitle.Text = "Rename Position"
-    RenameTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    RenameTitle.TextSize = 12
-    RenameTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-    local RenameInput = Instance.new("TextBox")
-    RenameInput.Parent = RenameFrame
-    RenameInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    RenameInput.BorderSizePixel = 0
-    RenameInput.Position = UDim2.new(0, 10, 0, 30)
-    RenameInput.Size = UDim2.new(1, -20, 0, 25)
-    RenameInput.Font = Enum.Font.Gotham
-    RenameInput.Text = oldName
-    RenameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    RenameInput.TextSize = 11
-
-    local ConfirmButton = Instance.new("TextButton")
-    ConfirmButton.Parent = RenameFrame
-    ConfirmButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    ConfirmButton.BorderSizePixel = 0
-    ConfirmButton.Position = UDim2.new(0, 10, 0, 65)
-    ConfirmButton.Size = UDim2.new(0.5, -15, 0, 25)
-    ConfirmButton.Font = Enum.Font.Gotham
-    ConfirmButton.Text = "Confirm"
-    ConfirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ConfirmButton.TextSize = 10
-
-    local CancelButton = Instance.new("TextButton")
-    CancelButton.Parent = RenameFrame
-    CancelButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
-    CancelButton.BorderSizePixel = 0
-    CancelButton.Position = UDim2.new(0.5, 5, 0, 65)
-    CancelButton.Size = UDim2.new(0.5, -15, 0, 25)
-    CancelButton.Font = Enum.Font.Gotham
-    CancelButton.Text = "Cancel"
-    CancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CancelButton.TextSize = 10
-
-    ConfirmButton.MouseButton1Click:Connect(function()
-        local newName = RenameInput.Text:gsub("^%s*(.-)%s*$", "%1") -- Trim whitespace
-        if newName ~= "" and newName ~= oldName then
-            if positionExists(newName) then
-                warn("Position name '" .. newName .. "' already exists!")
-                return
-            end
-            onRename(newName)
-        end
-        RenameFrame:Destroy()
-    end)
-
-    CancelButton.MouseButton1Click:Connect(function()
-        RenameFrame:Destroy()
-    end)
 
 -- Create rename dialog
 local function createRenameDialog(oldName, onRename)
@@ -677,7 +599,7 @@ local function onCharacterAdded(character)
     end
 end
 
--- Save current position (fixed duplicate prevention)
+-- Save current position (FIXED)
 function Teleport.saveCurrentPosition()
     local root = getRootPart()
     if not root then
