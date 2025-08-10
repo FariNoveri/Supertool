@@ -76,102 +76,189 @@ local function renameInFileSystem(oldName, newName)
     return false
 end
 
--- Memory Scanner Functions - Auto Detection
+-- FIXED Memory Scanner Functions - Optimized to prevent freezing
 local function getAllProperties(obj)
     local properties = {}
-    local success, result = pcall(function()
-        -- Get all properties dynamically
-        for prop, _ in pairs(getrawmetatable(obj).__index) do
-            pcall(function()
-                local value = obj[prop]
-                if typeof(value) == "number" or typeof(value) == "string" or typeof(value) == "boolean" then
-                    properties[prop] = value
-                end
-            end)
-        end
-    end)
     
-    -- Fallback: Common properties that usually exist
+    -- Only scan common Roblox properties to avoid excessive scanning
     local commonProps = {
-        "Health", "MaxHealth", "WalkSpeed", "JumpPower", "HipHeight", 
-        "Size", "Transparency", "Volume", "Pitch", "Value", "StudsOffset"
+        -- Humanoid properties
+        "Health", "MaxHealth", "WalkSpeed", "JumpPower", "JumpHeight", "HipHeight", 
+        -- Part properties
+        "Size", "Transparency", "Reflectance", "Material",
+        -- Sound properties
+        "Volume", "Pitch", "PlaybackSpeed",
+        -- Value objects
+        "Value",
+        -- GUI properties
+        "StudsOffset", "BackgroundTransparency", "TextTransparency",
+        -- Lighting
+        "Brightness", "Ambient", "ColorShift_Top", "ColorShift_Bottom",
+        -- Other common numeric properties
+        "FieldOfView", "MaxDistance", "MinDistance", "RollOffMode"
     }
     
     for _, prop in pairs(commonProps) do
-        pcall(function()
-            local value = obj[prop]
-            if value ~= nil and (typeof(value) == "number" or typeof(value) == "string" or typeof(value) == "boolean") then
-                properties[prop] = value
-            end
+        local success, value = pcall(function()
+            return obj[prop]
         end)
+        
+        if success and value ~= nil then
+            local valueType = typeof(value)
+            if valueType == "number" or valueType == "string" or valueType == "boolean" then
+                properties[prop] = value
+            elseif valueType == "Vector3" then
+                -- Include Vector3 components
+                properties[prop .. ".X"] = value.X
+                properties[prop .. ".Y"] = value.Y
+                properties[prop .. ".Z"] = value.Z
+            elseif valueType == "Color3" then
+                -- Include Color3 components
+                properties[prop .. ".R"] = value.R
+                properties[prop .. ".G"] = value.G
+                properties[prop .. ".B"] = value.B
+            end
+        end
     end
     
     return properties
 end
 
 local function scanMemory(searchValue)
-    if isScanning then return end
+    if isScanning then 
+        MemoryStatusLabel.Text = "Already scanning, please wait..."
+        return 
+    end
+    
     isScanning = true
     foundAddresses = {}
     
     MemoryStatusLabel.Text = "Scanning memory for: " .. tostring(searchValue)
     MemoryStatusLabel.Visible = true
     
-    local function recursiveScan(obj, path)
-        if not obj or typeof(obj) ~= "Instance" then return end
+    -- Convert search value to number if possible for better matching
+    local numSearchValue = tonumber(searchValue)
+    local strSearchValue = tostring(searchValue)
+    
+    local scannedCount = 0
+    local maxScanPerFrame = 50 -- Limit objects scanned per frame
+    local objectsToScan = {}
+    
+    -- Collect objects to scan
+    local function collectObjects(container, path, maxDepth)
+        if maxDepth <= 0 then return end
         
-        local properties = getAllProperties(obj)
-        for propName, propValue in pairs(properties) do
-            local numValue = tonumber(propValue)
-            if numValue and math.abs(numValue - searchValue) < 0.001 then
-                table.insert(foundAddresses, {
-                    object = obj,
-                    property = propName,
-                    value = propValue,
-                    path = path .. "." .. propName,
-                    address = tostring(obj) .. ":" .. propName -- Mock address
-                })
-            elseif propValue == tostring(searchValue) then
-                table.insert(foundAddresses, {
-                    object = obj,
-                    property = propName,
-                    value = propValue,
-                    path = path .. "." .. propName,
-                    address = tostring(obj) .. ":" .. propName
-                })
+        table.insert(objectsToScan, {obj = container, path = path})
+        
+        -- Limit children scanning to prevent excessive recursion
+        local children = container:GetChildren()
+        local childLimit = math.min(#children, 20) -- Max 20 children per object
+        
+        for i = 1, childLimit do
+            local child = children[i]
+            if child and typeof(child) == "Instance" then
+                collectObjects(child, path .. "/" .. child.Name, maxDepth - 1)
             end
-        end
-        
-        -- Scan children
-        for _, child in pairs(obj:GetChildren()) do
-            recursiveScan(child, path .. "/" .. child.Name)
         end
     end
     
     task.spawn(function()
-        -- Scan game areas
-        recursiveScan(workspace, "Workspace")
+        -- Collect objects with limited depth
+        collectObjects(workspace, "Workspace", 3) -- Limited depth
         
         if player then
-            recursiveScan(player, "LocalPlayer")
+            collectObjects(player, "LocalPlayer", 2)
             if player.Character then
-                recursiveScan(player.Character, "Character")
+                collectObjects(player.Character, "Character", 2)
             end
             if player.PlayerGui then
-                recursiveScan(player.PlayerGui, "PlayerGui")
+                collectObjects(player.PlayerGui, "PlayerGui", 2)
             end
         end
         
-        -- Scan other players
+        -- Scan other players (limited)
+        local playerCount = 0
         for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if playerCount >= 5 then break end -- Limit to 5 other players
             if otherPlayer ~= player and otherPlayer.Character then
-                recursiveScan(otherPlayer.Character, otherPlayer.Name)
+                collectObjects(otherPlayer.Character, otherPlayer.Name, 1)
+                playerCount = playerCount + 1
             end
+        end
+        
+        MemoryStatusLabel.Text = "Scanning " .. #objectsToScan .. " objects..."
+        
+        -- Process objects in batches with yields
+        local processedCount = 0
+        local batchSize = 25 -- Process 25 objects per batch
+        
+        for i = 1, #objectsToScan, batchSize do
+            if not isScanning then break end -- Allow cancellation
+            
+            local endIndex = math.min(i + batchSize - 1, #objectsToScan)
+            
+            for j = i, endIndex do
+                if not isScanning then break end
+                
+                local objData = objectsToScan[j]
+                local obj = objData.obj
+                local path = objData.path
+                
+                if obj and obj.Parent then -- Check if object still exists
+                    local properties = getAllProperties(obj)
+                    
+                    for propName, propValue in pairs(properties) do
+                        local numValue = tonumber(propValue)
+                        local match = false
+                        
+                        -- Check for numeric match
+                        if numSearchValue and numValue and math.abs(numValue - numSearchValue) < 0.001 then
+                            match = true
+                        -- Check for string match
+                        elseif propValue == strSearchValue then
+                            match = true
+                        -- Check for partial string match (case insensitive)
+                        elseif typeof(propValue) == "string" and string.find(string.lower(tostring(propValue)), string.lower(strSearchValue), 1, true) then
+                            match = true
+                        end
+                        
+                        if match then
+                            table.insert(foundAddresses, {
+                                object = obj,
+                                property = propName,
+                                value = propValue,
+                                path = path .. "." .. propName,
+                                address = tostring(obj) .. ":" .. propName,
+                                objectName = obj.Name,
+                                className = obj.ClassName
+                            })
+                        end
+                    end
+                end
+                
+                processedCount = processedCount + 1
+            end
+            
+            -- Update progress
+            local progress = math.floor((processedCount / #objectsToScan) * 100)
+            MemoryStatusLabel.Text = "Scanning... " .. progress .. "% (" .. #foundAddresses .. " found)"
+            
+            -- Yield every batch to prevent freezing
+            task.wait(0.03) -- Small delay to prevent lag
         end
         
         isScanning = false
         currentSearchValue = searchValue
-        table.insert(searchHistory, {value = searchValue, count = #foundAddresses, time = tick()})
+        table.insert(searchHistory, {
+            value = searchValue, 
+            count = #foundAddresses, 
+            time = tick()
+        })
+        
+        -- Limit history to last 10 searches
+        if #searchHistory > 10 then
+            table.remove(searchHistory, 1)
+        end
         
         MemoryStatusLabel.Text = "Found " .. #foundAddresses .. " addresses with value: " .. tostring(searchValue)
         Utility.updateMemoryList()
@@ -179,44 +266,108 @@ local function scanMemory(searchValue)
 end
 
 local function refineSearch(newValue)
-    if isScanning or #foundAddresses == 0 then return end
+    if isScanning then 
+        MemoryStatusLabel.Text = "Please wait for current scan to finish"
+        return 
+    end
+    
+    if #foundAddresses == 0 then 
+        MemoryStatusLabel.Text = "No addresses to refine. Run initial scan first."
+        return 
+    end
     
     local refinedAddresses = {}
     MemoryStatusLabel.Text = "Refining search..."
     
-    for _, addr in pairs(foundAddresses) do
-        local success, currentValue = pcall(function()
-            return addr.object[addr.property]
-        end)
+    local numNewValue = tonumber(newValue)
+    local strNewValue = tostring(newValue)
+    
+    task.spawn(function()
+        local processed = 0
+        local batchSize = 20
         
-        if success then
-            local numValue = tonumber(currentValue)
-            if (numValue and math.abs(numValue - newValue) < 0.001) or 
-               (currentValue == tostring(newValue)) then
-                addr.value = currentValue
-                table.insert(refinedAddresses, addr)
+        for i = 1, #foundAddresses, batchSize do
+            local endIndex = math.min(i + batchSize - 1, #foundAddresses)
+            
+            for j = i, endIndex do
+                local addr = foundAddresses[j]
+                
+                if addr.object and addr.object.Parent then -- Check if object still exists
+                    local success, currentValue = pcall(function()
+                        return addr.object[addr.property]
+                    end)
+                    
+                    if success and currentValue ~= nil then
+                        local numCurrentValue = tonumber(currentValue)
+                        local match = false
+                        
+                        -- Check for numeric match
+                        if numNewValue and numCurrentValue and math.abs(numCurrentValue - numNewValue) < 0.001 then
+                            match = true
+                        -- Check for exact string match
+                        elseif currentValue == strNewValue then
+                            match = true
+                        end
+                        
+                        if match then
+                            addr.value = currentValue
+                            table.insert(refinedAddresses, addr)
+                        end
+                    end
+                end
+                
+                processed = processed + 1
             end
+            
+            -- Update progress
+            local progress = math.floor((processed / #foundAddresses) * 100)
+            MemoryStatusLabel.Text = "Refining... " .. progress .. "% (" .. #refinedAddresses .. " match)"
+            
+            task.wait(0.02) -- Yield to prevent lag
         end
-    end
-    
-    foundAddresses = refinedAddresses
-    currentSearchValue = newValue
-    table.insert(searchHistory, {value = newValue, count = #foundAddresses, time = tick()})
-    
-    MemoryStatusLabel.Text = "Refined to " .. #foundAddresses .. " addresses"
-    Utility.updateMemoryList()
+        
+        foundAddresses = refinedAddresses
+        currentSearchValue = newValue
+        table.insert(searchHistory, {
+            value = newValue, 
+            count = #foundAddresses, 
+            time = tick()
+        })
+        
+        -- Limit history
+        if #searchHistory > 10 then
+            table.remove(searchHistory, 1)
+        end
+        
+        MemoryStatusLabel.Text = "Refined to " .. #foundAddresses .. " addresses"
+        Utility.updateMemoryList()
+    end)
 end
 
 local function modifyValue(addr, newValue)
+    if not addr.object or not addr.object.Parent then
+        MemoryStatusLabel.Text = "Object no longer exists"
+        return
+    end
+    
     local success, err = pcall(function()
         local convertedValue = newValue
         local currentValue = addr.object[addr.property]
         
         -- Auto type conversion
         if typeof(currentValue) == "number" then
-            convertedValue = tonumber(newValue) or 0
+            convertedValue = tonumber(newValue)
+            if not convertedValue then
+                error("Invalid number: " .. tostring(newValue))
+            end
         elseif typeof(currentValue) == "boolean" then
-            convertedValue = (newValue ~= 0 and newValue ~= "false" and newValue ~= false)
+            if typeof(newValue) == "boolean" then
+                convertedValue = newValue
+            elseif typeof(newValue) == "string" then
+                convertedValue = string.lower(newValue) == "true"
+            else
+                convertedValue = (tonumber(newValue) or 0) ~= 0
+            end
         else
             convertedValue = tostring(newValue)
         end
@@ -228,40 +379,70 @@ local function modifyValue(addr, newValue)
     end)
     
     if success then
-        MemoryStatusLabel.Text = "Modified " .. addr.property .. " = " .. tostring(newValue)
+        MemoryStatusLabel.Text = "✓ Modified " .. addr.property .. " = " .. tostring(newValue)
     else
-        MemoryStatusLabel.Text = "Failed to modify: " .. tostring(err)
+        MemoryStatusLabel.Text = "✗ Failed to modify: " .. (err or "Unknown error")
     end
     
     task.wait(0.1)
     Utility.updateMemoryList()
 end
 
--- Batch modify all visible values
+-- Batch modify with safety limits and progress
 local function batchModify(newValue)
-    local count = 0
-    for _, addr in pairs(foundAddresses) do
-        if count >= 50 then break end -- Limit for safety
-        pcall(function()
-            local convertedValue = newValue
-            local currentValue = addr.object[addr.property]
-            
-            if typeof(currentValue) == "number" then
-                convertedValue = tonumber(newValue) or 0
-            elseif typeof(currentValue) == "boolean" then
-                convertedValue = (newValue ~= 0)
-            else
-                convertedValue = tostring(newValue)
-            end
-            
-            addr.object[addr.property] = convertedValue
-            addr.value = convertedValue
-            count = count + 1
-        end)
+    if #foundAddresses == 0 then
+        MemoryStatusLabel.Text = "No addresses to modify"
+        return
     end
     
-    MemoryStatusLabel.Text = "Modified " .. count .. " values to " .. tostring(newValue)
-    Utility.updateMemoryList()
+    MemoryStatusLabel.Text = "Batch modifying..."
+    
+    task.spawn(function()
+        local count = 0
+        local maxModify = math.min(#foundAddresses, 50) -- Safety limit
+        local successCount = 0
+        
+        for i = 1, maxModify do
+            local addr = foundAddresses[i]
+            
+            if addr.object and addr.object.Parent then
+                local success = pcall(function()
+                    local convertedValue = newValue
+                    local currentValue = addr.object[addr.property]
+                    
+                    if typeof(currentValue) == "number" then
+                        convertedValue = tonumber(newValue) or 0
+                    elseif typeof(currentValue) == "boolean" then
+                        if typeof(newValue) == "string" then
+                            convertedValue = string.lower(newValue) == "true"
+                        else
+                            convertedValue = (tonumber(newValue) or 0) ~= 0
+                        end
+                    else
+                        convertedValue = tostring(newValue)
+                    end
+                    
+                    addr.object[addr.property] = convertedValue
+                    addr.value = convertedValue
+                    successCount = successCount + 1
+                end)
+            end
+            
+            count = count + 1
+            
+            -- Update progress every 10 modifications
+            if count % 10 == 0 then
+                MemoryStatusLabel.Text = "Modifying... " .. count .. "/" .. maxModify
+                task.wait(0.05) -- Small delay to prevent lag
+            end
+        end
+        
+        MemoryStatusLabel.Text = "✓ Modified " .. successCount .. "/" .. count .. " values to " .. tostring(newValue)
+        
+        if successCount > 0 then
+            Utility.updateMemoryList()
+        end
+    end)
 end
 
 -- Update Memory List UI
