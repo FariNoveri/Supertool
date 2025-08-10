@@ -1,5 +1,5 @@
 -- Teleport-related features for MinimalHackGUI by Fari Noveri
--- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling, and persistent positions on respawn
+-- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling, persistent positions on respawn, and auto-teleport status label
 
 -- Dependencies: Passed from mainloader.lua
 local Players, Workspace, ScreenGui, player, rootPart, settings
@@ -19,6 +19,7 @@ Teleport.autoTeleportCoroutine = nil
 -- UI Elements
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
+local AutoStatusLabel -- New label for auto-teleport status
 
 -- Mock file system
 local fileSystem = fileSystem or { ["DCIM/Supertool"] = {} } -- Preserve existing filesystem
@@ -360,6 +361,9 @@ local function doAutoTeleport()
         if #positions == 0 then
             warn("No saved positions for auto teleport")
             Teleport.autoTeleportActive = false
+            if AutoStatusLabel then
+                AutoStatusLabel.Visible = false
+            end
             return
         end
         repeat
@@ -368,6 +372,12 @@ local function doAutoTeleport()
                 local position = positions[i]
                 if safeTeleport(position.cframe) then
                     print("Auto teleported to: " .. position.name .. " (" .. i .. "/" .. #positions .. ")")
+                    -- Update status label with current position
+                    if AutoStatusLabel then
+                        local number = Teleport.positionNumbers[position.name] or 0
+                        local numberText = number > 0 and "#" .. number or ""
+                        AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+                    end
                 else
                     warn("Failed to auto teleport to: " .. position.name)
                 end
@@ -383,6 +393,9 @@ local function doAutoTeleport()
         until Teleport.autoTeleportMode ~= "repeat" or not Teleport.autoTeleportActive
         Teleport.autoTeleportActive = false
         Teleport.currentAutoIndex = 1
+        if AutoStatusLabel then
+            AutoStatusLabel.Visible = false
+        end
         print("Auto teleport finished")
     end)
 end
@@ -400,11 +413,23 @@ function Teleport.startAutoTeleport()
     Teleport.autoTeleportActive = true
     Teleport.currentAutoIndex = 1
     Teleport.autoTeleportCoroutine = doAutoTeleport()
+    -- Update status label
+    if AutoStatusLabel then
+        local positions = getOrderedPositions()
+        local position = positions[1]
+        local number = Teleport.positionNumbers[position.name] or 0
+        local numberText = number > 0 and "#" .. number or ""
+        AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+        AutoStatusLabel.Visible = true
+    end
     spawn(function()
         local success, err = coroutine.resume(Teleport.autoTeleportCoroutine)
         if not success then
             warn("Auto teleport error: " .. tostring(err))
             Teleport.autoTeleportActive = false
+            if AutoStatusLabel then
+                AutoStatusLabel.Visible = false
+            end
         end
     end)
     print("Auto teleport started in " .. Teleport.autoTeleportMode .. " mode")
@@ -416,6 +441,9 @@ function Teleport.stopAutoTeleport()
     Teleport.autoTeleportActive = false
     Teleport.currentAutoIndex = 1
     Teleport.autoTeleportCoroutine = nil
+    if AutoStatusLabel then
+        AutoStatusLabel.Visible = false
+    end
     print("Auto teleport stopped")
 end
 
@@ -424,6 +452,16 @@ function Teleport.toggleAutoMode()
     Teleport.autoTeleportMode = Teleport.autoTeleportMode == "once" and "repeat" or "once"
     if AutoModeToggle then
         AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
+    end
+    -- Update status label if auto-teleport is active
+    if Teleport.autoTeleportActive and AutoStatusLabel then
+        local positions = getOrderedPositions()
+        if positions[Teleport.currentAutoIndex] then
+            local position = positions[Teleport.currentAutoIndex]
+            local number = Teleport.positionNumbers[position.name] or 0
+            local numberText = number > 0 and "#" .. number or ""
+            AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+        end
     end
     print("Auto teleport mode set to: " .. Teleport.autoTeleportMode)
     return Teleport.autoTeleportMode
@@ -854,6 +892,22 @@ function Teleport.createPositionManagerUI()
     StopAutoButton.Text = "Stop Auto"
     StopAutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     StopAutoButton.TextSize = 8
+
+    -- Create auto-teleport status label
+    AutoStatusLabel = Instance.new("TextLabel")
+    AutoStatusLabel.Name = "AutoStatusLabel"
+    AutoStatusLabel.Parent = ScreenGui
+    AutoStatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    AutoStatusLabel.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    AutoStatusLabel.BorderSizePixel = 1
+    AutoStatusLabel.Position = UDim2.new(1, -250, 0, 10)
+    AutoStatusLabel.Size = UDim2.new(0, 240, 0, 20)
+    AutoStatusLabel.Font = Enum.Font.Gotham
+    AutoStatusLabel.Text = ""
+    AutoStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    AutoStatusLabel.TextSize = 10
+    AutoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    AutoStatusLabel.Visible = false
 
     -- Event connections
     SavePositionButton.MouseButton1Click:Connect(function()
