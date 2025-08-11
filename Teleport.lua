@@ -1,9 +1,11 @@
+-- teleport.lua
 -- Teleport-related features for MinimalHackGUI by Fari Noveri
 -- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling, persistent positions on respawn, auto-teleport status label, and pause on death with auto-resume
 
--- Dependencies: Passed from mainloader.lua
-local Players, Workspace, ScreenGui, player, rootPart, settings
+-- Dependencies: These must be passed from mainloader.lua
+local Players, Workspace, ScreenGui, ScrollFrame, player, rootPart, settings
 
+-- Initialize module
 local Teleport = {}
 
 -- Variables
@@ -17,12 +19,12 @@ Teleport.autoTeleportDelay = 2 -- seconds between teleports
 Teleport.currentAutoIndex = 1
 Teleport.autoTeleportCoroutine = nil
 
--- UI Elements
+-- UI Elements (to be initialized in initUI function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
 local AutoStatusLabel -- New label for auto-teleport status
 
--- Mock file system
+-- Mock file system - consistent with settings.lua structure
 local fileSystem = fileSystem or { ["DCIM/Supertool"] = {} } -- Preserve existing filesystem
 
 -- Get root part
@@ -41,6 +43,7 @@ local function saveToFileSystem(positionName, cframe, number)
         return false
     end
     fileSystem["DCIM/Supertool"][positionName] = {
+        type = "teleport_position", -- Add type identifier
         x = cframe.X,
         y = cframe.Y,
         z = cframe.Z,
@@ -54,7 +57,7 @@ end
 -- Load from mock filesystem
 local function loadFromFileSystem(positionName)
     local data = fileSystem["DCIM/Supertool"][positionName]
-    if data then
+    if data and data.type == "teleport_position" then
         local rx, ry, rz = unpack(data.orientation)
         Teleport.positionNumbers[positionName] = data.number or 0 -- Load number
         return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
@@ -285,7 +288,7 @@ local function createRenameDialog(positionName, onRename)
 
     local CancelButton = Instance.new("TextButton")
     CancelButton.Parent = RenameFrame
-    CancelButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    ConfirmButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
     CancelButton.BorderSizePixel = 0
     CancelButton.Position = UDim2.new(0.5, 5, 0, 65)
     CancelButton.Size = UDim2.new(0.5, -15, 0, 25)
@@ -733,12 +736,14 @@ function Teleport.saveFreecamPosition(freecamPosition)
     return true
 end
 
--- Load saved positions
+-- Load saved positions from filesystem
 function Teleport.loadSavedPositions()
-    for positionName in pairs(fileSystem["DCIM/Supertool"]) do
-        local cframe = loadFromFileSystem(positionName)
-        if cframe then
-            Teleport.savedPositions[positionName] = cframe
+    for positionName, data in pairs(fileSystem["DCIM/Supertool"]) do
+        if data.type == "teleport_position" then
+            local cframe = loadFromFileSystem(positionName)
+            if cframe then
+                Teleport.savedPositions[positionName] = cframe
+            end
         end
     end
     refreshPositionButtons()
@@ -761,14 +766,15 @@ function Teleport.togglePositionManager()
     end
 end
 
--- Create position manager UI
-function Teleport.createPositionManagerUI()
+-- Initialize UI elements
+local function initUI()
     if not ScreenGui then
         warn("Cannot create Position Manager UI: ScreenGui not available")
         return
     end
     print("Creating Position Manager UI...")
 
+    -- Position Frame
     PositionFrame = Instance.new("Frame")
     PositionFrame.Name = "PositionFrame"
     PositionFrame.Parent = ScreenGui
@@ -781,6 +787,7 @@ function Teleport.createPositionManagerUI()
     PositionFrame.Active = true
     PositionFrame.Draggable = true
 
+    -- Position Title
     local PositionTitle = Instance.new("TextLabel")
     PositionTitle.Name = "Title"
     PositionTitle.Parent = PositionFrame
@@ -793,6 +800,7 @@ function Teleport.createPositionManagerUI()
     PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PositionTitle.TextSize = 11
 
+    -- Close Position Button
     local ClosePositionButton = Instance.new("TextButton")
     ClosePositionButton.Name = "CloseButton"
     ClosePositionButton.Parent = PositionFrame
@@ -804,6 +812,7 @@ function Teleport.createPositionManagerUI()
     ClosePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     ClosePositionButton.TextSize = 11
 
+    -- Position Input
     PositionInput = Instance.new("TextBox")
     PositionInput.Name = "PositionInput"
     PositionInput.Parent = PositionFrame
@@ -817,6 +826,7 @@ function Teleport.createPositionManagerUI()
     PositionInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     PositionInput.TextSize = 10
 
+    -- Save Position Button
     SavePositionButton = Instance.new("TextButton")
     SavePositionButton.Name = "SavePositionButton"
     SavePositionButton.Parent = PositionFrame
@@ -829,6 +839,7 @@ function Teleport.createPositionManagerUI()
     SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     SavePositionButton.TextSize = 9
 
+    -- Position ScrollFrame
     PositionScrollFrame = Instance.new("ScrollingFrame")
     PositionScrollFrame.Name = "PositionScrollFrame"
     PositionScrollFrame.Parent = PositionFrame
@@ -842,12 +853,14 @@ function Teleport.createPositionManagerUI()
     PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     PositionScrollFrame.BorderSizePixel = 0
 
+    -- Position Layout
     PositionLayout = Instance.new("UIListLayout")
     PositionLayout.Parent = PositionScrollFrame
     PositionLayout.Padding = UDim.new(0, 1)
     PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
     PositionLayout.FillDirection = Enum.FillDirection.Vertical
 
+    -- Auto Teleport Frame
     AutoTeleportFrame = Instance.new("Frame")
     AutoTeleportFrame.Name = "AutoTeleportFrame"
     AutoTeleportFrame.Parent = PositionFrame
@@ -856,6 +869,7 @@ function Teleport.createPositionManagerUI()
     AutoTeleportFrame.Position = UDim2.new(0, 8, 1, -62)
     AutoTeleportFrame.Size = UDim2.new(1, -16, 0, 58)
 
+    -- Auto Teleport Title
     local AutoTeleportTitle = Instance.new("TextLabel")
     AutoTeleportTitle.Name = "AutoTeleportTitle"
     AutoTeleportTitle.Parent = AutoTeleportFrame
@@ -867,6 +881,7 @@ function Teleport.createPositionManagerUI()
     AutoTeleportTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     AutoTeleportTitle.TextSize = 9
 
+    -- Auto Mode Toggle
     AutoModeToggle = Instance.new("TextButton")
     AutoModeToggle.Name = "AutoModeToggle"
     AutoModeToggle.Parent = AutoTeleportFrame
@@ -879,6 +894,7 @@ function Teleport.createPositionManagerUI()
     AutoModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
     AutoModeToggle.TextSize = 8
 
+    -- Delay Input
     DelayInput = Instance.new("TextBox")
     DelayInput.Name = "DelayInput"
     DelayInput.Parent = AutoTeleportFrame
@@ -892,6 +908,7 @@ function Teleport.createPositionManagerUI()
     DelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     DelayInput.TextSize = 8
 
+    -- Start Auto Button
     AutoTeleportButton = Instance.new("TextButton")
     AutoTeleportButton.Name = "AutoTeleportButton"
     AutoTeleportButton.Parent = AutoTeleportFrame
@@ -904,6 +921,7 @@ function Teleport.createPositionManagerUI()
     AutoTeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     AutoTeleportButton.TextSize = 8
 
+    -- Stop Auto Button
     StopAutoButton = Instance.new("TextButton")
     StopAutoButton.Name = "StopAutoButton"
     StopAutoButton.Parent = AutoTeleportFrame
@@ -970,39 +988,59 @@ function Teleport.createPositionManagerUI()
     print("Position Manager UI created successfully")
 end
 
--- Initialize module
-function Teleport.init(deps)
-    print("Initializing Teleport module...")
-    Players = deps.Players
-    Workspace = deps.Workspace
-    ScreenGui = deps.ScreenGui
-    player = deps.player
-    rootPart = deps.rootPart
-    settings = deps.settings
+-- Function to create buttons for Teleport features
+function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
+    createButton("Position Manager", function()
+        Teleport.togglePositionManager()
+    end)
+    
+    createButton("TP to Freecam", function()
+        if freecamEnabled and freecamPosition and toggleFreecam then
+            toggleFreecam(false)
+            safeTeleport(CFrame.new(freecamPosition))
+            print("Teleported to freecam position")
+        elseif freecamPosition then
+            safeTeleport(CFrame.new(freecamPosition))
+            print("Teleported to last freecam position")
+        else
+            warn("Use freecam first to set a position")
+        end
+    end)
+    
+    createButton("Save Freecam Pos", function()
+        if freecamPosition then
+            Teleport.saveFreecamPosition(freecamPosition)
+        else
+            warn("Cannot save: Freecam must be enabled to save position")
+        end
+    end)
+    
+    createButton("Save Current Pos", function()
+        Teleport.saveCurrentPosition()
+    end)
+    
+    createButton("TP to Spawn", function()
+        Teleport.teleportToSpawn()
+    end)
+end
 
-    if not Players or not Workspace or not ScreenGui or not player then
-        warn("Critical dependencies missing for Teleport module!")
-        return false
-    end
-
-    -- Only initialize tables if they don't exist to preserve data
-    Teleport.savedPositions = Teleport.savedPositions or {}
-    Teleport.positionNumbers = Teleport.positionNumbers or {}
+-- Function to reset Teleport states
+function Teleport.resetStates()
+    Teleport.savedPositions = {}
+    Teleport.positionNumbers = {}
     Teleport.positionFrameVisible = false
-    player.CharacterAdded:Connect(onCharacterAdded)
-    if player.Character then
-        onCharacterAdded(player.Character)
+    
+    -- Clear teleport positions from filesystem but keep other data
+    for positionName, data in pairs(fileSystem["DCIM/Supertool"]) do
+        if data.type == "teleport_position" then
+            fileSystem["DCIM/Supertool"][positionName] = nil
+        end
     end
-
-    local success, err = pcall(Teleport.createPositionManagerUI)
-    if not success then
-        warn("Failed to create Position Manager UI: " .. tostring(err))
-        return false
+    
+    if PositionFrame then
+        PositionFrame.Visible = false
     end
-
-    Teleport.loadSavedPositions()
-    print("Teleport module initialized successfully")
-    return true
+    Teleport.stopAutoTeleport()
 end
 
 -- Quick teleport functions
@@ -1023,54 +1061,37 @@ function Teleport.teleportToPosition(x, y, z)
     end
 end
 
--- Load teleport buttons
-function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
-    print("Loading Teleport buttons...")
-    
-    createButton("Position Manager", function()
-        Teleport.togglePositionManager()
-    end, "Teleport")
-    
-    createButton("TP to Freecam", function()
-        if freecamEnabled and freecamPosition and toggleFreecam then
-            toggleFreecam(false)
-            safeTeleport(CFrame.new(freecamPosition))
-            print("Teleported to freecam position")
-        elseif freecamPosition then
-            safeTeleport(CFrame.new(freecamPosition))
-            print("Teleported to last freecam position")
-        else
-            warn("Use freecam first to set a position")
-        end
-    end, "Teleport")
-    
-    createButton("Save Freecam Pos", function()
-        if freecamPosition then
-            Teleport.saveFreecamPosition(freecamPosition)
-        else
-            warn("Cannot save: Freecam must be enabled to save position")
-        end
-    end, "Teleport")
-    
-    createButton("Save Current Pos", function()
-        Teleport.saveCurrentPosition()
-    end, "Teleport")
-    
-    print("Teleport buttons loaded successfully")
-end
+-- Function to set dependencies and initialize UI
+function Teleport.init(deps)
+    ScreenGui = deps.ScreenGui
+    ScrollFrame = deps.ScrollFrame
+    Players = deps.Players
+    Workspace = deps.Workspace
+    player = deps.player
+    rootPart = deps.rootPart
+    settings = deps.settings
 
--- Reset states
-function Teleport.resetStates()
-    print("Resetting Teleport states...")
-    Teleport.savedPositions = {}
-    Teleport.positionNumbers = {}
-    Teleport.positionFrameVisible = false
-    fileSystem["DCIM/Supertool"] = {}
-    if PositionFrame then
-        PositionFrame.Visible = false
+    if not Players or not Workspace or not ScreenGui or not player then
+        warn("Critical dependencies missing for Teleport module!")
+        return false
     end
-    Teleport.stopAutoTeleport()
-    print("Teleport states reset successfully")
+
+    -- Only initialize tables if they don't exist to preserve data
+    Teleport.savedPositions = Teleport.savedPositions or {}
+    Teleport.positionNumbers = Teleport.positionNumbers or {}
+    Teleport.positionFrameVisible = false
+    
+    player.CharacterAdded:Connect(onCharacterAdded)
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
+
+    -- Initialize UI elements
+    initUI()
+    
+    Teleport.loadSavedPositions()
+    print("Teleport module initialized successfully")
+    return true
 end
 
 return Teleport
