@@ -62,7 +62,7 @@ Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.BorderSizePixel = 0
 Title.Size = UDim2.new(1, 0, 0, 25)
 Title.Font = Enum.Font.Gotham
-Title.Text = "MinimalHackGUI by Fari Noveri"
+Title.Text = "MinimalHackGUI by Fari Noveri dsadsaa"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
