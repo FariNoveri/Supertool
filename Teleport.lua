@@ -29,8 +29,25 @@ local AutoStatusLabel, GroupInput, CreateGroupButton -- New elements for groups
 -- Mock file system - consistent with settings.lua structure
 local fileSystem = fileSystem or { ["DCIM/Supertool"] = {} } -- Preserve existing filesystem
 
+-- Init function to set dependencies
+function Teleport.init(passedPlayers, passedWorkspace, passedScreenGui, passedScrollFrame, passedPlayer, passedRootPart, passedSettings)
+    Players = passedPlayers or game:GetService("Players")
+    Workspace = passedWorkspace or game:GetService("Workspace")
+    ScreenGui = passedScreenGui or (Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui") and Instance.new("ScreenGui", Players.LocalPlayer.PlayerGui))
+    ScrollFrame = passedScrollFrame or Instance.new("ScrollingFrame")
+    player = passedPlayer or Players.LocalPlayer
+    rootPart = passedRootPart or Teleport.getRootPart()
+    settings = passedSettings or {}
+    Teleport.initUI()
+    Teleport.loadSavedPositions()
+    player.CharacterAdded:Connect(Teleport.onCharacterAdded)
+end
+
 -- Get root part
-local function getRootPart()
+function Teleport.getRootPart()
+    if not player.Character then
+        player.CharacterAdded:Wait()
+    end
     if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
         return player.Character.HumanoidRootPart
     end
@@ -185,13 +202,13 @@ end
 
 -- Safe teleport
 local function safeTeleport(targetCFrame)
-    local root = getRootPart()
+    local root = Teleport.getRootPart()
     if not root then
         return false
     end
     if not root.Parent then
         wait(0.1)
-        root = getRootPart()
+        root = Teleport.getRootPart()
         if not root then return false end
     end
     root.CFrame = targetCFrame
@@ -487,7 +504,7 @@ local function deletePositionWithConfirmation(positionName, button)
         fileSystem["DCIM/Supertool"][positionName] = nil
         button.Parent:Destroy()
         print("Deleted position: " .. positionName)
-        updateScrollCanvasSize()
+        Teleport.updateScrollCanvasSize()
         -- Refresh all buttons to update duplicate highlighting
         refreshPositionButtons()
     else
@@ -543,7 +560,7 @@ local function deleteGroupWithConfirmation(groupName, button)
 end
 
 -- Update scroll canvas size
-local function updateScrollCanvasSize()
+function Teleport.updateScrollCanvasSize()
     if PositionScrollFrame and PositionLayout then
         PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PositionLayout.AbsoluteContentSize.Y + 10)
     end
@@ -844,7 +861,7 @@ local function createGroupHeader(groupName, groupData)
 end
 
 -- Create position button with rename, delete, and numbering functionality
-createPositionButton = function(positionName, cframe, groupName)
+local function createPositionButton(positionName, cframe, groupName)
     if not PositionScrollFrame then
         warn("Cannot create position button: PositionScrollFrame not initialized")
         return
@@ -1037,7 +1054,7 @@ refreshPositionButtons = function()
         end
     end
     
-    updateScrollCanvasSize()
+    Teleport.updateScrollCanvasSize()
 end
 
 -- Create new group
@@ -1063,7 +1080,7 @@ function Teleport.createGroup(groupName)
 end
 
 -- On character respawn
-local function onCharacterAdded(character)
+function Teleport.onCharacterAdded(character)
     if Teleport.autoTeleportActive then
         Teleport.autoTeleportPaused = true
         print("Auto teleport paused due to character respawn")
@@ -1098,7 +1115,7 @@ end
 
 -- Save current position
 function Teleport.saveCurrentPosition(groupName)
-    local root = getRootPart()
+    local root = Teleport.getRootPart()
     if not root then
         warn("Cannot save position: Character not found")
         return false
@@ -1213,9 +1230,9 @@ function Teleport.togglePositionManager()
 end
 
 -- Initialize UI elements
-local function initUI()
-    if not ScreenGui then
-        warn("Cannot create Position Manager UI: ScreenGui not available")
+function Teleport.initUI()
+    if not ScreenGui or not ScreenGui:IsA("ScreenGui") then
+        warn("Cannot create Position Manager UI: Invalid or missing ScreenGui")
         return
     end
     print("Creating Position Manager UI...")
@@ -1258,6 +1275,10 @@ local function initUI()
     ClosePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     ClosePositionButton.TextSize = 11
 
+    ClosePositionButton.MouseButton1Click:Connect(function()
+        Teleport.togglePositionManager()
+    end)
+
     -- Position Input
     PositionInput = Instance.new("TextBox")
     PositionInput.Name = "PositionInput"
@@ -1284,6 +1305,10 @@ local function initUI()
     SavePositionButton.Text = "SAVE"
     SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     SavePositionButton.TextSize = 9
+
+    SavePositionButton.MouseButton1Click:Connect(function()
+        Teleport.saveCurrentPosition(GroupInput.Text)
+    end)
 
     -- Group Input
     GroupInput = Instance.new("TextBox")
@@ -1312,6 +1337,11 @@ local function initUI()
     CreateGroupButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     CreateGroupButton.TextSize = 8
 
+    CreateGroupButton.MouseButton1Click:Connect(function()
+        Teleport.createGroup(GroupInput.Text)
+        GroupInput.Text = ""
+    end)
+
     -- Position ScrollFrame
     PositionScrollFrame = Instance.new("ScrollingFrame")
     PositionScrollFrame.Name = "PositionScrollFrame"
@@ -1324,3 +1354,75 @@ local function initUI()
     PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     PositionScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    -- UIListLayout for PositionScrollFrame
+    PositionLayout = Instance.new("UIListLayout")
+    PositionLayout.Parent = PositionScrollFrame
+    PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    PositionLayout.Padding = UDim.new(0, 2)
+
+    -- Auto Teleport Frame (assuming it's part of the UI)
+    AutoTeleportFrame = Instance.new("Frame")
+    AutoTeleportFrame.Parent = PositionFrame
+    AutoTeleportFrame.BackgroundTransparency = 1
+    AutoTeleportFrame.Position = UDim2.new(0, 8, 1, -60)
+    AutoTeleportFrame.Size = UDim2.new(1, -16, 0, 50)
+
+    -- Auto Teleport Button
+    AutoTeleportButton = Instance.new("TextButton")
+    AutoTeleportButton.Parent = AutoTeleportFrame
+    AutoTeleportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    AutoTeleportButton.Size = UDim2.new(0, 60, 0, 25)
+    AutoTeleportButton.Text = "Start Auto"
+    AutoTeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    AutoTeleportButton.MouseButton1Click:Connect(Teleport.startAutoTeleport)
+
+    -- Stop Auto Button
+    StopAutoButton = Instance.new("TextButton")
+    StopAutoButton.Parent = AutoTeleportFrame
+    StopAutoButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    StopAutoButton.Position = UDim2.new(0, 70, 0, 0)
+    StopAutoButton.Size = UDim2.new(0, 60, 0, 25)
+    StopAutoButton.Text = "Stop Auto"
+    StopAutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    StopAutoButton.MouseButton1Click:Connect(Teleport.stopAutoTeleport)
+
+    -- Auto Mode Toggle
+    AutoModeToggle = Instance.new("TextButton")
+    AutoModeToggle.Parent = AutoTeleportFrame
+    AutoModeToggle.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
+    AutoModeToggle.Position = UDim2.new(0, 140, 0, 0)
+    AutoModeToggle.Size = UDim2.new(0, 60, 0, 25)
+    AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
+    AutoModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    AutoModeToggle.MouseButton1Click:Connect(Teleport.toggleAutoMode)
+
+    -- Delay Input
+    DelayInput = Instance.new("TextBox")
+    DelayInput.Parent = AutoTeleportFrame
+    DelayInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    DelayInput.Position = UDim2.new(0, 210, 0, 0)
+    DelayInput.Size = UDim2.new(0, 40, 0, 25)
+    DelayInput.Text = tostring(Teleport.autoTeleportDelay)
+    DelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DelayInput.FocusLost:Connect(function()
+        local delay = tonumber(DelayInput.Text)
+        if delay and delay > 0 then
+            Teleport.autoTeleportDelay = delay
+        end
+    end)
+
+    -- Auto Status Label
+    AutoStatusLabel = Instance.new("TextLabel")
+    AutoStatusLabel.Parent = PositionFrame
+    AutoStatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    AutoStatusLabel.Position = UDim2.new(0, 8, 1, -25)
+    AutoStatusLabel.Size = UDim2.new(1, -16, 0, 20)
+    AutoStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    AutoStatusLabel.Visible = false
+
+    -- Add more UI elements as needed...
+
+end
+
+return Teleport
