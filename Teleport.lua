@@ -24,8 +24,18 @@ local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePos
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
 local AutoStatusLabel -- New label for auto-teleport status
 
--- Mock file system - consistent with settings.lua structure
-local fileSystem = fileSystem or { ["DCIM/Supertool"] = {} } -- Preserve existing filesystem
+-- FIXED: Use global fileSystem instead of creating local one
+-- This ensures consistency with settings.lua and other modules
+-- Mock file system will be initialized in mainloader.lua or first module that needs it
+local function getFileSystem()
+    if not _G.fileSystem then
+        _G.fileSystem = { ["DCIM/Supertool"] = {} }
+    end
+    if not _G.fileSystem["DCIM/Supertool"] then
+        _G.fileSystem["DCIM/Supertool"] = {}
+    end
+    return _G.fileSystem
+end
 
 -- Get root part
 local function getRootPart()
@@ -42,6 +52,7 @@ local function saveToFileSystem(positionName, cframe, number)
         warn("Cannot save to file system: Invalid positionName or cframe")
         return false
     end
+    local fileSystem = getFileSystem()
     fileSystem["DCIM/Supertool"][positionName] = {
         type = "teleport_position", -- Add type identifier
         x = cframe.X,
@@ -56,6 +67,7 @@ end
 
 -- Load from mock filesystem
 local function loadFromFileSystem(positionName)
+    local fileSystem = getFileSystem()
     local data = fileSystem["DCIM/Supertool"][positionName]
     if data and data.type == "teleport_position" then
         local rx, ry, rz = unpack(data.orientation)
@@ -288,7 +300,7 @@ local function createRenameDialog(positionName, onRename)
 
     local CancelButton = Instance.new("TextButton")
     CancelButton.Parent = RenameFrame
-    ConfirmButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    CancelButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
     CancelButton.BorderSizePixel = 0
     CancelButton.Position = UDim2.new(0.5, 5, 0, 65)
     CancelButton.Size = UDim2.new(0.5, -15, 0, 25)
@@ -332,6 +344,7 @@ local function deletePositionWithConfirmation(positionName, button)
     if button.Text == "Delete?" then
         Teleport.savedPositions[positionName] = nil
         Teleport.positionNumbers[positionName] = nil -- Remove number too
+        local fileSystem = getFileSystem()
         fileSystem["DCIM/Supertool"][positionName] = nil
         button.Parent:Destroy()
         print("Deleted position: " .. positionName)
@@ -569,6 +582,7 @@ createPositionButton = function(positionName, cframe)
             Teleport.positionNumbers[positionName] = nil
             
             -- Update file system
+            local fileSystem = getFileSystem()
             fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][positionName]
             fileSystem["DCIM/Supertool"][positionName] = nil
             
@@ -738,6 +752,7 @@ end
 
 -- Load saved positions from filesystem
 function Teleport.loadSavedPositions()
+    local fileSystem = getFileSystem()
     for positionName, data in pairs(fileSystem["DCIM/Supertool"]) do
         if data.type == "teleport_position" then
             local cframe = loadFromFileSystem(positionName)
@@ -1031,6 +1046,7 @@ function Teleport.resetStates()
     Teleport.positionFrameVisible = false
     
     -- Clear teleport positions from filesystem but keep other data
+    local fileSystem = getFileSystem()
     for positionName, data in pairs(fileSystem["DCIM/Supertool"]) do
         if data.type == "teleport_position" then
             fileSystem["DCIM/Supertool"][positionName] = nil
