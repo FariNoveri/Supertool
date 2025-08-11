@@ -33,24 +33,61 @@ local fileSystem = fileSystem or { ["DCIM/Supertool"] = {} } -- Preserve existin
 function Teleport.init(passedPlayers, passedWorkspace, passedScreenGui, passedScrollFrame, passedPlayer, passedRootPart, passedSettings)
     Players = passedPlayers or game:GetService("Players")
     Workspace = passedWorkspace or game:GetService("Workspace")
-    ScreenGui = passedScreenGui or (Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui") and Instance.new("ScreenGui", Players.LocalPlayer.PlayerGui))
+    
+    -- Ensure player is valid, wait for LocalPlayer if necessary
+    if not passedPlayer and Players.LocalPlayer then
+        player = Players.LocalPlayer
+        if not player then
+            warn("Waiting for LocalPlayer to initialize...")
+            player = Players.LocalPlayerAdded:Wait()
+        end
+    else
+        player = passedPlayer
+    end
+    
+    -- Validate player
+    if not player or not player:IsA("Player") then
+        warn("Teleport.init: Invalid or missing player")
+        return
+    end
+    
+    ScreenGui = passedScreenGui or (player and player:FindFirstChild("PlayerGui") and Instance.new("ScreenGui", player.PlayerGui))
     ScrollFrame = passedScrollFrame or Instance.new("ScrollingFrame")
-    player = passedPlayer or Players.LocalPlayer
     rootPart = passedRootPart or Teleport.getRootPart()
     settings = passedSettings or {}
+    
+    if not ScreenGui then
+        warn("Teleport.init: Failed to create or find ScreenGui")
+        return
+    end
+    
     Teleport.initUI()
     Teleport.loadSavedPositions()
     player.CharacterAdded:Connect(Teleport.onCharacterAdded)
+    print("Teleport module initialized successfully")
 end
 
 -- Get root part
 function Teleport.getRootPart()
-    if not player.Character then
-        player.CharacterAdded:Wait()
+    if not player or not player:IsA("Player") then
+        warn("Cannot get root part: Player is nil or invalid")
+        return nil
     end
+    
+    if not player.Character then
+        local success, character = pcall(function()
+            return player.CharacterAdded:Wait()
+        end)
+        if not success or not character then
+            warn("Cannot get root part: Failed to wait for CharacterAdded")
+            return nil
+        end
+    end
+    
     if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
         return player.Character.HumanoidRootPart
     end
+    
     warn("Cannot get root part: Character or HumanoidRootPart not found")
     return nil
 end
@@ -91,7 +128,7 @@ local function saveToFileSystem(positionName, cframe, number, groupName)
         return false
     end
     fileSystem["DCIM/Supertool"][positionName] = {
-        type = "teleport_position", -- Add type identifier
+        type = "teleport_position",
         x = cframe.X,
         y = cframe.Y,
         z = cframe.Z,
@@ -108,8 +145,8 @@ local function loadFromFileSystem(positionName)
     local data = fileSystem["DCIM/Supertool"][positionName]
     if data and data.type == "teleport_position" then
         local rx, ry, rz = unpack(data.orientation)
-        Teleport.positionNumbers[positionName] = data.number or 0 -- Load number
-        Teleport.positionGroups[positionName] = data.group or "Default" -- Load group
+        Teleport.positionNumbers[positionName] = data.number or 0
+        Teleport.positionGroups[positionName] = data.group or "Default"
         return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
     end
     warn("Cannot load from file system: Position " .. tostring(positionName) .. " not found")
@@ -139,25 +176,24 @@ local function getPositionsByGroup(groupName)
         end
     end
     
-    -- Sort by number first, then by name for positions with same number or 0
     table.sort(positions, function(a, b)
         if a.number == 0 and b.number == 0 then
-            return a.name < b.name -- Alphabetical for unnumbered
+            return a.name < b.name
         elseif a.number == 0 then
-            return false -- Unnumbered goes to end
+            return false
         elseif b.number == 0 then
-            return true -- Numbered comes first
+            return true
         elseif a.number == b.number then
-            return a.name < b.name -- Same number, sort by name
+            return a.name < b.name
         else
-            return a.number < b.number -- Sort by number
+            return a.number < b.number
         end
     end)
     
     return positions
 end
 
--- Get ordered positions for auto teleport (only from enabled groups)
+-- Get ordered positions for auto teleport
 local function getOrderedPositions()
     local orderedPositions = {}
     for groupName, groupData in pairs(Teleport.groups) do
@@ -178,7 +214,7 @@ local function getDuplicateNumbers(groupName)
     
     for posName, number in pairs(Teleport.positionNumbers) do
         local posGroup = Teleport.positionGroups[posName] or "Default"
-        if posGroup == groupName and number > 0 then -- Only check numbered positions in this group
+        if posGroup == groupName and number > 0 then
             if numberCount[number] then
                 table.insert(numberCount[number], posName)
                 if not duplicates[number] then
@@ -496,16 +532,14 @@ local refreshPositionButtons
 
 -- Delete position with confirmation
 local function deletePositionWithConfirmation(positionName, button)
-    -- Simple confirmation by requiring double-click
     if button.Text == "Delete?" then
         Teleport.savedPositions[positionName] = nil
-        Teleport.positionNumbers[positionName] = nil -- Remove number too
-        Teleport.positionGroups[positionName] = nil -- Remove group assignment
+        Teleport.positionNumbers[positionName] = nil
+        Teleport.positionGroups[positionName] = nil
         fileSystem["DCIM/Supertool"][positionName] = nil
         button.Parent:Destroy()
         print("Deleted position: " .. positionName)
         Teleport.updateScrollCanvasSize()
-        -- Refresh all buttons to update duplicate highlighting
         refreshPositionButtons()
     else
         button.Text = "Delete?"
@@ -528,11 +562,9 @@ local function deleteGroupWithConfirmation(groupName, button)
     end
     
     if button.Text == "Delete Group?" then
-        -- Move all positions in this group to Default
         for posName, group in pairs(Teleport.positionGroups) do
             if group == groupName then
                 Teleport.positionGroups[posName] = "Default"
-                -- Update filesystem
                 if Teleport.savedPositions[posName] then
                     saveToFileSystem(posName, Teleport.savedPositions[posName], 
                                    Teleport.positionNumbers[posName] or 0, "Default")
@@ -540,7 +572,6 @@ local function deleteGroupWithConfirmation(groupName, button)
             end
         end
         
-        -- Remove group
         Teleport.groups[groupName] = nil
         fileSystem["DCIM/Supertool"]["group_" .. groupName] = nil
         
@@ -581,14 +612,12 @@ local function doAutoTeleport()
         repeat
             for i = Teleport.currentAutoIndex, #positions do
                 if not Teleport.autoTeleportActive then return end
-                -- Check for pause
                 while Teleport.autoTeleportPaused do
                     wait(0.1)
                 end
                 local position = positions[i]
                 if safeTeleport(position.cframe) then
                     print("Auto teleported to: " .. position.name .. " (" .. i .. "/" .. #positions .. ")")
-                    -- Update status label with current position
                     if AutoStatusLabel then
                         local number = Teleport.positionNumbers[position.name] or 0
                         local numberText = number > 0 and "#" .. number or ""
@@ -629,7 +658,6 @@ function Teleport.startAutoTeleport()
     Teleport.autoTeleportActive = true
     Teleport.currentAutoIndex = 1
     Teleport.autoTeleportCoroutine = doAutoTeleport()
-    -- Update status label
     if AutoStatusLabel then
         local positions = getOrderedPositions()
         local position = positions[1]
@@ -670,7 +698,6 @@ function Teleport.toggleAutoMode()
     if AutoModeToggle then
         AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
     end
-    -- Update status label if auto-teleport is active
     if Teleport.autoTeleportActive and AutoStatusLabel then
         local positions = getOrderedPositions()
         if positions[Teleport.currentAutoIndex] then
@@ -696,7 +723,6 @@ local function createGroupHeader(groupName, groupData)
     GroupFrame.BackgroundTransparency = 1
     GroupFrame.Parent = PositionScrollFrame
 
-    -- Dropdown line (like --------v)
     local DropdownButton = Instance.new("TextButton")
     DropdownButton.Size = UDim2.new(0, 12, 1, 0)
     DropdownButton.Position = UDim2.new(0, 0, 0, 0)
@@ -707,7 +733,6 @@ local function createGroupHeader(groupName, groupData)
     DropdownButton.Font = Enum.Font.GothamBold
     DropdownButton.Parent = GroupFrame
 
-    -- Dropdown line
     local DropdownLine = Instance.new("TextLabel")
     DropdownLine.Size = UDim2.new(0, 60, 1, 0)
     DropdownLine.Position = UDim2.new(0, 15, 0, 0)
@@ -719,7 +744,6 @@ local function createGroupHeader(groupName, groupData)
     DropdownLine.TextXAlignment = Enum.TextXAlignment.Left
     DropdownLine.Parent = GroupFrame
 
-    -- Group name label
     local GroupNameLabel = Instance.new("TextLabel")
     GroupNameLabel.Size = UDim2.new(1, -170, 1, 0)
     GroupNameLabel.Position = UDim2.new(0, 80, 0, 0)
@@ -731,7 +755,6 @@ local function createGroupHeader(groupName, groupData)
     GroupNameLabel.TextXAlignment = Enum.TextXAlignment.Left
     GroupNameLabel.Parent = GroupFrame
 
-    -- Auto teleport toggle for group
     local AutoToggleButton = Instance.new("TextButton")
     AutoToggleButton.Size = UDim2.new(0, 40, 0, 18)
     AutoToggleButton.Position = UDim2.new(1, -130, 0, 3)
@@ -743,7 +766,6 @@ local function createGroupHeader(groupName, groupData)
     AutoToggleButton.Font = Enum.Font.Gotham
     AutoToggleButton.Parent = GroupFrame
 
-    -- Rename group button
     local RenameGroupButton = Instance.new("TextButton")
     RenameGroupButton.Size = UDim2.new(0, 32, 0, 18)
     RenameGroupButton.Position = UDim2.new(1, -85, 0, 3)
@@ -755,7 +777,6 @@ local function createGroupHeader(groupName, groupData)
     RenameGroupButton.Font = Enum.Font.Gotham
     RenameGroupButton.Parent = GroupFrame
 
-    -- Delete group button (only for non-default groups)
     local DeleteGroupButton
     if groupName ~= "Default" then
         DeleteGroupButton = Instance.new("TextButton")
@@ -770,7 +791,6 @@ local function createGroupHeader(groupName, groupData)
         DeleteGroupButton.Parent = GroupFrame
     end
 
-    -- Event connections
     DropdownButton.MouseButton1Click:Connect(function()
         groupData.expanded = not groupData.expanded
         DropdownButton.Text = groupData.expanded and "v" or ">"
@@ -792,16 +812,13 @@ local function createGroupHeader(groupName, groupData)
             return
         end
         createGroupRenameDialog(groupName, function(newName)
-            -- Update group data
             Teleport.groups[newName] = Teleport.groups[groupName]
             Teleport.groups[newName].name = newName
             Teleport.groups[groupName] = nil
             
-            -- Update all positions in this group
             for posName, group in pairs(Teleport.positionGroups) do
                 if group == groupName then
                     Teleport.positionGroups[posName] = newName
-                    -- Update filesystem
                     if Teleport.savedPositions[posName] then
                         saveToFileSystem(posName, Teleport.savedPositions[posName], 
                                        Teleport.positionNumbers[posName] or 0, newName)
@@ -809,7 +826,6 @@ local function createGroupHeader(groupName, groupData)
                 end
             end
             
-            -- Update filesystem
             fileSystem["DCIM/Supertool"]["group_" .. newName] = fileSystem["DCIM/Supertool"]["group_" .. groupName]
             fileSystem["DCIM/Supertool"]["group_" .. groupName] = nil
             saveGroupToFileSystem(newName, Teleport.groups[newName])
@@ -824,7 +840,6 @@ local function createGroupHeader(groupName, groupData)
             deleteGroupWithConfirmation(groupName, DeleteGroupButton)
         end)
 
-        -- Hover effects for delete button
         DeleteGroupButton.MouseEnter:Connect(function()
             if DeleteGroupButton.Text ~= "Delete Group?" then
                 DeleteGroupButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
@@ -838,7 +853,6 @@ local function createGroupHeader(groupName, groupData)
         end)
     end
 
-    -- Hover effects
     AutoToggleButton.MouseEnter:Connect(function()
         if groupData.autoTeleportEnabled then
             AutoToggleButton.BackgroundColor3 = Color3.fromRGB(80, 140, 80)
@@ -881,7 +895,6 @@ local function createPositionButton(positionName, cframe, groupName)
         displayText = "[" .. number .. "] " .. positionName
     end
 
-    -- Indent for group items
     local indentOffset = 20
 
     local NumberButton = Instance.new("TextButton")
@@ -929,13 +942,12 @@ local function createPositionButton(positionName, cframe, groupName)
     DeleteButton.Font = Enum.Font.Gotham
     DeleteButton.Parent = ButtonFrame
 
-    -- Event connections
     NumberButton.MouseButton1Click:Connect(function()
         createNumberInputDialog(positionName, number, function(newNumber)
             Teleport.positionNumbers[positionName] = newNumber
             saveToFileSystem(positionName, cframe, newNumber, groupName)
             print("Set number " .. newNumber .. " for position: " .. positionName)
-            refreshPositionButtons() -- Refresh to update display and check duplicates
+            refreshPositionButtons()
         end)
     end)
 
@@ -947,27 +959,17 @@ local function createPositionButton(positionName, cframe, groupName)
 
     RenameButton.MouseButton1Click:Connect(function()
         createRenameDialog(positionName, function(newName)
-            -- Update position data
             Teleport.savedPositions[newName] = Teleport.savedPositions[positionName]
             Teleport.savedPositions[positionName] = nil
-            
-            -- Update number data
             Teleport.positionNumbers[newName] = Teleport.positionNumbers[positionName]
             Teleport.positionNumbers[positionName] = nil
-            
-            -- Update group assignment
             Teleport.positionGroups[newName] = Teleport.positionGroups[positionName]
             Teleport.positionGroups[positionName] = nil
-            
-            -- Update file system
             fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][positionName]
             fileSystem["DCIM/Supertool"][positionName] = nil
-            
-            -- Save with number and group
             saveToFileSystem(newName, cframe, Teleport.positionNumbers[newName], groupName)
-            
             print("Renamed position to: " .. newName)
-            refreshPositionButtons() -- Refresh all buttons
+            refreshPositionButtons()
         end)
     end)
 
@@ -975,7 +977,6 @@ local function createPositionButton(positionName, cframe, groupName)
         deletePositionWithConfirmation(positionName, DeleteButton)
     end)
 
-    -- Hover effects
     NumberButton.MouseEnter:Connect(function()
         if not isDuplicate then
             NumberButton.BackgroundColor3 = Color3.fromRGB(60, 100, 140)
@@ -1022,7 +1023,6 @@ refreshPositionButtons = function()
         return
     end
     
-    -- Clear existing UI elements
     for _, child in pairs(PositionScrollFrame:GetChildren()) do
         if child:IsA("Frame") and child.Name ~= "UIListLayout" then
             child:Destroy()
@@ -1031,7 +1031,6 @@ refreshPositionButtons = function()
     
     ensureDefaultGroup()
     
-    -- Create groups in sorted order
     local sortedGroups = {}
     for groupName in pairs(Teleport.groups) do
         table.insert(sortedGroups, groupName)
@@ -1091,12 +1090,10 @@ function Teleport.onCharacterAdded(character)
     local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
     if humanoidRootPart then
         wait(1)
-        -- Only refresh UI, do not reset savedPositions or fileSystem
         refreshPositionButtons()
         if Teleport.autoTeleportActive and Teleport.autoTeleportPaused then
             Teleport.autoTeleportPaused = false
             print("Auto teleport resumed after respawn")
-            -- Update status label back to normal
             if AutoStatusLabel then
                 local positions = getOrderedPositions()
                 if positions[Teleport.currentAutoIndex] then
@@ -1126,15 +1123,14 @@ function Teleport.saveCurrentPosition(groupName)
     
     local positionName = PositionInput and PositionInput.Text:gsub("^%s*(.-)%s*$", "%1") or ""
     if positionName == "" then
-        positionName = "Position_" .. (os.time() % 10000) -- Use timestamp for uniqueness
+        positionName = "Position_" .. (os.time() % 10000)
     end
     
-    -- Ensure unique name
     positionName = generateUniqueName(positionName)
     
     local currentCFrame = root.CFrame
     Teleport.savedPositions[positionName] = currentCFrame
-    Teleport.positionNumbers[positionName] = 0 -- Default number
+    Teleport.positionNumbers[positionName] = 0
     Teleport.positionGroups[positionName] = groupName
     saveToFileSystem(positionName, currentCFrame, 0, groupName)
     
@@ -1159,15 +1155,14 @@ function Teleport.saveFreecamPosition(freecamPosition, groupName)
     
     local positionName = PositionInput and PositionInput.Text:gsub("^%s*(.-)%s*$", "%1") or ""
     if positionName == "" then
-        positionName = "Freecam_" .. (os.time() % 10000) -- Use timestamp for uniqueness
+        positionName = "Freecam_" .. (os.time() % 10000)
     end
     
-    -- Ensure unique name
     positionName = generateUniqueName(positionName)
     
     local cframe = CFrame.new(freecamPosition)
     Teleport.savedPositions[positionName] = cframe
-    Teleport.positionNumbers[positionName] = 0 -- Default number
+    Teleport.positionNumbers[positionName] = 0
     Teleport.positionGroups[positionName] = groupName
     saveToFileSystem(positionName, cframe, 0, groupName)
     
@@ -1182,7 +1177,6 @@ end
 
 -- Load saved positions from filesystem
 function Teleport.loadSavedPositions()
-    -- Load groups first
     for itemName, data in pairs(fileSystem["DCIM/Supertool"]) do
         if data.type == "teleport_group" then
             local groupName = itemName:gsub("^group_", "")
@@ -1194,7 +1188,6 @@ function Teleport.loadSavedPositions()
         end
     end
     
-    -- Load positions
     for positionName, data in pairs(fileSystem["DCIM/Supertool"]) do
         if data.type == "teleport_position" then
             local cframe = loadFromFileSystem(positionName)
@@ -1237,7 +1230,6 @@ function Teleport.initUI()
     end
     print("Creating Position Manager UI...")
 
-    -- Position Frame
     PositionFrame = Instance.new("Frame")
     PositionFrame.Name = "PositionFrame"
     PositionFrame.Parent = ScreenGui
@@ -1250,7 +1242,6 @@ function Teleport.initUI()
     PositionFrame.Active = true
     PositionFrame.Draggable = true
 
-    -- Position Title
     local PositionTitle = Instance.new("TextLabel")
     PositionTitle.Name = "Title"
     PositionTitle.Parent = PositionFrame
@@ -1263,7 +1254,6 @@ function Teleport.initUI()
     PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PositionTitle.TextSize = 11
 
-    -- Close Position Button
     local ClosePositionButton = Instance.new("TextButton")
     ClosePositionButton.Name = "CloseButton"
     ClosePositionButton.Parent = PositionFrame
@@ -1279,7 +1269,6 @@ function Teleport.initUI()
         Teleport.togglePositionManager()
     end)
 
-    -- Position Input
     PositionInput = Instance.new("TextBox")
     PositionInput.Name = "PositionInput"
     PositionInput.Parent = PositionFrame
@@ -1293,7 +1282,6 @@ function Teleport.initUI()
     PositionInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     PositionInput.TextSize = 10
 
-    -- Save Position Button
     SavePositionButton = Instance.new("TextButton")
     SavePositionButton.Name = "SavePositionButton"
     SavePositionButton.Parent = PositionFrame
@@ -1310,7 +1298,6 @@ function Teleport.initUI()
         Teleport.saveCurrentPosition(GroupInput.Text)
     end)
 
-    -- Group Input
     GroupInput = Instance.new("TextBox")
     GroupInput.Name = "GroupInput"
     GroupInput.Parent = PositionFrame
@@ -1324,7 +1311,6 @@ function Teleport.initUI()
     GroupInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     GroupInput.TextSize = 10
 
-    -- Create Group Button
     CreateGroupButton = Instance.new("TextButton")
     CreateGroupButton.Name = "CreateGroupButton"
     CreateGroupButton.Parent = PositionFrame
@@ -1342,7 +1328,6 @@ function Teleport.initUI()
         GroupInput.Text = ""
     end)
 
-    -- Position ScrollFrame
     PositionScrollFrame = Instance.new("ScrollingFrame")
     PositionScrollFrame.Name = "PositionScrollFrame"
     PositionScrollFrame.Parent = PositionFrame
@@ -1355,20 +1340,17 @@ function Teleport.initUI()
     PositionScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
-    -- UIListLayout for PositionScrollFrame
     PositionLayout = Instance.new("UIListLayout")
     PositionLayout.Parent = PositionScrollFrame
     PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
     PositionLayout.Padding = UDim.new(0, 2)
 
-    -- Auto Teleport Frame (assuming it's part of the UI)
     AutoTeleportFrame = Instance.new("Frame")
     AutoTeleportFrame.Parent = PositionFrame
     AutoTeleportFrame.BackgroundTransparency = 1
     AutoTeleportFrame.Position = UDim2.new(0, 8, 1, -60)
     AutoTeleportFrame.Size = UDim2.new(1, -16, 0, 50)
 
-    -- Auto Teleport Button
     AutoTeleportButton = Instance.new("TextButton")
     AutoTeleportButton.Parent = AutoTeleportFrame
     AutoTeleportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
@@ -1377,7 +1359,6 @@ function Teleport.initUI()
     AutoTeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     AutoTeleportButton.MouseButton1Click:Connect(Teleport.startAutoTeleport)
 
-    -- Stop Auto Button
     StopAutoButton = Instance.new("TextButton")
     StopAutoButton.Parent = AutoTeleportFrame
     StopAutoButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
@@ -1387,7 +1368,6 @@ function Teleport.initUI()
     StopAutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     StopAutoButton.MouseButton1Click:Connect(Teleport.stopAutoTeleport)
 
-    -- Auto Mode Toggle
     AutoModeToggle = Instance.new("TextButton")
     AutoModeToggle.Parent = AutoTeleportFrame
     AutoModeToggle.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
@@ -1397,7 +1377,6 @@ function Teleport.initUI()
     AutoModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
     AutoModeToggle.MouseButton1Click:Connect(Teleport.toggleAutoMode)
 
-    -- Delay Input
     DelayInput = Instance.new("TextBox")
     DelayInput.Parent = AutoTeleportFrame
     DelayInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -1412,7 +1391,6 @@ function Teleport.initUI()
         end
     end)
 
-    -- Auto Status Label
     AutoStatusLabel = Instance.new("TextLabel")
     AutoStatusLabel.Parent = PositionFrame
     AutoStatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
@@ -1420,9 +1398,6 @@ function Teleport.initUI()
     AutoStatusLabel.Size = UDim2.new(1, -16, 0, 20)
     AutoStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     AutoStatusLabel.Visible = false
-
-    -- Add more UI elements as needed...
-
 end
 
 return Teleport
