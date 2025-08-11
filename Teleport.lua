@@ -544,13 +544,14 @@ local function deletePositionWithConfirmation(positionName, button)
     else
         button.Text = "Delete?"
         button.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-        task.spawn(function()
+        -- Fixed the spawn issue here
+        coroutine.wrap(function()
             wait(2)
-            if button.Parent then
+            if button and button.Parent then
                 button.Text = "Del"
                 button.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
             end
-        end)
+        end)()
     end
 end
 
@@ -580,13 +581,14 @@ local function deleteGroupWithConfirmation(groupName, button)
     else
         button.Text = "Delete Group?"
         button.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-        task.spawn(function()
+        -- Fixed the spawn issue here too
+        coroutine.wrap(function()
             wait(2)
-            if button.Parent then
+            if button and button.Parent then
                 button.Text = "Del"
                 button.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
             end
-        end)
+        end)()
     end
 end
 
@@ -666,7 +668,7 @@ function Teleport.startAutoTeleport()
         AutoStatusLabel.Text = "Auto: " .. Teleport.autoTeleportMode .. " - " .. position.name .. numberText
         AutoStatusLabel.Visible = true
     end
-    task.spawn(function()
+    coroutine.wrap(function()
         local success, err = coroutine.resume(Teleport.autoTeleportCoroutine)
         if not success then
             warn("Auto teleport error: " .. tostring(err))
@@ -675,7 +677,7 @@ function Teleport.startAutoTeleport()
                 AutoStatusLabel.Visible = false
             end
         end
-    end)
+    end)()
     print("Auto teleport started in " .. Teleport.autoTeleportMode .. " mode")
 end
 
@@ -1354,50 +1356,85 @@ function Teleport.initUI()
     AutoTeleportButton = Instance.new("TextButton")
     AutoTeleportButton.Parent = AutoTeleportFrame
     AutoTeleportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    AutoTeleportButton.BorderSizePixel = 0
+    AutoTeleportButton.Position = UDim2.new(0, 0, 0, 0)
     AutoTeleportButton.Size = UDim2.new(0, 60, 0, 25)
+    AutoTeleportButton.Font = Enum.Font.Gotham
     AutoTeleportButton.Text = "Start Auto"
     AutoTeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    AutoTeleportButton.TextSize = 9
     AutoTeleportButton.MouseButton1Click:Connect(Teleport.startAutoTeleport)
 
     StopAutoButton = Instance.new("TextButton")
     StopAutoButton.Parent = AutoTeleportFrame
     StopAutoButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    StopAutoButton.BorderSizePixel = 0
     StopAutoButton.Position = UDim2.new(0, 70, 0, 0)
     StopAutoButton.Size = UDim2.new(0, 60, 0, 25)
+    StopAutoButton.Font = Enum.Font.Gotham
     StopAutoButton.Text = "Stop Auto"
     StopAutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    StopAutoButton.TextSize = 9
     StopAutoButton.MouseButton1Click:Connect(Teleport.stopAutoTeleport)
 
     AutoModeToggle = Instance.new("TextButton")
     AutoModeToggle.Parent = AutoTeleportFrame
     AutoModeToggle.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
+    AutoModeToggle.BorderSizePixel = 0
     AutoModeToggle.Position = UDim2.new(0, 140, 0, 0)
     AutoModeToggle.Size = UDim2.new(0, 60, 0, 25)
+    AutoModeToggle.Font = Enum.Font.Gotham
     AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
     AutoModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    AutoModeToggle.TextSize = 8
     AutoModeToggle.MouseButton1Click:Connect(Teleport.toggleAutoMode)
 
     DelayInput = Instance.new("TextBox")
     DelayInput.Parent = AutoTeleportFrame
     DelayInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    DelayInput.BorderSizePixel = 0
     DelayInput.Position = UDim2.new(0, 210, 0, 0)
     DelayInput.Size = UDim2.new(0, 40, 0, 25)
+    DelayInput.Font = Enum.Font.Gotham
     DelayInput.Text = tostring(Teleport.autoTeleportDelay)
     DelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DelayInput.TextSize = 9
+    DelayInput.PlaceholderText = "Delay"
     DelayInput.FocusLost:Connect(function()
         local delay = tonumber(DelayInput.Text)
         if delay and delay > 0 then
             Teleport.autoTeleportDelay = delay
+            print("Auto teleport delay set to: " .. delay .. " seconds")
+        else
+            DelayInput.Text = tostring(Teleport.autoTeleportDelay)
         end
     end)
+
+    local DelayLabel = Instance.new("TextLabel")
+    DelayLabel.Parent = AutoTeleportFrame
+    DelayLabel.BackgroundTransparency = 1
+    DelayLabel.Position = UDim2.new(0, 210, 0, 27)
+    DelayLabel.Size = UDim2.new(0, 40, 0, 15)
+    DelayLabel.Font = Enum.Font.Gotham
+    DelayLabel.Text = "Delay (s)"
+    DelayLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    DelayLabel.TextSize = 7
+    DelayLabel.TextXAlignment = Enum.TextXAlignment.Center
 
     AutoStatusLabel = Instance.new("TextLabel")
     AutoStatusLabel.Parent = PositionFrame
     AutoStatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    AutoStatusLabel.BorderSizePixel = 0
     AutoStatusLabel.Position = UDim2.new(0, 8, 1, -25)
     AutoStatusLabel.Size = UDim2.new(1, -16, 0, 20)
+    AutoStatusLabel.Font = Enum.Font.Gotham
+    AutoStatusLabel.Text = "Auto teleport status"
     AutoStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    AutoStatusLabel.TextSize = 8
+    AutoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
     AutoStatusLabel.Visible = false
+
+    print("Position Manager UI created successfully")
 end
 
 return Teleport
