@@ -544,7 +544,7 @@ local function deletePositionWithConfirmation(positionName, button)
     else
         button.Text = "Delete?"
         button.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-        spawn(function()
+        task.spawn(function()
             wait(2)
             if button.Parent then
                 button.Text = "Del"
@@ -580,7 +580,7 @@ local function deleteGroupWithConfirmation(groupName, button)
     else
         button.Text = "Delete Group?"
         button.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-        spawn(function()
+        task.spawn(function()
             wait(2)
             if button.Parent then
                 button.Text = "Del"
@@ -666,7 +666,7 @@ function Teleport.startAutoTeleport()
         AutoStatusLabel.Text = "Auto: " .. Teleport.autoTeleportMode .. " - " .. position.name .. numberText
         AutoStatusLabel.Visible = true
     end
-    spawn(function()
+    task.spawn(function()
         local success, err = coroutine.resume(Teleport.autoTeleportCoroutine)
         if not success then
             warn("Auto teleport error: " .. tostring(err))
