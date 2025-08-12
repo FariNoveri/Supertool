@@ -11,6 +11,7 @@ local AntiRecord = {}
 local antiRecordEnabled = false
 local overlayFrame = nil
 local connections = {}
+local protectedGuis = {} -- Store references to protected GUIs
 
 -- Settings for anti-record
 local antiRecordSettings = {
@@ -20,12 +21,71 @@ local antiRecordSettings = {
     FlickerSpeed = 0.1 -- For flicker method
 }
 
--- Create overlay method
+-- Settings for anti-record
+local antiRecordSettings = {
+    Enabled = false,
+    Method = "Overlay", -- "Overlay", "Flicker", "BlackScreen"
+    Intensity = 5, -- 1-10 scale
+    FlickerSpeed = 0.1, -- For flicker method
+    ProtectKRNL = true, -- Protect KRNL executor GUI
+    ProtectOtherExecutors = true -- Protect other executor GUIs
+}
+
+-- Function to find and protect KRNL GUI
+local function findAndProtectKRNLGUI()
+    local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui", 5)
+    if not playerGui then return end
+    
+    -- Common KRNL GUI names/patterns
+    local krnlNames = {
+        "KRNL", "krnl", "Krnl", "KrnlGui", "KRNLExecutor", 
+        "ExecutorGui", "ScriptExecutor", "MainGUI", "Executor"
+    }
+    
+    for _, guiName in pairs(krnlNames) do
+        local krnlGui = playerGui:FindFirstChild(guiName)
+        if krnlGui and krnlGui:IsA("ScreenGui") then
+            -- Protect this GUI
+            protectedGuis[#protectedGuis + 1] = krnlGui
+            print("Found and protecting KRNL GUI: " .. guiName)
+        end
+    end
+    
+    -- Also check for GUIs with common executor characteristics
+    for _, gui in pairs(playerGui:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Name ~= "MinimalHackGUI" then
+            -- Look for common executor GUI patterns
+            local hasExecutorPattern = false
+            
+            -- Check for frames with executor-like names
+            for _, child in pairs(gui:GetDescendants()) do
+                if child:IsA("Frame") or child:IsA("TextLabel") then
+                    local text = child.Name:lower()
+                    if string.find(text, "execute") or 
+                       string.find(text, "script") or 
+                       string.find(text, "inject") or
+                       string.find(text, "attach") then
+                        hasExecutorPattern = true
+                        break
+                    end
+                end
+            end
+            
+            if hasExecutorPattern then
+                protectedGuis[#protectedGuis + 1] = gui
+                print("Found and protecting executor GUI: " .. gui.Name)
+            end
+        end
+    end
+end
+
+-- Create overlay method with GUI protection
 local function createOverlay()
     if overlayFrame then
         overlayFrame:Destroy()
     end
     
+    -- Create main overlay
     overlayFrame = Instance.new("Frame")
     overlayFrame.Name = "AntiRecordOverlay"
     overlayFrame.Parent = ScreenGui
@@ -57,6 +117,35 @@ local function createOverlay()
         square.BorderSizePixel = 0
         square.Position = UDim2.new(math.random(), 0, math.random(), 0)
         square.Size = UDim2.new(0, math.random(10, 50), 0, math.random(10, 50))
+    end
+    
+    -- Protect other executor GUIs if enabled
+    if antiRecordSettings.ProtectKRNL or antiRecordSettings.ProtectOtherExecutors then
+        for _, protectedGui in pairs(protectedGuis) do
+            if protectedGui and protectedGui.Parent then
+                -- Create overlay specifically for this GUI
+                local guiOverlay = Instance.new("Frame")
+                guiOverlay.Name = "AntiRecordGUIOverlay"
+                guiOverlay.Parent = protectedGui
+                guiOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+                guiOverlay.BackgroundTransparency = 0.1
+                guiOverlay.BorderSizePixel = 0
+                guiOverlay.Position = UDim2.new(0, 0, 0, 0)
+                guiOverlay.Size = UDim2.new(1, 0, 1, 0)
+                guiOverlay.ZIndex = 1000
+                
+                -- Add smaller noise pattern for GUI
+                for i = 1, antiRecordSettings.Intensity * 3 do
+                    local miniSquare = Instance.new("Frame")
+                    miniSquare.Parent = guiOverlay
+                    miniSquare.BackgroundColor3 = Color3.new(math.random(), math.random(), math.random())
+                    miniSquare.BackgroundTransparency = math.random(0.7, 0.95)
+                    miniSquare.BorderSizePixel = 0
+                    miniSquare.Position = UDim2.new(math.random(), 0, math.random(), 0)
+                    miniSquare.Size = UDim2.new(0, math.random(5, 20), 0, math.random(5, 20))
+                end
+            end
+        end
     end
 end
 
@@ -146,6 +235,16 @@ local function removeAntiRecord()
         overlayFrame = nil
     end
     
+    -- Remove overlays from protected GUIs
+    for _, protectedGui in pairs(protectedGuis) do
+        if protectedGui and protectedGui.Parent then
+            local overlay = protectedGui:FindFirstChild("AntiRecordGUIOverlay")
+            if overlay then
+                overlay:Destroy()
+            end
+        end
+    end
+    
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
             connection:Disconnect()
@@ -160,7 +259,13 @@ local function toggleAntiRecord(enabled)
     antiRecordSettings.Enabled = enabled
     
     if enabled then
+        -- Find and protect executor GUIs before applying anti-record
+        if antiRecordSettings.ProtectKRNL or antiRecordSettings.ProtectOtherExecutors then
+            findAndProtectKRNLGUI()
+        end
+        
         print("Anti-Record enabled with method: " .. antiRecordSettings.Method)
+        print("Protected GUIs count: " .. #protectedGuis)
         applyAntiRecord()
     else
         print("Anti-Record disabled")
@@ -232,6 +337,25 @@ function AntiRecord.loadAntiRecordButtons(createButton, createToggleButton)
         toggleAntiRecord(enabled)
     end)
     
+    -- Protection options
+    createToggleButton("Protect KRNL GUI", function(enabled)
+        antiRecordSettings.ProtectKRNL = enabled
+        if antiRecordEnabled then
+            removeAntiRecord()
+            findAndProtectKRNLGUI()
+            applyAntiRecord()
+        end
+    end)
+    
+    createToggleButton("Protect Other Executors", function(enabled)
+        antiRecordSettings.ProtectOtherExecutors = enabled
+        if antiRecordEnabled then
+            removeAntiRecord()
+            findAndProtectKRNLGUI()
+            applyAntiRecord()
+        end
+    end)
+    
     -- Method selection buttons
     createButton("Method: Overlay", function()
         changeMethod("Overlay")
@@ -261,16 +385,30 @@ function AntiRecord.loadAntiRecordButtons(createButton, createToggleButton)
     createButton("Intensity: Maximum", function()
         changeIntensity(10)
     end)
+    
+    -- Refresh protected GUIs
+    createButton("Refresh Protected GUIs", function()
+        protectedGuis = {}
+        findAndProtectKRNLGUI()
+        if antiRecordEnabled then
+            removeAntiRecord()
+            applyAntiRecord()
+        end
+        print("Refreshed protected GUIs. Count: " .. #protectedGuis)
+    end)
 end
 
 -- Function to reset Anti-Record states
 function AntiRecord.resetStates()
     removeAntiRecord()
+    protectedGuis = {} -- Clear protected GUIs list
     antiRecordEnabled = false
     antiRecordSettings.Enabled = false
     antiRecordSettings.Method = "Overlay"
     antiRecordSettings.Intensity = 5
     antiRecordSettings.FlickerSpeed = 0.1
+    antiRecordSettings.ProtectKRNL = true
+    antiRecordSettings.ProtectOtherExecutors = true
     
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
@@ -297,7 +435,35 @@ function AntiRecord.init(deps)
     -- Start detection loop
     startDetectionLoop()
     
-    print("Anti-Record module initialized")
+    -- Auto-find and protect GUIs on init
+    task.spawn(function()
+        task.wait(2) -- Wait a bit for other GUIs to load
+        if antiRecordSettings.ProtectKRNL or antiRecordSettings.ProtectOtherExecutors then
+            findAndProtectKRNLGUI()
+        end
+    end)
+    
+    -- Monitor for new GUIs being added
+    local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    connections.guiMonitor = playerGui.ChildAdded:Connect(function(gui)
+        if gui:IsA("ScreenGui") and gui.Name ~= "MinimalHackGUI" then
+            task.wait(0.5) -- Wait for GUI to fully load
+            if antiRecordSettings.ProtectKRNL or antiRecordSettings.ProtectOtherExecutors then
+                local oldCount = #protectedGuis
+                findAndProtectKRNLGUI()
+                if #protectedGuis > oldCount then
+                    print("New executor GUI detected and protected: " .. gui.Name)
+                    -- Refresh anti-record if active
+                    if antiRecordEnabled then
+                        removeAntiRecord()
+                        applyAntiRecord()
+                    end
+                end
+            end
+        end
+    end)
+    
+    print("Anti-Record module initialized with GUI protection")
 end
 
 return AntiRecord
