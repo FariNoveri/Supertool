@@ -90,15 +90,48 @@ local function loadFromJSONFile(macroName)
             local jsonString = readfile(filePath)
             local jsonData = HttpService:JSONDecode(jsonString)
             
-            -- Return macro data in expected format
+            -- PERBAIKAN: Pastikan frames ada dan valid
+            local frames = jsonData.frames or {}
+            
+            -- Validasi setiap frame memiliki data yang diperlukan
+            local validFrames = {}
+            for i, frame in pairs(frames) do
+                if frame and frame.time and frame.cframe then
+                    -- Pastikan cframe dalam format yang benar
+                    if typeof(frame.cframe) == "table" and frame.cframe.Position and frame.cframe.Rotation then
+                        -- Convert table back to CFrame jika perlu
+                        local pos = frame.cframe.Position
+                        local rot = frame.cframe.Rotation
+                        frame.cframe = CFrame.new(pos.X, pos.Y, pos.Z) * CFrame.Angles(rot.X, rot.Y, rot.Z)
+                    end
+                    
+                    -- Set default values untuk missing properties
+                    frame.velocity = frame.velocity or Vector3.new(0, 0, 0)
+                    frame.walkSpeed = frame.walkSpeed or 16
+                    frame.jumpPower = frame.jumpPower or 50
+                    frame.hipHeight = frame.hipHeight or 0
+                    frame.state = frame.state or Enum.HumanoidStateType.Running
+                    
+                    table.insert(validFrames, frame)
+                end
+            end
+            
+            if #validFrames == 0 then
+                warn("[SUPERTOOL] No valid frames found in macro: " .. macroName)
+                return nil
+            end
+            
+            -- Return macro data in expected format dengan frames yang valid
             return {
-                frames = jsonData.frames or {},
+                frames = validFrames,
                 startTime = jsonData.startTime or 0,
                 speed = jsonData.speed or 1,
                 name = jsonData.name or macroName,
                 created = jsonData.created,
                 modified = jsonData.modified,
-                version = jsonData.version or "1.0"
+                version = jsonData.version or "1.0",
+                frameCount = #validFrames,
+                duration = validFrames[#validFrames].time or 0
             }
         else
             return nil
@@ -106,12 +139,16 @@ local function loadFromJSONFile(macroName)
     end)
     
     if success then
+        if result then
+            print("[SUPERTOOL] Successfully loaded macro from JSON: " .. macroName .. " (" .. #(result.frames or {}) .. " frames)")
+        end
         return result
     else
         warn("[SUPERTOOL] Failed to load macro from JSON: " .. tostring(result))
         return nil
     end
 end
+
 
 -- Helper function untuk delete macro dari JSON file
 local function deleteFromJSONFile(macroName)
@@ -1038,159 +1075,49 @@ end
 -- Record Macro
 local function startMacroRecording()
     if macroRecording or macroPlaying then return end
-    
-    -- Update character references
-    if not humanoid or not rootPart then
-        updateCharacterReferences()
-        if not humanoid or not rootPart then
-            print("[DEBUG] Cannot start recording - missing character components")
-            return
-        end
-    end
-    
     macroRecording = true
     recordingPaused = false
     currentMacro = {frames = {}, startTime = tick(), speed = 1}
     lastFrameTime = 0
     
-    print("[DEBUG] Started macro recording")
+    updateCharacterReferences()
     updateMacroStatus()
     
-    local frameCount = 0
+    local function setupDeathHandler()
+        if humanoid then
+            humanoid.Died:Connect(function()
+                if macroRecording then
+                    recordingPaused = true
+                    updateMacroStatus()
+                end
+            end)
+        end
+    end
+    
+    setupDeathHandler()
+    
     recordConnection = RunService.Heartbeat:Connect(function()
         if not macroRecording or recordingPaused then return end
         
-        if not humanoid or not rootPart or not humanoid.Parent or not rootPart.Parent then
-            recordingPaused = true
-            print("[DEBUG] Recording paused - character missing")
-            updateMacroStatus()
-            return
+        if not humanoid or not rootPart then
+            updateCharacterReferences()
+            if not humanoid or not rootPart then return end
+            setupDeathHandler()
         end
         
-        frameCount = frameCount + 1
-        local currentTime = tick() - currentMacro.startTime
-        
-        -- Record frame dengan data lengkap
         local frame = {
-            time = currentTime,
+            time = tick() - currentMacro.startTime,
             cframe = rootPart.CFrame,
-            velocity = rootPart.AssemblyLinearVelocity or rootPart.Velocity,
+            velocity = rootPart.Velocity,
             walkSpeed = humanoid.WalkSpeed,
             jumpPower = humanoid.JumpPower,
             hipHeight = humanoid.HipHeight,
-            state = humanoid:GetState(),
-            position = rootPart.Position -- Backup position data
+            state = humanoid:GetState()
         }
-        
         table.insert(currentMacro.frames, frame)
-        lastFrameTime = currentTime
-        
-        -- Debug setiap 1 detik
-        if frameCount % 60 == 0 then
-            print("[DEBUG] Recording frame", frameCount, "Position:", rootPart.Position)
-        end
+        lastFrameTime = frame.time
     end)
 end
-
-local function testMacroData(macroName)
-    local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
-    if not macro then
-        print("[DEBUG] Macro not found:", macroName)
-        return false
-    end
-    
-    print("[DEBUG] Testing macro:", macroName)
-    print("  Frames:", #(macro.frames or {}))
-    print("  Speed:", macro.speed or 1)
-    
-    if macro.frames and #macro.frames > 0 then
-        local firstFrame = macro.frames[1]
-        local lastFrame = macro.frames[#macro.frames]
-        
-        print("  First frame time:", firstFrame.time or "nil")
-        print("  First frame position:", firstFrame.cframe and firstFrame.cframe.Position or "nil")
-        print("  Last frame time:", lastFrame.time or "nil")
-        print("  Last frame position:", lastFrame.cframe and lastFrame.cframe.Position or "nil")
-        
-        -- Check for valid movement data
-        local hasMovement = false
-        if firstFrame.cframe and lastFrame.cframe then
-            local distance = (firstFrame.cframe.Position - lastFrame.cframe.Position).Magnitude
-            hasMovement = distance > 1
-            print("  Movement distance:", distance)
-        end
-        
-        return hasMovement
-    end
-    
-    return false
-end
-
--- 4. Fungsi untuk force refresh character references
-local function forceUpdateCharacter()
-    if player and player.Character then
-        humanoid = player.Character:WaitForChild("Humanoid", 5)
-        rootPart = player.Character:WaitForChild("HumanoidRootPart", 5)
-        
-        if humanoid and rootPart then
-            print("[DEBUG] Character references updated successfully")
-            print("  Humanoid:", humanoid.Name)
-            print("  RootPart:", rootPart.Name)
-            print("  Position:", rootPart.Position)
-            return true
-        else
-            print("[DEBUG] Failed to update character references")
-            return false
-        end
-    end
-    return false
-end
-
-local function emergencyStop()
-    macroPlaying = false
-    macroRecording = false
-    autoPlaying = false
-    recordingPaused = false
-    
-    if recordConnection then
-        recordConnection:Disconnect()
-        recordConnection = nil
-    end
-    if playbackConnection then
-        playbackConnection:Disconnect()
-        playbackConnection = nil
-    end
-    
-    if humanoid then
-        humanoid.WalkSpeed = settings.WalkSpeed.value or 16
-    end
-    
-    currentMacroName = nil
-    updateMacroStatus()
-    print("[DEBUG] Emergency stop executed")
-end
-
--- 6. Modifikasi button handler untuk test macro sebelum play
--- Ganti event handler untuk play button dengan ini:
-playButton.MouseButton1Click:Connect(function()
-    if macroPlaying and currentMacroName == macroName and not autoPlaying then
-        stopMacroPlayback()
-    else
-        -- Test macro data dulu
-        if testMacroData(macroName) then
-            -- Force update character
-            if forceUpdateCharacter() then
-                playMacro(macroName, false)
-                Utility.updateMacroList()
-            else
-                print("[DEBUG] Cannot play - character not ready")
-            end
-        else
-            print("[DEBUG] Cannot play - invalid macro data")
-        end
-    end
-end)
-
 
 -- Stop Macro Recording
 local function stopMacroRecording()
@@ -1240,131 +1167,84 @@ end
 
 -- Play Macro with Adjustable Speed
 local function playMacro(macroName, autoPlay)
-    if macroRecording or macroPlaying or not humanoid or not rootPart then 
-        print("[DEBUG] Cannot play macro - recording:", macroRecording, "playing:", macroPlaying, "humanoid:", humanoid ~= nil, "rootPart:", rootPart ~= nil)
-        return 
-    end
-    
+    if macroRecording or macroPlaying or not humanoid or not rootPart then return end
     local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
-    if not macro or not macro.frames or #macro.frames == 0 then 
-        print("[DEBUG] Invalid macro data for:", macroName)
-        return 
-    end
-    
-    print("[DEBUG] Starting macro playback:", macroName, "Frames:", #macro.frames)
+    if not macro or not macro.frames then return end
     
     macroPlaying = true
     autoPlaying = autoPlay or false
     currentMacroName = macroName
+    humanoid.WalkSpeed = 0
     updateMacroStatus()
+    
+    print("[SUPERTOOL] Playing macro: " .. macroName .. " (Auto: " .. tostring(autoPlaying) .. ", Speed: " .. (macro.speed or 1) .. "x)")
     
     local function playSingleMacro()
         local startTime = tick()
-        local frameIndex = 1
+        local index = 1
         local speed = macro.speed or 1
-        local lastAppliedFrame = 0
-        
-        print("[DEBUG] Macro playback started. Speed:", speed)
         
         playbackConnection = RunService.Heartbeat:Connect(function()
-            -- Validate character masih ada
-            if not macroPlaying or not player.Character or not player.Character.Parent then
-                print("[DEBUG] Stopping playback - character missing or macro stopped")
+            if not macroPlaying or not player.Character then
                 if playbackConnection then playbackConnection:Disconnect() end
                 macroPlaying = false
                 autoPlaying = false
+                humanoid.WalkSpeed = settings.WalkSpeed.value or 16
                 currentMacroName = nil
+                Utility.updateMacroList()
                 updateMacroStatus()
                 return
             end
             
-            -- Update references jika perlu
-            if not humanoid or not humanoid.Parent or not rootPart or not rootPart.Parent then
-                print("[DEBUG] Updating character references...")
-                humanoid = player.Character:FindFirstChild("Humanoid")
-                rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-                
+            if not humanoid or not rootPart then
+                updateCharacterReferences()
                 if not humanoid or not rootPart then
-                    print("[DEBUG] Failed to update character references")
-                    return
-                end
-            end
-            
-            -- Cek apakah sudah selesai
-            if frameIndex > #macro.frames then
-                if autoPlaying then
-                    frameIndex = 1
-                    startTime = tick()
-                    lastAppliedFrame = 0
-                    print("[DEBUG] Looping macro...")
-                else
-                    print("[DEBUG] Macro playback completed")
                     if playbackConnection then playbackConnection:Disconnect() end
                     macroPlaying = false
+                    autoPlaying = false
                     humanoid.WalkSpeed = settings.WalkSpeed.value or 16
                     currentMacroName = nil
+                    Utility.updateMacroList()
                     updateMacroStatus()
                     return
                 end
             end
             
-            local currentTime = (tick() - startTime) * speed
+            if index > #macro.frames then
+                if autoPlaying then
+                    index = 1
+                    startTime = tick()
+                else
+                    if playbackConnection then playbackConnection:Disconnect() end
+                    macroPlaying = false
+                    humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+                    currentMacroName = nil
+                    Utility.updateMacroList()
+                    updateMacroStatus()
+                    return
+                end
+            end
             
-            -- Apply frames yang seharusnya sudah lewat
-            while frameIndex <= #macro.frames do
-                local frame = macro.frames[frameIndex]
-                
-                if not frame or not frame.time then
-                    frameIndex = frameIndex + 1
-                    continue
+            local frame = macro.frames[index]
+            local scaledTime = frame.time / speed
+            while index <= #macro.frames and scaledTime <= (tick() - startTime) do
+                if frame.cframe and frame.velocity and frame.walkSpeed and frame.jumpPower and frame.hipHeight and frame.state then
+                    rootPart.CFrame = frame.cframe
+                    rootPart.Velocity = frame.velocity
+                    humanoid.WalkSpeed = frame.walkSpeed
+                    humanoid.JumpPower = frame.jumpPower
+                    humanoid.HipHeight = frame.hipHeight
+                    humanoid:ChangeState(frame.state)
                 end
-                
-                if frame.time > currentTime then
-                    break -- Belum waktunya frame ini
-                end
-                
-                -- Apply frame dengan error handling dan debugging
-                if frame.cframe and frameIndex > lastAppliedFrame then
-                    local success, err = pcall(function()
-                        -- Force set position dengan metode berbeda
-                        rootPart.CFrame = frame.cframe
-                        rootPart.AssemblyLinearVelocity = frame.velocity or Vector3.new(0, 0, 0)
-                        
-                        if frame.walkSpeed then 
-                            humanoid.WalkSpeed = frame.walkSpeed 
-                        end
-                        if frame.jumpPower then 
-                            humanoid.JumpPower = frame.jumpPower 
-                        end
-                        if frame.hipHeight then 
-                            humanoid.HipHeight = frame.hipHeight 
-                        end
-                        
-                        -- Force network ownership
-                        if rootPart:CanSetNetworkOwnership() then
-                            rootPart:SetNetworkOwner(player)
-                        end
-                    end)
-                    
-                    if not success then
-                        warn("[DEBUG] Failed to apply frame", frameIndex, ":", err)
-                    else
-                        lastAppliedFrame = frameIndex
-                        -- Debug setiap 30 frames
-                        if frameIndex % 30 == 0 then
-                            print("[DEBUG] Applied frame", frameIndex, "/", #macro.frames, "Position:", rootPart.Position)
-                        end
-                    end
-                end
-                
-                frameIndex = frameIndex + 1
+                index = index + 1
+                frame = macro.frames[index] or frame
+                scaledTime = frame.time / speed
             end
         end)
     end
     
     playSingleMacro()
 end
-
 
 -- Delete Macro
 local function deleteMacro(macroName)
