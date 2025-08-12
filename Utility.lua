@@ -30,7 +30,7 @@ local searchHistory = {}
 
 -- File System Integration for KRNL
 local HttpService = game:GetService("HttpService")
-local MACRO_FOLDER_PATH = "Supertool/Macro"
+local MACRO_FOLDER_PATH = "Supertool/Macro/"
 
 -- Helper function untuk sanitize filename
 local function sanitizeFileName(name)
