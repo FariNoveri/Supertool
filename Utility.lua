@@ -28,12 +28,189 @@ local isScanning = false
 local currentSearchValue = nil
 local searchHistory = {}
 
--- Mock file system for DCIM/Supertool
+-- File System Integration for KRNL
+local HttpService = game:GetService("HttpService")
+local MACRO_FOLDER_PATH = "krnl/workspace/dcim/supertool/"
+
+-- Helper function untuk sanitize filename
+local function sanitizeFileName(name)
+    -- Replace invalid characters with underscore
+    local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
+    -- Remove leading/trailing spaces
+    sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
+    -- Ensure filename is not empty
+    if sanitized == "" then
+        sanitized = "unnamed_macro"
+    end
+    return sanitized
+end
+
+-- Helper function untuk save macro ke JSON file
+local function saveToJSONFile(macroName, macroData)
+    local success, error = pcall(function()
+        local sanitizedName = sanitizeFileName(macroName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = MACRO_FOLDER_PATH .. fileName
+        
+        -- Create JSON data with metadata
+        local jsonData = {
+            name = macroName,
+            created = os.time(),
+            modified = os.time(),
+            version = "1.0",
+            frames = macroData.frames or {},
+            startTime = macroData.startTime or 0,
+            speed = macroData.speed or 1,
+            frameCount = #(macroData.frames or {}),
+            duration = macroData.frames and #macroData.frames > 0 and macroData.frames[#macroData.frames].time or 0
+        }
+        
+        local jsonString = HttpService:JSONEncode(jsonData)
+        writefile(filePath, jsonString)
+        
+        print("[SUPERTOOL] Macro saved: " .. filePath)
+        return true
+    end)
+    
+    if not success then
+        warn("[SUPERTOOL] Failed to save macro to JSON: " .. tostring(error))
+        return false
+    end
+    return true
+end
+
+-- Helper function untuk load macro dari JSON file
+local function loadFromJSONFile(macroName)
+    local success, result = pcall(function()
+        local sanitizedName = sanitizeFileName(macroName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = MACRO_FOLDER_PATH .. fileName
+        
+        if isfile(filePath) then
+            local jsonString = readfile(filePath)
+            local jsonData = HttpService:JSONDecode(jsonString)
+            
+            -- Return macro data in expected format
+            return {
+                frames = jsonData.frames or {},
+                startTime = jsonData.startTime or 0,
+                speed = jsonData.speed or 1,
+                name = jsonData.name or macroName,
+                created = jsonData.created,
+                modified = jsonData.modified,
+                version = jsonData.version or "1.0"
+            }
+        else
+            return nil
+        end
+    end)
+    
+    if success then
+        return result
+    else
+        warn("[SUPERTOOL] Failed to load macro from JSON: " .. tostring(result))
+        return nil
+    end
+end
+
+-- Helper function untuk delete macro dari JSON file
+local function deleteFromJSONFile(macroName)
+    local success, error = pcall(function()
+        local sanitizedName = sanitizeFileName(macroName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = MACRO_FOLDER_PATH .. fileName
+        
+        if isfile(filePath) then
+            delfile(filePath)
+            print("[SUPERTOOL] Macro deleted: " .. filePath)
+            return true
+        else
+            return false
+        end
+    end)
+    
+    if success then
+        return error
+    else
+        warn("[SUPERTOOL] Failed to delete macro JSON: " .. tostring(error))
+        return false
+    end
+end
+
+-- Helper function untuk rename macro di JSON file
+local function renameInJSONFile(oldName, newName)
+    local success, error = pcall(function()
+        -- Load old file
+        local oldData = loadFromJSONFile(oldName)
+        if not oldData then
+            return false
+        end
+        
+        -- Update name in data
+        oldData.name = newName
+        oldData.modified = os.time()
+        
+        -- Save with new name
+        if saveToJSONFile(newName, oldData) then
+            -- Delete old file
+            deleteFromJSONFile(oldName)
+            print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
+            return true
+        else
+            return false
+        end
+    end)
+    
+    if success then
+        return error
+    else
+        warn("[SUPERTOOL] Failed to rename macro: " .. tostring(error))
+        return false
+    end
+end
+
+-- Helper function untuk load semua macros dari folder
+local function loadAllMacrosFromFolder()
+    local success, error = pcall(function()
+        if not isfolder(MACRO_FOLDER_PATH) then
+            makefolder(MACRO_FOLDER_PATH)
+            print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
+        end
+        
+        local loadedMacros = {}
+        local files = listfiles(MACRO_FOLDER_PATH)
+        
+        for _, filePath in pairs(files) do
+            if string.match(filePath, "%.json$") then
+                local fileName = string.match(filePath, "([^/\\]+)%.json$")
+                if fileName then
+                    local macroData = loadFromJSONFile(fileName)
+                    if macroData then
+                        local originalName = macroData.name or fileName
+                        loadedMacros[originalName] = macroData
+                        print("[SUPERTOOL] Loaded macro: " .. originalName)
+                    end
+                end
+            end
+        end
+        
+        return loadedMacros
+    end)
+    
+    if success then
+        return error or {}
+    else
+        warn("[SUPERTOOL] Failed to load macros from folder: " .. tostring(error))
+        return {}
+    end
+end
+
+-- Mock file system for backward compatibility (now syncs with JSON)
 local fileSystem = {
     ["DCIM/Supertool"] = {}
 }
 
--- Helper function to ensure DCIM/Supertool exists
+-- Helper function to ensure DCIM/Supertool exists (backward compatibility)
 local function ensureFileSystem()
     if not fileSystem["DCIM"] then
         fileSystem["DCIM"] = {}
@@ -43,37 +220,68 @@ local function ensureFileSystem()
     end
 end
 
--- Helper function to save macro to file system
+-- Helper function to save macro to file system (now syncs with JSON)
 local function saveToFileSystem(macroName, macroData)
     ensureFileSystem()
     fileSystem["DCIM/Supertool"][macroName] = macroData
+    
+    -- Auto-sync to JSON file
+    saveToJSONFile(macroName, macroData)
 end
 
--- Helper function to load macro from file system
+-- Helper function to load macro from file system (prioritizes JSON)
 local function loadFromFileSystem(macroName)
+    -- Try to load from JSON first
+    local jsonData = loadFromJSONFile(macroName)
+    if jsonData then
+        return jsonData
+    end
+    
+    -- Fallback to memory
     ensureFileSystem()
     return fileSystem["DCIM/Supertool"][macroName]
 end
 
--- Helper function to delete macro from file system
+-- Helper function to delete macro from file system (syncs with JSON)
 local function deleteFromFileSystem(macroName)
     ensureFileSystem()
+    local memoryDeleted = false
     if fileSystem["DCIM/Supertool"][macroName] then
         fileSystem["DCIM/Supertool"][macroName] = nil
-        return true
+        memoryDeleted = true
     end
-    return false
+    
+    -- Delete from JSON
+    local jsonDeleted = deleteFromJSONFile(macroName)
+    
+    return memoryDeleted or jsonDeleted
 end
 
--- Helper function to rename macro in file system
+-- Helper function to rename macro in file system (syncs with JSON)
 local function renameInFileSystem(oldName, newName)
     ensureFileSystem()
+    local memoryRenamed = false
+    
     if fileSystem["DCIM/Supertool"][oldName] and newName ~= "" then
         fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][oldName]
         fileSystem["DCIM/Supertool"][oldName] = nil
-        return true
+        memoryRenamed = true
     end
-    return false
+    
+    -- Rename in JSON
+    local jsonRenamed = renameInJSONFile(oldName, newName)
+    
+    return memoryRenamed or jsonRenamed
+end
+
+-- Function untuk sync macros dari JSON ke memory pada startup
+local function syncMacrosFromJSON()
+    local jsonMacros = loadAllMacrosFromFolder()
+    for macroName, macroData in pairs(jsonMacros) do
+        savedMacros[macroName] = macroData
+        fileSystem["DCIM/Supertool"][macroName] = macroData
+    end
+    print("[SUPERTOOL] Synced " .. table.maxn(jsonMacros) .. " macros from JSON files")
 end
 
 -- FIXED Memory Scanner Functions - Optimized to prevent freezing
@@ -889,14 +1097,18 @@ local function stopMacroRecording()
         macroName = "Macro " .. (table.maxn(savedMacros) + 1)
     end
     
+    -- Save to both memory and JSON file
     savedMacros[macroName] = currentMacro
     saveToFileSystem(macroName, currentMacro)
+    
     MacroInput.Text = ""
     Utility.updateMacroList()
     updateMacroStatus()
     if MacroFrame then
         MacroFrame.Visible = true
     end
+    
+    print("[SUPERTOOL] Macro recorded and saved: " .. macroName .. " (" .. #currentMacro.frames .. " frames)")
 end
 
 -- Stop Macro Playback
@@ -927,6 +1139,8 @@ local function playMacro(macroName, autoPlay)
     currentMacroName = macroName
     humanoid.WalkSpeed = 0
     updateMacroStatus()
+    
+    print("[SUPERTOOL] Playing macro: " .. macroName .. " (Auto: " .. tostring(autoPlaying) .. ", Speed: " .. (macro.speed or 1) .. "x)")
     
     local function playSingleMacro()
         local startTime = tick()
@@ -1004,6 +1218,7 @@ local function deleteMacro(macroName)
         savedMacros[macroName] = nil
         deleteFromFileSystem(macroName)
         Utility.updateMacroList()
+        print("[SUPERTOOL] Macro deleted: " .. macroName)
     end
 end
 
@@ -1018,6 +1233,7 @@ local function renameMacro(oldName, newName)
             savedMacros[newName] = savedMacros[oldName]
             savedMacros[oldName] = nil
             Utility.updateMacroList()
+            print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
         end
     end
 end
@@ -1044,13 +1260,32 @@ function Utility.updateMacroList()
     
     local itemCount = 0
     
+    -- Show macro folder info
+    local infoFrame = Instance.new("Frame")
+    infoFrame.Name = "InfoFrame"
+    infoFrame.Parent = MacroScrollFrame
+    infoFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    infoFrame.BorderSizePixel = 0
+    infoFrame.Size = UDim2.new(1, -5, 0, 25)
+    infoFrame.LayoutOrder = -1
+    
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Parent = infoFrame
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Size = UDim2.new(1, 0, 1, 0)
+    infoLabel.Font = Enum.Font.Gotham
+    infoLabel.Text = "JSON Sync: " .. MACRO_FOLDER_PATH .. " (" .. table.maxn(savedMacros) .. " macros)"
+    infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    infoLabel.TextSize = 7
+    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
     for macroName, macro in pairs(savedMacros) do
         local macroItem = Instance.new("Frame")
         macroItem.Name = macroName .. "Item"
         macroItem.Parent = MacroScrollFrame
         macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         macroItem.BorderSizePixel = 0
-        macroItem.Size = UDim2.new(1, -5, 0, 90)
+        macroItem.Size = UDim2.new(1, -5, 0, 110)
         macroItem.LayoutOrder = itemCount
         
         local nameLabel = Instance.new("TextLabel")
@@ -1065,12 +1300,29 @@ function Utility.updateMacroList()
         nameLabel.TextSize = 7
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         
+        -- Show macro info
+        local infoText = string.format("Frames: %d | Duration: %.1fs | Speed: %.1fx", 
+                                     macro.frameCount or #(macro.frames or {}),
+                                     macro.duration or (macro.frames and #macro.frames > 0 and macro.frames[#macro.frames].time or 0),
+                                     macro.speed or 1)
+        
+        local macroInfoLabel = Instance.new("TextLabel")
+        macroInfoLabel.Parent = macroItem
+        macroInfoLabel.BackgroundTransparency = 1
+        macroInfoLabel.Position = UDim2.new(0, 5, 0, 20)
+        macroInfoLabel.Size = UDim2.new(1, -10, 0, 10)
+        macroInfoLabel.Font = Enum.Font.Gotham
+        macroInfoLabel.Text = infoText
+        macroInfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        macroInfoLabel.TextSize = 6
+        macroInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
         local renameInput = Instance.new("TextBox")
         renameInput.Name = "RenameInput"
         renameInput.Parent = macroItem
         renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         renameInput.BorderSizePixel = 0
-        renameInput.Position = UDim2.new(0, 5, 0, 25)
+        renameInput.Position = UDim2.new(0, 5, 0, 35)
         renameInput.Size = UDim2.new(1, -10, 0, 15)
         renameInput.Font = Enum.Font.Gotham
         renameInput.Text = ""
@@ -1082,7 +1334,7 @@ function Utility.updateMacroList()
         speedLabel.Name = "SpeedLabel"
         speedLabel.Parent = macroItem
         speedLabel.BackgroundTransparency = 1
-        speedLabel.Position = UDim2.new(0, 5, 0, 45)
+        speedLabel.Position = UDim2.new(0, 5, 0, 55)
         speedLabel.Size = UDim2.new(0, 50, 0, 15)
         speedLabel.Font = Enum.Font.Gotham
         speedLabel.Text = "Speed:"
@@ -1095,7 +1347,7 @@ function Utility.updateMacroList()
         speedInput.Parent = macroItem
         speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         speedInput.BorderSizePixel = 0
-        speedInput.Position = UDim2.new(0, 60, 0, 45)
+        speedInput.Position = UDim2.new(0, 60, 0, 55)
         speedInput.Size = UDim2.new(0, 40, 0, 15)
         speedInput.Font = Enum.Font.Gotham
         speedInput.Text = tostring(macro.speed or 1)
@@ -1107,7 +1359,7 @@ function Utility.updateMacroList()
         buttonFrame.Name = "ButtonFrame"
         buttonFrame.Parent = macroItem
         buttonFrame.BackgroundTransparency = 1
-        buttonFrame.Position = UDim2.new(0, 5, 0, 65)
+        buttonFrame.Position = UDim2.new(0, 5, 0, 75)
         buttonFrame.Size = UDim2.new(1, -10, 0, 15)
         
         local playButton = Instance.new("TextButton")
@@ -1158,6 +1410,51 @@ function Utility.updateMacroList()
         renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         renameButton.TextSize = 7
         
+        -- Additional button row
+        local buttonFrame2 = Instance.new("Frame")
+        buttonFrame2.Name = "ButtonFrame2"
+        buttonFrame2.Parent = macroItem
+        buttonFrame2.BackgroundTransparency = 1
+        buttonFrame2.Position = UDim2.new(0, 5, 0, 92)
+        buttonFrame2.Size = UDim2.new(1, -10, 0, 15)
+        
+        local syncButton = Instance.new("TextButton")
+        syncButton.Name = "SyncButton"
+        syncButton.Parent = buttonFrame2
+        syncButton.BackgroundColor3 = Color3.fromRGB(80, 60, 120)
+        syncButton.BorderSizePixel = 0
+        syncButton.Position = UDim2.new(0, 0, 0, 0)
+        syncButton.Size = UDim2.new(0, 60, 0, 15)
+        syncButton.Font = Enum.Font.Gotham
+        syncButton.Text = "RESYNC"
+        syncButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        syncButton.TextSize = 6
+        
+        local exportButton = Instance.new("TextButton")
+        exportButton.Name = "ExportButton"
+        exportButton.Parent = buttonFrame2
+        exportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
+        exportButton.BorderSizePixel = 0
+        exportButton.Position = UDim2.new(0, 65, 0, 0)
+        exportButton.Size = UDim2.new(0, 55, 0, 15)
+        exportButton.Font = Enum.Font.Gotham
+        exportButton.Text = "EXPORT"
+        exportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        exportButton.TextSize = 6
+        
+        local fileStatusLabel = Instance.new("TextLabel")
+        fileStatusLabel.Name = "FileStatusLabel"
+        fileStatusLabel.Parent = buttonFrame2
+        fileStatusLabel.BackgroundTransparency = 1
+        fileStatusLabel.Position = UDim2.new(0, 125, 0, 0)
+        fileStatusLabel.Size = UDim2.new(1, -125, 0, 15)
+        fileStatusLabel.Font = Enum.Font.Gotham
+        fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
+        fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        fileStatusLabel.TextSize = 6
+        fileStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        -- Event handlers
         speedInput.FocusLost:Connect(function(enterPressed)
             if enterPressed then
                 local newSpeed = tonumber(speedInput.Text)
@@ -1165,6 +1462,7 @@ function Utility.updateMacroList()
                     macro.speed = newSpeed
                     saveToFileSystem(macroName, macro)
                     updateMacroStatus()
+                    print("[SUPERTOOL] Updated speed for " .. macroName .. ": " .. newSpeed .. "x")
                 else
                     speedInput.Text = tostring(macro.speed or 1)
                 end
@@ -1194,7 +1492,36 @@ function Utility.updateMacroList()
         end)
         
         renameButton.MouseButton1Click:Connect(function()
-            renameMacro(macroName, renameInput.Text)
+            if renameInput.Text ~= "" then
+                renameMacro(macroName, renameInput.Text)
+                renameInput.Text = ""
+            end
+        end)
+        
+        renameInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed and renameInput.Text ~= "" then
+                renameMacro(macroName, renameInput.Text)
+                renameInput.Text = ""
+            end
+        end)
+        
+        syncButton.MouseButton1Click:Connect(function()
+            -- Force resync this macro to JSON
+            saveToJSONFile(macroName, macro)
+            fileStatusLabel.Text = "📁 ✓ " .. sanitizeFileName(macroName) .. ".json"
+            fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            wait(2)
+            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
+        end)
+        
+        exportButton.MouseButton1Click:Connect(function()
+            -- Show export info
+            fileStatusLabel.Text = "📤 Exported to JSON!"
+            fileStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+            saveToJSONFile(macroName, macro)
+            wait(2)
+            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
+            fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
         end)
         
         -- Hover effects
@@ -1242,7 +1569,70 @@ function Utility.updateMacroList()
             renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
         end)
         
+        syncButton.MouseEnter:Connect(function()
+            syncButton.BackgroundColor3 = Color3.fromRGB(100, 80, 150)
+        end)
+        
+        syncButton.MouseLeave:Connect(function()
+            syncButton.BackgroundColor3 = Color3.fromRGB(80, 60, 120)
+        end)
+        
+        exportButton.MouseEnter:Connect(function()
+            exportButton.BackgroundColor3 = Color3.fromRGB(80, 150, 100)
+        end)
+        
+        exportButton.MouseLeave:Connect(function()
+            exportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
+        end)
+        
         itemCount = itemCount + 1
+    end
+    
+    -- Add refresh button at bottom
+    if itemCount > 0 then
+        local refreshFrame = Instance.new("Frame")
+        refreshFrame.Name = "RefreshFrame"
+        refreshFrame.Parent = MacroScrollFrame
+        refreshFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
+        refreshFrame.BorderSizePixel = 0
+        refreshFrame.Size = UDim2.new(1, -5, 0, 30)
+        refreshFrame.LayoutOrder = itemCount + 1
+        
+        local refreshButton = Instance.new("TextButton")
+        refreshButton.Parent = refreshFrame
+        refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
+        refreshButton.BorderSizePixel = 0
+        refreshButton.Position = UDim2.new(0, 5, 0, 5)
+        refreshButton.Size = UDim2.new(0, 100, 0, 20)
+        refreshButton.Font = Enum.Font.Gotham
+        refreshButton.Text = "🔄 REFRESH"
+        refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        refreshButton.TextSize = 8
+        
+        local syncAllButton = Instance.new("TextButton")
+        syncAllButton.Parent = refreshFrame
+        syncAllButton.BackgroundColor3 = Color3.fromRGB(40, 80, 80)
+        syncAllButton.BorderSizePixel = 0
+        syncAllButton.Position = UDim2.new(0, 110, 0, 5)
+        syncAllButton.Size = UDim2.new(0, 100, 0, 20)
+        syncAllButton.Font = Enum.Font.Gotham
+        syncAllButton.Text = "💾 SYNC ALL"
+        syncAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        syncAllButton.TextSize = 8
+        
+        refreshButton.MouseButton1Click:Connect(function()
+            syncMacrosFromJSON()
+            Utility.updateMacroList()
+        end)
+        
+        syncAllButton.MouseButton1Click:Connect(function()
+            local count = 0
+            for name, data in pairs(savedMacros) do
+                saveToJSONFile(name, data)
+                count = count + 1
+            end
+            print("[SUPERTOOL] Synced " .. count .. " macros to JSON files")
+        end)
     end
     
     task.wait(0.1)
@@ -1263,7 +1653,7 @@ local function initMacroUI()
     MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     MacroFrame.BorderSizePixel = 1
     MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-    MacroFrame.Size = UDim2.new(0, 300, 0, 300)
+    MacroFrame.Size = UDim2.new(0, 300, 0, 400)
     MacroFrame.Visible = macroFrameVisible
     MacroFrame.Active = true
     MacroFrame.Draggable = true
@@ -1275,7 +1665,7 @@ local function initMacroUI()
     MacroTitle.BorderSizePixel = 0
     MacroTitle.Size = UDim2.new(1, 0, 0, 20)
     MacroTitle.Font = Enum.Font.Gotham
-    MacroTitle.Text = "MACRO MANAGER"
+    MacroTitle.Text = "MACRO MANAGER - JSON SYNC"
     MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     MacroTitle.TextSize = 8
 
@@ -1447,9 +1837,23 @@ function Utility.init(deps)
     currentSearchValue = nil
     searchHistory = {}
     
+    -- Create folder if doesn't exist
+    if not isfolder(MACRO_FOLDER_PATH) then
+        makefolder(MACRO_FOLDER_PATH)
+        print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
+    end
+    
+    -- Load macros from JSON files first, then backward compatibility
     ensureFileSystem()
+    syncMacrosFromJSON()
+    
+    -- Load any remaining from old file system
     for macroName, macroData in pairs(fileSystem["DCIM/Supertool"]) do
-        savedMacros[macroName] = macroData
+        if not savedMacros[macroName] then
+            savedMacros[macroName] = macroData
+            -- Auto-sync old macros to JSON
+            saveToJSONFile(macroName, macroData)
+        end
     end
     
     initMacroUI()
@@ -1473,6 +1877,8 @@ function Utility.init(deps)
             updateMacroStatus()
         end
     end)
+    
+    print("[SUPERTOOL] Utility module initialized with JSON sync to: " .. MACRO_FOLDER_PATH)
 end
 
 return Utility
