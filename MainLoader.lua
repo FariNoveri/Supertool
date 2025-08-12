@@ -24,9 +24,7 @@ local settings = {
     FlySpeed = {value = 50, min = 10, max = 200, default = 50},
     FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
     JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
-    WalkSpeed = {value = 16, min = 10, max = 200, default = 16},
-    -- Anti-Record Settings
-    AntiRecordIntensity = {value = 3, min = 1, max = 10, default = 3}
+    WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
 }
 
 -- ScreenGui
@@ -228,8 +226,7 @@ local moduleURLs = {
     Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Visual.lua",
     Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Utility.lua",
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Settings.lua",
-    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua",
-    AntiRecord = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiRecord.lua"
+    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua"
 }
 
 local function loadModule(moduleName)
@@ -289,8 +286,7 @@ local dependencies = {
     buttonStates = buttonStates,
     player = player,
     disableActiveFeature = disableActiveFeature,
-    isExclusiveFeature = isExclusiveFeature,
-    modules = modules -- Add modules to dependencies so Settings can access AntiRecord
+    isExclusiveFeature = isExclusiveFeature
 }
 
 -- Initialize modules
@@ -630,48 +626,18 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
     end
 end)
 
--- AntiRecord shortcut keys
-connections.antiRecordShortcuts = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    
-    -- Ctrl + H = Quick Hide GUI for 3 seconds
-    if input.KeyCode == Enum.KeyCode.H and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-        if modules.AntiRecord and modules.AntiRecord.manualHide then
-            modules.AntiRecord.manualHide()
-            print("Quick GUI hide activated (Ctrl+H)")
-        end
-    end
-    
-    -- Ctrl + J = Force Show GUI (emergency restore)
-    if input.KeyCode == Enum.KeyCode.J and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-        if modules.AntiRecord and modules.AntiRecord.manualShow then
-            modules.AntiRecord.manualShow()
-            print("Force GUI show activated (Ctrl+J)")
-        end
-    end
-    
-    -- Ctrl + K = Toggle AntiRecord
-    if input.KeyCode == Enum.KeyCode.K and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-        if modules.AntiRecord and modules.AntiRecord.toggleAntiRecord then
-            local currentState = modules.AntiRecord.getAntiRecordState()
-            modules.AntiRecord.toggleAntiRecord(not currentState)
-            print("AntiRecord " .. (not currentState and "ON" or "OFF") .. " (Ctrl+K)")
-        end
-    end
-end)
-
 -- Start initialization
 task.spawn(function()
     local timeout = 15
     local startTime = tick()
     
-    -- Wait for critical modules to load (including AntiRecord)
-    while (not modules.Movement or not modules.Player or not modules.Teleport or not modules.AntiRecord) and tick() - startTime < timeout do
+    -- Wait for critical modules to load
+    while (not modules.Movement or not modules.Player or not modules.Teleport) and tick() - startTime < timeout do
         task.wait(0.1)
     end
 
     -- Check if modules loaded successfully
-    for _, moduleName in ipairs({"Movement", "Player", "Teleport", "AntiRecord"}) do
+    for _, moduleName in ipairs({"Movement", "Player", "Teleport"}) do
         if not modules[moduleName] then
             warn("Failed to load " .. moduleName .. " module after timeout!")
         else
