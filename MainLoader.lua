@@ -26,8 +26,7 @@ local settings = {
     JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
     WalkSpeed = {value = 16, min = 10, max = 200, default = 16},
     -- Anti-Record Settings
-    AntiRecordIntensity = {value = 5, min = 1, max = 10, default = 5},
-    AntiRecordFlickerSpeed = {value = 0.1, min = 0.01, max = 1, default = 0.1}
+    AntiRecordIntensity = {value = 3, min = 1, max = 10, default = 3}
 }
 
 -- ScreenGui
@@ -628,6 +627,36 @@ LogoButton.MouseButton1Click:Connect(toggleMinimize)
 connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
         toggleMinimize()
+    end
+end)
+
+-- AntiRecord shortcut keys
+connections.antiRecordShortcuts = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- Ctrl + H = Quick Hide GUI for 3 seconds
+    if input.KeyCode == Enum.KeyCode.H and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        if modules.AntiRecord and modules.AntiRecord.manualHide then
+            modules.AntiRecord.manualHide()
+            print("Quick GUI hide activated (Ctrl+H)")
+        end
+    end
+    
+    -- Ctrl + J = Force Show GUI (emergency restore)
+    if input.KeyCode == Enum.KeyCode.J and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        if modules.AntiRecord and modules.AntiRecord.manualShow then
+            modules.AntiRecord.manualShow()
+            print("Force GUI show activated (Ctrl+J)")
+        end
+    end
+    
+    -- Ctrl + K = Toggle AntiRecord
+    if input.KeyCode == Enum.KeyCode.K and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        if modules.AntiRecord and modules.AntiRecord.toggleAntiRecord then
+            local currentState = modules.AntiRecord.getAntiRecordState()
+            modules.AntiRecord.toggleAntiRecord(not currentState)
+            print("AntiRecord " .. (not currentState and "ON" or "OFF") .. " (Ctrl+K)")
+        end
     end
 end)
 
