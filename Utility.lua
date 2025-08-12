@@ -1094,7 +1094,7 @@ local function stopMacroRecording()
     
     local macroName = MacroInput.Text
     if macroName == "" then
-        macroName = "Macro " .. (table.maxn(savedMacros) + 1)
+        macroName = (table.maxn(savedMacros) + 1)
     end
     
     -- Save to both memory and JSON file
