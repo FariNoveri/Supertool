@@ -1,6 +1,6 @@
 -- antirecord.lua
--- Anti Screen Recording module for MinimalHackGUI by Fari Noveri
--- Modified version: Hides GUIs instead of overlay/sensor
+-- Simple Anti Screenshot/Record module for MinimalHackGUI by Fari Noveri
+-- Android-friendly version - makes screenshots/recordings appear blank
 
 -- Dependencies: These must be passed from mainloader.lua
 local RunService, ScreenGui, settings
@@ -9,20 +9,19 @@ local RunService, ScreenGui, settings
 local AntiRecord = {}
 
 -- Anti-record state
-local antiRecordEnabled = false
+local antiProtectionEnabled = false
 local connections = {}
 local protectedGuis = {} -- Store references to protected GUIs
 local guiStates = {} -- Store original visibility states
+local blackOverlay = nil -- Black overlay for protection
 
--- Settings for anti-record
+-- Settings for anti-protection
 local antiRecordSettings = {
     Enabled = false,
-    HideMethod = "Instant", -- "Instant", "Fade", "Smart"
-    HideDelay = 0, -- Delay before hiding (in seconds)
     ProtectKRNL = true, -- Protect KRNL executor GUI
     ProtectOtherExecutors = true, -- Protect other executor GUIs
-    ProtectCoreGuis = false, -- Protect Roblox core GUIs
-    ShowWarning = true -- Show warning when GUIs are hidden
+    ShowWarning = false, -- Show warning (keep false for stealth)
+    BlackoutMethod = "Overlay" -- "Overlay" or "Hide" - Overlay recommended for Android
 }
 
 -- Function to find and catalog executor GUIs
@@ -52,7 +51,6 @@ local function findAndCatalogExecutorGUIs()
         if gui and gui:IsA("ScreenGui") and gui ~= ScreenGui then
             protectedGuis[#protectedGuis + 1] = gui
             guiStates[gui] = gui.Enabled -- Store original state
-            print("Found executor GUI by name: " .. guiName)
         end
     end
     
@@ -68,31 +66,14 @@ local function findAndCatalogExecutorGUIs()
                     if string.find(text, "execute") or 
                        string.find(text, "inject") or 
                        string.find(text, "attach") or
-                       string.find(text, "script") or
-                       string.find(text, "exploit") or
-                       string.find(text, "hack") then
+                       string.find(text, "script") then
                         isExecutorGui = true
                         break
                     end
                 elseif child.Name:lower():find("execute") or 
-                       child.Name:lower():find("script") or
-                       child.Name:lower():find("inject") then
+                       child.Name:lower():find("script") then
                     isExecutorGui = true
                     break
-                end
-            end
-            
-            -- Also check GUI structure (common executor patterns)
-            if not isExecutorGui then
-                local frames = 0
-                local buttons = 0
-                for _, child in pairs(gui:GetChildren()) do
-                    if child:IsA("Frame") then frames = frames + 1 end
-                    if child:IsA("TextButton") then buttons = buttons + 1 end
-                end
-                -- Executor GUIs typically have multiple frames and buttons
-                if frames >= 2 and buttons >= 3 then
-                    isExecutorGui = true
                 end
             end
             
@@ -109,17 +90,39 @@ local function findAndCatalogExecutorGUIs()
                 if not alreadyAdded then
                     protectedGuis[#protectedGuis + 1] = gui
                     guiStates[gui] = gui.Enabled
-                    print("Found executor GUI by pattern: " .. gui.Name)
                 end
             end
         end
     end
-    
-    print("Total executor GUIs found: " .. #protectedGuis)
 end
 
--- Function to hide GUIs instantly
-local function hideGuisInstant()
+-- Create black overlay (makes screenshot/recording appear black)
+local function createBlackOverlay()
+    if blackOverlay then
+        blackOverlay:Destroy()
+    end
+    
+    -- Create main black overlay
+    blackOverlay = Instance.new("Frame")
+    blackOverlay.Name = "AntiRecordBlackOverlay"
+    blackOverlay.Parent = ScreenGui
+    blackOverlay.BackgroundColor3 = Color3.new(0, 0, 0) -- Pure black
+    blackOverlay.BackgroundTransparency = 0 -- Completely opaque
+    blackOverlay.BorderSizePixel = 0
+    blackOverlay.Position = UDim2.new(0, 0, 0, 0)
+    blackOverlay.Size = UDim2.new(1, 0, 1, 0)
+    blackOverlay.ZIndex = 999999 -- Very high ZIndex to cover everything
+    blackOverlay.Visible = true
+    
+    -- Make it cover the entire screen
+    blackOverlay.Active = false -- Don't block input
+    blackOverlay.Selectable = false
+    
+    print("Black overlay created - Screenshots/recordings will appear blank")
+end
+
+-- Hide GUIs method (alternative to black overlay)
+local function hideProtectedGuis()
     for _, gui in pairs(protectedGuis) do
         if gui and gui.Parent then
             gui.Enabled = false
@@ -127,67 +130,8 @@ local function hideGuisInstant()
     end
 end
 
--- Function to fade out GUIs
-local function hideGuisFade()
-    for _, gui in pairs(protectedGuis) do
-        if gui and gui.Parent then
-            local tween = game:GetService("TweenService"):Create(
-                gui,
-                TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                {Enabled = false}
-            )
-            tween:Play()
-        end
-    end
-end
-
--- Function to smart hide (hide when recording detected)
-local function hideGuisSmart()
-    -- For now, same as instant. Can be enhanced with actual recording detection
-    hideGuisInstant()
-end
-
--- Function to show warning
-local function showHideWarning()
-    if not antiRecordSettings.ShowWarning then return end
-    
-    local warningGui = Instance.new("ScreenGui")
-    warningGui.Name = "AntiRecordWarning"
-    warningGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-    
-    local warningFrame = Instance.new("Frame")
-    warningFrame.Parent = warningGui
-    warningFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-    warningFrame.BackgroundTransparency = 0.2
-    warningFrame.BorderSizePixel = 2
-    warningFrame.BorderColor3 = Color3.new(1, 0.5, 0)
-    warningFrame.Position = UDim2.new(0.5, -150, 0.1, 0)
-    warningFrame.Size = UDim2.new(0, 300, 0, 80)
-    
-    local warningText = Instance.new("TextLabel")
-    warningText.Parent = warningFrame
-    warningText.BackgroundTransparency = 1
-    warningText.Position = UDim2.new(0, 5, 0, 5)
-    warningText.Size = UDim2.new(1, -10, 1, -10)
-    warningText.Font = Enum.Font.GothamBold
-    warningText.Text = "🛡️ ANTI-RECORD ACTIVE\nExecutor GUIs Hidden (" .. #protectedGuis .. ")"
-    warningText.TextColor3 = Color3.new(1, 0.8, 0)
-    warningText.TextSize = 14
-    warningText.TextStrokeTransparency = 0
-    warningText.TextStrokeColor3 = Color3.new(0, 0, 0)
-    warningText.TextWrapped = true
-    
-    -- Auto-remove warning after 3 seconds
-    task.spawn(function()
-        task.wait(3)
-        if warningGui and warningGui.Parent then
-            warningGui:Destroy()
-        end
-    end)
-end
-
--- Function to restore GUIs
-local function restoreGuis()
+-- Restore GUIs
+local function restoreProtectedGuis()
     for gui, originalState in pairs(guiStates) do
         if gui and gui.Parent then
             gui.Enabled = originalState
@@ -195,35 +139,40 @@ local function restoreGuis()
     end
 end
 
--- Function to apply anti-record (hide GUIs)
-local function applyAntiRecord()
-    if not antiRecordEnabled then return end
+-- Apply anti-protection
+local function applyAntiProtection()
+    if not antiProtectionEnabled then return end
     
-    task.spawn(function()
-        if antiRecordSettings.HideDelay > 0 then
-            task.wait(antiRecordSettings.HideDelay)
-        end
-        
-        if antiRecordSettings.HideMethod == "Instant" then
-            hideGuisInstant()
-        elseif antiRecordSettings.HideMethod == "Fade" then
-            hideGuisFade()
-        elseif antiRecordSettings.HideMethod == "Smart" then
-            hideGuisSmart()
-        end
-        
-        showHideWarning()
-        print("Hidden " .. #protectedGuis .. " executor GUIs")
-    end)
+    if antiRecordSettings.BlackoutMethod == "Overlay" then
+        createBlackOverlay()
+        print("Anti-protection active: Black overlay method")
+    elseif antiRecordSettings.BlackoutMethod == "Hide" then
+        hideProtectedGuis()
+        print("Anti-protection active: Hide GUIs method")
+    end
+    
+    -- Optional warning (usually keep disabled for stealth)
+    if antiRecordSettings.ShowWarning then
+        showProtectionWarning()
+    end
 end
 
--- Function to remove anti-record (restore GUIs)
-local function removeAntiRecord()
-    restoreGuis()
+-- Remove anti-protection
+local function removeAntiProtection()
+    -- Remove black overlay
+    if blackOverlay then
+        blackOverlay:Destroy()
+        blackOverlay = nil
+    end
     
-    -- Remove warning GUI if exists
+    -- Restore GUIs if they were hidden
+    if antiRecordSettings.BlackoutMethod == "Hide" then
+        restoreProtectedGuis()
+    end
+    
+    -- Remove warning if exists
     local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-    local warningGui = playerGui:FindFirstChild("AntiRecordWarning")
+    local warningGui = playerGui:FindFirstChild("AntiProtectionWarning")
     if warningGui then
         warningGui:Destroy()
     end
@@ -235,79 +184,76 @@ local function removeAntiRecord()
     end
     connections = {}
     
-    print("Restored " .. #protectedGuis .. " executor GUIs")
+    print("Anti-protection disabled - GUIs restored")
 end
 
--- Toggle anti-record
-local function toggleAntiRecord(enabled)
-    antiRecordEnabled = enabled
+-- Show protection warning (optional, usually disabled)
+local function showProtectionWarning()
+    if not antiRecordSettings.ShowWarning then return end
+    
+    local warningGui = Instance.new("ScreenGui")
+    warningGui.Name = "AntiProtectionWarning"
+    warningGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    local warningFrame = Instance.new("Frame")
+    warningFrame.Parent = warningGui
+    warningFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    warningFrame.BackgroundTransparency = 0.2
+    warningFrame.BorderSizePixel = 2
+    warningFrame.BorderColor3 = Color3.new(0, 1, 0)
+    warningFrame.Position = UDim2.new(0.5, -150, 0.9, -50)
+    warningFrame.Size = UDim2.new(0, 300, 0, 40)
+    
+    local warningText = Instance.new("TextLabel")
+    warningText.Parent = warningFrame
+    warningText.BackgroundTransparency = 1
+    warningText.Position = UDim2.new(0, 5, 0, 5)
+    warningText.Size = UDim2.new(1, -10, 1, -10)
+    warningText.Font = Enum.Font.Gotham
+    warningText.Text = "🛡️ Protection Active (" .. #protectedGuis .. " GUIs)"
+    warningText.TextColor3 = Color3.new(0, 1, 0)
+    warningText.TextSize = 12
+    warningText.TextWrapped = true
+    
+    -- Auto-remove after 2 seconds
+    task.spawn(function()
+        task.wait(2)
+        if warningGui and warningGui.Parent then
+            warningGui:Destroy()
+        end
+    end)
+end
+
+-- Toggle anti-protection
+local function toggleAntiProtection(enabled)
+    antiProtectionEnabled = enabled
     antiRecordSettings.Enabled = enabled
     
     if enabled then
-        -- Find and catalog GUIs before applying anti-record
+        -- Find and catalog GUIs before applying protection
         if antiRecordSettings.ProtectKRNL or antiRecordSettings.ProtectOtherExecutors then
             findAndCatalogExecutorGUIs()
         end
         
-        print("Anti-Record enabled - Method: Hide GUIs (" .. antiRecordSettings.HideMethod .. ")")
-        print("Will hide " .. #protectedGuis .. " executor GUIs")
-        applyAntiRecord()
+        print("Anti-protection enabled - Method: " .. antiRecordSettings.BlackoutMethod)
+        print("Protected GUIs: " .. #protectedGuis)
+        applyAntiProtection()
     else
-        print("Anti-Record disabled - Restoring GUIs")
-        removeAntiRecord()
+        print("Anti-protection disabled")
+        removeAntiProtection()
     end
 end
 
--- Change hide method
-local function changeHideMethod(method)
-    antiRecordSettings.HideMethod = method
-    print("Anti-Record hide method changed to: " .. method)
+-- Change protection method
+local function changeBlackoutMethod(method)
+    antiRecordSettings.BlackoutMethod = method
+    print("Protection method changed to: " .. method)
     
-    if antiRecordEnabled then
-        -- Re-apply with new method
-        removeAntiRecord()
+    if antiProtectionEnabled then
+        removeAntiProtection()
         task.wait(0.1)
-        applyAntiRecord()
+        applyAntiProtection()
     end
-end
-
--- Change hide delay
-local function changeHideDelay(delay)
-    antiRecordSettings.HideDelay = math.max(0, delay)
-    print("Anti-Record hide delay changed to: " .. antiRecordSettings.HideDelay .. "s")
-end
-
--- Basic screen recording detection
-local function detectScreenRecording()
-    -- Simple heuristics for recording detection
-    local success, result = pcall(function()
-        local uis = game:GetService("UserInputService")
-        local rs = game:GetService("RunService")
-        
-        -- Check for performance indicators that might suggest recording
-        local fps = 1 / rs.Heartbeat:Wait()
-        
-        -- If FPS is consistently low, might be recording
-        -- This is a very basic check and not reliable
-        return fps < 30
-    end)
-    
-    return success and result or false
-end
-
--- Auto-enable when recording detected
-local function startSmartDetection()
-    if connections.smartDetection then
-        connections.smartDetection:Disconnect()
-    end
-    
-    connections.smartDetection = RunService.Heartbeat:Connect(function()
-        if antiRecordSettings.HideMethod == "Smart" and detectScreenRecording() then
-            if not antiRecordEnabled then
-                toggleAntiRecord(true)
-            end
-        end
-    end)
 end
 
 -- Get current settings
@@ -315,120 +261,95 @@ function AntiRecord.getSettings()
     return antiRecordSettings
 end
 
--- Function to create buttons for Anti-Record features
+-- Function to create buttons for Anti-Protection features
 function AntiRecord.loadAntiRecordButtons(createButton, createToggleButton)
     -- Main toggle
-    createToggleButton("Enable Anti-Record", function(enabled)
-        toggleAntiRecord(enabled)
+    createToggleButton("Enable Anti-Protection", function(enabled)
+        toggleAntiProtection(enabled)
     end)
     
     -- Protection options
     createToggleButton("Protect KRNL GUI", function(enabled)
         antiRecordSettings.ProtectKRNL = enabled
-        if antiRecordEnabled then
-            removeAntiRecord()
+        if antiProtectionEnabled then
+            removeAntiProtection()
             task.wait(0.1)
             findAndCatalogExecutorGUIs()
-            applyAntiRecord()
+            applyAntiProtection()
         end
     end)
     
     createToggleButton("Protect Other Executors", function(enabled)
         antiRecordSettings.ProtectOtherExecutors = enabled
-        if antiRecordEnabled then
-            removeAntiRecord()
+        if antiProtectionEnabled then
+            removeAntiProtection()
             task.wait(0.1)
             findAndCatalogExecutorGUIs()
-            applyAntiRecord()
+            applyAntiProtection()
         end
     end)
     
-    createToggleButton("Show Hide Warning", function(enabled)
+    createToggleButton("Show Warning", function(enabled)
         antiRecordSettings.ShowWarning = enabled
     end)
     
-    -- Hide method selection
-    createButton("Method: Instant Hide", function()
-        changeHideMethod("Instant")
+    -- Method selection
+    createButton("Method: Black Overlay", function()
+        changeBlackoutMethod("Overlay")
     end)
     
-    createButton("Method: Fade Hide", function()
-        changeHideMethod("Fade")
-    end)
-    
-    createButton("Method: Smart Hide", function()
-        changeHideMethod("Smart")
-    end)
-    
-    -- Hide delay controls
-    createButton("Delay: None", function()
-        changeHideDelay(0)
-    end)
-    
-    createButton("Delay: 1s", function()
-        changeHideDelay(1)
-    end)
-    
-    createButton("Delay: 3s", function()
-        changeHideDelay(3)
-    end)
-    
-    createButton("Delay: 5s", function()
-        changeHideDelay(5)
+    createButton("Method: Hide GUIs", function()
+        changeBlackoutMethod("Hide")
     end)
     
     -- Utility buttons
     createButton("Refresh Protected GUIs", function()
         findAndCatalogExecutorGUIs()
-        print("Refreshed protected GUIs. Found: " .. #protectedGuis)
+        print("Refreshed. Found " .. #protectedGuis .. " executor GUIs")
         
-        if antiRecordEnabled then
-            removeAntiRecord()
+        if antiProtectionEnabled then
+            removeAntiProtection()
             task.wait(0.1)
-            applyAntiRecord()
+            applyAntiProtection()
         end
     end)
     
     createButton("List Protected GUIs", function()
         print("=== PROTECTED EXECUTOR GUIS ===")
         for i, gui in pairs(protectedGuis) do
-            print(i .. ". " .. gui.Name .. " (Enabled: " .. tostring(gui.Enabled) .. ")")
+            print(i .. ". " .. gui.Name)
         end
         print("Total: " .. #protectedGuis .. " GUIs")
     end)
     
-    createButton("Force Hide All", function()
-        if #protectedGuis > 0 then
-            hideGuisInstant()
-            print("Force hidden all " .. #protectedGuis .. " executor GUIs")
+    createButton("Test Protection", function()
+        if antiProtectionEnabled then
+            print("Protection is active - screenshots should appear blank")
         else
-            print("No executor GUIs found to hide")
-        end
-    end)
-    
-    createButton("Force Restore All", function()
-        if #protectedGuis > 0 then
-            restoreGuis()
-            print("Force restored all " .. #protectedGuis .. " executor GUIs")
-        else
-            print("No executor GUIs found to restore")
+            print("Protection is disabled - enable it first")
         end
     end)
 end
 
--- Function to reset Anti-Record states
+-- Function to reset states
 function AntiRecord.resetStates()
-    removeAntiRecord()
+    removeAntiProtection()
     protectedGuis = {}
     guiStates = {}
-    antiRecordEnabled = false
+    antiProtectionEnabled = false
+    
+    -- Reset settings
     antiRecordSettings.Enabled = false
-    antiRecordSettings.HideMethod = "Instant"
-    antiRecordSettings.HideDelay = 0
     antiRecordSettings.ProtectKRNL = true
     antiRecordSettings.ProtectOtherExecutors = true
-    antiRecordSettings.ProtectCoreGuis = false
-    antiRecordSettings.ShowWarning = true
+    antiRecordSettings.ShowWarning = false
+    antiRecordSettings.BlackoutMethod = "Overlay"
+    
+    -- Clean up black overlay
+    if blackOverlay then
+        blackOverlay:Destroy()
+        blackOverlay = nil
+    end
     
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
@@ -437,7 +358,7 @@ function AntiRecord.resetStates()
     end
     connections = {}
     
-    print("Anti-Record states reset")
+    print("Anti-protection states reset")
 end
 
 -- Function to set dependencies and initialize
@@ -446,20 +367,12 @@ function AntiRecord.init(deps)
     ScreenGui = deps.ScreenGui
     settings = deps.settings
     
-    -- Add anti-record settings to main settings
-    if settings then
-        settings.AntiRecordHideDelay = {value = 0, min = 0, max = 10, default = 0}
-    end
-    
-    -- Start smart detection if enabled
-    startSmartDetection()
-    
     -- Auto-find and catalog GUIs on init
     task.spawn(function()
         task.wait(2) -- Wait for other GUIs to load
         if antiRecordSettings.ProtectKRNL or antiRecordSettings.ProtectOtherExecutors then
             findAndCatalogExecutorGUIs()
-            print("Initial GUI scan complete. Found " .. #protectedGuis .. " executor GUIs")
+            print("Found " .. #protectedGuis .. " executor GUIs to protect")
         end
     end)
     
@@ -473,11 +386,13 @@ function AntiRecord.init(deps)
                 findAndCatalogExecutorGUIs()
                 if #protectedGuis > oldCount then
                     print("New executor GUI detected: " .. gui.Name)
-                    -- Auto-hide if anti-record is active
-                    if antiRecordEnabled then
+                    -- Apply protection to new GUI if active
+                    if antiProtectionEnabled then
                         guiStates[gui] = gui.Enabled
-                        gui.Enabled = false
-                        print("Auto-hidden new executor GUI: " .. gui.Name)
+                        if antiRecordSettings.BlackoutMethod == "Hide" then
+                            gui.Enabled = false
+                        end
+                        -- Black overlay already covers everything
                     end
                 end
             end
@@ -492,16 +407,16 @@ function AntiRecord.init(deps)
                 if protectedGui == gui then
                     table.remove(protectedGuis, i)
                     guiStates[gui] = nil
-                    print("Removed deleted GUI from protection list: " .. gui.Name)
                     break
                 end
             end
         end
     end)
     
-    print("Anti-Record module initialized - Hide GUI mode")
-    print("Protection enabled for KRNL: " .. tostring(antiRecordSettings.ProtectKRNL))
-    print("Protection enabled for Other Executors: " .. tostring(antiRecordSettings.ProtectOtherExecutors))
+    print("Anti-Protection module initialized (Android-friendly)")
+    print("KRNL protection: " .. tostring(antiRecordSettings.ProtectKRNL))
+    print("Other executors protection: " .. tostring(antiRecordSettings.ProtectOtherExecutors))
+    print("Method: " .. antiRecordSettings.BlackoutMethod)
 end
 
 return AntiRecord
