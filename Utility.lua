@@ -30,7 +30,7 @@ local searchHistory = {}
 
 -- File System Integration for KRNL
 local HttpService = game:GetService("HttpService")
-local MACRO_FOLDER_PATH = "krnl/workspace/dcim/supertool/"
+local MACRO_FOLDER_PATH = "Supertool/Macro"
 
 -- Helper function untuk sanitize filename
 local function sanitizeFileName(name)
@@ -207,23 +207,23 @@ end
 
 -- Mock file system for backward compatibility (now syncs with JSON)
 local fileSystem = {
-    ["DCIM/Supertool"] = {}
+    ["Supertool/Macro"] = {}
 }
 
 -- Helper function to ensure DCIM/Supertool exists (backward compatibility)
 local function ensureFileSystem()
-    if not fileSystem["DCIM"] then
-        fileSystem["DCIM"] = {}
+    if not fileSystem["Supertool"] then
+        fileSystem["Supertool"] = {}
     end
-    if not fileSystem["DCIM/Supertool"] then
-        fileSystem["DCIM/Supertool"] = {}
+    if not fileSystem["Supertool/Macro"] then
+        fileSystem["Supertool/Macro"] = {}
     end
 end
 
 -- Helper function to save macro to file system (now syncs with JSON)
 local function saveToFileSystem(macroName, macroData)
     ensureFileSystem()
-    fileSystem["DCIM/Supertool"][macroName] = macroData
+    fileSystem["Supertool/Macro"][macroName] = macroData
     
     -- Auto-sync to JSON file
     saveToJSONFile(macroName, macroData)
@@ -239,15 +239,15 @@ local function loadFromFileSystem(macroName)
     
     -- Fallback to memory
     ensureFileSystem()
-    return fileSystem["DCIM/Supertool"][macroName]
+    return fileSystem["Supertool/Macro"][macroName]
 end
 
 -- Helper function to delete macro from file system (syncs with JSON)
 local function deleteFromFileSystem(macroName)
     ensureFileSystem()
     local memoryDeleted = false
-    if fileSystem["DCIM/Supertool"][macroName] then
-        fileSystem["DCIM/Supertool"][macroName] = nil
+    if fileSystem["Supertool/Macro"][macroName] then
+        fileSystem["Supertool/Macro"][macroName] = nil
         memoryDeleted = true
     end
     
@@ -262,9 +262,9 @@ local function renameInFileSystem(oldName, newName)
     ensureFileSystem()
     local memoryRenamed = false
     
-    if fileSystem["DCIM/Supertool"][oldName] and newName ~= "" then
-        fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][oldName]
-        fileSystem["DCIM/Supertool"][oldName] = nil
+    if fileSystem["Supertool/Macro"][oldName] and newName ~= "" then
+        fileSystem["Supertool/Macro"][newName] = fileSystem["Supertool/Macro"][oldName]
+        fileSystem["Supertool/Macro"][oldName] = nil
         memoryRenamed = true
     end
     
@@ -279,7 +279,7 @@ local function syncMacrosFromJSON()
     local jsonMacros = loadAllMacrosFromFolder()
     for macroName, macroData in pairs(jsonMacros) do
         savedMacros[macroName] = macroData
-        fileSystem["DCIM/Supertool"][macroName] = macroData
+        fileSystem["Supertool/Macro"][macroName] = macroData
     end
     print("[SUPERTOOL] Synced " .. table.maxn(jsonMacros) .. " macros from JSON files")
 end
@@ -1848,7 +1848,7 @@ function Utility.init(deps)
     syncMacrosFromJSON()
     
     -- Load any remaining from old file system
-    for macroName, macroData in pairs(fileSystem["DCIM/Supertool"]) do
+    for macroName, macroData in pairs(fileSystem["Supertool/Macro"]) do
         if not savedMacros[macroName] then
             savedMacros[macroName] = macroData
             -- Auto-sync old macros to JSON

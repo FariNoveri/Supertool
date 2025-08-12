@@ -1,6 +1,6 @@
 -- teleport.lua
 -- Teleport-related features for MinimalHackGUI by Fari Noveri
--- ENHANCED VERSION: Fixed duplicates, added rename/delete, improved UI, better scrolling, persistent positions on respawn, auto-teleport status label, and pause on death with auto-resume
+-- ENHANCED VERSION: Added JSON file persistence like utility.lua, fixed file system conflicts
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, Workspace, ScreenGui, ScrollFrame, player, rootPart, settings
@@ -24,17 +24,289 @@ local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePos
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
 local AutoStatusLabel -- New label for auto-teleport status
 
--- FIXED: Use global fileSystem instead of creating local one
--- This ensures consistency with settings.lua and other modules
--- Mock file system will be initialized in mainloader.lua or first module that needs it
-local function getFileSystem()
-    if not _G.fileSystem then
-        _G.fileSystem = { ["DCIM/Supertool"] = {} }
+-- File System Integration for KRNL (like utility.lua)
+local HttpService = game:GetService("HttpService")
+local TELEPORT_FOLDER_PATH = "Supertool/Teleport/"
+
+-- Helper function untuk sanitize filename
+local function sanitizeFileName(name)
+    -- Replace invalid characters with underscore
+    local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
+    -- Remove leading/trailing spaces
+    sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
+    -- Ensure filename is not empty
+    if sanitized == "" then
+        sanitized = "unnamed_position"
     end
-    if not _G.fileSystem["DCIM/Supertool"] then
-        _G.fileSystem["DCIM/Supertool"] = {}
+    return sanitized
+end
+
+-- Helper function untuk save position ke JSON file
+local function saveToJSONFile(positionName, cframe, number)
+    local success, error = pcall(function()
+        local sanitizedName = sanitizeFileName(positionName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = TELEPORT_FOLDER_PATH .. fileName
+        
+        -- Create JSON data with metadata
+        local jsonData = {
+            name = positionName,
+            type = "teleport_position",
+            created = os.time(),
+            modified = os.time(),
+            version = "1.0",
+            x = cframe.X,
+            y = cframe.Y,
+            z = cframe.Z,
+            orientation = {cframe:ToEulerAnglesXYZ()},
+            number = number or 0
+        }
+        
+        local jsonString = HttpService:JSONEncode(jsonData)
+        writefile(filePath, jsonString)
+        
+        print("[SUPERTOOL] Position saved: " .. filePath)
+        return true
+    end)
+    
+    if not success then
+        warn("[SUPERTOOL] Failed to save position to JSON: " .. tostring(error))
+        return false
     end
-    return _G.fileSystem
+    return true
+end
+
+-- Helper function untuk load position dari JSON file
+local function loadFromJSONFile(positionName)
+    local success, result = pcall(function()
+        local sanitizedName = sanitizeFileName(positionName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = TELEPORT_FOLDER_PATH .. fileName
+        
+        if isfile(filePath) then
+            local jsonString = readfile(filePath)
+            local jsonData = HttpService:JSONDecode(jsonString)
+            
+            -- Return position data in expected format
+            local rx, ry, rz = unpack(jsonData.orientation or {0, 0, 0})
+            local cframe = CFrame.new(jsonData.x, jsonData.y, jsonData.z) * CFrame.Angles(rx, ry, rz)
+            
+            return {
+                cframe = cframe,
+                number = jsonData.number or 0,
+                name = jsonData.name or positionName,
+                created = jsonData.created,
+                modified = jsonData.modified,
+                version = jsonData.version or "1.0"
+            }
+        else
+            return nil
+        end
+    end)
+    
+    if success then
+        return result
+    else
+        warn("[SUPERTOOL] Failed to load position from JSON: " .. tostring(result))
+        return nil
+    end
+end
+
+-- Helper function untuk delete position dari JSON file
+local function deleteFromJSONFile(positionName)
+    local success, error = pcall(function()
+        local sanitizedName = sanitizeFileName(positionName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = TELEPORT_FOLDER_PATH .. fileName
+        
+        if isfile(filePath) then
+            delfile(filePath)
+            print("[SUPERTOOL] Position deleted: " .. filePath)
+            return true
+        else
+            return false
+        end
+    end)
+    
+    if success then
+        return error
+    else
+        warn("[SUPERTOOL] Failed to delete position JSON: " .. tostring(error))
+        return false
+    end
+end
+
+-- Helper function untuk rename position di JSON file
+local function renameInJSONFile(oldName, newName)
+    local success, error = pcall(function()
+        -- Load old file
+        local oldData = loadFromJSONFile(oldName)
+        if not oldData then
+            return false
+        end
+        
+        -- Update name in data
+        oldData.name = newName
+        oldData.modified = os.time()
+        
+        -- Save with new name
+        if saveToJSONFile(newName, oldData.cframe, oldData.number) then
+            -- Delete old file
+            deleteFromJSONFile(oldName)
+            print("[SUPERTOOL] Position renamed: " .. oldName .. " -> " .. newName)
+            return true
+        else
+            return false
+        end
+    end)
+    
+    if success then
+        return error
+    else
+        warn("[SUPERTOOL] Failed to rename position: " .. tostring(error))
+        return false
+    end
+end
+
+-- Helper function untuk load semua positions dari folder
+local function loadAllPositionsFromFolder()
+    local success, error = pcall(function()
+        if not isfolder(TELEPORT_FOLDER_PATH) then
+            makefolder(TELEPORT_FOLDER_PATH)
+            print("[SUPERTOOL] Created teleport folder: " .. TELEPORT_FOLDER_PATH)
+        end
+        
+        local loadedPositions = {}
+        local loadedNumbers = {}
+        local files = listfiles(TELEPORT_FOLDER_PATH)
+        
+        for _, filePath in pairs(files) do
+            if string.match(filePath, "%.json$") then
+                local fileName = string.match(filePath, "([^/\\]+)%.json$")
+                if fileName then
+                    local positionData = loadFromJSONFile(fileName)
+                    if positionData then
+                        local originalName = positionData.name or fileName
+                        loadedPositions[originalName] = positionData.cframe
+                        loadedNumbers[originalName] = positionData.number or 0
+                        print("[SUPERTOOL] Loaded position: " .. originalName)
+                    end
+                end
+            end
+        end
+        
+        return loadedPositions, loadedNumbers
+    end)
+    
+    if success then
+        return error or {}, {}
+    else
+        warn("[SUPERTOOL] Failed to load positions from folder: " .. tostring(error))
+        return {}, {}
+    end
+end
+
+-- Mock file system for backward compatibility (now syncs with JSON)
+local fileSystem = {
+    ["Supertool/Teleport"] = {}
+}
+
+-- Helper function to ensure Supertool/Teleport exists (backward compatibility)
+local function ensureFileSystem()
+    if not fileSystem["Supertool"] then
+        fileSystem["Supertool"] = {}
+    end
+    if not fileSystem["Supertool/Teleport"] then
+        fileSystem["Supertool/Teleport"] = {}
+    end
+end
+
+-- Helper function to save position to file system (now syncs with JSON)
+local function saveToFileSystem(positionName, cframe, number)
+    ensureFileSystem()
+    fileSystem["Supertool/Teleport"][positionName] = {
+        type = "teleport_position",
+        x = cframe.X,
+        y = cframe.Y,
+        z = cframe.Z,
+        orientation = {cframe:ToEulerAnglesXYZ()},
+        number = number or 0
+    }
+    
+    -- Auto-sync to JSON file
+    saveToJSONFile(positionName, cframe, number)
+    return true
+end
+
+-- Helper function to load position from file system (prioritizes JSON)
+local function loadFromFileSystem(positionName)
+    -- Try to load from JSON first
+    local jsonData = loadFromJSONFile(positionName)
+    if jsonData then
+        Teleport.positionNumbers[positionName] = jsonData.number
+        return jsonData.cframe
+    end
+    
+    -- Fallback to memory
+    ensureFileSystem()
+    local data = fileSystem["Supertool/Teleport"][positionName]
+    if data and data.type == "teleport_position" then
+        local rx, ry, rz = unpack(data.orientation)
+        Teleport.positionNumbers[positionName] = data.number or 0
+        return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
+    end
+    
+    return nil
+end
+
+-- Helper function to delete position from file system (syncs with JSON)
+local function deleteFromFileSystem(positionName)
+    ensureFileSystem()
+    local memoryDeleted = false
+    if fileSystem["Supertool/Teleport"][positionName] then
+        fileSystem["Supertool/Teleport"][positionName] = nil
+        memoryDeleted = true
+    end
+    
+    -- Delete from JSON
+    local jsonDeleted = deleteFromJSONFile(positionName)
+    
+    return memoryDeleted or jsonDeleted
+end
+
+-- Helper function to rename position in file system (syncs with JSON)
+local function renameInFileSystem(oldName, newName)
+    ensureFileSystem()
+    local memoryRenamed = false
+    
+    if fileSystem["Supertool/Teleport"][oldName] and newName ~= "" then
+        fileSystem["Supertool/Teleport"][newName] = fileSystem["Supertool/Teleport"][oldName]
+        fileSystem["Supertool/Teleport"][oldName] = nil
+        memoryRenamed = true
+    end
+    
+    -- Rename in JSON
+    local jsonRenamed = renameInJSONFile(oldName, newName)
+    
+    return memoryRenamed or jsonRenamed
+end
+
+-- Function untuk sync positions dari JSON ke memory pada startup
+local function syncPositionsFromJSON()
+    local jsonPositions, jsonNumbers = loadAllPositionsFromFolder()
+    for positionName, cframe in pairs(jsonPositions) do
+        Teleport.savedPositions[positionName] = cframe
+        Teleport.positionNumbers[positionName] = jsonNumbers[positionName] or 0
+        fileSystem["Supertool/Teleport"][positionName] = {
+            type = "teleport_position",
+            x = cframe.X,
+            y = cframe.Y,
+            z = cframe.Z,
+            orientation = {cframe:ToEulerAnglesXYZ()},
+            number = jsonNumbers[positionName] or 0
+        }
+    end
+    print("[SUPERTOOL] Synced " .. table.maxn(jsonPositions) .. " positions from JSON files")
 end
 
 -- Get root part
@@ -43,38 +315,6 @@ local function getRootPart()
         return player.Character.HumanoidRootPart
     end
     warn("Cannot get root part: Character or HumanoidRootPart not found")
-    return nil
-end
-
--- Save to mock filesystem
-local function saveToFileSystem(positionName, cframe, number)
-    if not positionName or not cframe then
-        warn("Cannot save to file system: Invalid positionName or cframe")
-        return false
-    end
-    local fileSystem = getFileSystem()
-    fileSystem["DCIM/Supertool"][positionName] = {
-        type = "teleport_position", -- Add type identifier
-        x = cframe.X,
-        y = cframe.Y,
-        z = cframe.Z,
-        orientation = {cframe:ToEulerAnglesXYZ()},
-        number = number or 0
-    }
-    print("Saved to file system: " .. positionName)
-    return true
-end
-
--- Load from mock filesystem
-local function loadFromFileSystem(positionName)
-    local fileSystem = getFileSystem()
-    local data = fileSystem["DCIM/Supertool"][positionName]
-    if data and data.type == "teleport_position" then
-        local rx, ry, rz = unpack(data.orientation)
-        Teleport.positionNumbers[positionName] = data.number or 0 -- Load number
-        return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
-    end
-    warn("Cannot load from file system: Position " .. tostring(positionName) .. " not found")
     return nil
 end
 
@@ -344,8 +584,7 @@ local function deletePositionWithConfirmation(positionName, button)
     if button.Text == "Delete?" then
         Teleport.savedPositions[positionName] = nil
         Teleport.positionNumbers[positionName] = nil -- Remove number too
-        local fileSystem = getFileSystem()
-        fileSystem["DCIM/Supertool"][positionName] = nil
+        deleteFromFileSystem(positionName)
         button.Parent:Destroy()
         print("Deleted position: " .. positionName)
         updateScrollCanvasSize()
@@ -397,7 +636,7 @@ local function doAutoTeleport()
                     if AutoStatusLabel then
                         local number = Teleport.positionNumbers[position.name] or 0
                         local numberText = number > 0 and "#" .. number or ""
-                        AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+                        AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
                     end
                 else
                     warn("Failed to auto teleport to: " .. position.name)
@@ -440,7 +679,7 @@ function Teleport.startAutoTeleport()
         local position = positions[1]
         local number = Teleport.positionNumbers[position.name] or 0
         local numberText = number > 0 and "#" .. number or ""
-        AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+        AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
         AutoStatusLabel.Visible = true
     end
     spawn(function()
@@ -482,7 +721,7 @@ function Teleport.toggleAutoMode()
             local position = positions[Teleport.currentAutoIndex]
             local number = Teleport.positionNumbers[position.name] or 0
             local numberText = number > 0 and "#" .. number or ""
-            AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+            AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
         end
     end
     print("Auto teleport mode set to: " .. Teleport.autoTeleportMode)
@@ -581,13 +820,8 @@ createPositionButton = function(positionName, cframe)
             Teleport.positionNumbers[newName] = Teleport.positionNumbers[positionName]
             Teleport.positionNumbers[positionName] = nil
             
-            -- Update file system
-            local fileSystem = getFileSystem()
-            fileSystem["DCIM/Supertool"][newName] = fileSystem["DCIM/Supertool"][positionName]
-            fileSystem["DCIM/Supertool"][positionName] = nil
-            
-            -- Save with number
-            saveToFileSystem(newName, cframe, Teleport.positionNumbers[newName])
+            -- Rename in file system (will sync to JSON)
+            renameInFileSystem(positionName, newName)
             
             print("Renamed position to: " .. newName)
             refreshPositionButtons() -- Refresh all buttons
@@ -649,9 +883,81 @@ refreshPositionButtons = function()
             child:Destroy()
         end
     end
+    
+    -- Add sync status info at top
+    local itemCount = 0
+    
+    local infoFrame = Instance.new("Frame")
+    infoFrame.Name = "InfoFrame"
+    infoFrame.Parent = PositionScrollFrame
+    infoFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    infoFrame.BorderSizePixel = 0
+    infoFrame.Size = UDim2.new(1, -5, 0, 20)
+    infoFrame.LayoutOrder = -1
+    
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Parent = infoFrame
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Size = UDim2.new(1, 0, 1, 0)
+    infoLabel.Font = Enum.Font.Gotham
+    infoLabel.Text = "JSON Sync: " .. TELEPORT_FOLDER_PATH .. " (" .. table.maxn(Teleport.savedPositions) .. " positions)"
+    infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    infoLabel.TextSize = 7
+    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
     for positionName, cframe in pairs(Teleport.savedPositions) do
         createPositionButton(positionName, cframe)
+        itemCount = itemCount + 1
     end
+    
+    -- Add refresh/sync buttons at bottom
+    if itemCount > 0 then
+        local refreshFrame = Instance.new("Frame")
+        refreshFrame.Name = "RefreshFrame"
+        refreshFrame.Parent = PositionScrollFrame
+        refreshFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
+        refreshFrame.BorderSizePixel = 0
+        refreshFrame.Size = UDim2.new(1, -5, 0, 25)
+        refreshFrame.LayoutOrder = itemCount + 1
+        
+        local refreshButton = Instance.new("TextButton")
+        refreshButton.Parent = refreshFrame
+        refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
+        refreshButton.BorderSizePixel = 0
+        refreshButton.Position = UDim2.new(0, 5, 0, 2)
+        refreshButton.Size = UDim2.new(0, 80, 0, 20)
+        refreshButton.Font = Enum.Font.Gotham
+        refreshButton.Text = "🔄 REFRESH"
+        refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        refreshButton.TextSize = 7
+        
+        local syncAllButton = Instance.new("TextButton")
+        syncAllButton.Parent = refreshFrame
+        syncAllButton.BackgroundColor3 = Color3.fromRGB(40, 80, 80)
+        syncAllButton.BorderSizePixel = 0
+        syncAllButton.Position = UDim2.new(0, 90, 0, 2)
+        syncAllButton.Size = UDim2.new(0, 80, 0, 20)
+        syncAllButton.Font = Enum.Font.Gotham
+        syncAllButton.Text = "💾 SYNC ALL"
+        syncAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        syncAllButton.TextSize = 7
+        
+        refreshButton.MouseButton1Click:Connect(function()
+            syncPositionsFromJSON()
+            refreshPositionButtons()
+        end)
+        
+        syncAllButton.MouseButton1Click:Connect(function()
+            local count = 0
+            for name, cframe in pairs(Teleport.savedPositions) do
+                local number = Teleport.positionNumbers[name] or 0
+                saveToJSONFile(name, cframe, number)
+                count = count + 1
+            end
+            print("[SUPERTOOL] Synced " .. count .. " positions to JSON files")
+        end)
+    end
+    
     updateScrollCanvasSize()
 end
 
@@ -679,7 +985,7 @@ local function onCharacterAdded(character)
                     local position = positions[Teleport.currentAutoIndex]
                     local number = Teleport.positionNumbers[position.name] or 0
                     local numberText = number > 0 and "#" .. number or ""
-                    AutoStatusLabel.Text = "Playing auto play for " .. Teleport.autoTeleportMode .. ", started " .. position.name .. numberText
+                    AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
                 end
             end
         end
@@ -752,15 +1058,7 @@ end
 
 -- Load saved positions from filesystem
 function Teleport.loadSavedPositions()
-    local fileSystem = getFileSystem()
-    for positionName, data in pairs(fileSystem["DCIM/Supertool"]) do
-        if data.type == "teleport_position" then
-            local cframe = loadFromFileSystem(positionName)
-            if cframe then
-                Teleport.savedPositions[positionName] = cframe
-            end
-        end
-    end
+    syncPositionsFromJSON()
     refreshPositionButtons()
     print("Loaded " .. #getOrderedPositions() .. " saved positions")
 end
@@ -811,7 +1109,7 @@ local function initUI()
     PositionTitle.Position = UDim2.new(0, 0, 0, 0)
     PositionTitle.Size = UDim2.new(1, 0, 0, 28)
     PositionTitle.Font = Enum.Font.Gotham
-    PositionTitle.Text = "POSITION MANAGER"
+    PositionTitle.Text = "POSITION MANAGER - JSON SYNC"
     PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PositionTitle.TextSize = 11
 
@@ -956,12 +1254,12 @@ local function initUI()
     AutoStatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     AutoStatusLabel.BorderColor3 = Color3.fromRGB(60, 60, 60)
     AutoStatusLabel.BorderSizePixel = 1
-    AutoStatusLabel.Position = UDim2.new(1, -250, 0, 10)
+    AutoStatusLabel.Position = UDim2.new(1, -250, 0, 35)
     AutoStatusLabel.Size = UDim2.new(0, 240, 0, 20)
     AutoStatusLabel.Font = Enum.Font.Gotham
     AutoStatusLabel.Text = ""
     AutoStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    AutoStatusLabel.TextSize = 10
+    AutoStatusLabel.TextSize = 8
     AutoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
     AutoStatusLabel.Visible = false
 
@@ -1041,17 +1339,10 @@ end
 
 -- Function to reset Teleport states
 function Teleport.resetStates()
-    Teleport.savedPositions = {}
-    Teleport.positionNumbers = {}
+    -- Don't reset savedPositions and positionNumbers to preserve data
+    -- Teleport.savedPositions = {}
+    -- Teleport.positionNumbers = {}
     Teleport.positionFrameVisible = false
-    
-    -- Clear teleport positions from filesystem but keep other data
-    local fileSystem = getFileSystem()
-    for positionName, data in pairs(fileSystem["DCIM/Supertool"]) do
-        if data.type == "teleport_position" then
-            fileSystem["DCIM/Supertool"][positionName] = nil
-        end
-    end
     
     if PositionFrame then
         PositionFrame.Visible = false
@@ -1097,6 +1388,30 @@ function Teleport.init(deps)
     Teleport.positionNumbers = Teleport.positionNumbers or {}
     Teleport.positionFrameVisible = false
     
+    -- Create folder if doesn't exist
+    if not isfolder(TELEPORT_FOLDER_PATH) then
+        makefolder(TELEPORT_FOLDER_PATH)
+        print("[SUPERTOOL] Created teleport folder: " .. TELEPORT_FOLDER_PATH)
+    end
+    
+    -- Initialize file system
+    ensureFileSystem()
+    
+    -- Load positions from JSON files first, then backward compatibility
+    syncPositionsFromJSON()
+    
+    -- Load any remaining from old file system
+    for positionName, data in pairs(fileSystem["Supertool/Teleport"]) do
+        if data.type == "teleport_position" and not Teleport.savedPositions[positionName] then
+            local cframe = loadFromFileSystem(positionName)
+            if cframe then
+                Teleport.savedPositions[positionName] = cframe
+                -- Auto-sync old positions to JSON
+                saveToJSONFile(positionName, cframe, Teleport.positionNumbers[positionName] or 0)
+            end
+        end
+    end
+    
     player.CharacterAdded:Connect(onCharacterAdded)
     if player.Character then
         onCharacterAdded(player.Character)
@@ -1106,7 +1421,7 @@ function Teleport.init(deps)
     initUI()
     
     Teleport.loadSavedPositions()
-    print("Teleport module initialized successfully")
+    print("[SUPERTOOL] Teleport module initialized with JSON sync to: " .. TELEPORT_FOLDER_PATH)
     return true
 end
 
