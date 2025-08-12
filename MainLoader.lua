@@ -24,7 +24,10 @@ local settings = {
     FlySpeed = {value = 50, min = 10, max = 200, default = 50},
     FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
     JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
-    WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
+    WalkSpeed = {value = 16, min = 10, max = 200, default = 16},
+    -- Anti-Record Settings
+    AntiRecordIntensity = {value = 5, min = 1, max = 10, default = 5},
+    AntiRecordFlickerSpeed = {value = 0.1, min = 0.01, max = 1, default = 0.1}
 }
 
 -- ScreenGui
@@ -226,7 +229,8 @@ local moduleURLs = {
     Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Visual.lua",
     Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Utility.lua",
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Settings.lua",
-    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua"
+    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Info.lua",
+    AntiRecord = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/AntiRecord.lua"
 }
 
 local function loadModule(moduleName)
@@ -286,7 +290,8 @@ local dependencies = {
     buttonStates = buttonStates,
     player = player,
     disableActiveFeature = disableActiveFeature,
-    isExclusiveFeature = isExclusiveFeature
+    isExclusiveFeature = isExclusiveFeature,
+    modules = modules -- Add modules to dependencies so Settings can access AntiRecord
 }
 
 -- Initialize modules
@@ -631,13 +636,13 @@ task.spawn(function()
     local timeout = 15
     local startTime = tick()
     
-    -- Wait for critical modules to load
-    while (not modules.Movement or not modules.Player or not modules.Teleport) and tick() - startTime < timeout do
+    -- Wait for critical modules to load (including AntiRecord)
+    while (not modules.Movement or not modules.Player or not modules.Teleport or not modules.AntiRecord) and tick() - startTime < timeout do
         task.wait(0.1)
     end
 
     -- Check if modules loaded successfully
-    for _, moduleName in ipairs({"Movement", "Player", "Teleport"}) do
+    for _, moduleName in ipairs({"Movement", "Player", "Teleport", "AntiRecord"}) do
         if not modules[moduleName] then
             warn("Failed to load " .. moduleName .. " module after timeout!")
         else
