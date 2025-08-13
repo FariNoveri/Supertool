@@ -1,0 +1,47 @@
+local InfiniteJump = {}
+local Players, UserInputService, humanoid, connections
+InfiniteJump.enabled = false
+
+local function refreshReferences()
+    if not Players or not Players.LocalPlayer or not Players.LocalPlayer.Character then 
+        return false 
+    end
+    humanoid = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    return humanoid ~= nil
+end
+
+function InfiniteJump.init(deps)
+    Players = deps.Players
+    UserInputService = deps.UserInputService
+    connections = deps.connections
+    humanoid = deps.humanoid
+end
+
+function InfiniteJump.toggle(enabled)
+    InfiniteJump.enabled = enabled
+    if connections.infiniteJump then
+        connections.infiniteJump:Disconnect()
+        connections.infiniteJump = nil
+    end
+    if enabled then
+        connections.infiniteJump = UserInputService.JumpRequest:Connect(function()
+            if not InfiniteJump.enabled then return end
+            if not refreshReferences() then return end
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end)
+    end
+end
+
+function InfiniteJump.reset()
+    InfiniteJump.enabled = false
+    if connections.infiniteJump then
+        connections.infiniteJump:Disconnect()
+        connections.infiniteJump = nil
+    end
+end
+
+function InfiniteJump.debug()
+    print("InfiniteJump: enabled =", InfiniteJump.enabled)
+end
+
+return InfiniteJump
