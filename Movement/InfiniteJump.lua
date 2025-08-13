@@ -19,6 +19,13 @@ end
 
 function InfiniteJump.toggle(enabled)
     InfiniteJump.enabled = enabled
+    
+    -- Add nil check for connections
+    if not connections then
+        print("Warning: InfiniteJump.toggle() called before InfiniteJump.init(). Connections table is nil.")
+        return
+    end
+    
     if connections.infiniteJump then
         connections.infiniteJump:Disconnect()
         connections.infiniteJump = nil
@@ -38,7 +45,9 @@ end
 
 function InfiniteJump.reset()
     InfiniteJump.enabled = false
-    if connections.infiniteJump then
+    
+    -- Add nil check for connections
+    if connections and connections.infiniteJump then
         connections.infiniteJump:Disconnect()
         connections.infiniteJump = nil
     end

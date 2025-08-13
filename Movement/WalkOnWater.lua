@@ -22,6 +22,13 @@ end
 
 function WalkOnWater.toggle(enabled)
     WalkOnWater.enabled = enabled
+    
+    -- Add nil check for connections
+    if not connections then
+        print("Warning: WalkOnWater.toggle() called before WalkOnWater.init(). Connections table is nil.")
+        return
+    end
+    
     if connections.walkOnWater then
         connections.walkOnWater:Disconnect()
         connections.walkOnWater = nil
@@ -58,7 +65,9 @@ end
 
 function WalkOnWater.reset()
     WalkOnWater.enabled = false
-    if connections.walkOnWater then
+    
+    -- Add nil check for connections
+    if connections and connections.walkOnWater then
         connections.walkOnWater:Disconnect()
         connections.walkOnWater = nil
     end

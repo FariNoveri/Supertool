@@ -22,6 +22,13 @@ end
 
 function SpeedHack.toggle(enabled)
     SpeedHack.enabled = enabled
+    
+    -- Add nil check for settings
+    if not settings then
+        print("Warning: SpeedHack.toggle() called before SpeedHack.init(). Settings table is nil.")
+        return
+    end
+    
     if enabled then
         local function applySpeed()
             if refreshReferences() and humanoid then

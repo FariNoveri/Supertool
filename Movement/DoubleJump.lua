@@ -21,6 +21,13 @@ end
 
 function DoubleJump.toggle(enabled)
     DoubleJump.enabled = enabled
+    
+    -- Add nil check for connections
+    if not connections then
+        print("Warning: DoubleJump.toggle() called before DoubleJump.init(). Connections table is nil.")
+        return
+    end
+    
     if connections.doubleJump then
         connections.doubleJump:Disconnect()
         connections.doubleJump = nil
@@ -48,7 +55,9 @@ end
 function DoubleJump.reset()
     DoubleJump.enabled = false
     DoubleJump.jumpCount = 0
-    if connections.doubleJump then
+    
+    -- Add nil check for connections
+    if connections and connections.doubleJump then
         connections.doubleJump:Disconnect()
         connections.doubleJump = nil
     end

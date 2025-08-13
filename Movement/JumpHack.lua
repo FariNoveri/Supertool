@@ -27,6 +27,13 @@ end
 
 function JumpHack.toggle(enabled)
     JumpHack.enabled = enabled
+    
+    -- Add nil check for settings
+    if not settings then
+        print("Warning: JumpHack.toggle() called before JumpHack.init(). Settings table is nil.")
+        return
+    end
+    
     if enabled then
         local function applyJump()
             if refreshReferences() and humanoid then

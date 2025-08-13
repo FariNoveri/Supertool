@@ -10,12 +10,17 @@ end
 
 function MoonGravity.toggle(enabled)
     MoonGravity.enabled = enabled
-    if Workspace then
-        if enabled then
-            Workspace.Gravity = MoonGravity.defaultGravity / 6
-        else
-            Workspace.Gravity = MoonGravity.defaultGravity
-        end
+    
+    -- Add nil check for Workspace
+    if not Workspace then
+        print("Warning: MoonGravity.toggle() called before MoonGravity.init(). Workspace is nil.")
+        return
+    end
+    
+    if enabled then
+        Workspace.Gravity = MoonGravity.defaultGravity / 6
+    else
+        Workspace.Gravity = MoonGravity.defaultGravity
     end
 end
 

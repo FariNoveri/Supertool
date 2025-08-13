@@ -21,6 +21,13 @@ end
 
 function SuperSwim.toggle(enabled)
     SuperSwim.enabled = enabled
+    
+    -- Add nil check for Players (though this module doesn't have the same issue as others)
+    if not Players then
+        print("Warning: SuperSwim.toggle() called before SuperSwim.init(). Players is nil.")
+        return
+    end
+    
     local function applySwim()
         if refreshReferences() and humanoid then
             if enabled then

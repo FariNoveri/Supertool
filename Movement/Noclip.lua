@@ -17,6 +17,13 @@ end
 
 function NoClip.toggle(enabled)
     NoClip.enabled = enabled
+    
+    -- Add nil check for connections
+    if not connections then
+        print("Warning: NoClip.toggle() called before NoClip.init(). Connections table is nil.")
+        return
+    end
+    
     if connections.noclip then
         connections.noclip:Disconnect()
         connections.noclip = nil
@@ -48,10 +55,13 @@ end
 
 function NoClip.reset()
     NoClip.enabled = false
-    if connections.noclip then
+    
+    -- Add nil check for connections
+    if connections and connections.noclip then
         connections.noclip:Disconnect()
         connections.noclip = nil
     end
+    
     if refreshReferences() then
         for _, part in pairs(Players.LocalPlayer.Character:GetChildren()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then

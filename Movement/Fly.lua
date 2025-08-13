@@ -62,6 +62,13 @@ end
 
 function Fly.toggle(enabled)
     Fly.enabled = enabled
+    
+    -- Add nil check for connections
+    if not connections then
+        print("Warning: Fly.toggle() called before Fly.init(). Connections table is nil.")
+        return
+    end
+    
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
     for _, connName in ipairs(flyConnections) do
         if connections[connName] then
@@ -166,13 +173,18 @@ end
 
 function Fly.reset()
     Fly.enabled = false
-    local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
-    for _, connName in ipairs(flyConnections) do
-        if connections[connName] then
-            connections[connName]:Disconnect()
-            connections[connName] = nil
+    
+    -- Add nil check for connections
+    if connections then
+        local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
+        for _, connName in ipairs(flyConnections) do
+            if connections[connName] then
+                connections[connName]:Disconnect()
+                connections[connName] = nil
+            end
         end
     end
+    
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil

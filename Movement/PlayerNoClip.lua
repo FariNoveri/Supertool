@@ -17,6 +17,13 @@ end
 
 function PlayerNoClip.toggle(enabled)
     PlayerNoClip.enabled = enabled
+    
+    -- Add nil check for connections
+    if not connections then
+        print("Warning: PlayerNoClip.toggle() called before PlayerNoClip.init(). Connections table is nil.")
+        return
+    end
+    
     if connections.playerNoclip then
         connections.playerNoclip:Disconnect()
         connections.playerNoclip = nil
@@ -56,10 +63,13 @@ end
 
 function PlayerNoClip.reset()
     PlayerNoClip.enabled = false
-    if connections.playerNoclip then
+    
+    -- Add nil check for connections
+    if connections and connections.playerNoclip then
         connections.playerNoclip:Disconnect()
         connections.playerNoclip = nil
     end
+    
     if refreshReferences() then
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then

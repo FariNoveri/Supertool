@@ -11,6 +11,7 @@ local function createMobileControls()
     if flyJoystickFrame then flyJoystickFrame:Destroy() end
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
+    
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
     flyJoystickFrame.Size = UDim2.new(0, 100, 0, 100)
@@ -21,9 +22,11 @@ local function createMobileControls()
     flyJoystickFrame.Visible = false
     flyJoystickFrame.ZIndex = 10
     flyJoystickFrame.Parent = ScreenGui
+    
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0.5, 0)
     corner.Parent = flyJoystickFrame
+    
     flyJoystickKnob = Instance.new("Frame")
     flyJoystickKnob.Name = "Knob"
     flyJoystickKnob.Size = UDim2.new(0, 40, 0, 40)
@@ -33,13 +36,15 @@ local function createMobileControls()
     flyJoystickKnob.BorderSizePixel = 0
     flyJoystickKnob.ZIndex = 11
     flyJoystickKnob.Parent = flyJoystickFrame
+    
     local knobCorner = Instance.new("UICorner")
     knobCorner.CornerRadius = UDim.new(0.5, 0)
     knobCorner.Parent = flyJoystickKnob
+    
     flyUpButton = Instance.new("TextButton")
     flyUpButton.Name = "FlyUpButton"
     flyUpButton.Size = UDim2.new(0, 50, 0, 50)
-    flyUpButton.Position = UDim2.new(1, -70, 1,,导致200)
+    flyUpButton.Position = UDim2.new(1, -70, 1, -200) -- FIXED: removed the syntax error
     flyUpButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     flyUpButton.BackgroundTransparency = 0.3
     flyUpButton.BorderSizePixel = 0
@@ -50,9 +55,11 @@ local function createMobileControls()
     flyUpButton.Visible = false
     flyUpButton.ZIndex = 10
     flyUpButton.Parent = ScreenGui
+    
     local upCorner = Instance.new("UICorner")
     upCorner.CornerRadius = UDim.new(0.3, 0)
     upCorner.Parent = flyUpButton
+    
     flyDownButton = Instance.new("TextButton")
     flyDownButton.Name = "FlyDownButton"
     flyDownButton.Size = UDim2.new(0, 50, 0, 50)
@@ -67,9 +74,11 @@ local function createMobileControls()
     flyDownButton.Visible = false
     flyDownButton.ZIndex = 10
     flyDownButton.Parent = ScreenGui
+    
     local downCorner = Instance.new("UICorner")
     downCorner.CornerRadius = UDim.new(0.3, 0)
     downCorner.Parent = flyDownButton
+    
     if Fly then
         Fly.setControls(flyJoystickFrame, flyJoystickKnob, flyUpButton, flyDownButton)
     end
@@ -82,7 +91,9 @@ end
 function MobileControls.reset()
     if flyJoystickFrame then
         flyJoystickFrame.Visible = false
-        flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+        if flyJoystickKnob then
+            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+        end
     end
     if flyUpButton then
         flyUpButton.Visible = false
