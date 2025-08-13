@@ -22,7 +22,7 @@ end
 function SuperSwim.toggle(enabled)
     SuperSwim.enabled = enabled
     local function applySwim()
-        if refreshReferences() then
+        if refreshReferences() and humanoid then
             if enabled then
                 pcall(function()
                     humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
@@ -44,9 +44,13 @@ function SuperSwim.toggle(enabled)
     end
 end
 
+function SuperSwim.updateReferences(newHumanoid, newRootPart)
+    humanoid = newHumanoid
+end
+
 function SuperSwim.reset()
     SuperSwim.enabled = false
-    if refreshReferences() then
+    if refreshReferences() and humanoid then
         pcall(function()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
             humanoid.WalkSpeed = SuperSwim.defaultWalkSpeed
@@ -55,7 +59,7 @@ function SuperSwim.reset()
 end
 
 function SuperSwim.debug()
-    print("SuperSwim: enabled =", SuperSwim.enabled, "defaultWalkSpeed =", SuperSwim.defaultWalkSpeed)
+    print("SuperSwim: enabled =", SuperSwim.enabled, "defaultWalkSpeed =", SuperSwim.defaultWalkSpeed, "humanoid =", humanoid ~= nil)
 end
 
 return SuperSwim

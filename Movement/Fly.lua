@@ -75,7 +75,7 @@ function Fly.toggle(enabled)
     end
     if enabled then
         task.wait(0.1)
-        if not refreshReferences() then
+        if not refreshReferences() or not rootPart then
             Fly.enabled = false
             return
         end
@@ -88,7 +88,7 @@ function Fly.toggle(enabled)
         if flyDownButton then flyDownButton.Visible = true end
         connections.fly = RunService.Heartbeat:Connect(function()
             if not Fly.enabled then return end
-            if not refreshReferences() then return end
+            if not refreshReferences() or not rootPart then return end
             if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                 if flyBodyVelocity then flyBodyVelocity:Destroy() end
                 flyBodyVelocity = Instance.new("BodyVelocity")
@@ -196,7 +196,7 @@ function Fly.reset()
 end
 
 function Fly.debug()
-    print("Fly: enabled =", Fly.enabled, "flyBodyVelocity =", flyBodyVelocity ~= nil, "joystickDelta =", joystickDelta, "flyVerticalInput =", flyVerticalInput)
+    print("Fly: enabled =", Fly.enabled, "flyBodyVelocity =", flyBodyVelocity ~= nil, "joystickDelta =", joystickDelta, "flyVerticalInput =", flyVerticalInput, "humanoid =", humanoid ~= nil, "rootPart =", rootPart ~= nil)
 end
 
 function Fly.setControls(joystickFrame, joystickKnob, upButton, downButton)

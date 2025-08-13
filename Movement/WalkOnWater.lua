@@ -29,7 +29,7 @@ function WalkOnWater.toggle(enabled)
     if enabled then
         connections.walkOnWater = RunService.Heartbeat:Connect(function()
             if not WalkOnWater.enabled then return end
-            if not refreshReferences() then return end
+            if not refreshReferences() or not rootPart then return end
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {Players.LocalPlayer.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
@@ -65,7 +65,7 @@ function WalkOnWater.reset()
 end
 
 function WalkOnWater.debug()
-    print("WalkOnWater: enabled =", WalkOnWater.enabled)
+    print("WalkOnWater: enabled =", WalkOnWater.enabled, "humanoid =", humanoid ~= nil, "rootPart =", rootPart ~= nil)
 end
 
 return WalkOnWater

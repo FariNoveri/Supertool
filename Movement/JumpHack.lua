@@ -29,7 +29,7 @@ function JumpHack.toggle(enabled)
     JumpHack.enabled = enabled
     if enabled then
         local function applyJump()
-            if refreshReferences() then
+            if refreshReferences() and humanoid then
                 if humanoid:FindFirstChild("JumpHeight") then
                     humanoid.JumpHeight = settings.JumpHeight and settings.JumpHeight.value or 50
                 else
@@ -44,7 +44,7 @@ function JumpHack.toggle(enabled)
             applyJump()
         end
     else
-        if refreshReferences() then
+        if refreshReferences() and humanoid then
             if humanoid:FindFirstChild("JumpHeight") then
                 humanoid.JumpHeight = JumpHack.defaultJumpHeight
             else
@@ -54,9 +54,13 @@ function JumpHack.toggle(enabled)
     end
 end
 
+function JumpHack.updateReferences(newHumanoid, newRootPart)
+    humanoid = newHumanoid
+end
+
 function JumpHack.reset()
     JumpHack.enabled = false
-    if refreshReferences() then
+    if refreshReferences() and humanoid then
         if humanoid:FindFirstChild("JumpHeight") then
             humanoid.JumpHeight = JumpHack.defaultJumpHeight
         else
@@ -66,7 +70,7 @@ function JumpHack.reset()
 end
 
 function JumpHack.debug()
-    print("JumpHack: enabled =", JumpHack.enabled, "defaultJumpPower =", JumpHack.defaultJumpPower, "defaultJumpHeight =", JumpHack.defaultJumpHeight)
+    print("JumpHack: enabled =", JumpHack.enabled, "defaultJumpPower =", JumpHack.defaultJumpPower, "defaultJumpHeight =", JumpHack.defaultJumpHeight, "humanoid =", humanoid ~= nil)
 end
 
 return JumpHack

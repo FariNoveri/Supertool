@@ -1,5 +1,5 @@
 local NoClip = {}
-local Players, RunService, humanoid, connections
+local Players, RunService, connections
 NoClip.enabled = false
 
 local function refreshReferences()
@@ -13,7 +13,6 @@ function NoClip.init(deps)
     Players = deps.Players
     RunService = deps.RunService
     connections = deps.connections
-    humanoid = deps.humanoid
 end
 
 function NoClip.toggle(enabled)
@@ -41,6 +40,10 @@ function NoClip.toggle(enabled)
             end
         end
     end
+end
+
+function NoClip.updateReferences(newHumanoid, newRootPart)
+    -- No references to update
 end
 
 function NoClip.reset()

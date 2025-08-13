@@ -28,7 +28,7 @@ function DoubleJump.toggle(enabled)
     if enabled then
         connections.doubleJump = UserInputService.JumpRequest:Connect(function()
             if not DoubleJump.enabled then return end
-            if not refreshReferences() then return end
+            if not refreshReferences() or not humanoid then return end
             if humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
                 DoubleJump.jumpCount = 0
             elseif DoubleJump.jumpCount < DoubleJump.maxJumps then
@@ -41,6 +41,10 @@ function DoubleJump.toggle(enabled)
     end
 end
 
+function DoubleJump.updateReferences(newHumanoid, newRootPart)
+    humanoid = newHumanoid
+end
+
 function DoubleJump.reset()
     DoubleJump.enabled = false
     DoubleJump.jumpCount = 0
@@ -51,7 +55,7 @@ function DoubleJump.reset()
 end
 
 function DoubleJump.debug()
-    print("DoubleJump: enabled =", DoubleJump.enabled, "jumpCount =", DoubleJump.jumpCount, "maxJumps =", DoubleJump.maxJumps)
+    print("DoubleJump: enabled =", DoubleJump.enabled, "jumpCount =", DoubleJump.jumpCount, "maxJumps =", DoubleJump.maxJumps, "humanoid =", humanoid ~= nil)
 end
 
 return DoubleJump

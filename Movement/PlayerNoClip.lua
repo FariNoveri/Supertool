@@ -36,16 +36,22 @@ function PlayerNoClip.toggle(enabled)
             end
         end)
     else
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
-                for _, part in pairs(otherPlayer.Character:GetChildren()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                        part.CanCollide = true
+        if refreshReferences() then
+            for _, otherPlayer in pairs(Players:GetPlayers()) do
+                if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
+                    for _, part in pairs(otherPlayer.Character:GetChildren()) do
+                        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                            part.CanCollide = true
+                        end
                     end
                 end
             end
         end
     end
+end
+
+function PlayerNoClip.updateReferences(newHumanoid, newRootPart)
+    -- No references to update
 end
 
 function PlayerNoClip.reset()
@@ -54,11 +60,13 @@ function PlayerNoClip.reset()
         connections.playerNoclip:Disconnect()
         connections.playerNoclip = nil
     end
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
-            for _, part in pairs(otherPlayer.Character:GetChildren()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.CanCollide = true
+    if refreshReferences() then
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= Players.LocalPlayer and otherPlayer.Character then
+                for _, part in pairs(otherPlayer.Character:GetChildren()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        part.CanCollide = true
+                    end
                 end
             end
         end

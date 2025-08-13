@@ -24,7 +24,7 @@ function SpeedHack.toggle(enabled)
     SpeedHack.enabled = enabled
     if enabled then
         local function applySpeed()
-            if refreshReferences() then
+            if refreshReferences() and humanoid then
                 humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 50
                 return true
             end
@@ -35,21 +35,25 @@ function SpeedHack.toggle(enabled)
             applySpeed()
         end
     else
-        if refreshReferences() then
+        if refreshReferences() and humanoid then
             humanoid.WalkSpeed = SpeedHack.defaultWalkSpeed
         end
     end
 end
 
+function SpeedHack.updateReferences(newHumanoid, newRootPart)
+    humanoid = newHumanoid
+end
+
 function SpeedHack.reset()
     SpeedHack.enabled = false
-    if refreshReferences() then
+    if refreshReferences() and humanoid then
         humanoid.WalkSpeed = SpeedHack.defaultWalkSpeed
     end
 end
 
 function SpeedHack.debug()
-    print("SpeedHack: enabled =", SpeedHack.enabled, "defaultWalkSpeed =", SpeedHack.defaultWalkSpeed)
+    print("SpeedHack: enabled =", SpeedHack.enabled, "defaultWalkSpeed =", SpeedHack.defaultWalkSpeed, "humanoid =", humanoid ~= nil)
 end
 
 return SpeedHack

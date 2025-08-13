@@ -26,10 +26,14 @@ function InfiniteJump.toggle(enabled)
     if enabled then
         connections.infiniteJump = UserInputService.JumpRequest:Connect(function()
             if not InfiniteJump.enabled then return end
-            if not refreshReferences() then return end
+            if not refreshReferences() or not humanoid then return end
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
         end)
     end
+end
+
+function InfiniteJump.updateReferences(newHumanoid, newRootPart)
+    humanoid = newHumanoid
 end
 
 function InfiniteJump.reset()
@@ -41,7 +45,7 @@ function InfiniteJump.reset()
 end
 
 function InfiniteJump.debug()
-    print("InfiniteJump: enabled =", InfiniteJump.enabled)
+    print("InfiniteJump: enabled =", InfiniteJump.enabled, "humanoid =", humanoid ~= nil)
 end
 
 return InfiniteJump

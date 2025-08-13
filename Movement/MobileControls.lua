@@ -39,7 +39,7 @@ local function createMobileControls()
     flyUpButton = Instance.new("TextButton")
     flyUpButton.Name = "FlyUpButton"
     flyUpButton.Size = UDim2.new(0, 50, 0, 50)
-    flyUpButton.Position = UDim2.new(1, -70, 1, -200)
+    flyUpButton.Position = UDim2.new(1, -70, 1,,导致200)
     flyUpButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     flyUpButton.BackgroundTransparency = 0.3
     flyUpButton.BorderSizePixel = 0

@@ -55,7 +55,7 @@ function WallClimb.toggle(enabled)
         wallClimbButton.Visible = true
         connections.wallClimb = RunService.Heartbeat:Connect(function()
             if not WallClimb.enabled then return end
-            if not refreshReferences() then return end
+            if not refreshReferences() or not humanoid or not rootPart then return end
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {Players.LocalPlayer.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
@@ -119,7 +119,7 @@ function WallClimb.cleanup()
 end
 
 function WallClimb.debug()
-    print("WallClimb: enabled =", WallClimb.enabled, "wallClimbButton =", wallClimbButton ~= nil)
+    print("WallClimb: enabled =", WallClimb.enabled, "wallClimbButton =", wallClimbButton ~= nil, "humanoid =", humanoid ~= nil, "rootPart =", rootPart ~= nil)
 end
 
 return WallClimb

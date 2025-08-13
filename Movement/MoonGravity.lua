@@ -10,11 +10,17 @@ end
 
 function MoonGravity.toggle(enabled)
     MoonGravity.enabled = enabled
-    if enabled then
-        Workspace.Gravity = MoonGravity.defaultGravity / 6
-    else
-        Workspace.Gravity = MoonGravity.defaultGravity
+    if Workspace then
+        if enabled then
+            Workspace.Gravity = MoonGravity.defaultGravity / 6
+        else
+            Workspace.Gravity = MoonGravity.defaultGravity
+        end
     end
+end
+
+function MoonGravity.updateReferences(newHumanoid, newRootPart)
+    -- No references to update
 end
 
 function MoonGravity.reset()
@@ -25,7 +31,7 @@ function MoonGravity.reset()
 end
 
 function MoonGravity.debug()
-    print("MoonGravity: enabled =", MoonGravity.enabled, "defaultGravity =", MoonGravity.defaultGravity)
+    print("MoonGravity: enabled =", MoonGravity.enabled, "defaultGravity =", MoonGravity.defaultGravity, "Workspace =", Workspace ~= nil)
 end
 
 return MoonGravity
