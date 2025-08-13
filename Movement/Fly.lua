@@ -7,6 +7,7 @@ local joystickDelta = Vector2.new(0, 0)
 local flyVerticalInput = 0
 local isTouchingJoystick = false
 local joystickTouchId = nil
+local initialized = false -- Add initialization flag
 
 local function refreshReferences()
     if not Players or not Players.LocalPlayer or not Players.LocalPlayer.Character then 
@@ -58,16 +59,27 @@ function Fly.init(deps)
     settings = deps.settings
     humanoid = deps.humanoid
     rootPart = deps.rootPart
+    initialized = true -- Set initialization flag
+    print("Fly module initialized successfully")
+end
+
+function Fly.isInitialized()
+    return initialized
 end
 
 function Fly.toggle(enabled)
-    Fly.enabled = enabled
-    
-    -- Add nil check for connections
-    if not connections then
-        print("Warning: Fly.toggle() called before Fly.init(). Connections table is nil.")
-        return
+    -- Check if module is properly initialized
+    if not initialized then
+        warn("Fly.toggle() called before Fly.init(). Please initialize the module first.")
+        return false
     end
+    
+    if not connections then
+        warn("Fly module not properly initialized - connections table is nil.")
+        return false
+    end
+    
+    Fly.enabled = enabled
     
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
     for _, connName in ipairs(flyConnections) do
@@ -84,7 +96,8 @@ function Fly.toggle(enabled)
         task.wait(0.1)
         if not refreshReferences() or not rootPart then
             Fly.enabled = false
-            return
+            warn("Failed to refresh character references for fly mode")
+            return false
         end
         flyBodyVelocity = Instance.new("BodyVelocity")
         flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
@@ -146,6 +159,7 @@ function Fly.toggle(enabled)
                 flyDownButton.BackgroundTransparency = 0.3
             end)
         end
+        print("Fly mode enabled successfully")
     else
         if flyJoystickFrame then 
             flyJoystickFrame.Visible = false
@@ -163,7 +177,10 @@ function Fly.toggle(enabled)
         joystickDelta = Vector2.new(0, 0)
         isTouchingJoystick = false
         joystickTouchId = nil
+        print("Fly mode disabled")
     end
+    
+    return true -- Return success status
 end
 
 function Fly.updateReferences(newHumanoid, newRootPart)
@@ -205,10 +222,19 @@ function Fly.reset()
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
+    print("Fly module reset")
 end
 
 function Fly.debug()
-    print("Fly: enabled =", Fly.enabled, "flyBodyVelocity =", flyBodyVelocity ~= nil, "joystickDelta =", joystickDelta, "flyVerticalInput =", flyVerticalInput, "humanoid =", humanoid ~= nil, "rootPart =", rootPart ~= nil)
+    print("Fly Debug Info:")
+    print("  Initialized:", initialized)
+    print("  Enabled:", Fly.enabled)
+    print("  BodyVelocity exists:", flyBodyVelocity ~= nil)
+    print("  Joystick delta:", joystickDelta)
+    print("  Vertical input:", flyVerticalInput)
+    print("  Humanoid exists:", humanoid ~= nil)
+    print("  RootPart exists:", rootPart ~= nil)
+    print("  Connections table exists:", connections ~= nil)
 end
 
 function Fly.setControls(joystickFrame, joystickKnob, upButton, downButton)
@@ -216,6 +242,7 @@ function Fly.setControls(joystickFrame, joystickKnob, upButton, downButton)
     flyJoystickKnob = joystickKnob
     flyUpButton = upButton
     flyDownButton = downButton
+    print("Fly controls set successfully")
 end
 
 return Fly
