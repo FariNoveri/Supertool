@@ -7,8 +7,9 @@ Movement.features = {}
 
 -- Load feature from URL
 local function loadFeature(url)
-    local success, feature = pcall(loadstring, game:HttpGet(url))
-    if success then
+    local success, featureFunc = pcall(loadstring, game:HttpGet(url))
+    if success and featureFunc then
+        local feature = featureFunc() -- Execute the function to get the feature table
         return feature
     else
         warn("Failed to load feature from " .. url)
@@ -64,7 +65,12 @@ function Movement.init(deps)
     }
 
     for name, url in pairs(featureUrls) do
-        Movement.features[name] = loadFeature(url)
+        local feature = loadFeature(url)
+        Movement.features[name] = feature
+        if name == "Fly" and feature then
+            -- Set禁止
+            Movement.features["MobileControlls"]:setFlyModule(feature)
+        end
     end
 
     -- Initialize features
