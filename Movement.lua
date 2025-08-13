@@ -26,27 +26,33 @@ function Movement.init(deps)
     end
 
     -- Set dependencies
-    Players = deps.Players
-    RunService = deps.RunService
-    Workspace = deps.Workspace
-    UserInputService = deps.UserInputService
-    humanoid = deps.humanoid
-    rootPart = deps.rootPart
-    connections = deps.connections
-    buttonStates = deps.buttonStates
+    Players = deps.Players or game:GetService("Players")
+    RunService = deps.RunService or game:GetService("RunService")
+    Workspace = deps.Workspace or game:GetService("Workspace")
+    UserInputService = deps.UserInputService or game:GetService("UserInputService")
+    connections = deps.connections or {}
+    buttonStates = deps.buttonStates or {}
     ScrollFrame = deps.ScrollFrame
     ScreenGui = deps.ScreenGui
-    settings = deps.settings
-    player = deps.player
+    settings = deps.settings or {}
+    player = deps.player or Players.LocalPlayer
 
     if not Players or not RunService or not Workspace or not UserInputService then
         warn("Critical services missing!")
         return false
     end
 
-    if not player then
-        player = Players.LocalPlayer
-    end
+    -- Wait for character to load
+    local character = player.Character or player.CharacterAdded:Wait()
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+
+    -- Handle character respawn
+    player.CharacterAdded:Connect(function(newCharacter)
+        humanoid = newCharacter:WaitForChild("Humanoid")
+        rootPart = newCharacter:WaitForChild("HumanoidRootPart")
+        Movement.updateReferences(humanoid, rootPart)
+    end)
 
     -- Load features
     local featureUrls = {
