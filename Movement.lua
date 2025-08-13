@@ -68,8 +68,7 @@ function Movement.init(deps)
         local feature = loadFeature(url)
         Movement.features[name] = feature
         if name == "Fly" and feature then
-            -- Set禁止
-            Movement.features["MobileControlls"]:setFlyModule(feature)
+            Movement.features["MobileControls"]:setFlyModule(feature)
         end
     end
 

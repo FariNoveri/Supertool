@@ -1,248 +1,87 @@
+local UserInputService, humanoid, rootPart, settings
 local Fly = {}
-local Players, RunService, Workspace, UserInputService, humanoid, rootPart, connections, ScreenGui, settings
-Fly.enabled = false
-local flyBodyVelocity, flyJoystickFrame, flyJoystickKnob, flyUpButton, flyDownButton
-local flySpeed = 50
-local joystickDelta = Vector2.new(0, 0)
-local flyVerticalInput = 0
-local isTouchingJoystick = false
-local joystickTouchId = nil
-local initialized = false -- Add initialization flag
+local flying = false
+local speed = 50
+local bodyVelocity = nil
+local bodyGyro = nil
 
-local function refreshReferences()
-    if not Players or not Players.LocalPlayer or not Players.LocalPlayer.Character then 
-        return false 
-    end
-    humanoid = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    rootPart = Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    return humanoid ~= nil and rootPart ~= nil
-end
-
-local function handleFlyJoystick(input, gameProcessed)
-    if not Fly.enabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
-        return 
-    end
-    if input.UserInputType == Enum.UserInputType.Touch then
-        local joystickCenter = flyJoystickFrame.AbsolutePosition + flyJoystickFrame.AbsoluteSize * 0.5
-        local inputPos = Vector2.new(input.Position.X, input.Position.Y)
-        local distanceFromCenter = (inputPos - joystickCenter).Magnitude
-        if input.UserInputState == Enum.UserInputState.Begin then
-            if distanceFromCenter <= 50 and not isTouchingJoystick then
-                isTouchingJoystick = true
-                joystickTouchId = input
-            end
-        elseif input.UserInputState == Enum.UserInputState.Change and isTouchingJoystick and input == joystickTouchId then
-            local delta = inputPos - joystickCenter
-            local magnitude = delta.Magnitude
-            local maxRadius = 30
-            if magnitude > maxRadius then
-                delta = delta * (maxRadius / magnitude)
-            end
-            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
-            joystickDelta = delta / maxRadius
-        elseif input.UserInputState == Enum.UserInputState.End and input == joystickTouchId then
-            isTouchingJoystick = false
-            joystickTouchId = nil
-            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-            joystickDelta = Vector2.new(0, 0)
-        end
-    end
-end
-
+-- Initialize fly feature
 function Fly.init(deps)
-    Players = deps.Players
-    RunService = deps.RunService
-    Workspace = deps.Workspace
     UserInputService = deps.UserInputService
-    connections = deps.connections
-    ScreenGui = deps.ScreenGui
-    settings = deps.settings
     humanoid = deps.humanoid
     rootPart = deps.rootPart
-    initialized = true -- Set initialization flag
-    print("Fly module initialized successfully")
+    settings = deps.settings
 end
 
-function Fly.isInitialized()
-    return initialized
+-- Start flying
+local function startFlying()
+    flying = true
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bodyVelocity.Parent = rootPart
+    
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bodyGyro.CFrame = rootPart.CFrame
+    bodyGyro.Parent = rootPart
+    
+    humanoid.PlatformStand = true
 end
 
-function Fly.toggle(enabled)
-    -- Check if module is properly initialized
-    if not initialized then
-        warn("Fly.toggle() called before Fly.init(). Please initialize the module first.")
-        return false
-    end
-    
-    if not connections then
-        warn("Fly module not properly initialized - connections table is nil.")
-        return false
-    end
-    
-    Fly.enabled = enabled
-    
-    local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
-    for _, connName in ipairs(flyConnections) do
-        if connections[connName] then
-            connections[connName]:Disconnect()
-            connections[connName] = nil
-        end
-    end
-    if flyBodyVelocity then
-        flyBodyVelocity:Destroy()
-        flyBodyVelocity = nil
-    end
-    if enabled then
-        task.wait(0.1)
-        if not refreshReferences() or not rootPart then
-            Fly.enabled = false
-            warn("Failed to refresh character references for fly mode")
-            return false
-        end
-        flyBodyVelocity = Instance.new("BodyVelocity")
-        flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-        flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        flyBodyVelocity.Parent = rootPart
-        if flyJoystickFrame then flyJoystickFrame.Visible = true end
-        if flyUpButton then flyUpButton.Visible = true end
-        if flyDownButton then flyDownButton.Visible = true end
-        connections.fly = RunService.Heartbeat:Connect(function()
-            if not Fly.enabled then return end
-            if not refreshReferences() or not rootPart then return end
-            if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
-                if flyBodyVelocity then flyBodyVelocity:Destroy() end
-                flyBodyVelocity = Instance.new("BodyVelocity")
-                flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                flyBodyVelocity.Parent = rootPart
-            end
-            local camera = Workspace.CurrentCamera
-            if not camera then return end
-            local flyDirection = Vector3.new(0, 0, 0)
-            flySpeed = settings.FlySpeed and settings.FlySpeed.value or 50
-            if joystickDelta.Magnitude > 0.05 then
-                local forward = camera.CFrame.LookVector
-                local right = camera.CFrame.RightVector
-                forward = Vector3.new(forward.X, 0, forward.Z).Unit
-                right = Vector3.new(right.X, 0, right.Z).Unit
-                flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
-            end
-            if flyVerticalInput ~= 0 then
-                flyDirection = flyDirection + Vector3.new(0, flyVerticalInput, 0)
-            end
-            if flyDirection.Magnitude > 0 then
-                flyBodyVelocity.Velocity = flyDirection.Unit * flySpeed
-            else
-                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-            end
-        end)
-        connections.flyInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
-        connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
-        connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
-        if flyUpButton then
-            connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
-                flyVerticalInput = 1
-                flyUpButton.BackgroundTransparency = 0.1
-            end)
-            connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
-                flyVerticalInput = 0
-                flyUpButton.BackgroundTransparency = 0.3
-            end)
-        end
-        if flyDownButton then
-            connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
-                flyVerticalInput = -1
-                flyDownButton.BackgroundTransparency = 0.1
-            end)
-            connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
-                flyVerticalInput = 0
-                flyDownButton.BackgroundTransparency = 0.3
-            end)
-        end
-        print("Fly mode enabled successfully")
+-- Stop flying
+local function stopFlying()
+    flying = false
+    if bodyVelocity then bodyVelocity:Destroy() end
+    if bodyGyro then bodyGyro:Destroy() end
+    humanoid.PlatformStand = false
+end
+
+-- Toggle fly feature
+function Fly.toggle(state)
+    if state then
+        startFlying()
     else
-        if flyJoystickFrame then 
-            flyJoystickFrame.Visible = false
-            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-        end
-        if flyUpButton then 
-            flyUpButton.Visible = false
-            flyUpButton.BackgroundTransparency = 0.3
-        end
-        if flyDownButton then 
-            flyDownButton.Visible = false
-            flyDownButton.BackgroundTransparency = 0.3
-        end
-        flyVerticalInput = 0
-        joystickDelta = Vector2.new(0, 0)
-        isTouchingJoystick = false
-        joystickTouchId = nil
-        print("Fly mode disabled")
+        stopFlying()
     end
-    
-    return true -- Return success status
 end
 
+-- Handle touch input for mobile
+function Fly.handleTouchInput(touch, processedByUI)
+    if flying and not processedByUI then
+        local camera = workspace.CurrentCamera
+        local direction = (camera.CFrame:PointToWorldSpace(Vector3.new(0, 0, -1)) - camera.CFrame.Position).Unit
+        local moveDirection = Vector3.new(touch.Position.X - 0.5, touch.Position.Y - 0.5, 0).Unit * speed
+        bodyVelocity.Velocity = camera.CFrame:VectorToWorldSpace(moveDirection)
+        bodyGyro.CFrame = camera.CFrame
+    end
+end
+
+-- Handle touch end
+function Fly.handleTouchEnd()
+    if flying and bodyVelocity then
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    end
+end
+
+-- Update references
 function Fly.updateReferences(newHumanoid, newRootPart)
     humanoid = newHumanoid
     rootPart = newRootPart
 end
 
+-- Reset fly state
 function Fly.reset()
-    Fly.enabled = false
-    
-    -- Add nil check for connections
-    if connections then
-        local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
-        for _, connName in ipairs(flyConnections) do
-            if connections[connName] then
-                connections[connName]:Disconnect()
-                connections[connName] = nil
-            end
-        end
-    end
-    
-    if flyBodyVelocity then
-        flyBodyVelocity:Destroy()
-        flyBodyVelocity = nil
-    end
-    if flyJoystickFrame then 
-        flyJoystickFrame.Visible = false
-        flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-    end
-    if flyUpButton then 
-        flyUpButton.Visible = false
-        flyUpButton.BackgroundTransparency = 0.3
-    end
-    if flyDownButton then 
-        flyDownButton.Visible = false
-        flyDownButton.BackgroundTransparency = 0.3
-    end
-    flyVerticalInput = 0
-    joystickDelta = Vector2.new(0, 0)
-    isTouchingJoystick = false
-    joystickTouchId = nil
-    print("Fly module reset")
+    stopFlying()
 end
 
+-- Debug
 function Fly.debug()
-    print("Fly Debug Info:")
-    print("  Initialized:", initialized)
-    print("  Enabled:", Fly.enabled)
-    print("  BodyVelocity exists:", flyBodyVelocity ~= nil)
-    print("  Joystick delta:", joystickDelta)
-    print("  Vertical input:", flyVerticalInput)
-    print("  Humanoid exists:", humanoid ~= nil)
-    print("  RootPart exists:", rootPart ~= nil)
-    print("  Connections table exists:", connections ~= nil)
+    print("Fly feature - Flying: ", flying)
 end
 
-function Fly.setControls(joystickFrame, joystickKnob, upButton, downButton)
-    flyJoystickFrame = joystickFrame
-    flyJoystickKnob = joystickKnob
-    flyUpButton = upButton
-    flyDownButton = downButton
-    print("Fly controls set successfully")
+-- Cleanup
+function Fly.cleanup()
+    stopFlying()
 end
 
 return Fly
