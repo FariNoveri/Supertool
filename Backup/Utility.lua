@@ -52,28 +52,41 @@ local function saveToJSONFile(macroName, macroData)
         local fileName = sanitizedName .. ".json"
         local filePath = MACRO_FOLDER_PATH .. fileName
         
-        -- Create JSON data with metadata
+        local jsonFrames = {}
+        for _, frame in ipairs(macroData.frames or {}) do
+            local cframeData = frame.cframe and {frame.cframe:GetComponents()} or {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1}
+            local velocityData = frame.velocity and {frame.velocity.X, frame.velocity.Y, frame.velocity.Z} or {0, 0, 0}
+            table.insert(jsonFrames, {
+                time = frame.time,
+                cframe = cframeData,
+                velocity = velocityData,
+                walkSpeed = frame.walkSpeed or 16,
+                jumpPower = frame.jumpPower or 50,
+                hipHeight = frame.hipHeight or 0,
+                state = frame.state and frame.state.Name or "Running"
+            })
+        end
+        
         local jsonData = {
             name = macroName,
             created = os.time(),
             modified = os.time(),
             version = "1.0",
-            frames = macroData.frames or {},
+            frames = jsonFrames,
             startTime = macroData.startTime or 0,
             speed = macroData.speed or 1,
-            frameCount = #(macroData.frames or {}),
-            duration = macroData.frames and #macroData.frames > 0 and macroData.frames[#macroData.frames].time or 0
+            frameCount = #jsonFrames,
+            duration = jsonFrames[#jsonFrames] and jsonFrames[#jsonFrames].time or 0
         }
         
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
-        
         print("[SUPERTOOL] Macro saved: " .. filePath)
         return true
     end)
     
     if not success then
-        warn("[SUPERTOOL] Failed to save macro to JSON: " .. tostring(error))
+        warn("[SUPERTOOL] Failed to save macro: " .. tostring(error))
         return false
     end
     return true
@@ -90,41 +103,46 @@ local function loadFromJSONFile(macroName)
             local jsonString = readfile(filePath)
             local jsonData = HttpService:JSONDecode(jsonString)
             
-            -- PERBAIKAN: Pastikan frames ada dan valid
             local frames = jsonData.frames or {}
-            
-            -- Validasi setiap frame memiliki data yang diperlukan
             local validFrames = {}
-            for i, frame in pairs(frames) do
-                if frame and frame.time and frame.cframe then
-                    -- Convert cframe dari table array ke CFrame
-                    if typeof(frame.cframe) == "table" and #frame.cframe == 12 then
-                        frame.cframe = CFrame.new(unpack(frame.cframe))
+            
+            for i, frame in ipairs(frames) do
+                if frame and frame.time then
+                    local cframe = frame.cframe
+                    if cframe == nil then
+                        warn("[SUPERTOOL] Frame " .. i .. " in macro " .. macroName .. " has null cframe, using default")
+                        cframe = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1}
+                    end
+                    if typeof(cframe) == "table" and #cframe == 12 then
+                        cframe = CFrame.new(unpack(cframe))
                     else
-                        continue -- Skip invalid cframe
+                        warn("[SUPERTOOL] Invalid cframe format in frame " .. i .. " for macro: " .. macroName)
+                        cframe = CFrame.new(0, 0, 0)
                     end
                     
-                    -- Convert velocity dari table array ke Vector3
-                    if typeof(frame.velocity) == "table" and #frame.velocity == 3 then
-                        frame.velocity = Vector3.new(unpack(frame.velocity))
+                    local velocity = frame.velocity or {0, 0, 0}
+                    if typeof(velocity) == "table" and #velocity == 3 then
+                        velocity = Vector3.new(unpack(velocity))
                     else
-                        frame.velocity = Vector3.new(0, 0, 0)
+                        velocity = Vector3.new(0, 0, 0)
                     end
                     
-                    -- Convert state dari string ke EnumItem
+                    local state = Enum.HumanoidStateType.Running
                     if typeof(frame.state) == "string" then
-                        local stateEnum = Enum.HumanoidStateType[frame.state]
-                        frame.state = stateEnum or Enum.HumanoidStateType.Running
-                    else
-                        frame.state = Enum.HumanoidStateType.Running
+                        state = Enum.HumanoidStateType[frame.state] or Enum.HumanoidStateType.Running
                     end
                     
-                    -- Set default values untuk missing properties
-                    frame.walkSpeed = tonumber(frame.walkSpeed) or 16
-                    frame.jumpPower = tonumber(frame.jumpPower) or 50
-                    frame.hipHeight = tonumber(frame.hipHeight) or 0
-                    
-                    table.insert(validFrames, frame)
+                    table.insert(validFrames, {
+                        time = frame.time,
+                        cframe = cframe,
+                        velocity = velocity,
+                        walkSpeed = tonumber(frame.walkSpeed) or 16,
+                        jumpPower = tonumber(frame.jumpPower) or 50,
+                        hipHeight = tonumber(frame.hipHeight) or 0,
+                        state = state
+                    })
+                else
+                    warn("[SUPERTOOL] Invalid frame " .. i .. " in macro: " .. macroName)
                 end
             end
             
@@ -133,7 +151,6 @@ local function loadFromJSONFile(macroName)
                 return nil
             end
             
-            -- Return macro data in expected format dengan frames yang valid
             return {
                 frames = validFrames,
                 startTime = jsonData.startTime or 0,
@@ -146,17 +163,18 @@ local function loadFromJSONFile(macroName)
                 duration = validFrames[#validFrames].time or 0
             }
         else
+            warn("[SUPERTOOL] File not found: " .. filePath)
             return nil
         end
     end)
     
     if success then
         if result then
-            print("[SUPERTOOL] Successfully loaded macro from JSON: " .. macroName .. " (" .. #(result.frames or {}) .. " frames)")
+            print("[SUPERTOOL] Loaded macro: " .. macroName .. " (" .. #result.frames .. " frames)")
         end
         return result
     else
-        warn("[SUPERTOOL] Failed to load macro from JSON: " .. tostring(result))
+        warn("[SUPERTOOL] Failed to load macro: " .. tostring(result))
         return nil
     end
 end
@@ -1874,7 +1892,7 @@ function Utility.init(deps)
     autoPlaying = false
     recordingPaused = false
     currentMacro = {}
-    savedMacros = {}
+    savedMacros = savedMacros or {} -- Hanya inisialisasi jika belum ada
     macroFrameVisible = false
     currentMacroName = nil
     lastFrameTime = 0
@@ -1900,7 +1918,6 @@ function Utility.init(deps)
     for macroName, macroData in pairs(fileSystem["Supertool/Macro"]) do
         if not savedMacros[macroName] then
             savedMacros[macroName] = macroData
-            -- Auto-sync old macros to JSON
             saveToJSONFile(macroName, macroData)
         end
     end
