@@ -1,573 +1,11 @@
--- Rename Macro
-local function renameMacro(oldName, newName)
-    if savedMacros[oldName] and newName ~= "" then
-        if renameInFileSystem(oldName, newName) then
-            if currentMacroName == oldName then
-                currentMacroName = newName
-                updateMacroStatus()
-            end
-            savedMacros[newName] = savedMacros[oldName]
-            savedMacros[oldName] = nil
-            Utility.updateMacroList()
-            print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
-        end
-    end
-end
+-- Utility-related features for MinimalHackGUI by Fari Noveri
+-- Complete version with proper module structure
 
--- Show Macro Manager
-local function showMacroManager()
-    macroFrameVisible = true
-    if not MacroFrame then
-        initMacroUI()
-    end
-    MacroFrame.Visible = true
-    Utility.updateMacroList()
-end
-
--- IMPROVED: Update Macro List UI with dynamic speed control and better status display
-function Utility.updateMacroList()
-    if not MacroScrollFrame then return end
-    
-    for _, child in pairs(MacroScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    
-    local itemCount = 0
-    
-    -- Show macro folder info
-    local infoFrame = Instance.new("Frame")
-    infoFrame.Name = "InfoFrame"
-    infoFrame.Parent = MacroScrollFrame
-    infoFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-    infoFrame.BorderSizePixel = 0
-    infoFrame.Size = UDim2.new(1, -5, 0, 25)
-    infoFrame.LayoutOrder = -1
-    
-    local infoLabel = Instance.new("TextLabel")
-    infoLabel.Parent = infoFrame
-    infoLabel.BackgroundTransparency = 1
-    infoLabel.Size = UDim2.new(1, 0, 1, 0)
-    infoLabel.Font = Enum.Font.Gotham
-    local macroCount = 0
-    for _ in pairs(savedMacros) do macroCount = macroCount + 1 end
-    infoLabel.Text = "JSON Sync: " .. MACRO_FOLDER_PATH .. " (" .. macroCount .. " macros)"
-    infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
-    infoLabel.TextSize = 7
-    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
-    for macroName, macro in pairs(savedMacros) do
-        local macroItem = Instance.new("Frame")
-        macroItem.Name = macroName .. "Item"
-        macroItem.Parent = MacroScrollFrame
-        macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        macroItem.BorderSizePixel = 0
-        macroItem.Size = UDim2.new(1, -5, 0, 110)
-        macroItem.LayoutOrder = itemCount
-        
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "NameLabel"
-        nameLabel.Parent = macroItem
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Position = UDim2.new(0, 5, 0, 5)
-        nameLabel.Size = UDim2.new(1, -10, 0, 15)
-        nameLabel.Font = Enum.Font.Gotham
-        nameLabel.Text = macroName
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextSize = 7
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        -- Show macro info with better data handling
-        local frameCount = macro.frameCount or (macro.frames and #macro.frames) or 0
-        local duration = macro.duration or (macro.frames and #macro.frames > 0 and macro.frames[#macro.frames].time) or 0
-        local speed = currentPlaybackSpeed or macro.speed or 1
-        local infoText = string.format("Frames: %d | Duration: %.1fs | Speed: %.1fx", frameCount, duration, speed)
-        
-        local macroInfoLabel = Instance.new("TextLabel")
-        macroInfoLabel.Parent = macroItem
-        macroInfoLabel.BackgroundTransparency = 1
-        macroInfoLabel.Position = UDim2.new(0, 5, 0, 20)
-        macroInfoLabel.Size = UDim2.new(1, -10, 0, 10)
-        macroInfoLabel.Font = Enum.Font.Gotham
-        macroInfoLabel.Text = infoText
-        macroInfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-        macroInfoLabel.TextSize = 6
-        macroInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local renameInput = Instance.new("TextBox")
-        renameInput.Name = "RenameInput"
-        renameInput.Parent = macroItem
-        renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        renameInput.BorderSizePixel = 0
-        renameInput.Position = UDim2.new(0, 5, 0, 35)
-        renameInput.Size = UDim2.new(1, -10, 0, 15)
-        renameInput.Font = Enum.Font.Gotham
-        renameInput.Text = ""
-        renameInput.PlaceholderText = "Enter new name..."
-        renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameInput.TextSize = 7
-        
-        local speedLabel = Instance.new("TextLabel")
-        speedLabel.Name = "SpeedLabel"
-        speedLabel.Parent = macroItem
-        speedLabel.BackgroundTransparency = 1
-        speedLabel.Position = UDim2.new(0, 5, 0, 55)
-        speedLabel.Size = UDim2.new(0, 50, 0, 15)
-        speedLabel.Font = Enum.Font.Gotham
-        speedLabel.Text = "Speed:"
-        speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        speedLabel.TextSize = 7
-        speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local speedInput = Instance.new("TextBox")
-        speedInput.Name = "SpeedInput"
-        speedInput.Parent = macroItem
-        speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        speedInput.BorderSizePixel = 0
-        speedInput.Position = UDim2.new(0, 60, 0, 55)
-        speedInput.Size = UDim2.new(0, 40, 0, 15)
-        speedInput.Font = Enum.Font.Gotham
-        speedInput.Text = tostring(speed)
-        speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        speedInput.TextSize = 7
-        speedInput.TextXAlignment = Enum.TextXAlignment.Center
-        
-        -- NEW: Real-time speed update button
-        local updateSpeedBtn = Instance.new("TextButton")
-        updateSpeedBtn.Name = "UpdateSpeedBtn"
-        updateSpeedBtn.Parent = macroItem
-        updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-        updateSpeedBtn.BorderSizePixel = 0
-        updateSpeedBtn.Position = UDim2.new(0, 105, 0, 55)
-        updateSpeedBtn.Size = UDim2.new(0, 35, 0, 15)
-        updateSpeedBtn.Font = Enum.Font.Gotham
-        updateSpeedBtn.Text = "UPDATE"
-        updateSpeedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        updateSpeedBtn.TextSize = 6
-        
-        local buttonFrame = Instance.new("Frame")
-        buttonFrame.Name = "ButtonFrame"
-        buttonFrame.Parent = macroItem
-        buttonFrame.BackgroundTransparency = 1
-        buttonFrame.Position = UDim2.new(0, 5, 0, 75)
-        buttonFrame.Size = UDim2.new(1, -10, 0, 15)
-        
-        local playButton = Instance.new("TextButton")
-        playButton.Name = "PlayButton"
-        playButton.Parent = buttonFrame
-        playButton.BackgroundColor3 = (macroPlaying and currentMacroName == macroName and not autoPlaying) and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
-        playButton.BorderSizePixel = 0
-        playButton.Position = UDim2.new(0, 0, 0, 0)
-        playButton.Size = UDim2.new(0, 40, 0, 15)
-        playButton.Font = Enum.Font.Gotham
-        local playText = "PLAY"
-        if macroPlaying and currentMacroName == macroName and not autoPlaying then
-            playText = macroPlaybackPaused and "PAUSED" or "PLAYING"
-        end
-        playButton.Text = playText
-        playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        playButton.TextSize = 7
-        
-        local autoPlayButton = Instance.new("TextButton")
-        autoPlayButton.Name = "AutoPlayButton"
-        autoPlayButton.Parent = buttonFrame
-        autoPlayButton.BackgroundColor3 = (macroPlaying and currentMacroName == macroName and autoPlaying) and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 80, 60)
-        autoPlayButton.BorderSizePixel = 0
-        autoPlayButton.Position = UDim2.new(0, 45, 0, 0)
-        autoPlayButton.Size = UDim2.new(0, 40, 0, 15)
-        autoPlayButton.Font = Enum.Font.Gotham
-        local autoText = "AUTO"
-        if macroPlaying and currentMacroName == macroName and autoPlaying then
-            autoText = macroPlaybackPaused and "PAUSED" or "STOP"
-        end
-        autoPlayButton.Text = autoText
-        autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        autoPlayButton.TextSize = 7
-        
-        local deleteButton = Instance.new("TextButton")
-        deleteButton.Name = "DeleteButton"
-        deleteButton.Parent = buttonFrame
-        deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-        deleteButton.BorderSizePixel = 0
-        deleteButton.Position = UDim2.new(0, 90, 0, 0)
-        deleteButton.Size = UDim2.new(0, 40, 0, 15)
-        deleteButton.Font = Enum.Font.Gotham
-        deleteButton.Text = "DELETE"
-        deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        deleteButton.TextSize = 7
-        
-        local renameButton = Instance.new("TextButton")
-        renameButton.Name = "RenameButton"
-        renameButton.Parent = buttonFrame
-        renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-        renameButton.BorderSizePixel = 0
-        renameButton.Position = UDim2.new(0, 135, 0, 0)
-        renameButton.Size = UDim2.new(0, 40, 0, 15)
-        renameButton.Font = Enum.Font.Gotham
-        renameButton.Text = "RENAME"
-        renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameButton.TextSize = 7
-        
-        -- Additional button row
-        local buttonFrame2 = Instance.new("Frame")
-        buttonFrame2.Name = "ButtonFrame2"
-        buttonFrame2.Parent = macroItem
-        buttonFrame2.BackgroundTransparency = 1
-        buttonFrame2.Position = UDim2.new(0, 5, 0, 92)
-        buttonFrame2.Size = UDim2.new(1, -10, 0, 15)
-        
-        local syncButton = Instance.new("TextButton")
-        syncButton.Name = "SyncButton"
-        syncButton.Parent = buttonFrame2
-        syncButton.BackgroundColor3 = Color3.fromRGB(80, 60, 120)
-        syncButton.BorderSizePixel = 0
-        syncButton.Position = UDim2.new(0, 0, 0, 0)
-        syncButton.Size = UDim2.new(0, 60, 0, 15)
-        syncButton.Font = Enum.Font.Gotham
-        syncButton.Text = "RESYNC"
-        syncButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        syncButton.TextSize = 6
-        
-        local exportButton = Instance.new("TextButton")
-        exportButton.Name = "ExportButton"
-        exportButton.Parent = buttonFrame2
-        exportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
-        exportButton.BorderSizePixel = 0
-        exportButton.Position = UDim2.new(0, 65, 0, 0)
-        exportButton.Size = UDim2.new(0, 55, 0, 15)
-        exportButton.Font = Enum.Font.Gotham
-        exportButton.Text = "EXPORT"
-        exportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        exportButton.TextSize = 6
-        
-        local fileStatusLabel = Instance.new("TextLabel")
-        fileStatusLabel.Name = "FileStatusLabel"
-        fileStatusLabel.Parent = buttonFrame2
-        fileStatusLabel.BackgroundTransparency = 1
-        fileStatusLabel.Position = UDim2.new(0, 125, 0, 0)
-        fileStatusLabel.Size = UDim2.new(1, -125, 0, 15)
-        fileStatusLabel.Font = Enum.Font.Gotham
-        fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
-        fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-        fileStatusLabel.TextSize = 6
-        fileStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        -- IMPROVED: Event handlers with real-time speed update and better status handling
-        speedInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed then
-                local newSpeed = tonumber(speedInput.Text)
-                if newSpeed and newSpeed > 0 then
-                    macro.speed = newSpeed
-                    saveToFileSystem(macroName, macro)
-                    -- If this macro is currently playing, update the playback speed immediately
-                    if macroPlaying and currentMacroName == macroName then
-                        updatePlaybackSpeed(macroName, newSpeed)
-                        Utility.updateMacroList() -- Refresh to show updated speed
-                    end
-                    updateMacroStatus()
-                    print("[SUPERTOOL] Updated speed for " .. macroName .. ": " .. newSpeed .. "x")
-                else
-                    speedInput.Text = tostring(macro.speed or 1)
-                end
-            end
-        end)
-        
-        -- NEW: Real-time speed update button handler
-        updateSpeedBtn.MouseButton1Click:Connect(function()
-            local newSpeed = tonumber(speedInput.Text)
-            if newSpeed and newSpeed > 0 then
-                macro.speed = newSpeed
-                saveToFileSystem(macroName, macro)
-                -- If this macro is currently playing, update the playback speed immediately
-                if macroPlaying and currentMacroName == macroName then
-                    updatePlaybackSpeed(macroName, newSpeed)
-                    Utility.updateMacroList() -- Refresh to show updated speed
-                end
-                updateMacroStatus()
-                print("[SUPERTOOL] Real-time speed update for " .. macroName .. ": " .. newSpeed .. "x")
-                
-                -- Visual feedback
-                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(120, 200, 120)
-                updateSpeedBtn.Text = "✓"
-                wait(1)
-                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-                updateSpeedBtn.Text = "UPDATE"
-            else
-                speedInput.Text = tostring(macro.speed or 1)
-                -- Error feedback
-                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(200, 80, 80)
-                updateSpeedBtn.Text = "✗"
-                wait(1)
-                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-                updateSpeedBtn.Text = "UPDATE"
-            end
-        end)
-        
-        playButton.MouseButton1Click:Connect(function()
-            if macroPlaying and currentMacroName == macroName and not autoPlaying then
-                stopMacroPlayback()
-            else
-                playMacro(macroName, false)
-                Utility.updateMacroList()
-            end
-        end)
-        
-        autoPlayButton.MouseButton1Click:Connect(function()
-            if macroPlaying and currentMacroName == macroName and autoPlaying then
-                stopMacroPlayback()
-            else
-                playMacro(macroName, true)
-                Utility.updateMacroList()
-            end
-        end)
-        
-        deleteButton.MouseButton1Click:Connect(function()
-            deleteMacro(macroName)
-        end)
-        
-        renameButton.MouseButton1Click:Connect(function()
-            if renameInput.Text ~= "" then
-                renameMacro(macroName, renameInput.Text)
-                renameInput.Text = ""
-            end
-        end)
-        
-        renameInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed and renameInput.Text ~= "" then
-                renameMacro(macroName, renameInput.Text)
-                renameInput.Text = ""
-            end
-        end)
-        
-        syncButton.MouseButton1Click:Connect(function()
-            -- Force resync this macro to JSON
-            saveToJSONFile(macroName, macro)
-            fileStatusLabel.Text = "📁 ✓ " .. sanitizeFileName(macroName) .. ".json"
-            fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-            wait(2)
-            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
-        end)
-        
-        exportButton.MouseButton1Click:Connect(function()
-            -- Show export info
-            fileStatusLabel.Text = "📤 Exported to JSON!"
-            fileStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-            saveToJSONFile(macroName, macro)
-            wait(2)
-            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
-            fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-        end)
-        
-        -- Hover effects for better UX
-        local function setupHoverEffect(button, normalColor, hoverColor)
-            button.MouseEnter:Connect(function()
-                button.BackgroundColor3 = hoverColor
-            end)
-            button.MouseLeave:Connect(function()
-                button.BackgroundColor3 = normalColor
-            end)
-        end
-        
-        setupHoverEffect(playButton, playButton.BackgroundColor3, Color3.fromRGB(80, 80, 80))
-        setupHoverEffect(autoPlayButton, autoPlayButton.BackgroundColor3, Color3.fromRGB(80, 100, 80))
-        setupHoverEffect(deleteButton, Color3.fromRGB(120, 40, 40), Color3.fromRGB(150, 50, 50))
-        setupHoverEffect(renameButton, Color3.fromRGB(40, 80, 40), Color3.fromRGB(50, 100, 50))
-        setupHoverEffect(syncButton, Color3.fromRGB(80, 60, 120), Color3.fromRGB(100, 80, 150))
-        setupHoverEffect(exportButton, Color3.fromRGB(60, 120, 80), Color3.fromRGB(80, 150, 100))
-        setupHoverEffect(updateSpeedBtn, Color3.fromRGB(80, 60, 40), Color3.fromRGB(100, 80, 60))
-        
-        itemCount = itemCount + 1
-    end
-    
-    -- Add refresh button at bottom
-    if itemCount > 0 then
-        local refreshFrame = Instance.new("Frame")
-        refreshFrame.Name = "RefreshFrame"
-        refreshFrame.Parent = MacroScrollFrame
-        refreshFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
-        refreshFrame.BorderSizePixel = 0
-        refreshFrame.Size = UDim2.new(1, -5, 0, 30)
-        refreshFrame.LayoutOrder = itemCount + 1
-        
-        local refreshButton = Instance.new("TextButton")
-        refreshButton.Parent = refreshFrame
-        refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
-        refreshButton.BorderSizePixel = 0
-        refreshButton.Position = UDim2.new(0, 5, 0, 5)
-        refreshButton.Size = UDim2.new(0, 100, 0, 20)
-        refreshButton.Font = Enum.Font.Gotham
-        refreshButton.Text = "🔄 REFRESH"
-        refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        refreshButton.TextSize = 8
-        
-        local syncAllButton = Instance.new("TextButton")
-        syncAllButton.Parent = refreshFrame
-        syncAllButton.BackgroundColor3 = Color3.fromRGB(40, 80, 80)
-        syncAllButton.BorderSizePixel = 0
-        syncAllButton.Position = UDim2.new(0, 110, 0, 5)
-        syncAllButton.Size = UDim2.new(0, 100, 0, 20)
-        syncAllButton.Font = Enum.Font.Gotham
-        syncAllButton.Text = "💾 SYNC ALL"
-        syncAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        syncAllButton.TextSize = 8
-        
-        refreshButton.MouseButton1Click:Connect(function()
-            syncMacrosFromJSON()
-            Utility.updateMacroList()
-        end)
-        
-        syncAllButton.MouseButton1Click:Connect(function()
-            local count = 0
-            for name, data in pairs(savedMacros) do
-                saveToJSONFile(name, data)
-                count = count + 1
-            end
-            print("[SUPERTOOL] Synced " .. count .. " macros to JSON files")
-        end)
-    end
-    
-    task.wait(0.1)
-    if MacroLayout then
-        local contentSize = MacroLayout.AbsoluteContentSize
-        MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 5)
-    end
-end
-
--- Initialize Macro UI elements
-local function initMacroUI()
-    if MacroFrame then return end
-    
-    MacroFrame = Instance.new("Frame")
-    MacroFrame.Name = "MacroFrame"
-    MacroFrame.Parent = ScreenGui
-    MacroFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    MacroFrame.BorderSizePixel = 1
-    MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-    MacroFrame.Size = UDim2.new(0, 300, 0, 400)
-    MacroFrame.Visible = macroFrameVisible
-    MacroFrame.Active = true
-    MacroFrame.Draggable = true
-
-    local MacroTitle = Instance.new("TextLabel")
-    MacroTitle.Name = "Title"
-    MacroTitle.Parent = MacroFrame
-    MacroTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MacroTitle.BorderSizePixel = 0
-    MacroTitle.Size = UDim2.new(1, 0, 0, 20)
-    MacroTitle.Font = Enum.Font.Gotham
-    MacroTitle.Text = "MACRO MANAGER - IMPROVED v1.1"
-    MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroTitle.TextSize = 8
-
-    local CloseMacroButton = Instance.new("TextButton")
-    CloseMacroButton.Name = "CloseButton"
-    CloseMacroButton.Parent = MacroFrame
-    CloseMacroButton.BackgroundTransparency = 1
-    CloseMacroButton.Position = UDim2.new(1, -20, 0, 2)
-    CloseMacroButton.Size = UDim2.new(0, 15, 0, 15)
-    CloseMacroButton.Font = Enum.Font.GothamBold
-    CloseMacroButton.Text = "X"
-    CloseMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseMacroButton.TextSize = 8
-
-    MacroInput = Instance.new("TextBox")
-    MacroInput.Name = "MacroInput"
-    MacroInput.Parent = MacroFrame
-    MacroInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MacroInput.BorderSizePixel = 0
-    MacroInput.Position = UDim2.new(0, 5, 0, 25)
-    MacroInput.Size = UDim2.new(1, -65, 0, 20)
-    MacroInput.Font = Enum.Font.Gotham
-    MacroInput.PlaceholderText = "Enter macro name..."
-    MacroInput.Text = ""
-    MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroInput.TextSize = 7
-
-    SaveMacroButton = Instance.new("TextButton")
-    SaveMacroButton.Name = "SaveMacroButton"
-    SaveMacroButton.Parent = MacroFrame
-    SaveMacroButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    SaveMacroButton.BorderSizePixel = 0
-    SaveMacroButton.Position = UDim2.new(1, -55, 0, 25)
-    SaveMacroButton.Size = UDim2.new(0, 50, 0, 20)
-    SaveMacroButton.Font = Enum.Font.Gotham
-    SaveMacroButton.Text = "SAVE"
-    SaveMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SaveMacroButton.TextSize = 7
-
-    MacroScrollFrame = Instance.new("ScrollingFrame")
-    MacroScrollFrame.Name = "MacroScrollFrame"
-    MacroScrollFrame.Parent = MacroFrame
-    MacroScrollFrame.BackgroundTransparency = 1
-    MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
-    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -55)
-    MacroScrollFrame.ScrollBarThickness = 2
-    MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    MacroScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    MacroScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    MacroLayout = Instance.new("UIListLayout")
-    MacroLayout.Parent = MacroScrollFrame
-    MacroLayout.Padding = UDim.new(0, 2)
-    MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-    -- IMPROVED: Status label with better positioning and styling
-    MacroStatusLabel = Instance.new("TextLabel")
-    MacroStatusLabel.Name = "MacroStatusLabel"
-    MacroStatusLabel.Parent = ScreenGui
-    MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    MacroStatusLabel.BorderSizePixel = 1
-    MacroStatusLabel.Position = UDim2.new(1, -250, 0, 10)
-    MacroStatusLabel.Size = UDim2.new(0, 240, 0, 25)
-    MacroStatusLabel.Font = Enum.Font.Gotham
-    MacroStatusLabel.Text = ""
-    MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroStatusLabel.TextSize = 8
-    MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    MacroStatusLabel.Visible = false
-
-    SaveMacroButton.MouseButton1Click:Connect(function()
-        stopMacroRecording()
-        MacroFrame.Visible = true
-    end)
-    
-    CloseMacroButton.MouseButton1Click:Connect(function()
-        macroFrameVisible = false
-        MacroFrame.Visible = false
-    end)
-end
-
--- Kill Player
-local function killPlayer()
-    if humanoid then
-        humanoid.Health = 0
-    end
-end
-
--- Reset Character
-local function resetCharacter()
-    if player and player.Character then
-        player:LoadCharacter()
-    end
-end
-
--- Function to create buttons for Utility features
-function Utility.loadUtilityButtons(createButton)
-    createButton("Kill Player", killPlayer)
-    createButton("Reset Character", resetCharacter)
-    createButton("Record Macro", startMacroRecording)
-    createButton("Stop Macro", stopMacroRecording)
-    createButton("Macro Manager", showMacroManager)-- Utility-related features for MinimalHackGUI by Fari Noveri
-
--- Dependencies: These must be passed from mainloader.lua
-local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
-
--- Initialize module
 local Utility = {}
+
+-- Module dependencies (will be set by init function)
+local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
+local connections, disableActiveFeature, isExclusiveFeature
 
 -- Variables
 local macroRecording = false
@@ -1560,6 +998,559 @@ function Utility.updateMemoryList()
     end
 end
 
+-- Delete Macro
+local function deleteMacro(macroName)
+    if savedMacros[macroName] then
+        savedMacros[macroName] = nil
+        deleteFromFileSystem(macroName)
+        Utility.updateMacroList()
+        print("[SUPERTOOL] Macro deleted: " .. macroName)
+    end
+end
+
+-- Rename Macro
+local function renameMacro(oldName, newName)
+    if savedMacros[oldName] and newName ~= "" then
+        if renameInFileSystem(oldName, newName) then
+            if currentMacroName == oldName then
+                currentMacroName = newName
+                updateMacroStatus()
+            end
+            savedMacros[newName] = savedMacros[oldName]
+            savedMacros[oldName] = nil
+            Utility.updateMacroList()
+            print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
+        end
+    end
+end
+
+-- Show Macro Manager
+local function showMacroManager()
+    macroFrameVisible = true
+    if not MacroFrame then
+        initMacroUI()
+    end
+    MacroFrame.Visible = true
+    Utility.updateMacroList()
+end
+
+-- IMPROVED: Update Macro List UI with dynamic speed control and better status display
+function Utility.updateMacroList()
+    if not MacroScrollFrame then return end
+    
+    for _, child in pairs(MacroScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local itemCount = 0
+    
+    -- Show macro folder info
+    local infoFrame = Instance.new("Frame")
+    infoFrame.Name = "InfoFrame"
+    infoFrame.Parent = MacroScrollFrame
+    infoFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    infoFrame.BorderSizePixel = 0
+    infoFrame.Size = UDim2.new(1, -5, 0, 25)
+    infoFrame.LayoutOrder = -1
+    
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Parent = infoFrame
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Size = UDim2.new(1, 0, 1, 0)
+    infoLabel.Font = Enum.Font.Gotham
+    local macroCount = 0
+    for _ in pairs(savedMacros) do macroCount = macroCount + 1 end
+    infoLabel.Text = "JSON Sync: " .. MACRO_FOLDER_PATH .. " (" .. macroCount .. " macros)"
+    infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    infoLabel.TextSize = 7
+    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    for macroName, macro in pairs(savedMacros) do
+        local macroItem = Instance.new("Frame")
+        macroItem.Name = macroName .. "Item"
+        macroItem.Parent = MacroScrollFrame
+        macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        macroItem.BorderSizePixel = 0
+        macroItem.Size = UDim2.new(1, -5, 0, 110)
+        macroItem.LayoutOrder = itemCount
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Parent = macroItem
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Position = UDim2.new(0, 5, 0, 5)
+        nameLabel.Size = UDim2.new(1, -10, 0, 15)
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.Text = macroName
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 7
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        -- Show macro info with better data handling
+        local frameCount = macro.frameCount or (macro.frames and #macro.frames) or 0
+        local duration = macro.duration or (macro.frames and #macro.frames > 0 and macro.frames[#macro.frames].time) or 0
+        local speed = currentPlaybackSpeed or macro.speed or 1
+        local infoText = string.format("Frames: %d | Duration: %.1fs | Speed: %.1fx", frameCount, duration, speed)
+        
+        local macroInfoLabel = Instance.new("TextLabel")
+        macroInfoLabel.Parent = macroItem
+        macroInfoLabel.BackgroundTransparency = 1
+        macroInfoLabel.Position = UDim2.new(0, 5, 0, 20)
+        macroInfoLabel.Size = UDim2.new(1, -10, 0, 10)
+        macroInfoLabel.Font = Enum.Font.Gotham
+        macroInfoLabel.Text = infoText
+        macroInfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        macroInfoLabel.TextSize = 6
+        macroInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local renameInput = Instance.new("TextBox")
+        renameInput.Name = "RenameInput"
+        renameInput.Parent = macroItem
+        renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        renameInput.BorderSizePixel = 0
+        renameInput.Position = UDim2.new(0, 5, 0, 35)
+        renameInput.Size = UDim2.new(1, -10, 0, 15)
+        renameInput.Font = Enum.Font.Gotham
+        renameInput.Text = ""
+        renameInput.PlaceholderText = "Enter new name..."
+        renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        renameInput.TextSize = 7
+        
+        local speedLabel = Instance.new("TextLabel")
+        speedLabel.Name = "SpeedLabel"
+        speedLabel.Parent = macroItem
+        speedLabel.BackgroundTransparency = 1
+        speedLabel.Position = UDim2.new(0, 5, 0, 55)
+        speedLabel.Size = UDim2.new(0, 50, 0, 15)
+        speedLabel.Font = Enum.Font.Gotham
+        speedLabel.Text = "Speed:"
+        speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        speedLabel.TextSize = 7
+        speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local speedInput = Instance.new("TextBox")
+        speedInput.Name = "SpeedInput"
+        speedInput.Parent = macroItem
+        speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        speedInput.BorderSizePixel = 0
+        speedInput.Position = UDim2.new(0, 60, 0, 55)
+        speedInput.Size = UDim2.new(0, 40, 0, 15)
+        speedInput.Font = Enum.Font.Gotham
+        speedInput.Text = tostring(speed)
+        speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        speedInput.TextSize = 7
+        speedInput.TextXAlignment = Enum.TextXAlignment.Center
+        
+        -- NEW: Real-time speed update button
+        local updateSpeedBtn = Instance.new("TextButton")
+        updateSpeedBtn.Name = "UpdateSpeedBtn"
+        updateSpeedBtn.Parent = macroItem
+        updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+        updateSpeedBtn.BorderSizePixel = 0
+        updateSpeedBtn.Position = UDim2.new(0, 105, 0, 55)
+        updateSpeedBtn.Size = UDim2.new(0, 35, 0, 15)
+        updateSpeedBtn.Font = Enum.Font.Gotham
+        updateSpeedBtn.Text = "UPDATE"
+        updateSpeedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        updateSpeedBtn.TextSize = 6
+        
+        local buttonFrame = Instance.new("Frame")
+        buttonFrame.Name = "ButtonFrame"
+        buttonFrame.Parent = macroItem
+        buttonFrame.BackgroundTransparency = 1
+        buttonFrame.Position = UDim2.new(0, 5, 0, 75)
+        buttonFrame.Size = UDim2.new(1, -10, 0, 15)
+        
+        local playButton = Instance.new("TextButton")
+        playButton.Name = "PlayButton"
+        playButton.Parent = buttonFrame
+        playButton.BackgroundColor3 = (macroPlaying and currentMacroName == macroName and not autoPlaying) and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
+        playButton.BorderSizePixel = 0
+        playButton.Position = UDim2.new(0, 0, 0, 0)
+        playButton.Size = UDim2.new(0, 40, 0, 15)
+        playButton.Font = Enum.Font.Gotham
+        local playText = "PLAY"
+        if macroPlaying and currentMacroName == macroName and not autoPlaying then
+            playText = macroPlaybackPaused and "PAUSED" or "PLAYING"
+        end
+        playButton.Text = playText
+        playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        playButton.TextSize = 7
+        
+        local autoPlayButton = Instance.new("TextButton")
+        autoPlayButton.Name = "AutoPlayButton"
+        autoPlayButton.Parent = buttonFrame
+        autoPlayButton.BackgroundColor3 = (macroPlaying and currentMacroName == macroName and autoPlaying) and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 80, 60)
+        autoPlayButton.BorderSizePixel = 0
+        autoPlayButton.Position = UDim2.new(0, 45, 0, 0)
+        autoPlayButton.Size = UDim2.new(0, 40, 0, 15)
+        autoPlayButton.Font = Enum.Font.Gotham
+        local autoText = "AUTO"
+        if macroPlaying and currentMacroName == macroName and autoPlaying then
+            autoText = macroPlaybackPaused and "PAUSED" or "STOP"
+        end
+        autoPlayButton.Text = autoText
+        autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        autoPlayButton.TextSize = 7
+        
+        local deleteButton = Instance.new("TextButton")
+        deleteButton.Name = "DeleteButton"
+        deleteButton.Parent = buttonFrame
+        deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+        deleteButton.BorderSizePixel = 0
+        deleteButton.Position = UDim2.new(0, 90, 0, 0)
+        deleteButton.Size = UDim2.new(0, 40, 0, 15)
+        deleteButton.Font = Enum.Font.Gotham
+        deleteButton.Text = "DELETE"
+        deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        deleteButton.TextSize = 7
+        
+        local renameButton = Instance.new("TextButton")
+        renameButton.Name = "RenameButton"
+        renameButton.Parent = buttonFrame
+        renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+        renameButton.BorderSizePixel = 0
+        renameButton.Position = UDim2.new(0, 135, 0, 0)
+        renameButton.Size = UDim2.new(0, 40, 0, 15)
+        renameButton.Font = Enum.Font.Gotham
+        renameButton.Text = "RENAME"
+        renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        renameButton.TextSize = 7
+        
+        -- Additional button row
+        local buttonFrame2 = Instance.new("Frame")
+        buttonFrame2.Name = "ButtonFrame2"
+        buttonFrame2.Parent = macroItem
+        buttonFrame2.BackgroundTransparency = 1
+        buttonFrame2.Position = UDim2.new(0, 5, 0, 92)
+        buttonFrame2.Size = UDim2.new(1, -10, 0, 15)
+        
+        local syncButton = Instance.new("TextButton")
+        syncButton.Name = "SyncButton"
+        syncButton.Parent = buttonFrame2
+        syncButton.BackgroundColor3 = Color3.fromRGB(80, 60, 120)
+        syncButton.BorderSizePixel = 0
+        syncButton.Position = UDim2.new(0, 0, 0, 0)
+        syncButton.Size = UDim2.new(0, 60, 0, 15)
+        syncButton.Font = Enum.Font.Gotham
+        syncButton.Text = "RESYNC"
+        syncButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        syncButton.TextSize = 6
+        
+        local exportButton = Instance.new("TextButton")
+        exportButton.Name = "ExportButton"
+        exportButton.Parent = buttonFrame2
+        exportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
+        exportButton.BorderSizePixel = 0
+        exportButton.Position = UDim2.new(0, 65, 0, 0)
+        exportButton.Size = UDim2.new(0, 55, 0, 15)
+        exportButton.Font = Enum.Font.Gotham
+        exportButton.Text = "EXPORT"
+        exportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        exportButton.TextSize = 6
+        
+        local fileStatusLabel = Instance.new("TextLabel")
+        fileStatusLabel.Name = "FileStatusLabel"
+        fileStatusLabel.Parent = buttonFrame2
+        fileStatusLabel.BackgroundTransparency = 1
+        fileStatusLabel.Position = UDim2.new(0, 125, 0, 0)
+        fileStatusLabel.Size = UDim2.new(1, -125, 0, 15)
+        fileStatusLabel.Font = Enum.Font.Gotham
+        fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
+        fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        fileStatusLabel.TextSize = 6
+        fileStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+        
+        -- IMPROVED: Event handlers with real-time speed update and better status handling
+        speedInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                local newSpeed = tonumber(speedInput.Text)
+                if newSpeed and newSpeed > 0 then
+                    macro.speed = newSpeed
+                    saveToFileSystem(macroName, macro)
+                    -- If this macro is currently playing, update the playback speed immediately
+                    if macroPlaying and currentMacroName == macroName then
+                        updatePlaybackSpeed(macroName, newSpeed)
+                        Utility.updateMacroList() -- Refresh to show updated speed
+                    end
+                    updateMacroStatus()
+                    print("[SUPERTOOL] Updated speed for " .. macroName .. ": " .. newSpeed .. "x")
+                else
+                    speedInput.Text = tostring(macro.speed or 1)
+                end
+            end
+        end)
+        
+        -- NEW: Real-time speed update button handler
+        updateSpeedBtn.MouseButton1Click:Connect(function()
+            local newSpeed = tonumber(speedInput.Text)
+            if newSpeed and newSpeed > 0 then
+                macro.speed = newSpeed
+                saveToFileSystem(macroName, macro)
+                -- If this macro is currently playing, update the playback speed immediately
+                if macroPlaying and currentMacroName == macroName then
+                    updatePlaybackSpeed(macroName, newSpeed)
+                    Utility.updateMacroList() -- Refresh to show updated speed
+                end
+                updateMacroStatus()
+                print("[SUPERTOOL] Real-time speed update for " .. macroName .. ": " .. newSpeed .. "x")
+                
+                -- Visual feedback
+                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(120, 200, 120)
+                updateSpeedBtn.Text = "✓"
+                wait(1)
+                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                updateSpeedBtn.Text = "UPDATE"
+            else
+                speedInput.Text = tostring(macro.speed or 1)
+                -- Error feedback
+                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(200, 80, 80)
+                updateSpeedBtn.Text = "✗"
+                wait(1)
+                updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                updateSpeedBtn.Text = "UPDATE"
+            end
+        end)
+        
+        playButton.MouseButton1Click:Connect(function()
+            if macroPlaying and currentMacroName == macroName and not autoPlaying then
+                stopMacroPlayback()
+            else
+                playMacro(macroName, false)
+                Utility.updateMacroList()
+            end
+        end)
+        
+        autoPlayButton.MouseButton1Click:Connect(function()
+            if macroPlaying and currentMacroName == macroName and autoPlaying then
+                stopMacroPlayback()
+            else
+                playMacro(macroName, true)
+                Utility.updateMacroList()
+            end
+        end)
+        
+        deleteButton.MouseButton1Click:Connect(function()
+            deleteMacro(macroName)
+        end)
+        
+        renameButton.MouseButton1Click:Connect(function()
+            if renameInput.Text ~= "" then
+                renameMacro(macroName, renameInput.Text)
+                renameInput.Text = ""
+            end
+        end)
+        
+        renameInput.FocusLost:Connect(function(enterPressed)
+            if enterPressed and renameInput.Text ~= "" then
+                renameMacro(macroName, renameInput.Text)
+                renameInput.Text = ""
+            end
+        end)
+        
+        syncButton.MouseButton1Click:Connect(function()
+            -- Force resync this macro to JSON
+            saveToJSONFile(macroName, macro)
+            fileStatusLabel.Text = "📁 ✓ " .. sanitizeFileName(macroName) .. ".json"
+            fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            wait(2)
+            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
+        end)
+        
+        exportButton.MouseButton1Click:Connect(function()
+            -- Show export info
+            fileStatusLabel.Text = "📤 Exported to JSON!"
+            fileStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+            saveToJSONFile(macroName, macro)
+            wait(2)
+            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
+            fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        end)
+        
+        -- Hover effects for better UX
+        local function setupHoverEffect(button, normalColor, hoverColor)
+            button.MouseEnter:Connect(function()
+                button.BackgroundColor3 = hoverColor
+            end)
+            button.MouseLeave:Connect(function()
+                button.BackgroundColor3 = normalColor
+            end)
+        end
+        
+        setupHoverEffect(playButton, playButton.BackgroundColor3, Color3.fromRGB(80, 80, 80))
+        setupHoverEffect(autoPlayButton, autoPlayButton.BackgroundColor3, Color3.fromRGB(80, 100, 80))
+        setupHoverEffect(deleteButton, Color3.fromRGB(120, 40, 40), Color3.fromRGB(150, 50, 50))
+        setupHoverEffect(renameButton, Color3.fromRGB(40, 80, 40), Color3.fromRGB(50, 100, 50))
+        setupHoverEffect(syncButton, Color3.fromRGB(80, 60, 120), Color3.fromRGB(100, 80, 150))
+        setupHoverEffect(exportButton, Color3.fromRGB(60, 120, 80), Color3.fromRGB(80, 150, 100))
+        setupHoverEffect(updateSpeedBtn, Color3.fromRGB(80, 60, 40), Color3.fromRGB(100, 80, 60))
+        
+        itemCount = itemCount + 1
+    end
+    
+    -- Add refresh button at bottom
+    if itemCount > 0 then
+        local refreshFrame = Instance.new("Frame")
+        refreshFrame.Name = "RefreshFrame"
+        refreshFrame.Parent = MacroScrollFrame
+        refreshFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
+        refreshFrame.BorderSizePixel = 0
+        refreshFrame.Size = UDim2.new(1, -5, 0, 30)
+        refreshFrame.LayoutOrder = itemCount + 1
+        
+        local refreshButton = Instance.new("TextButton")
+        refreshButton.Parent = refreshFrame
+        refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
+        refreshButton.BorderSizePixel = 0
+        refreshButton.Position = UDim2.new(0, 5, 0, 5)
+        refreshButton.Size = UDim2.new(0, 100, 0, 20)
+        refreshButton.Font = Enum.Font.Gotham
+        refreshButton.Text = "🔄 REFRESH"
+        refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        refreshButton.TextSize = 8
+        
+        local syncAllButton = Instance.new("TextButton")
+        syncAllButton.Parent = refreshFrame
+        syncAllButton.BackgroundColor3 = Color3.fromRGB(40, 80, 80)
+        syncAllButton.BorderSizePixel = 0
+        syncAllButton.Position = UDim2.new(0, 110, 0, 5)
+        syncAllButton.Size = UDim2.new(0, 100, 0, 20)
+        syncAllButton.Font = Enum.Font.Gotham
+        syncAllButton.Text = "💾 SYNC ALL"
+        syncAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        syncAllButton.TextSize = 8
+        
+        refreshButton.MouseButton1Click:Connect(function()
+            syncMacrosFromJSON()
+            Utility.updateMacroList()
+        end)
+        
+        syncAllButton.MouseButton1Click:Connect(function()
+            local count = 0
+            for name, data in pairs(savedMacros) do
+                saveToJSONFile(name, data)
+                count = count + 1
+            end
+            print("[SUPERTOOL] Synced " .. count .. " macros to JSON files")
+        end)
+    end
+    
+    task.wait(0.1)
+    if MacroLayout then
+        local contentSize = MacroLayout.AbsoluteContentSize
+        MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 5)
+    end
+end
+
+-- Initialize Macro UI elements
+local function initMacroUI()
+    if MacroFrame then return end
+    
+    MacroFrame = Instance.new("Frame")
+    MacroFrame.Name = "MacroFrame"
+    MacroFrame.Parent = ScreenGui
+    MacroFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroFrame.BorderSizePixel = 1
+    MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
+    MacroFrame.Size = UDim2.new(0, 300, 0, 400)
+    MacroFrame.Visible = macroFrameVisible
+    MacroFrame.Active = true
+    MacroFrame.Draggable = true
+
+    local MacroTitle = Instance.new("TextLabel")
+    MacroTitle.Name = "Title"
+    MacroTitle.Parent = MacroFrame
+    MacroTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroTitle.BorderSizePixel = 0
+    MacroTitle.Size = UDim2.new(1, 0, 0, 20)
+    MacroTitle.Font = Enum.Font.Gotham
+    MacroTitle.Text = "MACRO MANAGER - IMPROVED v1.1"
+    MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroTitle.TextSize = 8
+
+    local CloseMacroButton = Instance.new("TextButton")
+    CloseMacroButton.Name = "CloseButton"
+    CloseMacroButton.Parent = MacroFrame
+    CloseMacroButton.BackgroundTransparency = 1
+    CloseMacroButton.Position = UDim2.new(1, -20, 0, 2)
+    CloseMacroButton.Size = UDim2.new(0, 15, 0, 15)
+    CloseMacroButton.Font = Enum.Font.GothamBold
+    CloseMacroButton.Text = "X"
+    CloseMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseMacroButton.TextSize = 8
+
+    MacroInput = Instance.new("TextBox")
+    MacroInput.Name = "MacroInput"
+    MacroInput.Parent = MacroFrame
+    MacroInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroInput.BorderSizePixel = 0
+    MacroInput.Position = UDim2.new(0, 5, 0, 25)
+    MacroInput.Size = UDim2.new(1, -65, 0, 20)
+    MacroInput.Font = Enum.Font.Gotham
+    MacroInput.PlaceholderText = "Enter macro name..."
+    MacroInput.Text = ""
+    MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroInput.TextSize = 7
+
+    SaveMacroButton = Instance.new("TextButton")
+    SaveMacroButton.Name = "SaveMacroButton"
+    SaveMacroButton.Parent = MacroFrame
+    SaveMacroButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    SaveMacroButton.BorderSizePixel = 0
+    SaveMacroButton.Position = UDim2.new(1, -55, 0, 25)
+    SaveMacroButton.Size = UDim2.new(0, 50, 0, 20)
+    SaveMacroButton.Font = Enum.Font.Gotham
+    SaveMacroButton.Text = "SAVE"
+    SaveMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SaveMacroButton.TextSize = 7
+
+    MacroScrollFrame = Instance.new("ScrollingFrame")
+    MacroScrollFrame.Name = "MacroScrollFrame"
+    MacroScrollFrame.Parent = MacroFrame
+    MacroScrollFrame.BackgroundTransparency = 1
+    MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
+    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -55)
+    MacroScrollFrame.ScrollBarThickness = 2
+    MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    MacroScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    MacroScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    MacroLayout = Instance.new("UIListLayout")
+    MacroLayout.Parent = MacroScrollFrame
+    MacroLayout.Padding = UDim.new(0, 2)
+    MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    -- IMPROVED: Status label with better positioning and styling
+    MacroStatusLabel = Instance.new("TextLabel")
+    MacroStatusLabel.Name = "MacroStatusLabel"
+    MacroStatusLabel.Parent = ScreenGui
+    MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroStatusLabel.BorderSizePixel = 1
+    MacroStatusLabel.Position = UDim2.new(1, -250, 0, 10)
+    MacroStatusLabel.Size = UDim2.new(0, 240, 0, 25)
+    MacroStatusLabel.Font = Enum.Font.Gotham
+    MacroStatusLabel.Text = ""
+    MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroStatusLabel.TextSize = 8
+    MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    MacroStatusLabel.Visible = false
+
+    SaveMacroButton.MouseButton1Click:Connect(function()
+        stopMacroRecording()
+        MacroFrame.Visible = true
+    end)
+    
+    CloseMacroButton.MouseButton1Click:Connect(function()
+        macroFrameVisible = false
+        MacroFrame.Visible = false
+    end)
+end
+
 -- Show Memory Scanner
 local function showMemoryScanner()
     memoryFrameVisible = true
@@ -2043,3 +2034,84 @@ local function playMacro(macroName, autoPlay)
     
     playSingleMacro()
 end
+
+-- Kill Player
+local function killPlayer()
+    if humanoid then
+        humanoid.Health = 0
+        print("[SUPERTOOL] Player killed")
+    end
+end
+
+-- Reset Character
+local function resetCharacter()
+    if player and player.Character then
+        player:LoadCharacter()
+        print("[SUPERTOOL] Character reset")
+    end
+end
+
+-- Initialize function (REQUIRED for module system)
+function Utility.init(deps)
+    -- Set dependencies
+    Players = deps.Players
+    humanoid = deps.humanoid
+    rootPart = deps.rootPart
+    RunService = deps.RunService
+    player = deps.player
+    ScreenGui = deps.ScreenGui
+    settings = deps.settings
+    connections = deps.connections
+    disableActiveFeature = deps.disableActiveFeature
+    isExclusiveFeature = deps.isExclusiveFeature
+    
+    -- Sync macros on startup
+    syncMacrosFromJSON()
+    
+    print("[SUPERTOOL] Utility module initialized successfully")
+    return true
+end
+
+-- Load buttons function (REQUIRED for module system)
+function Utility.loadUtilityButtons(createButton)
+    if not createButton or type(createButton) ~= "function" then
+        error("createButton function is required")
+        return
+    end
+    
+    print("[SUPERTOOL] Loading utility buttons...")
+    
+    -- Create buttons
+    createButton("Kill Player", killPlayer)
+    createButton("Reset Character", resetCharacter)
+    createButton("Record Macro", startMacroRecording)
+    createButton("Stop Macro", stopMacroRecording)
+    createButton("Macro Manager", showMacroManager)
+    createButton("Memory Scanner", showMemoryScanner)
+    
+    print("[SUPERTOOL] Utility buttons loaded successfully")
+end
+
+-- Reset states function (REQUIRED for module system)
+function Utility.resetStates()
+    -- Reset all utility states
+    macroRecording = false
+    macroPlaying = false
+    autoPlaying = false
+    macroPlaybackPaused = false
+    
+    -- Disconnect connections
+    if recordConnection then
+        recordConnection:Disconnect()
+        recordConnection = nil
+    end
+    if playbackConnection then
+        playbackConnection:Disconnect()
+        playbackConnection = nil
+    end
+    
+    print("[SUPERTOOL] Utility states reset")
+end
+
+-- Return the module
+return Utility
