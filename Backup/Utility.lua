@@ -52,41 +52,28 @@ local function saveToJSONFile(macroName, macroData)
         local fileName = sanitizedName .. ".json"
         local filePath = MACRO_FOLDER_PATH .. fileName
         
-        local jsonFrames = {}
-        for _, frame in ipairs(macroData.frames or {}) do
-            local cframeData = frame.cframe and {frame.cframe:GetComponents()} or {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1}
-            local velocityData = frame.velocity and {frame.velocity.X, frame.velocity.Y, frame.velocity.Z} or {0, 0, 0}
-            table.insert(jsonFrames, {
-                time = frame.time,
-                cframe = cframeData,
-                velocity = velocityData,
-                walkSpeed = frame.walkSpeed or 16,
-                jumpPower = frame.jumpPower or 50,
-                hipHeight = frame.hipHeight or 0,
-                state = frame.state and frame.state.Name or "Running"
-            })
-        end
-        
+        -- Create JSON data with metadata
         local jsonData = {
             name = macroName,
             created = os.time(),
             modified = os.time(),
             version = "1.0",
-            frames = jsonFrames,
+            frames = macroData.frames or {},
             startTime = macroData.startTime or 0,
             speed = macroData.speed or 1,
-            frameCount = #jsonFrames,
-            duration = jsonFrames[#jsonFrames] and jsonFrames[#jsonFrames].time or 0
+            frameCount = #(macroData.frames or {}),
+            duration = macroData.frames and #macroData.frames > 0 and macroData.frames[#macroData.frames].time or 0
         }
         
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
+        
         print("[SUPERTOOL] Macro saved: " .. filePath)
         return true
     end)
     
     if not success then
-        warn("[SUPERTOOL] Failed to save macro: " .. tostring(error))
+        warn("[SUPERTOOL] Failed to save macro to JSON: " .. tostring(error))
         return false
     end
     return true
@@ -103,46 +90,41 @@ local function loadFromJSONFile(macroName)
             local jsonString = readfile(filePath)
             local jsonData = HttpService:JSONDecode(jsonString)
             
+            -- PERBAIKAN: Pastikan frames ada dan valid
             local frames = jsonData.frames or {}
-            local validFrames = {}
             
-            for i, frame in ipairs(frames) do
-                if frame and frame.time then
-                    local cframe = frame.cframe
-                    if cframe == nil then
-                        warn("[SUPERTOOL] Frame " .. i .. " in macro " .. macroName .. " has null cframe, using default")
-                        cframe = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1}
-                    end
-                    if typeof(cframe) == "table" and #cframe == 12 then
-                        cframe = CFrame.new(unpack(cframe))
+            -- Validasi setiap frame memiliki data yang diperlukan
+            local validFrames = {}
+            for i, frame in pairs(frames) do
+                if frame and frame.time and frame.cframe then
+                    -- Convert cframe dari table array ke CFrame
+                    if typeof(frame.cframe) == "table" and #frame.cframe == 12 then
+                        frame.cframe = CFrame.new(unpack(frame.cframe))
                     else
-                        warn("[SUPERTOOL] Invalid cframe format in frame " .. i .. " for macro: " .. macroName)
-                        cframe = CFrame.new(0, 0, 0)
+                        continue -- Skip invalid cframe
                     end
                     
-                    local velocity = frame.velocity or {0, 0, 0}
-                    if typeof(velocity) == "table" and #velocity == 3 then
-                        velocity = Vector3.new(unpack(velocity))
+                    -- Convert velocity dari table array ke Vector3
+                    if typeof(frame.velocity) == "table" and #frame.velocity == 3 then
+                        frame.velocity = Vector3.new(unpack(frame.velocity))
                     else
-                        velocity = Vector3.new(0, 0, 0)
+                        frame.velocity = Vector3.new(0, 0, 0)
                     end
                     
-                    local state = Enum.HumanoidStateType.Running
+                    -- Convert state dari string ke EnumItem
                     if typeof(frame.state) == "string" then
-                        state = Enum.HumanoidStateType[frame.state] or Enum.HumanoidStateType.Running
+                        local stateEnum = Enum.HumanoidStateType[frame.state]
+                        frame.state = stateEnum or Enum.HumanoidStateType.Running
+                    else
+                        frame.state = Enum.HumanoidStateType.Running
                     end
                     
-                    table.insert(validFrames, {
-                        time = frame.time,
-                        cframe = cframe,
-                        velocity = velocity,
-                        walkSpeed = tonumber(frame.walkSpeed) or 16,
-                        jumpPower = tonumber(frame.jumpPower) or 50,
-                        hipHeight = tonumber(frame.hipHeight) or 0,
-                        state = state
-                    })
-                else
-                    warn("[SUPERTOOL] Invalid frame " .. i .. " in macro: " .. macroName)
+                    -- Set default values untuk missing properties
+                    frame.walkSpeed = tonumber(frame.walkSpeed) or 16
+                    frame.jumpPower = tonumber(frame.jumpPower) or 50
+                    frame.hipHeight = tonumber(frame.hipHeight) or 0
+                    
+                    table.insert(validFrames, frame)
                 end
             end
             
@@ -151,6 +133,7 @@ local function loadFromJSONFile(macroName)
                 return nil
             end
             
+            -- Return macro data in expected format dengan frames yang valid
             return {
                 frames = validFrames,
                 startTime = jsonData.startTime or 0,
@@ -163,22 +146,20 @@ local function loadFromJSONFile(macroName)
                 duration = validFrames[#validFrames].time or 0
             }
         else
-            warn("[SUPERTOOL] File not found: " .. filePath)
             return nil
         end
     end)
     
     if success then
         if result then
-            print("[SUPERTOOL] Loaded macro: " .. macroName .. " (" .. #result.frames .. " frames)")
+            print("[SUPERTOOL] Successfully loaded macro from JSON: " .. macroName .. " (" .. #(result.frames or {}) .. " frames)")
         end
         return result
     else
-        warn("[SUPERTOOL] Failed to load macro: " .. tostring(result))
+        warn("[SUPERTOOL] Failed to load macro from JSON: " .. tostring(result))
         return nil
     end
 end
-
 
 -- Helper function untuk delete macro dari JSON file
 local function deleteFromJSONFile(macroName)
@@ -348,7 +329,7 @@ local function syncMacrosFromJSON()
         savedMacros[macroName] = macroData
         fileSystem["Supertool/Macro"][macroName] = macroData
     end
-    print("[SUPERTOOL] Synced " .. table.maxn(jsonMacros) .. " macros from JSON files")
+    print("[SUPERTOOL] Synced " .. #jsonMacros .. " macros from JSON files")
 end
 
 -- FIXED Memory Scanner Functions - Optimized to prevent freezing
@@ -1102,7 +1083,7 @@ local function updateCharacterReferences()
     end
 end
 
--- Record Macro
+-- Record Macro dengan perbaikan untuk menyimpan state dengan benar
 local function startMacroRecording()
     if macroRecording or macroPlaying then return end
     macroRecording = true
@@ -1137,19 +1118,19 @@ local function startMacroRecording()
         
         local frame = {
             time = tick() - currentMacro.startTime,
-            cframe = rootPart.CFrame,
-            velocity = rootPart.Velocity,
+            cframe = {rootPart.CFrame:GetComponents()}, -- PERBAIKAN: Store as table array for JSON encoding
+            velocity = {rootPart.Velocity.X, rootPart.Velocity.Y, rootPart.Velocity.Z}, -- PERBAIKAN: Store as table array
             walkSpeed = humanoid.WalkSpeed,
             jumpPower = humanoid.JumpPower,
             hipHeight = humanoid.HipHeight,
-            state = humanoid:GetState().Name
+            state = humanoid:GetState().Name -- PERBAIKAN: Store as string
         }
         table.insert(currentMacro.frames, frame)
         lastFrameTime = frame.time
     end)
 end
 
--- Stop Macro Recording
+-- Stop Macro Recording dengan perbaikan untuk save yang benar
 local function stopMacroRecording()
     if not macroRecording then return end
     macroRecording = false
@@ -1161,8 +1142,18 @@ local function stopMacroRecording()
     
     local macroName = MacroInput.Text
     if macroName == "" then
-        macroName = (table.maxn(savedMacros) + 1)
+        macroName = "Macro_" .. (os.time() % 10000) -- PERBAIKAN: Use timestamp for uniqueness
     end
+    
+    -- PERBAIKAN: Ensure macro has valid frames before saving
+    if #currentMacro.frames == 0 then
+        warn("Cannot save empty macro")
+        return
+    end
+    
+    -- Set metadata
+    currentMacro.frameCount = #currentMacro.frames
+    currentMacro.duration = currentMacro.frames[#currentMacro.frames].time
     
     -- Save to both memory and JSON file
     savedMacros[macroName] = currentMacro
@@ -1195,7 +1186,7 @@ local function stopMacroPlayback()
     updateMacroStatus()
 end
 
--- Play Macro with Adjustable Speed
+-- Play Macro with Adjustable Speed dengan perbaikan untuk load data yang benar
 local function playMacro(macroName, autoPlay)
     if macroRecording or macroPlaying or not humanoid or not rootPart then return end
     local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
@@ -1259,12 +1250,28 @@ local function playMacro(macroName, autoPlay)
             local scaledTime = frame.time / speed
             while index <= #macro.frames and scaledTime <= (tick() - startTime) do
                 if frame.cframe and frame.velocity and frame.walkSpeed and frame.jumpPower and frame.hipHeight and frame.state then
-                    rootPart.CFrame = frame.cframe
-                    rootPart.Velocity = frame.velocity
+                    -- PERBAIKAN: Ensure proper data types when loading
+                    local cframe = frame.cframe
+                    if typeof(cframe) == "table" then
+                        cframe = CFrame.new(unpack(cframe))
+                    end
+                    
+                    local velocity = frame.velocity
+                    if typeof(velocity) == "table" then
+                        velocity = Vector3.new(unpack(velocity))
+                    end
+                    
+                    local state = frame.state
+                    if typeof(state) == "string" then
+                        state = Enum.HumanoidStateType[state] or Enum.HumanoidStateType.Running
+                    end
+                    
+                    rootPart.CFrame = cframe
+                    rootPart.Velocity = velocity
                     humanoid.WalkSpeed = frame.walkSpeed
                     humanoid.JumpPower = frame.jumpPower
                     humanoid.HipHeight = frame.hipHeight
-                    humanoid:ChangeState(frame.state)
+                    humanoid:ChangeState(state)
                 end
                 index = index + 1
                 frame = macro.frames[index] or frame
@@ -1315,7 +1322,7 @@ local function showMacroManager()
     Utility.updateMacroList()
 end
 
--- Update Macro List UI
+-- Update Macro List UI dengan perbaikan untuk menampilkan info yang benar
 function Utility.updateMacroList()
     if not MacroScrollFrame then return end
     
@@ -1341,7 +1348,7 @@ function Utility.updateMacroList()
     infoLabel.BackgroundTransparency = 1
     infoLabel.Size = UDim2.new(1, 0, 1, 0)
     infoLabel.Font = Enum.Font.Gotham
-    infoLabel.Text = "JSON Sync: " .. MACRO_FOLDER_PATH .. " (" .. table.maxn(savedMacros) .. " macros)"
+    infoLabel.Text = "JSON Sync: " .. MACRO_FOLDER_PATH .. " (" .. #savedMacros .. " macros)" -- PERBAIKAN: Use # instead of table.maxn
     infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
     infoLabel.TextSize = 7
     infoLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1367,7 +1374,7 @@ function Utility.updateMacroList()
         nameLabel.TextSize = 7
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         
-        -- Show macro info
+        -- Show macro info dengan perbaikan untuk menampilkan data yang benar
         local infoText = string.format("Frames: %d | Duration: %.1fs | Speed: %.1fx", 
                                      macro.frameCount or #(macro.frames or {}),
                                      macro.duration or (macro.frames and #macro.frames > 0 and macro.frames[#macro.frames].time or 0),
@@ -1521,13 +1528,13 @@ function Utility.updateMacroList()
         fileStatusLabel.TextSize = 6
         fileStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
         
-        -- Event handlers
+        -- Event handlers dengan perbaikan untuk save yang benar
         speedInput.FocusLost:Connect(function(enterPressed)
             if enterPressed then
                 local newSpeed = tonumber(speedInput.Text)
                 if newSpeed and newSpeed > 0 then
                     macro.speed = newSpeed
-                    saveToFileSystem(macroName, macro)
+                    saveToFileSystem(macroName, macro) -- PERBAIKAN: Save updated macro
                     updateMacroStatus()
                     print("[SUPERTOOL] Updated speed for " .. macroName .. ": " .. newSpeed .. "x")
                 else
@@ -1875,7 +1882,7 @@ function Utility.resetStates()
     Utility.updateMacroList()
 end
 
--- Function to set dependencies and handle character respawn
+-- Function to set dependencies dan handle character respawn dengan perbaikan
 function Utility.init(deps)
     Players = deps.Players
     humanoid = deps.humanoid
@@ -1892,7 +1899,8 @@ function Utility.init(deps)
     autoPlaying = false
     recordingPaused = false
     currentMacro = {}
-    savedMacros = savedMacros or {} -- Hanya inisialisasi jika belum ada
+    -- PERBAIKAN: Tidak reset savedMacros untuk preserve data
+    -- savedMacros = {}
     macroFrameVisible = false
     currentMacroName = nil
     lastFrameTime = 0
@@ -1910,14 +1918,17 @@ function Utility.init(deps)
         print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
     end
     
-    -- Load macros from JSON files first, then backward compatibility
+    -- Initialize file system
     ensureFileSystem()
+    
+    -- PERBAIKAN: Load macros from JSON files first
     syncMacrosFromJSON()
     
-    -- Load any remaining from old file system
+    -- Load any remaining from old file system untuk backward compatibility
     for macroName, macroData in pairs(fileSystem["Supertool/Macro"]) do
         if not savedMacros[macroName] then
             savedMacros[macroName] = macroData
+            -- Auto-sync old macros to JSON
             saveToJSONFile(macroName, macroData)
         end
     end
