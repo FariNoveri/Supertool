@@ -27,37 +27,69 @@ local lastYaw, lastPitch = 0, 0
 local foliageStates = {} -- Store original foliage properties for restoration
 local processedObjects = {} -- Track processed objects for low detail mode
 
--- Create virtual joystick for mobile Freecam
+-- Create virtual joystick for mobile Freecam (Fixed positioning)
 local function createJoystick()
     joystickFrame = Instance.new("Frame")
     joystickFrame.Name = "FreecamJoystick"
-    joystickFrame.Size = UDim2.new(0, 100, 0, 100)
-    joystickFrame.Position = UDim2.new(0.1, 0, 0.7, 0)
-    joystickFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    joystickFrame.BackgroundTransparency = 0.5
+    joystickFrame.Size = UDim2.new(0, 120, 0, 120) -- Slightly bigger for easier use
+    joystickFrame.Position = UDim2.new(0.05, 0, 0.75, 0) -- Bottom left corner
+    joystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    joystickFrame.BackgroundTransparency = 0.3 -- More visible
     joystickFrame.BorderSizePixel = 0
     joystickFrame.Visible = false
+    joystickFrame.ZIndex = 10 -- Ensure it's on top
     joystickFrame.Parent = ScreenGui
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0.5, 0)
     corner.Parent = joystickFrame
 
+    -- Add outer ring for better visibility
+    local outerRing = Instance.new("Frame")
+    outerRing.Name = "OuterRing"
+    outerRing.Size = UDim2.new(1, -4, 1, -4)
+    outerRing.Position = UDim2.new(0, 2, 0, 2)
+    outerRing.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    outerRing.BackgroundTransparency = 0.5
+    outerRing.BorderSizePixel = 0
+    outerRing.ZIndex = 9
+    outerRing.Parent = joystickFrame
+    
+    local outerCorner = Instance.new("UICorner")
+    outerCorner.CornerRadius = UDim.new(0.5, 0)
+    outerCorner.Parent = outerRing
+
     joystickKnob = Instance.new("Frame")
     joystickKnob.Name = "Knob"
-    joystickKnob.Size = UDim2.new(0, 40, 0, 40)
-    joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-    joystickKnob.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    joystickKnob.BackgroundTransparency = 0.3
+    joystickKnob.Size = UDim2.new(0, 50, 0, 50) -- Bigger knob
+    joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25) -- Centered
+    joystickKnob.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+    joystickKnob.BackgroundTransparency = 0.1
     joystickKnob.BorderSizePixel = 0
+    joystickKnob.ZIndex = 11
     joystickKnob.Parent = joystickFrame
 
     local knobCorner = Instance.new("UICorner")
     knobCorner.CornerRadius = UDim.new(0.5, 0)
     knobCorner.Parent = joystickKnob
+    
+    -- Add movement instruction text
+    local instructionText = Instance.new("TextLabel")
+    instructionText.Name = "Instruction"
+    instructionText.Size = UDim2.new(0, 200, 0, 30)
+    instructionText.Position = UDim2.new(0, 0, 0, -40) -- Above joystick
+    instructionText.BackgroundTransparency = 1
+    instructionText.Text = "Move: Joystick | Look: Swipe screen"
+    instructionText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    instructionText.TextSize = 12
+    instructionText.Font = Enum.Font.SourceSansBold
+    instructionText.TextStrokeTransparency = 0.5
+    instructionText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    instructionText.ZIndex = 12
+    instructionText.Parent = joystickFrame
 end
 
--- Handle joystick input for Freecam movement (Mobile only)
+-- Handle joystick input for Freecam movement (Mobile only - Fixed)
 local function handleJoystickInput(input, processed)
     if not Visual.freecamEnabled or processed then return Vector2.new(0, 0) end
     
@@ -79,27 +111,27 @@ local function handleJoystickInput(input, processed)
             -- Start joystick control
             local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
             local magnitude = delta.Magnitude
-            local maxRadius = 30
+            local maxRadius = 35 -- Adjusted for bigger joystick
             if magnitude > maxRadius then
                 delta = delta * (maxRadius / magnitude)
             end
-            joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
+            joystickKnob.Position = UDim2.new(0.5, delta.X - 25, 0.5, delta.Y - 25) -- Adjusted for bigger knob
             return delta / maxRadius
             
         elseif input.UserInputState == Enum.UserInputState.Change and isInJoystick then
             -- Update joystick
             local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
             local magnitude = delta.Magnitude
-            local maxRadius = 30
+            local maxRadius = 35 -- Adjusted for bigger joystick
             if magnitude > maxRadius then
                 delta = delta * (maxRadius / magnitude)
             end
-            joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
+            joystickKnob.Position = UDim2.new(0.5, delta.X - 25, 0.5, delta.Y - 25) -- Adjusted for bigger knob
             return delta / maxRadius
             
         elseif input.UserInputState == Enum.UserInputState.End then
             -- Reset joystick
-            joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25) -- Adjusted for bigger knob
             return Vector2.new(0, 0)
         end
     end
@@ -407,7 +439,7 @@ local function toggleFreecam(enabled)
         
         -- Hide mobile controls
         joystickFrame.Visible = false
-        joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+        joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25) -- Adjusted for bigger knob
         
         -- Reset camera to normal
         local camera = Workspace.CurrentCamera
