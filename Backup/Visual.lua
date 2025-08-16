@@ -25,6 +25,7 @@ local joystickKnob
 local touchStartPos -- Track swipe for rotation
 local lastYaw, lastPitch = 0, 0
 local foliageStates = {} -- Store original foliage properties for restoration
+local processedObjects = {} -- Track processed objects for low detail mode
 
 -- Create virtual joystick for mobile Freecam
 local function createJoystick()
@@ -56,102 +57,139 @@ local function createJoystick()
     knobCorner.Parent = joystickKnob
 end
 
--- Handle joystick input for Freecam movement
-local function handleJoystickInput(input)
-    if not Visual.freecamEnabled or not joystickFrame.Visible then return end
+-- Handle joystick input for Freecam movement (Mobile only)
+local function handleJoystickInput(input, processed)
+    if not Visual.freecamEnabled or processed then return Vector2.new(0, 0) end
+    
     if input.UserInputType == Enum.UserInputType.Touch then
-        if input.UserInputState == Enum.UserInputState.Begin then
-            joystickFrame.Visible = true
-            joystickFrame.Position = UDim2.new(0, input.Position.X - 50, 0, input.Position.Y - 50)
-        elseif input.UserInputState == Enum.UserInputState.Change then
-            local center = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
-            local delta = Vector2.new(input.Position.X - center.X, input.Position.Y - center.Y)
+        local touchPos = input.Position
+        local joystickCenter = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
+        local frameRect = {
+            X = joystickFrame.AbsolutePosition.X,
+            Y = joystickFrame.AbsolutePosition.Y,
+            Width = joystickFrame.AbsoluteSize.X,
+            Height = joystickFrame.AbsoluteSize.Y
+        }
+        
+        -- Check if touch is within joystick area
+        local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
+                            touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
+        
+        if input.UserInputState == Enum.UserInputState.Begin and isInJoystick then
+            -- Start joystick control
+            local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
             local magnitude = delta.Magnitude
             local maxRadius = 30
             if magnitude > maxRadius then
                 delta = delta * (maxRadius / magnitude)
             end
             joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
-            return delta / maxRadius -- Normalized movement vector
+            return delta / maxRadius
+            
+        elseif input.UserInputState == Enum.UserInputState.Change and isInJoystick then
+            -- Update joystick
+            local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
+            local magnitude = delta.Magnitude
+            local maxRadius = 30
+            if magnitude > maxRadius then
+                delta = delta * (maxRadius / magnitude)
+            end
+            joystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
+            return delta / maxRadius
+            
         elseif input.UserInputState == Enum.UserInputState.End then
+            -- Reset joystick
             joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-            joystickFrame.Visible = false
             return Vector2.new(0, 0)
         end
     end
     return Vector2.new(0, 0)
 end
 
--- Handle swipe for Freecam rotation
-local function handleSwipe(input)
-    if not Visual.freecamEnabled or input.UserInputType ~= Enum.UserInputType.Touch then return end
+-- Handle swipe for Freecam rotation (Mobile only)
+local function handleSwipe(input, processed)
+    if not Visual.freecamEnabled or input.UserInputType ~= Enum.UserInputType.Touch or processed then return end
+    
+    local touchPos = input.Position
+    local joystickCenter = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
+    local frameRect = {
+        X = joystickFrame.AbsolutePosition.X,
+        Y = joystickFrame.AbsolutePosition.Y,
+        Width = joystickFrame.AbsoluteSize.X,
+        Height = joystickFrame.AbsoluteSize.Y
+    }
+    
+    -- Check if touch is within joystick area (ignore swipe if in joystick)
+    local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
+                        touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
+    
+    if isInJoystick then return end -- Don't handle swipe if touching joystick
+    
     if input.UserInputState == Enum.UserInputState.Begin then
-        touchStartPos = input.Position
+        touchStartPos = touchPos
     elseif input.UserInputState == Enum.UserInputState.Change and touchStartPos then
-        local delta = input.Position - touchStartPos
-        lastYaw = lastYaw - math.rad(delta.X * 0.1)
-        lastPitch = math.clamp(lastPitch - math.rad(delta.Y * 0.1), -math.rad(89), math.rad(89))
-        touchStartPos = input.Position
+        local delta = touchPos - touchStartPos
+        local sensitivity = 0.005 -- Lower sensitivity for smoother control
+        lastYaw = lastYaw - delta.X * sensitivity
+        lastPitch = math.clamp(lastPitch - delta.Y * sensitivity, -math.rad(89), math.rad(89))
+        touchStartPos = touchPos
     elseif input.UserInputState == Enum.UserInputState.End then
         touchStartPos = nil
     end
 end
 
--- ESP (Wallhack with Invisible Player Detection)
+-- ESP (Optimized - No more lag!)
 local function toggleESP(enabled)
     Visual.espEnabled = enabled
     print("ESP:", enabled)
     
     if enabled then
-        connections.esp = RunService.RenderStepped:Connect(function()
-            if Visual.espEnabled then
-                for _, otherPlayer in pairs(Players:GetPlayers()) do
-                    if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        local character = otherPlayer.Character
-                        local isInvisible = false
-                        
-                        -- Check for invisibility (transparent parts or custom attributes)
-                        pcall(function()
-                            for _, part in pairs(character:GetDescendants()) do
-                                if part:IsA("BasePart") and part.Transparency >= 0.9 then
-                                    isInvisible = true
-                                    break
-                                end
-                            end
-                            -- Check for custom invisibility attributes (game-specific)
-                            if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
-                                isInvisible = true
-                            end
-                        end)
-                        
-                        if not espHighlights[otherPlayer] then
-                            local highlight = Instance.new("Highlight")
-                            highlight.Name = "ESPHighlight"
-                            highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
-                            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                            highlight.FillTransparency = isInvisible and 0.3 or 0.5
-                            highlight.OutlineTransparency = 0
-                            highlight.Adornee = character
-                            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            highlight.Parent = character
-                            espHighlights[otherPlayer] = highlight
+        -- Clean existing highlights first
+        for _, highlight in pairs(espHighlights) do
+            if highlight and highlight.Parent then
+                highlight:Destroy()
+            end
+        end
+        espHighlights = {}
+        
+        -- Create highlights for existing players (one-time creation)
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local character = otherPlayer.Character
+                local isInvisible = false
+                
+                -- Check for invisibility
+                pcall(function()
+                    for _, part in pairs(character:GetDescendants()) do
+                        if part:IsA("BasePart") and part.Transparency >= 0.9 then
+                            isInvisible = true
+                            break
                         end
                     end
-                end
+                    if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
+                        isInvisible = true
+                    end
+                end)
+                
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESPHighlight"
+                highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = isInvisible and 0.3 or 0.5
+                highlight.OutlineTransparency = 0
+                highlight.Adornee = character
+                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                highlight.Parent = character
+                espHighlights[otherPlayer] = highlight
             end
-        end)
+        end
         
-        connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
-            if espHighlights[leavingPlayer] then
-                espHighlights[leavingPlayer]:Destroy()
-                espHighlights[leavingPlayer] = nil
-            end
-        end)
-        
+        -- Handle new players joining
         connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
             if Visual.espEnabled and newPlayer ~= player then
                 newPlayer.CharacterAdded:Connect(function(character)
-                    if Visual.espEnabled then
+                    wait(0.1) -- Small delay to ensure character is fully loaded
+                    if Visual.espEnabled and character:FindFirstChild("HumanoidRootPart") then
                         local isInvisible = false
                         pcall(function()
                             for _, part in pairs(character:GetDescendants()) do
@@ -164,6 +202,11 @@ local function toggleESP(enabled)
                                 isInvisible = true
                             end
                         end)
+                        
+                        -- Remove old highlight if exists
+                        if espHighlights[newPlayer] then
+                            espHighlights[newPlayer]:Destroy()
+                        end
                         
                         local highlight = Instance.new("Highlight")
                         highlight.Name = "ESPHighlight"
@@ -179,11 +222,55 @@ local function toggleESP(enabled)
                 end)
             end
         end)
-    else
-        if connections.esp then
-            connections.esp:Disconnect()
-            connections.esp = nil
+        
+        -- Handle players leaving
+        connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            if espHighlights[leavingPlayer] then
+                espHighlights[leavingPlayer]:Destroy()
+                espHighlights[leavingPlayer] = nil
+            end
+        end)
+        
+        -- Handle character respawning for existing players
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= player then
+                connections["espCharAdded" .. otherPlayer.UserId] = otherPlayer.CharacterAdded:Connect(function(character)
+                    wait(0.1)
+                    if Visual.espEnabled and character:FindFirstChild("HumanoidRootPart") then
+                        local isInvisible = false
+                        pcall(function()
+                            for _, part in pairs(character:GetDescendants()) do
+                                if part:IsA("BasePart") and part.Transparency >= 0.9 then
+                                    isInvisible = true
+                                    break
+                                end
+                            end
+                            if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
+                                isInvisible = true
+                            end
+                        end)
+                        
+                        -- Remove old highlight if exists
+                        if espHighlights[otherPlayer] then
+                            espHighlights[otherPlayer]:Destroy()
+                        end
+                        
+                        local highlight = Instance.new("Highlight")
+                        highlight.Name = "ESPHighlight"
+                        highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
+                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        highlight.FillTransparency = isInvisible and 0.3 or 0.5
+                        highlight.OutlineTransparency = 0
+                        highlight.Adornee = character
+                        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        highlight.Parent = character
+                        espHighlights[otherPlayer] = highlight
+                    end
+                end)
+            end
         end
+    else
+        -- Clean up connections
         if connections.espPlayerLeaving then
             connections.espPlayerLeaving:Disconnect()
             connections.espPlayerLeaving = nil
@@ -192,72 +279,115 @@ local function toggleESP(enabled)
             connections.espPlayerAdded:Disconnect()
             connections.espPlayerAdded = nil
         end
+        
+        -- Clean up character added connections
+        for key, connection in pairs(connections) do
+            if string.match(key, "espCharAdded") then
+                connection:Disconnect()
+                connections[key] = nil
+            end
+        end
+        
+        -- Clean up highlights
         for _, highlight in pairs(espHighlights) do
-            highlight:Destroy()
+            if highlight and highlight.Parent then
+                highlight:Destroy()
+            end
         end
         espHighlights = {}
     end
 end
 
--- Freecam (Mobile)
+-- Freecam (Android Spectator Mode - Character stays still, camera flies free)
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
     
     if enabled then
+        -- Freeze character completely
         if humanoid then
+            humanoid.PlatformStand = true -- Prevents character from moving
             humanoid.WalkSpeed = 0
             humanoid.JumpPower = 0
+            humanoid.JumpHeight = 0
+            if rootPart then
+                rootPart.Anchored = true -- Anchor the character in place
+                rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0) -- Stop all movement
+                rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0) -- Stop all rotation
+            end
         end
+        
+        -- Setup camera for free flight
         local camera = Workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Scriptable
+        camera.CameraSubject = nil -- Detach from character completely
+        
+        -- Initialize freecam position from current camera
         Visual.freecamCFrame = camera.CFrame
         Visual.freecamPosition = camera.CFrame.Position
-        camera.CameraType = Enum.CameraType.Scriptable
+        lastYaw, lastPitch = 0, 0
+        
+        -- Show mobile controls
         joystickFrame.Visible = true
         
+        -- Main freecam update loop
         connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
             if Visual.freecamEnabled then
+                local camera = Workspace.CurrentCamera
                 local moveVector = Vector3.new()
                 local speed = settings.FreecamSpeed and settings.FreecamSpeed.value or 50
-                local cameraCFrame = Visual.freecamCFrame
                 
-                -- Apply joystick movement
-                if joystickFrame.Visible then
-                    moveVector = moveVector + cameraCFrame.RightVector * Visual.joystickDelta.X
-                    moveVector = moveVector - cameraCFrame.LookVector * Visual.joystickDelta.Y
+                -- Calculate movement based on current camera rotation
+                local currentCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
+                
+                -- Apply joystick movement (WASD-like controls)
+                if Visual.joystickDelta.Magnitude > 0.1 then
+                    local forward = -currentCFrame.LookVector * Visual.joystickDelta.Y
+                    local right = currentCFrame.RightVector * Visual.joystickDelta.X
+                    moveVector = (forward + right).Unit * speed * deltaTime * Visual.joystickDelta.Magnitude
                 end
                 
-                if moveVector.Magnitude > 0 then
-                    moveVector = moveVector.Unit * speed * deltaTime * 60 -- Frame-rate independent
-                    Visual.freecamPosition = Visual.freecamPosition + moveVector
-                    Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * Visual.freecamCFrame.Rotation
-                end
+                -- Update position
+                Visual.freecamPosition = Visual.freecamPosition + moveVector
                 
-                -- Apply rotation from swipe
+                -- Apply final camera transform
                 Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
                 camera.CFrame = Visual.freecamCFrame
+                
+                -- Keep character frozen in place
+                if humanoid and rootPart then
+                    humanoid.PlatformStand = true
+                    rootPart.Anchored = true
+                    rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                end
             end
         end)
         
-        connections.touchInput = UserInputService.TouchMoved:Connect(function(input, processed)
-            if not processed then
-                Visual.joystickDelta = handleJoystickInput(input) or Vector2.new(0, 0)
-                handleSwipe(input)
+        -- Mobile touch controls
+        connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                Visual.joystickDelta = handleJoystickInput(input, processed)
+                handleSwipe(input, processed)
             end
         end)
-        connections.touchBegan = UserInputService.TouchStarted:Connect(function(input, processed)
-            if not processed then
-                Visual.joystickDelta = handleJoystickInput(input) or Vector2.new(0, 0)
-                handleSwipe(input)
+        
+        connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                Visual.joystickDelta = handleJoystickInput(input, processed)
+                handleSwipe(input, processed)
             end
         end)
-        connections.touchEnded = UserInputService.TouchEnded:Connect(function(input, processed)
-            if not processed then
-                Visual.joystickDelta = handleJoystickInput(input) or Vector2.new(0, 0)
-                handleSwipe(input)
+        
+        connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                Visual.joystickDelta = handleJoystickInput(input, processed)
+                handleSwipe(input, processed)
             end
         end)
+        
     else
+        -- Cleanup connections
         if connections.freecam then
             connections.freecam:Disconnect()
             connections.freecam = nil
@@ -274,22 +404,35 @@ local function toggleFreecam(enabled)
             connections.touchEnded:Disconnect()
             connections.touchEnded = nil
         end
+        
+        -- Hide mobile controls
         joystickFrame.Visible = false
         joystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-        lastYaw, lastPitch = 0, 0
-        touchStartPos = nil
-        Visual.joystickDelta = Vector2.new(0, 0)
         
+        -- Reset camera to normal
         local camera = Workspace.CurrentCamera
         camera.CameraType = Enum.CameraType.Custom
         camera.CameraSubject = humanoid
+        
+        -- Unfreeze character
         if humanoid and rootPart then
-            camera.CFrame = CFrame.lookAt(rootPart.Position + Vector3.new(0, 2, 10), rootPart.Position)
+            humanoid.PlatformStand = false
+            rootPart.Anchored = false
             humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 16
             humanoid.JumpPower = (settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50
+            humanoid.JumpHeight = settings.JumpHeight and settings.JumpHeight.value or 7.2
+            
+            -- Reset camera position relative to character
+            wait(0.1) -- Small delay to ensure character is unfrozen
+            camera.CFrame = CFrame.lookAt(rootPart.Position + Vector3.new(0, 2, 10), rootPart.Position)
         end
+        
+        -- Reset freecam variables
         Visual.freecamPosition = nil
         Visual.freecamCFrame = nil
+        Visual.joystickDelta = Vector2.new(0, 0)
+        lastYaw, lastPitch = 0, 0
+        touchStartPos = nil
     end
 end
 
@@ -408,163 +551,134 @@ local function toggleFlashlight(enabled)
     end
 end
 
--- Low Detail Mode (Brutally Low for Mobile with No Grass and No Leaves)
+-- Low Detail Mode (Optimized - No more lag!)
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
     
     if enabled then
-        -- Store default settings
-        defaultLightingSettings.GlobalShadows = defaultLightingSettings.GlobalShadows or Lighting.GlobalShadows
-        defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration -- Store terrain decoration setting
-        pcall(function()
-            defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
-            defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
-            defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
-            defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
-        end)
+        -- Store default settings (one-time)
+        if not defaultLightingSettings.GlobalShadowsStored then
+            defaultLightingSettings.GlobalShadowsStored = true
+            defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
+            defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration
+            pcall(function()
+                defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
+                defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
+                defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
+                defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
+            end)
+        end
         
-        -- Disable all shadows and set minimal lighting
+        -- Apply lighting changes (fast)
         Lighting.GlobalShadows = false
         Lighting.Brightness = 0.5
-        Lighting.FogEnd = 500
+        Lighting.FogEnd = 300
         Lighting.FogStart = 0
         Lighting.FogColor = Color3.fromRGB(100, 100, 100)
         
-        -- Set absolute minimum rendering quality
+        -- Set rendering quality (fast)
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
             renderSettings.QualityLevel = Enum.QualityLevel.Level01
-            renderSettings.EnableFRM = false
-            renderSettings.EnableParticles = false
-            renderSettings.EnableClouds = false
         end)
         pcall(function()
             local userSettings = UserSettings()
             local gameSettings = userSettings.GameSettings
             gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-            gameSettings.RenderDistance = 50
+            gameSettings.RenderDistance = 100
         end)
         
-        -- Disable all visual effects and simplify objects, including foliage
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
-               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                if not foliageStates[obj] then
-                    foliageStates[obj] = { Enabled = obj.Enabled }
-                end
-                obj.Enabled = false
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                if not foliageStates[obj] then
-                    foliageStates[obj] = { Transparency = obj.Transparency }
-                end
-                obj.Transparency = 1
-            elseif obj:IsA("BasePart") then
-                -- Check for leaf-related parts (by name or tag)
-                local isFoliage = obj.Name:lower():match("leaf") or obj.Name:lower():match("leaves") or 
-                                  obj.Name:lower():match("foliage") or obj:GetAttribute("IsFoliage")
-                if isFoliage then
-                    if not foliageStates[obj] then
+        -- Process objects efficiently (avoid lag)
+        spawn(function()
+            local processCount = 0
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if not processedObjects[obj] then
+                    processedObjects[obj] = true
+                    
+                    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                       obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                        foliageStates[obj] = { Enabled = obj.Enabled }
+                        obj.Enabled = false
+                    elseif obj:IsA("Decal") or obj:IsA("Texture") then
                         foliageStates[obj] = { Transparency = obj.Transparency }
-                    end
-                    obj.Transparency = 1
-                else
-                    if not foliageStates[obj] then
-                        foliageStates[obj] = { Material = obj.Material, Reflectance = obj.Reflectance, CastShadow = obj.CastShadow, Transparency = obj.Transparency }
-                    end
-                    obj.Material = Enum.Material.SmoothPlastic
-                    obj.Reflectance = 0
-                    obj.CastShadow = false
-                    obj.Transparency = obj.Transparency > 0 and obj.Transparency or 0
-                end
-            elseif obj:IsA("MeshPart") then
-                local isFoliage = obj.Name:lower():match("leaf") or obj.Name:lower():match("leaves") or 
-                                  obj.Name:lower():match("foliage") or obj:GetAttribute("IsFoliage")
-                if isFoliage then
-                    if not foliageStates[obj] then
-                        foliageStates[obj] = { Transparency = obj.Transparency }
-                    end
-                    obj.Transparency = 1
-                else
-                    if not foliageStates[obj] then
-                        foliageStates[obj] = { TextureID = obj.TextureID, Material = obj.Material }
-                    end
-                    obj.TextureID = ""
-                    obj.Material = Enum.Material.SmoothPlastic
-                end
-            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                if not foliageStates[obj] then
-                    foliageStates[obj] = { Enabled = obj.Enabled }
-                end
-                obj.Enabled = false
-            elseif obj:IsA("Model") and obj ~= Visual.character then
-                -- Check if model is a tree or foliage
-                local isTreeModel = obj.Name:lower():match("tree") or obj.Name:lower():match("bush") or 
-                                    obj.Name:lower():match("foliage") or obj:GetAttribute("IsTree")
-                if isTreeModel then
-                    for _, part in pairs(obj:GetDescendants()) do
-                        if part:IsA("BasePart") or part:IsA("MeshPart") then
-                            if not foliageStates[part] then
-                                foliageStates[part] = { Transparency = part.Transparency }
-                            end
-                            part.Transparency = 1
+                        obj.Transparency = 1
+                    elseif obj:IsA("BasePart") then
+                        local isFoliage = obj.Name:lower():find("leaf") or obj.Name:lower():find("leaves") or 
+                                          obj.Name:lower():find("foliage") or obj.Name:lower():find("grass") or
+                                          obj:GetAttribute("IsFoliage")
+                        if isFoliage then
+                            foliageStates[obj] = { Transparency = obj.Transparency }
+                            obj.Transparency = 1
+                        else
+                            foliageStates[obj] = { Material = obj.Material, Reflectance = obj.Reflectance, CastShadow = obj.CastShadow }
+                            obj.Material = Enum.Material.SmoothPlastic
+                            obj.Reflectance = 0
+                            obj.CastShadow = false
                         end
+                    elseif obj:IsA("MeshPart") then
+                        local isFoliage = obj.Name:lower():find("leaf") or obj.Name:lower():find("leaves") or 
+                                          obj.Name:lower():find("foliage") or obj:GetAttribute("IsFoliage")
+                        if isFoliage then
+                            foliageStates[obj] = { Transparency = obj.Transparency }
+                            obj.Transparency = 1
+                        else
+                            foliageStates[obj] = { TextureID = obj.TextureID, Material = obj.Material }
+                            obj.TextureID = ""
+                            obj.Material = Enum.Material.SmoothPlastic
+                        end
+                    elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                        foliageStates[obj] = { Enabled = obj.Enabled }
+                        obj.Enabled = false
+                    end
+                    
+                    processCount = processCount + 1
+                    -- Yield every 50 objects to prevent lag
+                    if processCount % 50 == 0 then
+                        RunService.Heartbeat:Wait()
                     end
                 end
-                pcall(function()
-                    local animator = obj:FindFirstChildOfClass("Animator")
-                    if animator then
-                        animator:Destroy()
-                    end
-                end)
             end
-        end
+        end)
         
-        -- Ultra-low streaming settings
+        -- Streaming settings (fast)
         pcall(function()
             Workspace.StreamingEnabled = true
-            Workspace.StreamingMinRadius = 8
-            Workspace.StreamingTargetRadius = 16
+            Workspace.StreamingMinRadius = 16
+            Workspace.StreamingTargetRadius = 32
         end)
         
-        -- Disable all terrain details, including grass
+        -- Terrain changes (fast)
         pcall(function()
             local terrain = Workspace.Terrain
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
-            terrain.WaterTransparency = 1
-            terrain.Material = Enum.Material.SmoothPlastic
-            terrain.Decoration = false -- Disable grass and foliage
-            terrain:ClearAllChildren() -- Remove all terrain decorations
+            terrain.WaterTransparency = 0.8
+            terrain.Decoration = false -- Remove grass/decorations
         end)
         
-        -- Disable post-processing effects
+        -- Disable post-processing effects (fast)
         pcall(function()
             for _, effect in pairs(Lighting:GetChildren()) do
                 if effect:IsA("PostEffect") then
-                    if not foliageStates[effect] then
-                        foliageStates[effect] = { Enabled = effect.Enabled }
-                    end
+                    foliageStates[effect] = { Enabled = effect.Enabled }
                     effect.Enabled = false
                 end
             end
         end)
         
     else
-        -- Restore default settings
+        -- Restore settings (fast)
         Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
         Lighting.Brightness = defaultLightingSettings.Brightness or 1
         Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
-        Lighting.FogStart = defaultLightingSettings.FogStart or 0
-        Lighting.FogColor = defaultLightingSettings.FogColor or Color3.fromRGB(192, 192, 192)
+        Lighting.FogStart = 0
+        Lighting.FogColor = Color3.fromRGB(192, 192, 192)
         
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
             renderSettings.QualityLevel = defaultLightingSettings.QualityLevel or Enum.QualityLevel.Automatic
-            renderSettings.EnableFRM = true
-            renderSettings.EnableParticles = true
-            renderSettings.EnableClouds = true
         end)
         pcall(function()
             local userSettings = UserSettings()
@@ -573,33 +687,49 @@ local function toggleLowDetail(enabled)
             gameSettings.RenderDistance = 500
         end)
         
-        -- Restore objects
-        for obj, state in pairs(foliageStates) do
-            pcall(function()
-                if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
-                   obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                    obj.Enabled = state.Enabled or true
-                elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                    obj.Transparency = state.Transparency or 0
-                elseif obj:IsA("BasePart") then
-                    obj.Material = state.Material or Enum.Material.Plastic
-                    obj.Reflectance = state.Reflectance or 0.1
-                    obj.CastShadow = state.CastShadow or true
-                    obj.Transparency = state.Transparency or 0
-                elseif obj:IsA("MeshPart") then
-                    obj.TextureID = state.TextureID or ""
-                    obj.Material = state.Material or Enum.Material.Plastic
-                    obj.Transparency = state.Transparency or 0
-                elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                    obj.Enabled = state.Enabled or true
-                elseif obj:IsA("PostEffect") then
-                    obj.Enabled = state.Enabled or true
+        -- Restore objects (efficiently)
+        spawn(function()
+            local restoreCount = 0
+            for obj, state in pairs(foliageStates) do
+                pcall(function()
+                    if obj and obj.Parent then
+                        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                           obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                            obj.Enabled = state.Enabled or true
+                        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                            obj.Transparency = state.Transparency or 0
+                        elseif obj:IsA("BasePart") then
+                            obj.Material = state.Material or Enum.Material.Plastic
+                            obj.Reflectance = state.Reflectance or 0
+                            obj.CastShadow = state.CastShadow ~= false
+                            if state.Transparency then
+                                obj.Transparency = state.Transparency
+                            end
+                        elseif obj:IsA("MeshPart") then
+                            obj.TextureID = state.TextureID or ""
+                            obj.Material = state.Material or Enum.Material.Plastic
+                            if state.Transparency then
+                                obj.Transparency = state.Transparency
+                            end
+                        elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                            obj.Enabled = state.Enabled ~= false
+                        elseif obj:IsA("PostEffect") then
+                            obj.Enabled = state.Enabled ~= false
+                        end
+                    end
+                end)
+                
+                restoreCount = restoreCount + 1
+                -- Yield every 50 objects to prevent lag
+                if restoreCount % 50 == 0 then
+                    RunService.Heartbeat:Wait()
                 end
-            end)
-        end
-        foliageStates = {} -- Clear stored states
+            end
+            foliageStates = {} -- Clear after restoring
+            processedObjects = {} -- Clear processed objects
+        end)
         
-        -- Restore streaming settings
+        -- Restore streaming
         pcall(function()
             Workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
             Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
@@ -613,17 +743,7 @@ local function toggleLowDetail(enabled)
             terrain.WaterWaveSpeed = 10
             terrain.WaterReflectance = 0.3
             terrain.WaterTransparency = 0.5
-            terrain.Material = Enum.Material.Grass
-            terrain.Decoration = defaultLightingSettings.TerrainDecoration or true -- Restore grass
-        end)
-        
-        -- Restore post-processing effects
-        pcall(function()
-            for _, effect in pairs(Lighting:GetChildren()) do
-                if effect:IsA("PostEffect") then
-                    effect.Enabled = true
-                end
-            end
+            terrain.Decoration = defaultLightingSettings.TerrainDecoration ~= false
         end)
     end
 end
@@ -702,6 +822,7 @@ function Visual.init(deps)
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
     foliageStates = {}
+    processedObjects = {}
     
     defaultLightingSettings.Brightness = Lighting.Brightness
     defaultLightingSettings.ClockTime = Lighting.ClockTime
