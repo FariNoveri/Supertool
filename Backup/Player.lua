@@ -82,8 +82,9 @@ local function toggleAntiAFK(enabled)
     if enabled then
         connections.antiafk = Players.LocalPlayer.Idled:Connect(function()
             if Player.antiAFKEnabled then
-                game:GetService("VirtualUser"):Button2Down(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
-                game:GetService("VirtualUser"):Button2Up(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+                local VirtualUser = game:GetService("VirtualUser")
+                VirtualUser:Button2Down(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+                VirtualUser:Button2Up(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
             end
         end)
         print("Anti AFK enabled")
@@ -96,28 +97,96 @@ local function toggleAntiAFK(enabled)
     end
 end
 
--- Fast Respawn
+-- Fast Respawn - Client-safe version
 local function toggleFastRespawn(enabled)
     Player.fastRespawnEnabled = enabled
     if enabled then
-        connections.fastrespawn = player.CharacterRemoving:Connect(function()
+        -- Monitor for character removal and speed up the respawn waiting process
+        connections.fastrespawn = player.CharacterRemoving:Connect(function(character)
             if Player.fastRespawnEnabled then
-                task.wait(0.1)
-                player:LoadCharacter()
-                print("Fast respawn activated")
+                print("Character removing, preparing for fast respawn...")
+                
+                -- Store respawn request
+                task.spawn(function()
+                    -- Wait for character to be fully removed
+                    while player.Character == character do
+                        task.wait(0.1)
+                    end
+                    
+                    -- Try different client-side respawn methods
+                    local success = false
+                    
+                    -- Method 1: Try using StarterGui reset
+                    if not success then
+                        local StarterGui = game:GetService("StarterGui")
+                        local resetSuccess = pcall(function()
+                            StarterGui:SetCore("ResetButtonCallback", true)
+                        end)
+                        if resetSuccess then
+                            success = true
+                            print("Fast respawn via StarterGui")
+                        end
+                    end
+                    
+                    -- Method 2: Check for game-specific respawn remotes
+                    if not success then
+                        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                        local respawnRemote = ReplicatedStorage:FindFirstChild("RespawnRemote") or 
+                                             ReplicatedStorage:FindFirstChild("Respawn") or
+                                             ReplicatedStorage:FindFirstChild("LoadCharacter")
+                        
+                        if respawnRemote and respawnRemote:IsA("RemoteEvent") then
+                            pcall(function()
+                                respawnRemote:FireServer()
+                                success = true
+                                print("Fast respawn via RemoteEvent")
+                            end)
+                        end
+                    end
+                    
+                    -- If no special method worked, just wait for natural respawn
+                    if not success then
+                        print("Fast respawn: Using natural respawn process")
+                        local startTime = tick()
+                        while not player.Character and Player.fastRespawnEnabled and (tick() - startTime) < 10 do
+                            task.wait(0.1)
+                        end
+                    end
+                    
+                    if player.Character and Player.fastRespawnEnabled then
+                        print("Fast respawn completed!")
+                    end
+                end)
             end
         end)
-        print("Fast Respawn enabled")
+        
+        -- Also monitor for when we actually get a new character
+        connections.fastrespawncharadded = player.CharacterAdded:Connect(function(newCharacter)
+            if Player.fastRespawnEnabled then
+                print("Fast respawn: New character loaded")
+                -- Ensure we update our rootPart reference
+                task.wait(0.5)
+                if newCharacter:FindFirstChild("HumanoidRootPart") then
+                    Player.rootPart = newCharacter.HumanoidRootPart
+                end
+            end
+        end)
+        
+        print("Fast Respawn enabled (Client-safe version)")
     else
         if connections.fastrespawn then
             connections.fastrespawn:Disconnect()
             connections.fastrespawn = nil
         end
+        if connections.fastrespawncharadded then
+            connections.fastrespawncharadded:Disconnect()
+            connections.fastrespawncharadded = nil
+        end
         print("Fast Respawn disabled")
     end
 end
 
--- No Death Animation
+-- No Death Animation - Fixed version
 local function toggleNoDeathAnimation(enabled)
     Player.noDeathAnimationEnabled = enabled
     
@@ -1305,64 +1374,6 @@ local function initUI()
     end)
     
     print("Player UI initialized successfully")
-end
-
--- Fix for setupNoDeathForPlayer function (it was referenced but not defined in the original scope)
-function setupNoDeathForPlayer(targetPlayer)
-    if Player.deathAnimationConnections[targetPlayer] then return end
-    
-    Player.deathAnimationConnections[targetPlayer] = {}
-    
-    local function setupCharacterNoDeathAnimation(character)
-        if not Player.noDeathAnimationEnabled then return end
-        
-        local humanoidTarget = character:WaitForChild("Humanoid", 5)
-        if humanoidTarget then
-            Player.deathAnimationConnections[targetPlayer].died = humanoidTarget.Died:Connect(function()
-                if Player.noDeathAnimationEnabled then
-                    -- Remove death sound
-                    for _, sound in pairs(character:GetChildren()) do
-                        if sound:IsA("Sound") and (sound.Name:lower():find("death") or sound.Name:lower():find("died")) then
-                            sound:Stop()
-                            sound.Volume = 0
-                        end
-                    end
-                    
-                    -- Prevent death animation by making character disappear
-                    for _, part in pairs(character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            part.Transparency = 1
-                        elseif part:IsA("Accessory") then
-                            local handle = part:FindFirstChild("Handle")
-                            if handle then
-                                handle.Transparency = 1
-                            end
-                        end
-                    end
-                    
-                    -- Stop all animations
-                    local animator = humanoidTarget:FindFirstChild("Animator")
-                    if animator then
-                        for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-                            track:Stop()
-                        end
-                    end
-                    
-                    print("Death animation and sound disabled for: " .. targetPlayer.Name)
-                end
-            end)
-        end
-    end
-    
-    -- Setup for current character
-    if targetPlayer.Character then
-        setupCharacterNoDeathAnimation(targetPlayer.Character)
-    end
-    
-    -- Setup for future characters
-    Player.deathAnimationConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
-        setupCharacterNoDeathAnimation(character)
-    end)
 end
 
 -- Initialize Module
