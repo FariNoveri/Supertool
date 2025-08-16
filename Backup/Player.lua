@@ -23,31 +23,56 @@ Player.followConnections = {}
 Player.followOffset = Vector3.new(0, 0, 3) -- Follow from behind by 3 studs
 Player.lastTargetPosition = nil
 Player.followSpeed = 1.2 -- Multiplier for follow speed to keep up
+Player.followPathfinding = nil
+
+-- Variables for new features
+Player.fastRespawnEnabled = false
+Player.noDeathAnimationEnabled = false
+Player.deathAnimationConnections = {}
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 
--- God Mode
-local function toggleGodMode(enabled)
-    Player.godModeEnabled = enabled
+-- Force Field (God Mode replacement)
+local function toggleForceField(enabled)
+    Player.forceFieldEnabled = enabled
     if enabled then
-        if humanoid then
-            connections.godmode = humanoid.HealthChanged:Connect(function()
-                if Player.godModeEnabled then
-                    humanoid.Health = humanoid.MaxHealth
+        if player.Character then
+            -- Create ForceField if it doesn't exist
+            if not player.Character:FindFirstChild("ForceField") then
+                local forceField = Instance.new("ForceField")
+                forceField.Parent = player.Character
+                forceField.Visible = false -- Make it invisible
+                print("Force Field enabled")
+            end
+            
+            -- Monitor character respawn to reapply ForceField
+            connections.forcefield = player.CharacterAdded:Connect(function(character)
+                if Player.forceFieldEnabled then
+                    task.wait(0.1) -- Small delay to ensure character is fully loaded
+                    if not character:FindFirstChild("ForceField") then
+                        local forceField = Instance.new("ForceField")
+                        forceField.Parent = character
+                        forceField.Visible = false
+                        print("Force Field reapplied after respawn")
+                    end
                 end
             end)
-            print("God Mode enabled")
         else
-            warn("Cannot enable God Mode: humanoid is nil")
+            warn("Cannot enable Force Field: No character found")
         end
     else
-        if connections.godmode then
-            connections.godmode:Disconnect()
-            connections.godmode = nil
+        -- Remove ForceField
+        if player.Character and player.Character:FindFirstChild("ForceField") then
+            player.Character.ForceField:Destroy()
         end
-        print("God Mode disabled")
+        
+        if connections.forcefield then
+            connections.forcefield:Disconnect()
+            connections.forcefield = nil
+        end
+        print("Force Field disabled")
     end
 end
 
@@ -68,6 +93,122 @@ local function toggleAntiAFK(enabled)
             connections.antiafk = nil
         end
         print("Anti AFK disabled")
+    end
+end
+
+-- Fast Respawn
+local function toggleFastRespawn(enabled)
+    Player.fastRespawnEnabled = enabled
+    if enabled then
+        connections.fastrespawn = player.CharacterRemoving:Connect(function()
+            if Player.fastRespawnEnabled then
+                task.wait(0.1)
+                player:LoadCharacter()
+                print("Fast respawn activated")
+            end
+        end)
+        print("Fast Respawn enabled")
+    else
+        if connections.fastrespawn then
+            connections.fastrespawn:Disconnect()
+            connections.fastrespawn = nil
+        end
+        print("Fast Respawn disabled")
+    end
+end
+
+-- No Death Animation
+local function toggleNoDeathAnimation(enabled)
+    Player.noDeathAnimationEnabled = enabled
+    
+    local function setupNoDeathForPlayer(targetPlayer)
+        if Player.deathAnimationConnections[targetPlayer] then return end
+        
+        Player.deathAnimationConnections[targetPlayer] = {}
+        
+        local function setupCharacterNoDeathAnimation(character)
+            if not Player.noDeathAnimationEnabled then return end
+            
+            local humanoidTarget = character:WaitForChild("Humanoid", 5)
+            if humanoidTarget then
+                Player.deathAnimationConnections[targetPlayer].died = humanoidTarget.Died:Connect(function()
+                    if Player.noDeathAnimationEnabled then
+                        -- Remove death sound
+                        for _, sound in pairs(character:GetChildren()) do
+                            if sound:IsA("Sound") and (sound.Name:lower():find("death") or sound.Name:lower():find("died")) then
+                                sound:Stop()
+                                sound.Volume = 0
+                            end
+                        end
+                        
+                        -- Prevent death animation by making character disappear
+                        for _, part in pairs(character:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                part.Transparency = 1
+                            elseif part:IsA("Accessory") then
+                                local handle = part:FindFirstChild("Handle")
+                                if handle then
+                                    handle.Transparency = 1
+                                end
+                            end
+                        end
+                        
+                        -- Stop all animations
+                        local animator = humanoidTarget:FindFirstChild("Animator")
+                        if animator then
+                            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                                track:Stop()
+                            end
+                        end
+                        
+                        print("Death animation and sound disabled for: " .. targetPlayer.Name)
+                    end
+                end)
+            end
+        end
+        
+        -- Setup for current character
+        if targetPlayer.Character then
+            setupCharacterNoDeathAnimation(targetPlayer.Character)
+        end
+        
+        -- Setup for future characters
+        Player.deathAnimationConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
+            setupCharacterNoDeathAnimation(character)
+        end)
+    end
+    
+    if enabled then
+        -- Apply to all current players
+        for _, p in pairs(Players:GetPlayers()) do
+            setupNoDeathForPlayer(p)
+        end
+        
+        -- Apply to future players
+        connections.nodeathanimation = Players.PlayerAdded:Connect(function(p)
+            if Player.noDeathAnimationEnabled then
+                setupNoDeathForPlayer(p)
+            end
+        end)
+        
+        print("No Death Animation enabled for all players")
+    else
+        -- Clean up all connections
+        for targetPlayer, playerConnections in pairs(Player.deathAnimationConnections) do
+            for _, connection in pairs(playerConnections) do
+                if connection then
+                    connection:Disconnect()
+                end
+            end
+        end
+        Player.deathAnimationConnections = {}
+        
+        if connections.nodeathanimation then
+            connections.nodeathanimation:Disconnect()
+            connections.nodeathanimation = nil
+        end
+        
+        print("No Death Animation disabled")
     end
 end
 
@@ -132,18 +273,44 @@ local function setupPlayerMonitoring(targetPlayer)
     Player.playerConnections[targetPlayer] = {}
     
     Player.playerConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
-        if not Player.freezeEnabled then return end
+        task.wait(1) -- Wait for character to fully load
         
-        local hrp = character:WaitForChild("HumanoidRootPart", 5)
-        if hrp then
-            wait(0.5)
+        if Player.freezeEnabled then
             freezePlayer(targetPlayer)
             print("Auto-froze respawned player: " .. targetPlayer.Name)
         end
+        
+        -- Reapply follow if this was our follow target
+        if Player.followEnabled and Player.followTarget == targetPlayer then
+            task.wait(0.5)
+            followPlayer(targetPlayer)
+            print("Resumed following respawned player: " .. targetPlayer.Name)
+        end
+        
+        -- Reapply spectate if this was our spectate target
+        if Player.selectedPlayer == targetPlayer then
+            task.wait(0.5)
+            spectatePlayer(targetPlayer)
+            print("Resumed spectating respawned player: " .. targetPlayer.Name)
+        end
+        
+        -- Apply no death animation if enabled
+        if Player.noDeathAnimationEnabled then
+            local humanoidTarget = character:WaitForChild("Humanoid", 5)
+            if humanoidTarget and not Player.deathAnimationConnections[targetPlayer] then
+                setupNoDeathForPlayer(targetPlayer)
+            end
+        end
     end)
     
+    -- Initial freeze if freeze is enabled
     if Player.freezeEnabled and targetPlayer.Character then
         freezePlayer(targetPlayer)
+    end
+    
+    -- Initial no death animation setup if enabled
+    if Player.noDeathAnimationEnabled then
+        setupNoDeathForPlayer(targetPlayer)
     end
 end
 
@@ -156,6 +323,15 @@ local function cleanupPlayerMonitoring(targetPlayer)
             end
         end
         Player.playerConnections[targetPlayer] = nil
+    end
+    
+    if Player.deathAnimationConnections[targetPlayer] then
+        for _, connection in pairs(Player.deathAnimationConnections[targetPlayer]) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        Player.deathAnimationConnections[targetPlayer] = nil
     end
     
     Player.frozenPlayerPositions[targetPlayer] = nil
@@ -175,6 +351,11 @@ local function stopFollowing()
     end
     Player.followConnections = {}
     
+    -- Destroy pathfinding if it exists
+    if Player.followPathfinding then
+        Player.followPathfinding = nil
+    end
+    
     -- Reset humanoid properties to normal
     if humanoid then
         humanoid.WalkSpeed = 16
@@ -185,7 +366,7 @@ local function stopFollowing()
     print("Stopped following player")
 end
 
--- Follow Player function
+-- Enhanced Follow Player function with pathfinding
 local function followPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot follow: Invalid target player")
@@ -208,10 +389,19 @@ local function followPlayer(targetPlayer)
     Player.followEnabled = true
     Player.followTarget = targetPlayer
     
+    -- Create PathfindingService
+    local PathfindingService = game:GetService("PathfindingService")
+    
     local targetRootPart = targetPlayer.Character.HumanoidRootPart
     local targetHumanoid = targetPlayer.Character.Humanoid
     
     print("Started following: " .. targetPlayer.Name)
+    
+    -- Variables for pathfinding
+    local currentPath = nil
+    local currentWaypoint = 0
+    local pathUpdateTime = 0
+    local lastTargetPos = targetRootPart.Position
     
     -- Main follow loop using Heartbeat for smooth movement
     Player.followConnections.heartbeat = RunService.Heartbeat:Connect(function()
@@ -233,26 +423,68 @@ local function followPlayer(targetPlayer)
             return
         end
         
-        -- Calculate follow position (behind the target)
         local targetPosition = currentTargetRootPart.Position
-        local targetLookVector = currentTargetRootPart.CFrame.LookVector
-        local followPosition = targetPosition - (targetLookVector * Player.followOffset.Z)
-        followPosition = followPosition + Vector3.new(0, Player.followOffset.Y, 0)
+        local ourPosition = Player.rootPart.Position
+        local distance = (ourPosition - targetPosition).Magnitude
         
-        -- Calculate distance to target
-        local distance = (Player.rootPart.Position - followPosition).Magnitude
-        
-        -- Only move if distance is significant to avoid jittery movement
-        if distance > 2 then
-            -- Set humanoid to walk towards the follow position
-            humanoid:MoveTo(followPosition)
+        -- Update path if target moved significantly or enough time passed
+        local currentTime = tick()
+        if not currentPath or (lastTargetPos - targetPosition).Magnitude > 4 or currentTime - pathUpdateTime > 2 then
+            pathUpdateTime = currentTime
+            lastTargetPos = targetPosition
             
-            -- Match target's walk speed but slightly faster to keep up
-            humanoid.WalkSpeed = math.max(currentTargetHumanoid.WalkSpeed * Player.followSpeed, 16)
-        else
-            -- Stop moving if we're close enough
-            humanoid:MoveTo(Player.rootPart.Position)
+            -- Create new path
+            pcall(function()
+                currentPath = PathfindingService:CreatePath({
+                    AgentRadius = 2,
+                    AgentHeight = 5,
+                    AgentCanJump = true,
+                    WaypointSpacing = 4
+                })
+                
+                currentPath:ComputeAsync(ourPosition, targetPosition)
+                
+                if currentPath.Status == Enum.PathStatus.Success then
+                    currentWaypoint = 1
+                else
+                    currentPath = nil
+                end
+            end)
         end
+        
+        -- Follow the path or move directly if no path available
+        if currentPath and currentPath.Status == Enum.PathStatus.Success then
+            local waypoints = currentPath:GetWaypoints()
+            
+            if currentWaypoint <= #waypoints then
+                local waypoint = waypoints[currentWaypoint]
+                local waypointPosition = waypoint.Position
+                local waypointDistance = (ourPosition - waypointPosition).Magnitude
+                
+                -- Move to current waypoint
+                humanoid:MoveTo(waypointPosition)
+                
+                -- Handle jumping
+                if waypoint.Action == Enum.PathWaypointAction.Jump then
+                    humanoid.Jump = true
+                end
+                
+                -- Move to next waypoint if close enough
+                if waypointDistance < 3 then
+                    currentWaypoint = currentWaypoint + 1
+                end
+            end
+        else
+            -- Fallback: Direct movement if pathfinding fails
+            if distance > 5 then
+                local followPosition = targetPosition - (currentTargetRootPart.CFrame.LookVector * Player.followOffset.Z)
+                followPosition = followPosition + Vector3.new(0, Player.followOffset.Y, 0)
+                humanoid:MoveTo(followPosition)
+            end
+        end
+        
+        -- Match target's movement behaviors
+        humanoid.WalkSpeed = math.max(currentTargetHumanoid.WalkSpeed * Player.followSpeed, 16)
         
         -- Copy jump behavior
         if currentTargetHumanoid.Jump and not humanoid.Jump then
@@ -277,7 +509,10 @@ local function followPlayer(targetPlayer)
         
         if newRootPart and newHumanoid then
             print("Target respawned, continuing follow: " .. Player.followTarget.Name)
-            -- The heartbeat connection will automatically handle the new character
+            -- Reset pathfinding
+            currentPath = nil
+            currentWaypoint = 0
+            pathUpdateTime = 0
         else
             print("Failed to get new character parts for follow target")
             stopFollowing()
@@ -302,6 +537,7 @@ local function followPlayer(targetPlayer)
         if newRootPart and newHumanoid then
             Player.rootPart = newRootPart
             humanoid = newHumanoid
+            currentPath = nil -- Reset path after our respawn
             print("Our character respawned, continuing follow")
         else
             print("Failed to get our new character parts")
@@ -326,7 +562,7 @@ local function toggleFollowPlayer(enabled)
     return true
 end
 
--- Freeze Players function
+-- Enhanced Freeze Players function with new player detection
 local function toggleFreezePlayers(enabled)
     Player.freezeEnabled = enabled
     
@@ -334,11 +570,32 @@ local function toggleFreezePlayers(enabled)
         print("Activating freeze players...")
         Player.frozenPlayerPositions = {}
         
+        -- Freeze all current players
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player then
                 setupPlayerMonitoring(p)
                 freezePlayer(p)
             end
+        end
+        
+        -- Monitor for new players joining
+        if not connections.freezeNewPlayers then
+            connections.freezeNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
+                if Player.freezeEnabled and newPlayer ~= player then
+                    print("New player joined, setting up freeze monitoring: " .. newPlayer.Name)
+                    setupPlayerMonitoring(newPlayer)
+                    
+                    -- Wait for character to load then freeze
+                    if newPlayer.Character then
+                        task.wait(1)
+                        freezePlayer(newPlayer)
+                    else
+                        newPlayer.CharacterAdded:Wait()
+                        task.wait(1)
+                        freezePlayer(newPlayer)
+                    end
+                end
+            end)
         end
         
         connections.freeze = RunService.Heartbeat:Connect(function()
@@ -367,6 +624,11 @@ local function toggleFreezePlayers(enabled)
         if connections.freeze then
             connections.freeze:Disconnect()
             connections.freeze = nil
+        end
+        
+        if connections.freezeNewPlayers then
+            connections.freezeNewPlayers:Disconnect()
+            connections.freezeNewPlayers = nil
         end
         
         for targetPlayer, _ in pairs(Player.frozenPlayerPositions) do
@@ -438,7 +700,7 @@ local function stopSpectating()
     print("Stopped spectating")
 end
 
--- Spectate Player
+-- Enhanced Spectate Player with better respawn handling
 local function spectatePlayer(targetPlayer)
     for _, connection in pairs(Player.spectateConnections) do
         if connection then
@@ -458,24 +720,24 @@ local function spectatePlayer(targetPlayer)
         end
         print("Spectating: " .. targetPlayer.Name)
         
-        local targetHumanoid = targetPlayer.Character.Humanoid
-        Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
-            print("Spectated player died, waiting for respawn")
-            local newCharacter = targetPlayer.CharacterAdded:Wait()
-            local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
-            if newHumanoid and Player.selectedPlayer == targetPlayer then
-                Workspace.CurrentCamera.CameraSubject = newHumanoid
-                Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-                print("Spectated player respawned, continuing spectate")
+        -- Enhanced character respawn handling
+        Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
+            if Player.selectedPlayer == targetPlayer then
+                local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+                if newHumanoid then
+                    task.wait(0.5) -- Small delay to ensure proper loading
+                    Workspace.CurrentCamera.CameraSubject = newHumanoid
+                    Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+                    print("Spectated player respawned, continuing spectate: " .. targetPlayer.Name)
+                end
             end
         end)
         
-        Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
-            local newHumanoid = newCharacter:WaitForChild("Humanoid", 5)
-            if newHumanoid and Player.selectedPlayer == targetPlayer then
-                Workspace.CurrentCamera.CameraSubject = newHumanoid
-                Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-                print("Spectated player character added, continuing spectate")
+        -- Handle character death
+        local targetHumanoid = targetPlayer.Character.Humanoid
+        Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
+            if Player.selectedPlayer == targetPlayer then
+                print("Spectated player died, waiting for respawn: " .. targetPlayer.Name)
             end
         end)
         
@@ -840,24 +1102,30 @@ end
 function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlayer)
     print("Loading Player buttons...")
     createButton("Select Player", showPlayerSelection, "Player")
-    createToggleButton("God Mode", toggleGodMode, "Player")
+    createToggleButton("Force Field", toggleForceField, "Player")
     createToggleButton("Anti AFK", toggleAntiAFK, "Player")
     createToggleButton("Freeze Players", toggleFreezePlayers, "Player")
     createToggleButton("Follow Player", toggleFollowPlayer, "Player")
+    createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
+    createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
     print("Player buttons loaded successfully")
 end
 
 -- Reset Player States
 function Player.resetStates()
     print("Resetting Player states...")
-    Player.godModeEnabled = false
+    Player.forceFieldEnabled = false
     Player.antiAFKEnabled = false
     Player.freezeEnabled = false
     Player.followEnabled = false
+    Player.fastRespawnEnabled = false
+    Player.noDeathAnimationEnabled = false
     
-    toggleGodMode(false)
+    toggleForceField(false)
     toggleAntiAFK(false)
     toggleFreezePlayers(false)
+    toggleFastRespawn(false)
+    toggleNoDeathAnimation(false)
     stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
@@ -1039,6 +1307,64 @@ local function initUI()
     print("Player UI initialized successfully")
 end
 
+-- Fix for setupNoDeathForPlayer function (it was referenced but not defined in the original scope)
+function setupNoDeathForPlayer(targetPlayer)
+    if Player.deathAnimationConnections[targetPlayer] then return end
+    
+    Player.deathAnimationConnections[targetPlayer] = {}
+    
+    local function setupCharacterNoDeathAnimation(character)
+        if not Player.noDeathAnimationEnabled then return end
+        
+        local humanoidTarget = character:WaitForChild("Humanoid", 5)
+        if humanoidTarget then
+            Player.deathAnimationConnections[targetPlayer].died = humanoidTarget.Died:Connect(function()
+                if Player.noDeathAnimationEnabled then
+                    -- Remove death sound
+                    for _, sound in pairs(character:GetChildren()) do
+                        if sound:IsA("Sound") and (sound.Name:lower():find("death") or sound.Name:lower():find("died")) then
+                            sound:Stop()
+                            sound.Volume = 0
+                        end
+                    end
+                    
+                    -- Prevent death animation by making character disappear
+                    for _, part in pairs(character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.Transparency = 1
+                        elseif part:IsA("Accessory") then
+                            local handle = part:FindFirstChild("Handle")
+                            if handle then
+                                handle.Transparency = 1
+                            end
+                        end
+                    end
+                    
+                    -- Stop all animations
+                    local animator = humanoidTarget:FindFirstChild("Animator")
+                    if animator then
+                        for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                            track:Stop()
+                        end
+                    end
+                    
+                    print("Death animation and sound disabled for: " .. targetPlayer.Name)
+                end
+            end)
+        end
+    end
+    
+    -- Setup for current character
+    if targetPlayer.Character then
+        setupCharacterNoDeathAnimation(targetPlayer.Character)
+    end
+    
+    -- Setup for future characters
+    Player.deathAnimationConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
+        setupCharacterNoDeathAnimation(character)
+    end)
+end
+
 -- Initialize Module
 function Player.init(deps)
     print("Initializing Player module...")
@@ -1059,10 +1385,12 @@ function Player.init(deps)
         return false
     end
     
-    Player.godModeEnabled = false
+    Player.forceFieldEnabled = false
     Player.antiAFKEnabled = false
     Player.freezeEnabled = false
     Player.followEnabled = false
+    Player.fastRespawnEnabled = false
+    Player.noDeathAnimationEnabled = false
     Player.selectedPlayer = nil
     Player.spectatePlayerList = {}
     Player.currentSpectateIndex = 0
@@ -1075,6 +1403,8 @@ function Player.init(deps)
     Player.followOffset = Vector3.new(0, 0, 3)
     Player.lastTargetPosition = nil
     Player.followSpeed = 1.2
+    Player.followPathfinding = nil
+    Player.deathAnimationConnections = {}
     
     pcall(initUI)
     pcall(Player.setupPlayerEvents)
