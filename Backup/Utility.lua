@@ -1,5 +1,6 @@
 -- Utility-related features for MinimalHackGUI by Fari Noveri
 -- Optimized version with memory scanner removed and lag fixes
+-- FIXED VERSION - Addresses all critical issues
 
 local Utility = {}
 
@@ -31,8 +32,22 @@ local respawnWaitTime = 3 -- seconds to wait after respawn before resuming
 local HttpService = game:GetService("HttpService")
 local MACRO_FOLDER_PATH = "Supertool/Macro/"
 
+-- FIXED: Add safety checks for all file operations
+local function safeFileOperation(operation, ...)
+    local success, result = pcall(operation, ...)
+    if not success then
+        warn("[SUPERTOOL] File operation failed: " .. tostring(result))
+        return false, result
+    end
+    return true, result
+end
+
 -- Helper function untuk sanitize filename
 local function sanitizeFileName(name)
+    if not name or type(name) ~= "string" then
+        return "unnamed_macro"
+    end
+    
     local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
     sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
     if sanitized == "" then
@@ -43,62 +58,94 @@ end
 
 -- FIXED: Helper function untuk save macro ke JSON file dengan validation yang lebih baik
 local function saveToJSONFile(macroName, macroData)
+    if not macroName or not macroData then
+        warn("[SUPERTOOL] Cannot save: invalid macro name or data")
+        return false
+    end
+    
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
         local filePath = MACRO_FOLDER_PATH .. fileName
         
-        if not macroData or not macroData.frames or #macroData.frames == 0 then
+        -- FIXED: Better validation for macro data
+        if not macroData.frames or type(macroData.frames) ~= "table" or #macroData.frames == 0 then
             warn("[SUPERTOOL] Cannot save empty macro: " .. macroName)
             return false
         end
         
         local validFrames = {}
         for i, frame in pairs(macroData.frames) do
-            if frame and frame.time and frame.cframe and frame.velocity then
+            -- FIXED: More robust frame validation
+            if type(frame) == "table" and frame.time and frame.cframe and frame.velocity then
+                local validFrame = {}
+                
+                -- Validate and convert time
+                validFrame.time = tonumber(frame.time) or 0
+                if validFrame.time < 0 then validFrame.time = 0 end
+                
+                -- Validate and convert CFrame
                 local cframeArray
                 if typeof(frame.cframe) == "CFrame" then
                     cframeArray = {frame.cframe:GetComponents()}
-                elseif typeof(frame.cframe) == "table" and #frame.cframe == 12 then
-                    cframeArray = frame.cframe
+                elseif type(frame.cframe) == "table" and #frame.cframe >= 12 then
+                    cframeArray = {}
+                    for j = 1, 12 do
+                        cframeArray[j] = tonumber(frame.cframe[j]) or 0
+                    end
                 else
-                    warn("[SUPERTOOL] Invalid CFrame in frame " .. i .. ", skipping")
-                    continue
+                    warn("[SUPERTOOL] Invalid CFrame in frame " .. i .. ", using default")
+                    cframeArray = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1}
                 end
+                validFrame.cframe = cframeArray
                 
+                -- Validate and convert Velocity
                 local velocityArray
                 if typeof(frame.velocity) == "Vector3" then
                     velocityArray = {frame.velocity.X, frame.velocity.Y, frame.velocity.Z}
-                elseif typeof(frame.velocity) == "table" and #frame.velocity == 3 then
-                    velocityArray = frame.velocity
+                elseif type(frame.velocity) == "table" and #frame.velocity >= 3 then
+                    velocityArray = {
+                        tonumber(frame.velocity[1]) or 0,
+                        tonumber(frame.velocity[2]) or 0,
+                        tonumber(frame.velocity[3]) or 0
+                    }
                 else
-                    warn("[SUPERTOOL] Invalid Velocity in frame " .. i .. ", using default")
                     velocityArray = {0, 0, 0}
                 end
+                validFrame.velocity = velocityArray
                 
-                local stateString
+                -- Validate other properties with defaults
+                validFrame.walkSpeed = tonumber(frame.walkSpeed) or 16
+                validFrame.jumpPower = tonumber(frame.jumpPower) or 50
+                validFrame.hipHeight = tonumber(frame.hipHeight) or 0
+                
+                -- Validate state
+                local stateString = "Running"
                 if typeof(frame.state) == "EnumItem" then
                     stateString = frame.state.Name
-                elseif typeof(frame.state) == "string" then
+                elseif type(frame.state) == "string" and frame.state ~= "" then
                     stateString = frame.state
-                else
-                    stateString = "Running"
                 end
+                validFrame.state = stateString
                 
-                table.insert(validFrames, {
-                    time = tonumber(frame.time) or 0,
-                    cframe = cframeArray,
-                    velocity = velocityArray,
-                    walkSpeed = tonumber(frame.walkSpeed) or 16,
-                    jumpPower = tonumber(frame.jumpPower) or 50,
-                    hipHeight = tonumber(frame.hipHeight) or 0,
-                    state = stateString
-                })
+                table.insert(validFrames, validFrame)
             else
-                warn("[SUPERTOOL] Invalid frame " .. i .. " in macro " .. macroName .. ", skipping")
+                -- FIXED: Still count frame even if some fields are missing, use defaults
+                warn("[SUPERTOOL] Frame " .. i .. " missing required fields, using defaults")
+                local defaultFrame = {
+                    time = tonumber(frame and frame.time) or (i * 0.1), -- Use index-based time if missing
+                    cframe = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1},
+                    velocity = {0, 0, 0},
+                    walkSpeed = 16,
+                    jumpPower = 50,
+                    hipHeight = 0,
+                    state = "Running"
+                }
+                table.insert(validFrames, defaultFrame)
             end
         end
         
+        -- FIXED: Allow saving even if some frames were invalid
         if #validFrames == 0 then
             warn("[SUPERTOOL] No valid frames to save for macro: " .. macroName)
             return false
@@ -108,7 +155,7 @@ local function saveToJSONFile(macroName, macroData)
             name = macroName,
             created = macroData.created or os.time(),
             modified = os.time(),
-            version = "1.1",
+            version = "1.2",
             frames = validFrames,
             startTime = tonumber(macroData.startTime) or 0,
             speed = tonumber(macroData.speed) or 1,
@@ -116,11 +163,27 @@ local function saveToJSONFile(macroName, macroData)
             duration = validFrames[#validFrames].time or 0
         }
         
-        local jsonString = HttpService:JSONEncode(jsonData)
-        writefile(filePath, jsonString)
+        -- FIXED: Safe file creation with folder check
+        local folderSuccess = safeFileOperation(function()
+            if not isfolder(MACRO_FOLDER_PATH) then
+                makefolder(MACRO_FOLDER_PATH)
+            end
+        end)
         
-        print("[SUPERTOOL] Macro saved: " .. filePath .. " (" .. #validFrames .. " frames)")
-        return true
+        if not folderSuccess then
+            warn("[SUPERTOOL] Failed to create macro folder")
+            return false
+        end
+        
+        local jsonString = HttpService:JSONEncode(jsonData)
+        local writeSuccess = safeFileOperation(writefile, filePath, jsonString)
+        
+        if writeSuccess then
+            print("[SUPERTOOL] Macro saved: " .. filePath .. " (" .. #validFrames .. " frames)")
+            return true
+        else
+            return false
+        end
     end)
     
     if not success then
@@ -132,94 +195,138 @@ end
 
 -- FIXED: Helper function untuk load macro dari JSON file dengan validation yang lebih robust
 local function loadFromJSONFile(macroName)
+    if not macroName or type(macroName) ~= "string" then
+        warn("[SUPERTOOL] Invalid macro name for loading")
+        return nil
+    end
+    
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
         local filePath = MACRO_FOLDER_PATH .. fileName
         
-        if not isfile(filePath) then
+        -- FIXED: Safe file existence check
+        local fileExists = safeFileOperation(isfile, filePath)
+        if not fileExists then
             return nil
         end
         
-        local jsonString = readfile(filePath)
-        if not jsonString or jsonString == "" then
-            warn("[SUPERTOOL] Empty JSON file: " .. filePath)
+        local jsonString
+        local readSuccess
+        readSuccess, jsonString = safeFileOperation(readfile, filePath)
+        
+        if not readSuccess or not jsonString or jsonString == "" then
+            warn("[SUPERTOOL] Empty or unreadable JSON file: " .. filePath)
             return nil
         end
         
         local jsonData = HttpService:JSONDecode(jsonString)
-        if not jsonData then
+        if not jsonData or type(jsonData) ~= "table" then
             warn("[SUPERTOOL] Failed to decode JSON: " .. filePath)
             return nil
         end
         
         local frames = jsonData.frames or {}
-        if #frames == 0 then
-            warn("[SUPERTOOL] No frames in macro: " .. macroName)
+        if type(frames) ~= "table" then
+            warn("[SUPERTOOL] Invalid frames data in macro: " .. macroName)
             return nil
         end
         
+        -- FIXED: Allow loading even if some frames are invalid
         local validFrames = {}
+        local invalidFrameCount = 0
+        
         for i, frame in pairs(frames) do
-            if frame and frame.time and frame.cframe and frame.velocity then
-                local validFrame = {
-                    time = tonumber(frame.time),
-                    walkSpeed = tonumber(frame.walkSpeed) or 16,
-                    jumpPower = tonumber(frame.jumpPower) or 50,
-                    hipHeight = tonumber(frame.hipHeight) or 0
-                }
+            if type(frame) == "table" then
+                local validFrame = {}
                 
-                if typeof(frame.cframe) == "table" and #frame.cframe == 12 then
-                    local components = frame.cframe
-                    local allValid = true
+                -- More lenient frame validation
+                validFrame.time = tonumber(frame.time) or (i * 0.1)
+                validFrame.walkSpeed = tonumber(frame.walkSpeed) or 16
+                validFrame.jumpPower = tonumber(frame.jumpPower) or 50
+                validFrame.hipHeight = tonumber(frame.hipHeight) or 0
+                
+                -- Handle CFrame with fallback
+                if type(frame.cframe) == "table" and #frame.cframe >= 12 then
+                    local components = {}
+                    local validComponents = true
+                    
                     for j = 1, 12 do
-                        if not tonumber(components[j]) then
-                            allValid = false
+                        local component = tonumber(frame.cframe[j])
+                        if component then
+                            components[j] = component
+                        else
+                            validComponents = false
                             break
                         end
                     end
                     
-                    if allValid then
+                    if validComponents then
                         validFrame.cframe = CFrame.new(unpack(components))
                     else
-                        warn("[SUPERTOOL] Invalid CFrame components in frame " .. i)
-                        continue
+                        validFrame.cframe = CFrame.new(0, 0, 0)
+                        invalidFrameCount = invalidFrameCount + 1
                     end
                 else
-                    warn("[SUPERTOOL] Invalid CFrame format in frame " .. i)
-                    continue
+                    validFrame.cframe = CFrame.new(0, 0, 0)
+                    invalidFrameCount = invalidFrameCount + 1
                 end
                 
-                if typeof(frame.velocity) == "table" and #frame.velocity == 3 then
+                -- Handle Velocity with fallback
+                if type(frame.velocity) == "table" and #frame.velocity >= 3 then
                     local vx, vy, vz = tonumber(frame.velocity[1]), tonumber(frame.velocity[2]), tonumber(frame.velocity[3])
                     if vx and vy and vz then
                         validFrame.velocity = Vector3.new(vx, vy, vz)
                     else
-                        warn("[SUPERTOOL] Invalid velocity components in frame " .. i)
                         validFrame.velocity = Vector3.new(0, 0, 0)
+                        invalidFrameCount = invalidFrameCount + 1
                     end
                 else
                     validFrame.velocity = Vector3.new(0, 0, 0)
+                    invalidFrameCount = invalidFrameCount + 1
                 end
                 
-                if typeof(frame.state) == "string" and frame.state ~= "" then
+                -- Handle State with fallback
+                if type(frame.state) == "string" and frame.state ~= "" then
                     local stateEnum = Enum.HumanoidStateType[frame.state]
                     validFrame.state = stateEnum or Enum.HumanoidStateType.Running
                 else
                     validFrame.state = Enum.HumanoidStateType.Running
                 end
                 
-                if validFrame.time and validFrame.time >= 0 then
-                    table.insert(validFrames, validFrame)
-                end
+                table.insert(validFrames, validFrame)
             else
-                warn("[SUPERTOOL] Missing required fields in frame " .. i)
+                invalidFrameCount = invalidFrameCount + 1
             end
         end
         
+        -- FIXED: Allow loading even if no perfectly valid frames, but warn user
         if #validFrames == 0 then
-            warn("[SUPERTOOL] No valid frames found in macro: " .. macroName)
-            return nil
+            warn("[SUPERTOOL] No valid frames found in macro: " .. macroName .. ", but file exists")
+            -- Return minimal valid macro instead of nil
+            return {
+                frames = {{
+                    time = 0,
+                    cframe = CFrame.new(0, 0, 0),
+                    velocity = Vector3.new(0, 0, 0),
+                    walkSpeed = 16,
+                    jumpPower = 50,
+                    hipHeight = 0,
+                    state = Enum.HumanoidStateType.Running
+                }},
+                startTime = 0,
+                speed = 1,
+                name = macroName,
+                created = os.time(),
+                modified = os.time(),
+                version = "1.2",
+                frameCount = 1,
+                duration = 0
+            }
+        end
+        
+        if invalidFrameCount > 0 then
+            warn("[SUPERTOOL] " .. invalidFrameCount .. " invalid frames corrected in macro: " .. macroName)
         end
         
         table.sort(validFrames, function(a, b) return a.time < b.time end)
@@ -250,18 +357,22 @@ end
 
 -- Helper function untuk delete macro dari JSON file
 local function deleteFromJSONFile(macroName)
+    if not macroName then return false end
+    
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
         local filePath = MACRO_FOLDER_PATH .. fileName
         
-        if isfile(filePath) then
-            delfile(filePath)
-            print("[SUPERTOOL] Macro deleted: " .. filePath)
-            return true
-        else
-            return false
+        local fileExists = safeFileOperation(isfile, filePath)
+        if fileExists then
+            local deleteSuccess = safeFileOperation(delfile, filePath)
+            if deleteSuccess then
+                print("[SUPERTOOL] Macro deleted: " .. filePath)
+                return true
+            end
         end
+        return false
     end)
     
     if success then
@@ -274,6 +385,8 @@ end
 
 -- Helper function untuk rename macro di JSON file
 local function renameInJSONFile(oldName, newName)
+    if not oldName or not newName then return false end
+    
     local success, error = pcall(function()
         local oldData = loadFromJSONFile(oldName)
         if not oldData then
@@ -300,18 +413,47 @@ local function renameInJSONFile(oldName, newName)
     end
 end
 
--- FIXED: Helper function untuk load semua macros dari folder
+-- FIXED: Helper function untuk load semua macros dari folder dengan timeout protection
 local function loadAllMacrosFromFolder()
     local success, result = pcall(function()
-        if not isfolder(MACRO_FOLDER_PATH) then
-            makefolder(MACRO_FOLDER_PATH)
-            print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
+        local startTime = tick()
+        local timeoutLimit = 25 -- 25 seconds to prevent 30+ second timeout
+        
+        local folderSuccess = safeFileOperation(function()
+            if not isfolder(MACRO_FOLDER_PATH) then
+                makefolder(MACRO_FOLDER_PATH)
+                print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
+            end
+        end)
+        
+        if not folderSuccess then
+            warn("[SUPERTOOL] Cannot access macro folder")
+            return {}
         end
         
         local loadedMacros = {}
-        local files = listfiles(MACRO_FOLDER_PATH)
+        local filesSuccess, files = safeFileOperation(listfiles, MACRO_FOLDER_PATH)
         
-        for _, filePath in pairs(files) do
+        if not filesSuccess or not files then
+            warn("[SUPERTOOL] Cannot list macro files")
+            return {}
+        end
+        
+        local processedCount = 0
+        local maxFiles = 50 -- Limit to prevent timeout
+        
+        for i, filePath in pairs(files) do
+            -- FIXED: Check timeout to prevent script running over 30 seconds
+            if tick() - startTime > timeoutLimit then
+                warn("[SUPERTOOL] Loading timeout reached, processed " .. processedCount .. " files")
+                break
+            end
+            
+            if processedCount >= maxFiles then
+                warn("[SUPERTOOL] Maximum file limit reached (" .. maxFiles .. "), skipping remaining files")
+                break
+            end
+            
             if string.match(filePath, "%.json$") then
                 local fileName = string.match(filePath, "([^/\\]+)%.json$")
                 if fileName then
@@ -319,14 +461,21 @@ local function loadAllMacrosFromFolder()
                     if macroData and macroData.frames and #macroData.frames > 0 then
                         local originalName = macroData.name or fileName
                         loadedMacros[originalName] = macroData
+                        processedCount = processedCount + 1
                         print("[SUPERTOOL] Loaded macro: " .. originalName .. " (" .. #macroData.frames .. " frames)")
                     else
                         warn("[SUPERTOOL] Skipped invalid macro file: " .. fileName)
                     end
                 end
             end
+            
+            -- Small yield to prevent lag
+            if processedCount % 5 == 0 then
+                task.wait(0.01)
+            end
         end
         
+        print("[SUPERTOOL] Total macros loaded: " .. processedCount)
         return loadedMacros
     end)
     
@@ -355,6 +504,7 @@ end
 
 -- Helper function to save macro to file system
 local function saveToFileSystem(macroName, macroData)
+    if not macroName or not macroData then return end
     ensureFileSystem()
     fileSystem["Supertool/Macro"][macroName] = macroData
     saveToJSONFile(macroName, macroData)
@@ -362,6 +512,8 @@ end
 
 -- Helper function to load macro from file system
 local function loadFromFileSystem(macroName)
+    if not macroName then return nil end
+    
     local jsonData = loadFromJSONFile(macroName)
     if jsonData then
         return jsonData
@@ -373,6 +525,8 @@ end
 
 -- Helper function to delete macro from file system
 local function deleteFromFileSystem(macroName)
+    if not macroName then return false end
+    
     ensureFileSystem()
     local memoryDeleted = false
     if fileSystem["Supertool/Macro"][macroName] then
@@ -387,10 +541,12 @@ end
 
 -- Helper function to rename macro in file system
 local function renameInFileSystem(oldName, newName)
+    if not oldName or not newName or newName == "" then return false end
+    
     ensureFileSystem()
     local memoryRenamed = false
     
-    if fileSystem["Supertool/Macro"][oldName] and newName ~= "" then
+    if fileSystem["Supertool/Macro"][oldName] then
         fileSystem["Supertool/Macro"][newName] = fileSystem["Supertool/Macro"][oldName]
         fileSystem["Supertool/Macro"][oldName] = nil
         memoryRenamed = true
@@ -403,52 +559,198 @@ end
 
 -- FIXED: Function untuk sync macros dari JSON ke memory pada startup
 local function syncMacrosFromJSON()
+    local startTime = tick()
+    print("[SUPERTOOL] Starting macro sync from JSON files...")
+    
     local jsonMacros = loadAllMacrosFromFolder()
     local count = 0
+    
     for macroName, macroData in pairs(jsonMacros) do
         if macroData and macroData.frames and #macroData.frames > 0 then
             savedMacros[macroName] = macroData
             fileSystem["Supertool/Macro"][macroName] = macroData
             count = count + 1
         end
+        
+        -- Prevent timeout
+        if tick() - startTime > 20 then
+            warn("[SUPERTOOL] Sync timeout reached after " .. count .. " macros")
+            break
+        end
     end
-    print("[SUPERTOOL] Synced " .. count .. " valid macros from JSON files")
+    
+    local elapsed = tick() - startTime
+    print("[SUPERTOOL] Synced " .. count .. " valid macros from JSON files in " .. string.format("%.2f", elapsed) .. " seconds")
 end
 
 -- Delete Macro
 local function deleteMacro(macroName)
+    if not macroName then return end
+    
     if savedMacros[macroName] then
         savedMacros[macroName] = nil
         deleteFromFileSystem(macroName)
-        Utility.updateMacroList()
+        if Utility.updateMacroList then
+            Utility.updateMacroList()
+        end
         print("[SUPERTOOL] Macro deleted: " .. macroName)
     end
 end
 
 -- Rename Macro
 local function renameMacro(oldName, newName)
-    if savedMacros[oldName] and newName ~= "" then
+    if not oldName or not newName or newName == "" then return end
+    
+    if savedMacros[oldName] then
         if renameInFileSystem(oldName, newName) then
             if currentMacroName == oldName then
                 currentMacroName = newName
-                updateMacroStatus()
+                if updateMacroStatus then
+                    updateMacroStatus()
+                end
             end
             savedMacros[newName] = savedMacros[oldName]
             savedMacros[oldName] = nil
-            Utility.updateMacroList()
+            if Utility.updateMacroList then
+                Utility.updateMacroList()
+            end
             print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
         end
     end
 end
 
--- Show Macro Manager
+-- FIXED: Show Macro Manager - check if initMacroUI exists
 local function showMacroManager()
     macroFrameVisible = true
     if not MacroFrame then
-        initMacroUI()
+        if initMacroUI then
+            initMacroUI()
+        else
+            warn("[SUPERTOOL] initMacroUI function not found - creating basic UI")
+            -- Create basic UI fallback
+            createBasicMacroUI()
+        end
     end
-    MacroFrame.Visible = true
-    Utility.updateMacroList()
+    if MacroFrame then
+        MacroFrame.Visible = true
+        if Utility.updateMacroList then
+            Utility.updateMacroList()
+        end
+    end
+end
+
+-- FIXED: Create basic macro UI fallback function
+local function createBasicMacroUI()
+    if not ScreenGui then
+        warn("[SUPERTOOL] ScreenGui not available, cannot create macro UI")
+        return
+    end
+    
+    MacroFrame = Instance.new("Frame")
+    MacroFrame.Name = "MacroFrame"
+    MacroFrame.Parent = ScreenGui
+    MacroFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroFrame.BorderSizePixel = 1
+    MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
+    MacroFrame.Size = UDim2.new(0, 300, 0, 400)
+    MacroFrame.Visible = macroFrameVisible
+    MacroFrame.Active = true
+    MacroFrame.Draggable = true
+
+    local MacroTitle = Instance.new("TextLabel")
+    MacroTitle.Name = "Title"
+    MacroTitle.Parent = MacroFrame
+    MacroTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroTitle.BorderSizePixel = 0
+    MacroTitle.Size = UDim2.new(1, 0, 0, 20)
+    MacroTitle.Font = Enum.Font.Gotham
+    MacroTitle.Text = "MACRO MANAGER - FIXED v1.2"
+    MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroTitle.TextSize = 8
+
+    local CloseMacroButton = Instance.new("TextButton")
+    CloseMacroButton.Name = "CloseButton"
+    CloseMacroButton.Parent = MacroFrame
+    CloseMacroButton.BackgroundTransparency = 1
+    CloseMacroButton.Position = UDim2.new(1, -20, 0, 2)
+    CloseMacroButton.Size = UDim2.new(0, 15, 0, 15)
+    CloseMacroButton.Font = Enum.Font.GothamBold
+    CloseMacroButton.Text = "X"
+    CloseMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseMacroButton.TextSize = 8
+
+    MacroInput = Instance.new("TextBox")
+    MacroInput.Name = "MacroInput"
+    MacroInput.Parent = MacroFrame
+    MacroInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroInput.BorderSizePixel = 0
+    MacroInput.Position = UDim2.new(0, 5, 0, 25)
+    MacroInput.Size = UDim2.new(1, -65, 0, 20)
+    MacroInput.Font = Enum.Font.Gotham
+    MacroInput.PlaceholderText = "Enter macro name..."
+    MacroInput.Text = ""
+    MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroInput.TextSize = 7
+
+    SaveMacroButton = Instance.new("TextButton")
+    SaveMacroButton.Name = "SaveMacroButton"
+    SaveMacroButton.Parent = MacroFrame
+    SaveMacroButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    SaveMacroButton.BorderSizePixel = 0
+    SaveMacroButton.Position = UDim2.new(1, -55, 0, 25)
+    SaveMacroButton.Size = UDim2.new(0, 50, 0, 20)
+    SaveMacroButton.Font = Enum.Font.Gotham
+    SaveMacroButton.Text = "SAVE"
+    SaveMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SaveMacroButton.TextSize = 7
+
+    MacroScrollFrame = Instance.new("ScrollingFrame")
+    MacroScrollFrame.Name = "MacroScrollFrame"
+    MacroScrollFrame.Parent = MacroFrame
+    MacroScrollFrame.BackgroundTransparency = 1
+    MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
+    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -55)
+    MacroScrollFrame.ScrollBarThickness = 2
+    MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    MacroScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    MacroScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    MacroLayout = Instance.new("UIListLayout")
+    MacroLayout.Parent = MacroScrollFrame
+    MacroLayout.Padding = UDim.new(0, 2)
+    MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    MacroStatusLabel = Instance.new("TextLabel")
+    MacroStatusLabel.Name = "MacroStatusLabel"
+    MacroStatusLabel.Parent = ScreenGui
+    MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroStatusLabel.BorderSizePixel = 1
+    MacroStatusLabel.Position = UDim2.new(1, -250, 0, 10)
+    MacroStatusLabel.Size = UDim2.new(0, 240, 0, 25)
+    MacroStatusLabel.Font = Enum.Font.Gotham
+    MacroStatusLabel.Text = ""
+    MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroStatusLabel.TextSize = 8
+    MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    MacroStatusLabel.Visible = false
+
+    -- Connect events
+    SaveMacroButton.MouseButton1Click:Connect(function()
+        stopMacroRecording()
+        if MacroFrame then
+            MacroFrame.Visible = true
+        end
+    end)
+    
+    CloseMacroButton.MouseButton1Click:Connect(function()
+        macroFrameVisible = false
+        if MacroFrame then
+            MacroFrame.Visible = false
+        end
+    end)
 end
 
 -- Update Macro List UI
@@ -676,6 +978,7 @@ function Utility.updateMacroList()
         fileStatusLabel.TextSize = 6
         fileStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
         
+        -- Event handlers with safety checks
         speedInput.FocusLost:Connect(function(enterPressed)
             if enterPressed then
                 local newSpeed = tonumber(speedInput.Text)
@@ -684,9 +987,13 @@ function Utility.updateMacroList()
                     saveToFileSystem(macroName, macro)
                     if macroPlaying and currentMacroName == macroName then
                         updatePlaybackSpeed(macroName, newSpeed)
-                        Utility.updateMacroList()
+                        if Utility.updateMacroList then
+                            Utility.updateMacroList()
+                        end
                     end
-                    updateMacroStatus()
+                    if updateMacroStatus then
+                        updateMacroStatus()
+                    end
                     print("[SUPERTOOL] Updated speed for " .. macroName .. ": " .. newSpeed .. "x")
                 else
                     speedInput.Text = tostring(macro.speed or 1)
@@ -701,21 +1008,25 @@ function Utility.updateMacroList()
                 saveToFileSystem(macroName, macro)
                 if macroPlaying and currentMacroName == macroName then
                     updatePlaybackSpeed(macroName, newSpeed)
-                    Utility.updateMacroList()
+                    if Utility.updateMacroList then
+                        Utility.updateMacroList()
+                    end
                 end
-                updateMacroStatus()
+                if updateMacroStatus then
+                    updateMacroStatus()
+                end
                 print("[SUPERTOOL] Real-time speed update for " .. macroName .. ": " .. newSpeed .. "x")
                 
                 updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(120, 200, 120)
                 updateSpeedBtn.Text = "✓"
-                wait(1)
+                task.wait(1)
                 updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
                 updateSpeedBtn.Text = "UPDATE"
             else
                 speedInput.Text = tostring(macro.speed or 1)
                 updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(200, 80, 80)
                 updateSpeedBtn.Text = "✗"
-                wait(1)
+                task.wait(1)
                 updateSpeedBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
                 updateSpeedBtn.Text = "UPDATE"
             end
@@ -726,7 +1037,9 @@ function Utility.updateMacroList()
                 stopMacroPlayback()
             else
                 playMacro(macroName, false)
-                Utility.updateMacroList()
+                if Utility.updateMacroList then
+                    Utility.updateMacroList()
+                end
             end
         end)
         
@@ -735,7 +1048,9 @@ function Utility.updateMacroList()
                 stopMacroPlayback()
             else
                 playMacro(macroName, true)
-                Utility.updateMacroList()
+                if Utility.updateMacroList then
+                    Utility.updateMacroList()
+                end
             end
         end)
         
@@ -761,7 +1076,7 @@ function Utility.updateMacroList()
             saveToJSONFile(macroName, macro)
             fileStatusLabel.Text = "📁 ✓ " .. sanitizeFileName(macroName) .. ".json"
             fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-            wait(2)
+            task.wait(2)
             fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
         end)
         
@@ -769,7 +1084,7 @@ function Utility.updateMacroList()
             fileStatusLabel.Text = "📤 Exported to JSON!"
             fileStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
             saveToJSONFile(macroName, macro)
-            wait(2)
+            task.wait(2)
             fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
             fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
         end)
@@ -827,7 +1142,9 @@ function Utility.updateMacroList()
         
         refreshButton.MouseButton1Click:Connect(function()
             syncMacrosFromJSON()
-            Utility.updateMacroList()
+            if Utility.updateMacroList then
+                Utility.updateMacroList()
+            end
         end)
         
         syncAllButton.MouseButton1Click:Connect(function()
@@ -850,107 +1167,7 @@ end
 -- Initialize Macro UI elements
 local function initMacroUI()
     if MacroFrame then return end
-    
-    MacroFrame = Instance.new("Frame")
-    MacroFrame.Name = "MacroFrame"
-    MacroFrame.Parent = ScreenGui
-    MacroFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    MacroFrame.BorderSizePixel = 1
-    MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-    MacroFrame.Size = UDim2.new(0, 300, 0, 400)
-    MacroFrame.Visible = macroFrameVisible
-    MacroFrame.Active = true
-    MacroFrame.Draggable = true
-
-    local MacroTitle = Instance.new("TextLabel")
-    MacroTitle.Name = "Title"
-    MacroTitle.Parent = MacroFrame
-    MacroTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MacroTitle.BorderSizePixel = 0
-    MacroTitle.Size = UDim2.new(1, 0, 0, 20)
-    MacroTitle.Font = Enum.Font.Gotham
-    MacroTitle.Text = "MACRO MANAGER - IMPROVED v1.1"
-    MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroTitle.TextSize = 8
-
-    local CloseMacroButton = Instance.new("TextButton")
-    CloseMacroButton.Name = "CloseButton"
-    CloseMacroButton.Parent = MacroFrame
-    CloseMacroButton.BackgroundTransparency = 1
-    CloseMacroButton.Position = UDim2.new(1, -20, 0, 2)
-    CloseMacroButton.Size = UDim2.new(0, 15, 0, 15)
-    CloseMacroButton.Font = Enum.Font.GothamBold
-    CloseMacroButton.Text = "X"
-    CloseMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseMacroButton.TextSize = 8
-
-    MacroInput = Instance.new("TextBox")
-    MacroInput.Name = "MacroInput"
-    MacroInput.Parent = MacroFrame
-    MacroInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MacroInput.BorderSizePixel = 0
-    MacroInput.Position = UDim2.new(0, 5, 0, 25)
-    MacroInput.Size = UDim2.new(1, -65, 0, 20)
-    MacroInput.Font = Enum.Font.Gotham
-    MacroInput.PlaceholderText = "Enter macro name..."
-    MacroInput.Text = ""
-    MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroInput.TextSize = 7
-
-    SaveMacroButton = Instance.new("TextButton")
-    SaveMacroButton.Name = "SaveMacroButton"
-    SaveMacroButton.Parent = MacroFrame
-    SaveMacroButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    SaveMacroButton.BorderSizePixel = 0
-    SaveMacroButton.Position = UDim2.new(1, -55, 0, 25)
-    SaveMacroButton.Size = UDim2.new(0, 50, 0, 20)
-    SaveMacroButton.Font = Enum.Font.Gotham
-    SaveMacroButton.Text = "SAVE"
-    SaveMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SaveMacroButton.TextSize = 7
-
-    MacroScrollFrame = Instance.new("ScrollingFrame")
-    MacroScrollFrame.Name = "MacroScrollFrame"
-    MacroScrollFrame.Parent = MacroFrame
-    MacroScrollFrame.BackgroundTransparency = 1
-    MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
-    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -55)
-    MacroScrollFrame.ScrollBarThickness = 2
-    MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    MacroScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    MacroScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    MacroLayout = Instance.new("UIListLayout")
-    MacroLayout.Parent = MacroScrollFrame
-    MacroLayout.Padding = UDim.new(0, 2)
-    MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-    MacroStatusLabel = Instance.new("TextLabel")
-    MacroStatusLabel.Name = "MacroStatusLabel"
-    MacroStatusLabel.Parent = ScreenGui
-    MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    MacroStatusLabel.BorderSizePixel = 1
-    MacroStatusLabel.Position = UDim2.new(1, -250, 0, 10)
-    MacroStatusLabel.Size = UDim2.new(0, 240, 0, 25)
-    MacroStatusLabel.Font = Enum.Font.Gotham
-    MacroStatusLabel.Text = ""
-    MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroStatusLabel.TextSize = 8
-    MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    MacroStatusLabel.Visible = false
-
-    SaveMacroButton.MouseButton1Click:Connect(function()
-        stopMacroRecording()
-        MacroFrame.Visible = true
-    end)
-    
-    CloseMacroButton.MouseButton1Click:Connect(function()
-        macroFrameVisible = false
-        MacroFrame.Visible = false
-    end)
+    createBasicMacroUI()
 end
 
 -- NEW: Function to handle death and respawn with auto-pause/resume
@@ -958,20 +1175,26 @@ local function handleCharacterDeath()
     if macroPlaying then
         macroPlaybackPaused = true
         print("[SUPERTOOL] Macro paused due to character death")
-        updateMacroStatus()
+        if updateMacroStatus then
+            updateMacroStatus()
+        end
         
         if deathPauseTimeout then
             deathPauseTimeout:Disconnect()
             deathPauseTimeout = nil
         end
         
-        player.CharacterAdded:Connect(function(newCharacter)
+        local connection
+        connection = player.CharacterAdded:Connect(function(newCharacter)
+            connection:Disconnect()
             if macroPlaybackPaused then
-                deathPauseTimeout = task.wait(respawnWaitTime)
+                task.wait(respawnWaitTime)
                 if macroPlaybackPaused and macroPlaying then
                     macroPlaybackPaused = false
                     print("[SUPERTOOL] Macro resumed after respawn")
-                    updateMacroStatus()
+                    if updateMacroStatus then
+                        updateMacroStatus()
+                    end
                 end
             end
         end)
@@ -979,7 +1202,7 @@ local function handleCharacterDeath()
 end
 
 -- Update macro status display
-local function updateMacroStatus()
+function updateMacroStatus()
     if not MacroStatusLabel then return end
     if macroRecording then
         MacroStatusLabel.Text = recordingPaused and "Recording Paused" or "Recording Macro"
@@ -1001,16 +1224,22 @@ end
 -- Update character references after respawn
 local function updateCharacterReferences()
     if player.Character then
-        humanoid = player.Character:WaitForChild("Humanoid", 30)
-        rootPart = player.Character:WaitForChild("HumanoidRootPart", 30)
+        humanoid = player.Character:FindFirstChild("Humanoid")
+        rootPart = player.Character:FindFirstChild("HumanoidRootPart")
         
         if humanoid then
-            humanoid.Died:Connect(handleCharacterDeath)
+            local connection
+            connection = humanoid.Died:Connect(function()
+                connection:Disconnect()
+                handleCharacterDeath()
+            end)
         end
         
         if macroRecording and recordingPaused then
             recordingPaused = false
-            updateMacroStatus()
+            if updateMacroStatus then
+                updateMacroStatus()
+            end
         end
     end
 end
@@ -1024,14 +1253,20 @@ local function startMacroRecording()
     lastFrameTime = 0
     
     updateCharacterReferences()
-    updateMacroStatus()
+    if updateMacroStatus then
+        updateMacroStatus()
+    end
     
     local function setupDeathHandler()
         if humanoid then
-            humanoid.Died:Connect(function()
+            local connection
+            connection = humanoid.Died:Connect(function()
+                connection:Disconnect()
                 if macroRecording then
                     recordingPaused = true
-                    updateMacroStatus()
+                    if updateMacroStatus then
+                        updateMacroStatus()
+                    end
                 end
             end)
         end
@@ -1062,7 +1297,7 @@ local function startMacroRecording()
     end)
 end
 
--- Stop Macro Recording
+-- FIXED: Stop Macro Recording with nil checks
 local function stopMacroRecording()
     if not macroRecording then return end
     macroRecording = false
@@ -1072,9 +1307,12 @@ local function stopMacroRecording()
         recordConnection = nil
     end
     
-    local macroName = MacroInput.Text
-    if macroName == "" then
-        macroName = "Macro_" .. (os.time() % 10000)
+    -- FIXED: Check if MacroInput exists before accessing Text property
+    local macroName = "Macro_" .. (os.time() % 10000) -- Default name
+    if MacroInput and MacroInput.Text then
+        if MacroInput.Text ~= "" then
+            macroName = MacroInput.Text
+        end
     end
     
     if #currentMacro.frames == 0 then
@@ -1089,9 +1327,17 @@ local function stopMacroRecording()
     savedMacros[macroName] = currentMacro
     saveToFileSystem(macroName, currentMacro)
     
-    MacroInput.Text = ""
-    Utility.updateMacroList()
-    updateMacroStatus()
+    -- FIXED: Safe clearing of MacroInput
+    if MacroInput then
+        MacroInput.Text = ""
+    end
+    
+    if Utility.updateMacroList then
+        Utility.updateMacroList()
+    end
+    if updateMacroStatus then
+        updateMacroStatus()
+    end
     if MacroFrame then
         MacroFrame.Visible = true
     end
@@ -1100,7 +1346,7 @@ local function stopMacroRecording()
 end
 
 -- Stop Macro Playback
-local function stopMacroPlayback()
+function stopMacroPlayback()
     if not macroPlaying then return end
     macroPlaying = false
     autoPlaying = false
@@ -1116,15 +1362,19 @@ local function stopMacroPlayback()
         deathPauseTimeout = nil
     end
     if humanoid then
-        humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+        humanoid.WalkSpeed = (settings and settings.WalkSpeed and settings.WalkSpeed.value) or 16
     end
     currentMacroName = nil
-    Utility.updateMacroList()
-    updateMacroStatus()
+    if Utility.updateMacroList then
+        Utility.updateMacroList()
+    end
+    if updateMacroStatus then
+        updateMacroStatus()
+    end
 end
 
 -- NEW: Function to update playback speed dynamically
-local function updatePlaybackSpeed(macroName, newSpeed)
+function updatePlaybackSpeed(macroName, newSpeed)
     if macroPlaying and currentMacroName == macroName then
         currentPlaybackSpeed = newSpeed
         local macro = savedMacros[macroName]
@@ -1132,13 +1382,15 @@ local function updatePlaybackSpeed(macroName, newSpeed)
             macro.speed = newSpeed
             saveToFileSystem(macroName, macro)
         end
-        updateMacroStatus()
+        if updateMacroStatus then
+            updateMacroStatus()
+        end
         print("[SUPERTOOL] Updated playback speed to " .. newSpeed .. "x")
     end
 end
 
 -- OPTIMIZED: Play Macro with lag fixes
-local function playMacro(macroName, autoPlay)
+function playMacro(macroName, autoPlay)
     if macroRecording or macroPlaying or not humanoid or not rootPart then return end
     local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
     if not macro or not macro.frames or #macro.frames == 0 then 
@@ -1152,10 +1404,16 @@ local function playMacro(macroName, autoPlay)
     currentMacroName = macroName
     currentPlaybackSpeed = macro.speed or 1
     humanoid.WalkSpeed = 0
-    updateMacroStatus()
+    if updateMacroStatus then
+        updateMacroStatus()
+    end
     
     if humanoid then
-        humanoid.Died:Connect(handleCharacterDeath)
+        local connection
+        connection = humanoid.Died:Connect(function()
+            connection:Disconnect()
+            handleCharacterDeath()
+        end)
     end
     
     print("[SUPERTOOL] Playing macro: " .. macroName .. " (Auto: " .. tostring(autoPlaying) .. ", Speed: " .. currentPlaybackSpeed .. "x)")
@@ -1173,11 +1431,15 @@ local function playMacro(macroName, autoPlay)
                     macroPlaying = false
                     autoPlaying = false
                     macroPlaybackPaused = false
-                    if humanoid then humanoid.WalkSpeed = settings.WalkSpeed.value or 16 end
+                    if humanoid then humanoid.WalkSpeed = (settings and settings.WalkSpeed and settings.WalkSpeed.value) or 16 end
                     currentMacroName = nil
                     currentPlaybackSpeed = 1
-                    Utility.updateMacroList()
-                    updateMacroStatus()
+                    if Utility.updateMacroList then
+                        Utility.updateMacroList()
+                    end
+                    if updateMacroStatus then
+                        updateMacroStatus()
+                    end
                 end
                 return
             end
@@ -1191,8 +1453,12 @@ local function playMacro(macroName, autoPlay)
                     macroPlaybackPaused = false
                     currentMacroName = nil
                     currentPlaybackSpeed = 1
-                    Utility.updateMacroList()
-                    updateMacroStatus()
+                    if Utility.updateMacroList then
+                        Utility.updateMacroList()
+                    end
+                    if updateMacroStatus then
+                        updateMacroStatus()
+                    end
                     return
                 end
             end
@@ -1276,16 +1542,30 @@ local function killPlayer()
     end
 end
 
--- Reset Character
+-- FIXED: Reset Character - use alternative method
 local function resetCharacter()
     if player and player.Character then
-        player:LoadCharacter()
-        print("[SUPERTOOL] Character reset")
+        -- FIXED: Use Humanoid:TakeDamage instead of LoadCharacter (which can only be called by backend)
+        if humanoid then
+            humanoid:TakeDamage(humanoid.MaxHealth)
+            print("[SUPERTOOL] Character reset via damage")
+        else
+            -- Alternative: Teleport to void
+            if rootPart then
+                rootPart.CFrame = CFrame.new(0, -1000, 0)
+                print("[SUPERTOOL] Character teleported to void for reset")
+            end
+        end
     end
 end
 
 -- Initialize function
 function Utility.init(deps)
+    if not deps then
+        warn("[SUPERTOOL] No dependencies provided to Utility.init")
+        return false
+    end
+    
     Players = deps.Players
     humanoid = deps.humanoid
     rootPart = deps.rootPart
@@ -1297,7 +1577,12 @@ function Utility.init(deps)
     disableActiveFeature = deps.disableActiveFeature
     isExclusiveFeature = deps.isExclusiveFeature
     
-    syncMacrosFromJSON()
+    -- FIXED: Only sync macros if we have necessary services
+    if RunService and player then
+        syncMacrosFromJSON()
+    else
+        warn("[SUPERTOOL] Missing required services for macro sync")
+    end
     
     print("[SUPERTOOL] Utility module initialized successfully")
     return true
@@ -1312,13 +1597,20 @@ function Utility.loadUtilityButtons(createButton)
     
     print("[SUPERTOOL] Loading utility buttons...")
     
-    createButton("Kill Player", killPlayer)
-    createButton("Reset Character", resetCharacter)
-    createButton("Record Macro", startMacroRecording)
-    createButton("Stop Macro", stopMacroRecording)
-    createButton("Macro Manager", showMacroManager)
+    -- FIXED: Add error handling for button creation
+    local success, err = pcall(function()
+        createButton("Kill Player", killPlayer)
+        createButton("Reset Character", resetCharacter)
+        createButton("Record Macro", startMacroRecording)
+        createButton("Stop Macro", stopMacroRecording)
+        createButton("Macro Manager", showMacroManager)
+    end)
     
-    print("[SUPERTOOL] Utility buttons loaded successfully")
+    if success then
+        print("[SUPERTOOL] Utility buttons loaded successfully")
+    else
+        warn("[SUPERTOOL] Failed to load utility buttons: " .. tostring(err))
+    end
 end
 
 -- Reset states function
@@ -1336,8 +1628,157 @@ function Utility.resetStates()
         playbackConnection:Disconnect()
         playbackConnection = nil
     end
+    if deathPauseTimeout then
+        deathPauseTimeout:Disconnect()
+        deathPauseTimeout = nil
+    end
     
     print("[SUPERTOOL] Utility states reset")
 end
+
+-- FIXED: Add cleanup function for safe shutdown
+function Utility.cleanup()
+    Utility.resetStates()
+    
+    if MacroFrame then
+        MacroFrame:Destroy()
+        MacroFrame = nil
+    end
+    if MacroStatusLabel then
+        MacroStatusLabel:Destroy()
+        MacroStatusLabel = nil
+    end
+    
+    -- Clear references
+    MacroScrollFrame = nil
+    MacroLayout = nil
+    MacroInput = nil
+    SaveMacroButton = nil
+    
+    print("[SUPERTOOL] Utility module cleaned up")
+end
+
+-- FIXED: Add error recovery function
+function Utility.recoverFromError()
+    warn("[SUPERTOOL] Attempting error recovery...")
+    
+    -- Stop any active operations
+    Utility.resetStates()
+    
+    -- Try to restore character references
+    if player and player.Character then
+        updateCharacterReferences()
+    end
+    
+    -- Clear corrupted macros
+    local corruptedCount = 0
+    for name, macro in pairs(savedMacros) do
+        if not macro or not macro.frames or type(macro.frames) ~= "table" or #macro.frames == 0 then
+            savedMacros[name] = nil
+            corruptedCount = corruptedCount + 1
+        end
+    end
+    
+    if corruptedCount > 0 then
+        warn("[SUPERTOOL] Removed " .. corruptedCount .. " corrupted macros from memory")
+    end
+    
+    print("[SUPERTOOL] Error recovery completed")
+end
+
+-- FIXED: Add validation function for macro data integrity
+function Utility.validateMacros()
+    local totalMacros = 0
+    local validMacros = 0
+    local repairedMacros = 0
+    
+    for name, macro in pairs(savedMacros) do
+        totalMacros = totalMacros + 1
+        
+        if macro and type(macro) == "table" and macro.frames and type(macro.frames) == "table" then
+            local frameCount = #macro.frames
+            if frameCount > 0 then
+                validMacros = validMacros + 1
+                
+                -- Check if repair is needed
+                local needsRepair = false
+                for i, frame in ipairs(macro.frames) do
+                    if not frame.time or not frame.cframe or not frame.velocity then
+                        needsRepair = true
+                        break
+                    end
+                end
+                
+                if needsRepair then
+                    -- Attempt repair
+                    local repairedFrames = {}
+                    for i, frame in ipairs(macro.frames) do
+                        local repairedFrame = {
+                            time = tonumber(frame.time) or (i * 0.1),
+                            cframe = frame.cframe or {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1},
+                            velocity = frame.velocity or {0, 0, 0},
+                            walkSpeed = tonumber(frame.walkSpeed) or 16,
+                            jumpPower = tonumber(frame.jumpPower) or 50,
+                            hipHeight = tonumber(frame.hipHeight) or 0,
+                            state = frame.state or "Running"
+                        }
+                        table.insert(repairedFrames, repairedFrame)
+                    end
+                    
+                    macro.frames = repairedFrames
+                    macro.frameCount = #repairedFrames
+                    macro.duration = repairedFrames[#repairedFrames].time or 0
+                    saveToFileSystem(name, macro)
+                    repairedMacros = repairedMacros + 1
+                end
+            end
+        end
+    end
+    
+    print("[SUPERTOOL] Macro validation complete:")
+    print("  Total: " .. totalMacros .. " | Valid: " .. validMacros .. " | Repaired: " .. repairedMacros)
+    
+    return {
+        total = totalMacros,
+        valid = validMacros,
+        repaired = repairedMacros
+    }
+end
+
+-- FIXED: Add safe macro loading with retry mechanism
+function Utility.safeSyncMacros(maxRetries)
+    maxRetries = maxRetries or 3
+    local attempt = 1
+    
+    while attempt <= maxRetries do
+        print("[SUPERTOOL] Macro sync attempt " .. attempt .. "/" .. maxRetries)
+        
+        local success = pcall(function()
+            syncMacrosFromJSON()
+        end)
+        
+        if success then
+            print("[SUPERTOOL] Macro sync successful on attempt " .. attempt)
+            return true
+        else
+            warn("[SUPERTOOL] Macro sync failed on attempt " .. attempt)
+            attempt = attempt + 1
+            if attempt <= maxRetries then
+                task.wait(1) -- Wait before retry
+            end
+        end
+    end
+    
+    warn("[SUPERTOOL] All macro sync attempts failed")
+    return false
+end
+
+-- Export main utility functions for external access
+Utility.stopMacroPlayback = stopMacroPlayback
+Utility.updatePlaybackSpeed = updatePlaybackSpeed
+Utility.playMacro = playMacro
+Utility.updateMacroStatus = updateMacroStatus
+Utility.startMacroRecording = startMacroRecording
+Utility.stopMacroRecording = stopMacroRecording
 
 return Utility
