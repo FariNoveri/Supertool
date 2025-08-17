@@ -1,5 +1,5 @@
 -- FIXED Utility-related features for MinimalHackGUI by Fari Noveri
--- Version 1.3 - Fixed button responsiveness and dependency issues
+-- Version 1.4 - Fixed character reference issues and improved stability
 
 local Utility = {}
 
@@ -26,6 +26,7 @@ local currentPlaybackSpeed = 1
 local macroPlaybackPaused = false
 local deathPauseTimeout = nil
 local respawnWaitTime = 3 -- seconds to wait after respawn before resuming
+local characterLoadedOnce = false
 
 -- File System Integration for KRNL
 local HttpService = game:GetService("HttpService")
@@ -44,40 +45,182 @@ local function initializeServices()
     end
 end
 
--- FIXED: Better character reference update
+-- FIXED: Enhanced character reference update with retry mechanism
 local function updateCharacterReferences()
-    local success = pcall(function()
-        if player and player.Character then
-            humanoid = player.Character:FindFirstChild("Humanoid")
-            rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-            
-            -- Setup death handler for auto-pause
-            if humanoid and not humanoid:GetPropertyChangedSignal("Health"):IsConnected() then
-                humanoid.Died:Connect(function()
-                    if macroRecording then
-                        recordingPaused = true
-                        print("[SUPERTOOL] Recording paused - character died")
-                        updateMacroStatus()
-                    elseif macroPlaying then
-                        macroPlaybackPaused = true
-                        print("[SUPERTOOL] Playback paused - character died")
-                        updateMacroStatus()
-                    end
-                end)
+    local maxRetries = 5
+    local retryDelay = 0.5
+    
+    for attempt = 1, maxRetries do
+        local success = pcall(function()
+            if not player then
+                player = Players.LocalPlayer
             end
             
+            if player and player.Character then
+                local character = player.Character
+                local newHumanoid = character:FindFirstChild("Humanoid")
+                local newRootPart = character:FindFirstChild("HumanoidRootPart")
+                
+                -- Verify both components exist and are valid
+                if newHumanoid and newRootPart and newHumanoid.Health > 0 then
+                    humanoid = newHumanoid
+                    rootPart = newRootPart
+                    
+                    -- Setup death handler for auto-pause (only once per character)
+                    if not humanoid:GetAttribute("SupertoolDeathHandlerSet") then
+                        humanoid:SetAttribute("SupertoolDeathHandlerSet", true)
+                        
+                        humanoid.Died:Connect(function()
+                            print("[SUPERTOOL] Character died - Health: " .. humanoid.Health)
+                            
+                            if macroRecording then
+                                recordingPaused = true
+                                print("[SUPERTOOL] Recording paused - character died")
+                                updateMacroStatus()
+                            elseif macroPlaying then
+                                macroPlaybackPaused = true
+                                print("[SUPERTOOL] Playback paused - character died")
+                                updateMacroStatus()
+                            end
+                        end)
+                        
+                        print("[SUPERTOOL] Death handler set for new character")
+                    end
+                    
+                    characterLoadedOnce = true
+                    print("[SUPERTOOL] Character references updated successfully (attempt " .. attempt .. ")")
+                    print("- Humanoid Health: " .. humanoid.Health)
+                    print("- RootPart Position: " .. tostring(rootPart.Position))
+                    return true
+                else
+                    print("[SUPERTOOL] Character components not ready (attempt " .. attempt .. ")")
+                    print("- Character exists: " .. tostring(character ~= nil))
+                    print("- Humanoid exists: " .. tostring(newHumanoid ~= nil))
+                    print("- RootPart exists: " .. tostring(newRootPart ~= nil))
+                    print("- Health: " .. (newHumanoid and newHumanoid.Health or "N/A"))
+                end
+            else
+                print("[SUPERTOOL] Player or character not available (attempt " .. attempt .. ")")
+            end
+            
+            -- Character not ready, wait and retry
+            if attempt < maxRetries then
+                wait(retryDelay)
+            end
+            return false
+        end)
+        
+        if success then
             return true
         end
-        return false
-    end)
-    
-    if success then
-        print("[SUPERTOOL] Character references updated successfully")
-    else
-        warn("[SUPERTOOL] Failed to update character references")
     end
     
-    return success
+    warn("[SUPERTOOL] Failed to update character references after " .. maxRetries .. " attempts")
+    return false
+end
+
+-- FIXED: Enhanced character loading with proper wait
+local function waitForCharacter()
+    local maxWait = 15 -- Maximum wait time in seconds
+    local waitTime = 0
+    local checkInterval = 0.1
+    
+    print("[SUPERTOOL] Waiting for character to be ready...")
+    
+    while waitTime < maxWait do
+        if player and player.Character then
+            local character = player.Character
+            local testHumanoid = character:FindFirstChild("Humanoid")
+            local testRootPart = character:FindFirstChild("HumanoidRootPart")
+            
+            if testHumanoid and testRootPart and testHumanoid.Health > 0 then
+                print("[SUPERTOOL] Character found, updating references...")
+                return updateCharacterReferences()
+            else
+                print("[SUPERTOOL] Character exists but components not ready - Health: " .. 
+                      (testHumanoid and testHumanoid.Health or "N/A"))
+            end
+        else
+            print("[SUPERTOOL] No character found, waiting...")
+        end
+        
+        wait(checkInterval)
+        waitTime = waitTime + checkInterval
+    end
+    
+    warn("[SUPERTOOL] Timeout waiting for character to load after " .. maxWait .. " seconds")
+    return false
+end
+
+-- FIXED: Improved character respawn handling
+local function setupCharacterHandling()
+    if not player then
+        player = Players.LocalPlayer
+    end
+    
+    if player then
+        -- Handle character spawning
+        local characterAddedConnection = player.CharacterAdded:Connect(function(character)
+            print("[SUPERTOOL] Character added: " .. character.Name)
+            
+            spawn(function()
+                -- Wait for character to be fully loaded
+                local humanoidLoaded = character:WaitForChild("Humanoid", 10)
+                local rootPartLoaded = character:WaitForChild("HumanoidRootPart", 10)
+                
+                if humanoidLoaded and rootPartLoaded then
+                    print("[SUPERTOOL] Character components loaded, waiting for stability...")
+                    wait(2) -- Additional wait for full stability
+                    
+                    if updateCharacterReferences() then
+                        print("[SUPERTOOL] Character references updated after spawn")
+                        
+                        -- Resume paused activities after a delay
+                        if recordingPaused and macroRecording then
+                            wait(1) -- Extra delay before resuming recording
+                            recordingPaused = false
+                            print("[SUPERTOOL] Recording resumed after respawn")
+                            updateMacroStatus()
+                        end
+                        
+                        if macroPlaybackPaused and macroPlaying then
+                            wait(1) -- Extra delay before resuming playback
+                            macroPlaybackPaused = false
+                            print("[SUPERTOOL] Playback resumed after respawn")
+                            updateMacroStatus()
+                        end
+                    else
+                        warn("[SUPERTOOL] Failed to update character references after spawn")
+                    end
+                else
+                    warn("[SUPERTOOL] Character components failed to load within timeout")
+                end
+            end)
+        end)
+        
+        -- Handle character removal
+        local characterRemovingConnection = player.CharacterRemoving:Connect(function(character)
+            print("[SUPERTOOL] Character removing: " .. character.Name)
+            humanoid = nil
+            rootPart = nil
+            characterLoadedOnce = false
+        end)
+        
+        -- Store connections for cleanup
+        if connections then
+            table.insert(connections, characterAddedConnection)
+            table.insert(connections, characterRemovingConnection)
+        end
+        
+        -- Initial setup if character already exists
+        if player.Character then
+            spawn(function()
+                print("[SUPERTOOL] Initial character setup...")
+                wait(1) -- Delay to ensure character is stable
+                updateCharacterReferences()
+            end)
+        end
+    end
 end
 
 -- Helper function untuk sanitize filename
@@ -157,7 +300,7 @@ local function saveToJSONFile(macroName, macroData)
             name = macroName,
             created = macroData.created or os.time(),
             modified = os.time(),
-            version = "1.3",
+            version = "1.4",
             frames = validFrames,
             startTime = tonumber(macroData.startTime) or 0,
             speed = tonumber(macroData.speed) or 1,
@@ -282,13 +425,17 @@ local function updateMacroStatus()
     
     local success = pcall(function()
         if macroRecording then
-            MacroStatusLabel.Text = recordingPaused and "📹 Recording Paused" or "📹 Recording Macro..."
+            local frameCount = currentMacro and #(currentMacro.frames or {}) or 0
+            local statusText = (recordingPaused and "📹 Recording Paused" or "📹 Recording") .. 
+                             " (" .. frameCount .. " frames)"
+            MacroStatusLabel.Text = statusText
             MacroStatusLabel.TextColor3 = recordingPaused and Color3.fromRGB(255, 200, 100) or Color3.fromRGB(255, 100, 100)
             MacroStatusLabel.Visible = true
         elseif macroPlaying and currentMacroName then
             local macro = savedMacros[currentMacroName]
             local speed = currentPlaybackSpeed or (macro and macro.speed) or 1
-            local statusText = (autoPlaying and "🔄 Auto-Playing" or "▶️ Playing") .. ": " .. currentMacroName .. " (" .. speed .. "x)"
+            local statusText = (autoPlaying and "🔄 Auto-Playing" or "▶️ Playing") .. 
+                             ": " .. currentMacroName .. " (" .. speed .. "x)"
             if macroPlaybackPaused then
                 statusText = "⏸️ " .. statusText .. " [PAUSED]"
             end
@@ -334,7 +481,7 @@ local function initMacroUI()
         MacroTitle.BorderSizePixel = 0
         MacroTitle.Size = UDim2.new(1, 0, 0, 20)
         MacroTitle.Font = Enum.Font.Gotham
-        MacroTitle.Text = "MACRO MANAGER - FIXED v1.3"
+        MacroTitle.Text = "MACRO MANAGER - FIXED v1.4"
         MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
         MacroTitle.TextSize = 8
 
@@ -456,7 +603,7 @@ local function showMacroManager()
     end
 end
 
--- FIXED: Start Macro Recording with better initialization
+-- FIXED: Start Macro Recording with enhanced character validation
 local function startMacroRecording()
     print("[SUPERTOOL] Start Macro Recording called")
     
@@ -473,14 +620,24 @@ local function startMacroRecording()
     -- Initialize services first
     initializeServices()
     
-    -- Update character references
-    if not updateCharacterReferences() then
-        warn("[SUPERTOOL] Cannot start recording - character not available")
-        return
+    print("[SUPERTOOL] Checking character status before recording...")
+    print("- Player exists: " .. tostring(player ~= nil))
+    print("- Character exists: " .. tostring(player and player.Character ~= nil))
+    print("- Humanoid exists: " .. tostring(humanoid ~= nil))
+    print("- RootPart exists: " .. tostring(rootPart ~= nil))
+    print("- Health: " .. (humanoid and humanoid.Health or "N/A"))
+    
+    -- Wait for character if needed
+    if not humanoid or not rootPart or (humanoid and humanoid.Health <= 0) then
+        print("[SUPERTOOL] Character not ready, waiting...")
+        if not waitForCharacter() then
+            warn("[SUPERTOOL] Cannot start recording - character not available after waiting")
+            return
+        end
     end
     
-    if not humanoid or not rootPart then
-        warn("[SUPERTOOL] Cannot start recording - missing humanoid or rootPart")
+    if not humanoid or not rootPart or humanoid.Health <= 0 then
+        warn("[SUPERTOOL] Cannot start recording - character components invalid")
         return
     end
     
@@ -496,12 +653,15 @@ local function startMacroRecording()
         lastFrameTime = 0
         
         updateMacroStatus()
-        print("[SUPERTOOL] Macro recording started")
+        print("[SUPERTOOL] Macro recording started successfully")
+        print("- Start time: " .. currentMacro.startTime)
+        print("- Character health: " .. humanoid.Health)
+        print("- Character position: " .. tostring(rootPart.Position))
         
         local frameCount = 0
         local maxFrames = 3000
         local lastRecordTime = 0
-        local recordInterval = 0.1
+        local recordInterval = 0.05 -- Reduced interval for smoother recording
         
         recordConnection = RunService.Heartbeat:Connect(function()
             if not macroRecording or recordingPaused then return end
@@ -518,31 +678,51 @@ local function startMacroRecording()
                 return
             end
             
-            if not humanoid or not rootPart then
+            -- Check character validity each frame
+            if not humanoid or not rootPart or humanoid.Health <= 0 then
+                print("[SUPERTOOL] Character became invalid during recording")
                 if not updateCharacterReferences() then
+                    recordingPaused = true
+                    print("[SUPERTOOL] Recording paused - character unavailable")
+                    updateMacroStatus()
                     return
                 end
             end
             
-            local frame = {
-                time = currentTime - currentMacro.startTime,
-                cframe = rootPart.CFrame,
-                velocity = rootPart.Velocity,
-                walkSpeed = humanoid.WalkSpeed,
-                jumpPower = humanoid.JumpPower,
-                hipHeight = humanoid.HipHeight,
-                state = humanoid:GetState()
-            }
+            -- Record frame with error handling
+            local frameSuccess = pcall(function()
+                local frame = {
+                    time = currentTime - currentMacro.startTime,
+                    cframe = rootPart.CFrame,
+                    velocity = rootPart.Velocity,
+                    walkSpeed = humanoid.WalkSpeed,
+                    jumpPower = humanoid.JumpPower,
+                    hipHeight = humanoid.HipHeight,
+                    state = humanoid:GetState()
+                }
+                
+                table.insert(currentMacro.frames, frame)
+                frameCount = frameCount + 1
+                lastFrameTime = frame.time
+                
+                -- Update status every 100 frames
+                if frameCount % 100 == 0 then
+                    updateMacroStatus()
+                end
+            end)
             
-            table.insert(currentMacro.frames, frame)
-            frameCount = frameCount + 1
-            lastFrameTime = frame.time
+            if not frameSuccess then
+                warn("[SUPERTOOL] Failed to record frame " .. frameCount)
+            end
         end)
+        
+        print("[SUPERTOOL] Recording connection established")
     end)
     
     if not success then
         warn("[SUPERTOOL] Failed to start macro recording")
         macroRecording = false
+        recordingPaused = false
     end
 end
 
@@ -587,7 +767,9 @@ local function stopMacroRecording()
         updateMacroStatus()
         showMacroManager()
         
-        print("[SUPERTOOL] Macro saved: " .. macroName .. " (" .. #currentMacro.frames .. " frames)")
+        print("[SUPERTOOL] Macro saved successfully: " .. macroName)
+        print("- Total frames: " .. #currentMacro.frames)
+        print("- Duration: " .. string.format("%.2f", currentMacro.duration) .. " seconds")
     end)
     
     if not success then
@@ -595,7 +777,7 @@ local function stopMacroRecording()
     end
 end
 
--- FIXED: Play Macro function
+-- FIXED: Play Macro with enhanced character validation
 local function playMacro(macroName, autoPlay)
     print("[SUPERTOOL] Play Macro called: " .. macroName .. " (Auto: " .. tostring(autoPlay) .. ")")
     
@@ -612,9 +794,24 @@ local function playMacro(macroName, autoPlay)
     -- Initialize services
     initializeServices()
     
-    -- Update character references
-    if not updateCharacterReferences() then
-        warn("[SUPERTOOL] Cannot play macro - character not available")
+    print("[SUPERTOOL] Checking character status before playback...")
+    print("- Player exists: " .. tostring(player ~= nil))
+    print("- Character exists: " .. tostring(player and player.Character ~= nil))
+    print("- Humanoid exists: " .. tostring(humanoid ~= nil))
+    print("- RootPart exists: " .. tostring(rootPart ~= nil))
+    print("- Health: " .. (humanoid and humanoid.Health or "N/A"))
+    
+    -- Wait for character if needed
+    if not humanoid or not rootPart or (humanoid and humanoid.Health <= 0) then
+        print("[SUPERTOOL] Character not ready for playback, waiting...")
+        if not waitForCharacter() then
+            warn("[SUPERTOOL] Cannot play macro - character not available after waiting")
+            return
+        end
+    end
+    
+    if not humanoid or not rootPart or humanoid.Health <= 0 then
+        warn("[SUPERTOOL] Cannot play macro - character components invalid")
         return
     end
     
@@ -636,18 +833,23 @@ local function playMacro(macroName, autoPlay)
         currentMacroName = macroName
         currentPlaybackSpeed = macro.speed or 1
         
-        if humanoid then
-            humanoid.WalkSpeed = 0
-        end
+        -- Store original walk speed
+        local originalWalkSpeed = humanoid.WalkSpeed
+        humanoid.WalkSpeed = 0
         
         updateMacroStatus()
-        print("[SUPERTOOL] Playing macro: " .. macroName .. " (Frames: " .. #macro.frames .. ")")
+        print("[SUPERTOOL] Playing macro: " .. macroName)
+        print("- Total frames: " .. #macro.frames)
+        print("- Duration: " .. string.format("%.2f", macro.duration or 0) .. " seconds")
+        print("- Speed: " .. currentPlaybackSpeed .. "x")
+        print("- Auto-play: " .. tostring(autoPlaying))
         
         local function playSingleMacro()
             local startTime = tick()
             local index = 1
             local lastUpdateTime = 0
-            local updateInterval = 0.05
+            local updateInterval = 0.03 -- Smoother playback
+            local framesApplied = 0
             
             playbackConnection = RunService.Heartbeat:Connect(function()
                 if not macroPlaying then
@@ -668,8 +870,13 @@ local function playMacro(macroName, autoPlay)
                     return
                 end
                 
-                if not humanoid or not rootPart then
+                -- Validate character each frame
+                if not humanoid or not rootPart or humanoid.Health <= 0 then
+                    print("[SUPERTOOL] Character became invalid during playback")
                     if not updateCharacterReferences() then
+                        macroPlaybackPaused = true
+                        print("[SUPERTOOL] Playback paused - character unavailable")
+                        updateMacroStatus()
                         return
                     end
                 end
@@ -678,6 +885,8 @@ local function playMacro(macroName, autoPlay)
                     if autoPlaying then
                         index = 1
                         startTime = tick()
+                        framesApplied = 0
+                        print("[SUPERTOOL] Auto-play: Restarting macro")
                     else
                         macroPlaying = false
                         if playbackConnection then
@@ -685,10 +894,11 @@ local function playMacro(macroName, autoPlay)
                             playbackConnection = nil
                         end
                         if humanoid then
-                            humanoid.WalkSpeed = 16
+                            humanoid.WalkSpeed = originalWalkSpeed
                         end
                         currentMacroName = nil
                         updateMacroStatus()
+                        print("[SUPERTOOL] Macro playback completed - " .. framesApplied .. " frames applied")
                         return
                     end
                 end
@@ -698,19 +908,35 @@ local function playMacro(macroName, autoPlay)
                     local scaledTime = frame.time / currentPlaybackSpeed
                     
                     if scaledTime <= (currentTime - startTime) then
-                        rootPart.CFrame = frame.cframe
-                        rootPart.Velocity = frame.velocity
-                        humanoid.WalkSpeed = frame.walkSpeed
-                        humanoid.JumpPower = frame.jumpPower
-                        humanoid.HipHeight = frame.hipHeight
-                        if frame.state then
-                            humanoid:ChangeState(frame.state)
+                        -- Apply frame data safely
+                        local frameSuccess = pcall(function()
+                            rootPart.CFrame = frame.cframe
+                            rootPart.Velocity = frame.velocity
+                            humanoid.WalkSpeed = frame.walkSpeed
+                            humanoid.JumpPower = frame.jumpPower
+                            humanoid.HipHeight = frame.hipHeight
+                            if frame.state then
+                                humanoid:ChangeState(frame.state)
+                            end
+                        end)
+                        
+                        if frameSuccess then
+                            framesApplied = framesApplied + 1
+                        else
+                            warn("[SUPERTOOL] Failed to apply frame " .. index)
                         end
                         
                         index = index + 1
+                        
+                        -- Update status every 100 frames
+                        if framesApplied % 100 == 0 then
+                            print("[SUPERTOOL] Applied " .. framesApplied .. " frames")
+                        end
                     end
                 end
             end)
+            
+            print("[SUPERTOOL] Playback connection established")
         end
         
         playSingleMacro()
@@ -721,6 +947,7 @@ local function playMacro(macroName, autoPlay)
         macroPlaying = false
         autoPlaying = false
         currentMacroName = nil
+        updateMacroStatus()
     end
 end
 
@@ -746,7 +973,7 @@ local function stopMacroPlayback()
         currentPlaybackSpeed = 1
         updateMacroStatus()
         
-        print("[SUPERTOOL] Macro playback stopped")
+        print("[SUPERTOOL] Macro playback stopped successfully")
     end)
     
     if not success then
@@ -754,7 +981,7 @@ local function stopMacroPlayback()
     end
 end
 
--- Update macro list UI (simplified for debugging)
+-- Update macro list UI (enhanced with better error handling)
 function Utility.updateMacroList()
     if not MacroScrollFrame then 
         warn("[SUPERTOOL] MacroScrollFrame not available")
@@ -802,7 +1029,7 @@ function Utility.updateMacroList()
             infoLabel.Font = Enum.Font.Gotham
             local frameCount = (macro.frames and #macro.frames) or 0
             local duration = macro.duration or 0
-            infoLabel.Text = "Frames: " .. frameCount .. " | Duration: " .. string.format("%.1f", duration) .. "s"
+            infoLabel.Text = "Frames: " .. frameCount .. " | Duration: " .. string.format("%.1f", duration) .. "s | Speed: " .. (macro.speed or 1) .. "x"
             infoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
             infoLabel.TextSize = 6
             infoLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -851,7 +1078,7 @@ function Utility.updateMacroList()
             stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             stopButton.TextSize = 7
             
-            -- Connect button events
+            -- Connect button events with enhanced logging
             playButton.MouseButton1Click:Connect(function()
                 print("[SUPERTOOL] Play button clicked for: " .. macroName)
                 playMacro(macroName, false)
@@ -864,13 +1091,19 @@ function Utility.updateMacroList()
             
             deleteButton.MouseButton1Click:Connect(function()
                 print("[SUPERTOOL] Delete button clicked for: " .. macroName)
-                savedMacros[macroName] = nil
-                local sanitizedName = sanitizeFileName(macroName)
-                local filePath = MACRO_FOLDER_PATH .. sanitizedName .. ".json"
-                if isfile(filePath) then
-                    delfile(filePath)
+                local deleteSuccess = pcall(function()
+                    savedMacros[macroName] = nil
+                    local sanitizedName = sanitizeFileName(macroName)
+                    local filePath = MACRO_FOLDER_PATH .. sanitizedName .. ".json"
+                    if isfile(filePath) then
+                        delfile(filePath)
+                    end
+                    Utility.updateMacroList()
+                    print("[SUPERTOOL] Macro deleted: " .. macroName)
+                end)
+                if not deleteSuccess then
+                    warn("[SUPERTOOL] Failed to delete macro: " .. macroName)
                 end
-                Utility.updateMacroList()
             end)
             
             stopButton.MouseButton1Click:Connect(function()
@@ -901,13 +1134,13 @@ function Utility.updateMacroList()
     end)
     
     if success then
-        print("[SUPERTOOL] Macro list updated successfully")
+        print("[SUPERTOOL] Macro list updated successfully (" .. table.getn(savedMacros) .. " macros)")
     else
         warn("[SUPERTOOL] Failed to update macro list")
     end
 end
 
--- Load all macros from JSON folder
+-- Load all macros from JSON folder (enhanced)
 local function loadAllMacrosFromJSON()
     local success = pcall(function()
         if not isfolder(MACRO_FOLDER_PATH) then
@@ -918,6 +1151,7 @@ local function loadAllMacrosFromJSON()
         
         local files = listfiles(MACRO_FOLDER_PATH)
         local count = 0
+        local errors = 0
         
         for _, filePath in pairs(files) do
             if string.match(filePath, "%.json$") then
@@ -928,12 +1162,17 @@ local function loadAllMacrosFromJSON()
                     if macroData then
                         savedMacros[macroName] = macroData
                         count = count + 1
+                    else
+                        errors = errors + 1
                     end
                 end
             end
         end
         
         print("[SUPERTOOL] Loaded " .. count .. " macros from JSON files")
+        if errors > 0 then
+            warn("[SUPERTOOL] Failed to load " .. errors .. " macro files")
+        end
     end)
     
     if not success then
@@ -951,7 +1190,7 @@ local function killPlayer()
         
         if humanoid then
             humanoid.Health = 0
-            print("[SUPERTOOL] Player killed")
+            print("[SUPERTOOL] Player killed successfully")
         else
             warn("[SUPERTOOL] Humanoid not found")
         end
@@ -983,9 +1222,9 @@ local function resetCharacter()
     end
 end
 
--- Initialize function (REQUIRED for module system)
+-- FIXED: Initialize function with enhanced character handling
 function Utility.init(deps)
-    print("[SUPERTOOL] Initializing Utility module...")
+    print("[SUPERTOOL] Initializing Utility module v1.4...")
     
     local success = pcall(function()
         -- Set dependencies
@@ -1001,31 +1240,31 @@ function Utility.init(deps)
         -- Initialize services
         initializeServices()
         
-        -- Update character references
-        updateCharacterReferences()
-        
-        -- Setup character respawn handling
-        if player then
-            player.CharacterAdded:Connect(function()
-                task.wait(1) -- Wait for character to fully load
-                updateCharacterReferences()
-            end)
-        end
+        -- Setup enhanced character handling
+        setupCharacterHandling()
         
         -- Load existing macros
         loadAllMacrosFromJSON()
         
-        print("[SUPERTOOL] Dependencies set:")
-        print("- Players:", Players and "✓" or "✗")
-        print("- RunService:", RunService and "✓" or "✗") 
-        print("- player:", player and "✓" or "✗")
-        print("- ScreenGui:", ScreenGui and "✓" or "✗")
-        print("- humanoid:", humanoid and "✓" or "✗")
-        print("- rootPart:", rootPart and "✓" or "✗")
+        print("[SUPERTOOL] Dependencies verification:")
+        print("- Players: " .. (Players and "✓" or "✗"))
+        print("- RunService: " .. (RunService and "✓" or "✗"))
+        print("- player: " .. (player and "✓" or "✗"))
+        print("- ScreenGui: " .. (ScreenGui and "✓" or "✗"))
+        print("- humanoid: " .. (humanoid and "✓" or "✗"))
+        print("- rootPart: " .. (rootPart and "✓" or "✗"))
+        print("- Saved macros: " .. table.getn(savedMacros))
+        
+        if player then
+            print("- Player name: " .. player.Name)
+            if player.Character then
+                print("- Character: " .. player.Character.Name)
+            end
+        end
     end)
     
     if success then
-        print("[SUPERTOOL] Utility module initialized successfully")
+        print("[SUPERTOOL] Utility module initialized successfully!")
         return true
     else
         warn("[SUPERTOOL] Failed to initialize Utility module")
@@ -1033,7 +1272,7 @@ function Utility.init(deps)
     end
 end
 
--- Load buttons function (REQUIRED for module system)
+-- Load buttons function (enhanced with better error handling)
 function Utility.loadUtilityButtons(createButton)
     if not createButton or type(createButton) ~= "function" then
         error("createButton function is required")
@@ -1073,6 +1312,18 @@ function Utility.loadUtilityButtons(createButton)
             print("[SUPERTOOL] Stop Playback button pressed")
             stopMacroPlayback()
         end)
+        
+        -- Debug button for troubleshooting
+        createButton("Debug Status", function()
+            print("[SUPERTOOL] Debug Status button pressed")
+            Utility.debugStatus()
+        end)
+        
+        -- Force refresh button
+        createButton("Force Refresh", function()
+            print("[SUPERTOOL] Force Refresh button pressed")
+            Utility.forceRefresh()
+        end)
     end)
     
     if success then
@@ -1082,7 +1333,7 @@ function Utility.loadUtilityButtons(createButton)
     end
 end
 
--- Reset states function (REQUIRED for module system)
+-- Reset states function (enhanced)
 function Utility.resetStates()
     print("[SUPERTOOL] Resetting utility states...")
     
@@ -1113,6 +1364,7 @@ function Utility.resetStates()
         currentPlaybackSpeed = 1
         currentMacro = {}
         lastFrameTime = 0
+        characterLoadedOnce = false
         
         -- Restore humanoid speed
         if humanoid then
@@ -1131,7 +1383,7 @@ function Utility.resetStates()
     end
 end
 
--- Cleanup function
+-- Enhanced cleanup function
 function Utility.cleanup()
     print("[SUPERTOOL] Cleaning up Utility module...")
     
@@ -1165,7 +1417,7 @@ function Utility.cleanup()
     end
 end
 
--- Additional utility functions
+-- Enhanced utility functions
 function Utility.getMacroList()
     local macroList = {}
     for name, macro in pairs(savedMacros) do
@@ -1175,7 +1427,8 @@ function Utility.getMacroList()
             duration = macro.duration or 0,
             speed = macro.speed or 1,
             created = macro.created,
-            modified = macro.modified
+            modified = macro.modified,
+            version = macro.version or "1.0"
         }
     end
     return macroList
@@ -1189,7 +1442,10 @@ function Utility.getMacroStatus()
         paused = macroPlaybackPaused,
         currentMacro = currentMacroName,
         playbackSpeed = currentPlaybackSpeed,
-        recordingPaused = recordingPaused
+        recordingPaused = recordingPaused,
+        characterReady = (humanoid ~= nil and rootPart ~= nil and (humanoid.Health or 0) > 0),
+        characterLoadedOnce = characterLoadedOnce,
+        totalMacros = table.getn(savedMacros)
     }
 end
 
@@ -1201,30 +1457,72 @@ function Utility.forceRefresh()
     print("[SUPERTOOL] Force refresh called")
     pcall(function()
         initializeServices()
-        updateCharacterReferences()
+        local updated = updateCharacterReferences()
+        print("- Character update: " .. (updated and "✓" or "✗"))
+        
         loadAllMacrosFromJSON()
+        print("- Macros loaded: " .. table.getn(savedMacros))
+        
         if MacroFrame and MacroFrame.Visible then
             Utility.updateMacroList()
+            print("- UI updated: ✓")
         end
+        
         updateMacroStatus()
+        print("- Status updated: ✓")
     end)
 end
 
--- Debug function to check status
+-- Enhanced debug function
 function Utility.debugStatus()
-    print("=== UTILITY DEBUG STATUS ===")
-    print("Recording:", macroRecording)
-    print("Playing:", macroPlaying)
-    print("Auto Playing:", autoPlaying)
-    print("Current Macro:", currentMacroName or "None")
-    print("Saved Macros:", table.concat(table.keys(savedMacros) or {}, ", "))
-    print("ScreenGui:", ScreenGui and "Available" or "Missing")
-    print("Player:", player and player.Name or "Missing")
-    print("Humanoid:", humanoid and "Available" or "Missing")
-    print("RootPart:", rootPart and "Available" or "Missing")
-    print("MacroFrame:", MacroFrame and "Created" or "Not Created")
-    print("Record Connection:", recordConnection and "Active" or "Inactive")
-    print("Playback Connection:", playbackConnection and "Active" or "Inactive")
+    print("=== UTILITY DEBUG STATUS v1.4 ===")
+    print("RECORDING STATUS:")
+    print("- Recording: " .. tostring(macroRecording))
+    print("- Recording Paused: " .. tostring(recordingPaused))
+    print("- Record Connection: " .. (recordConnection and "Active" or "Inactive"))
+    
+    print("\nPLAYBACK STATUS:")
+    print("- Playing: " .. tostring(macroPlaying))
+    print("- Auto Playing: " .. tostring(autoPlaying))
+    print("- Playback Paused: " .. tostring(macroPlaybackPaused))
+    print("- Current Macro: " .. (currentMacroName or "None"))
+    print("- Playback Speed: " .. currentPlaybackSpeed)
+    print("- Playback Connection: " .. (playbackConnection and "Active" or "Inactive"))
+    
+    print("\nCHARACTER STATUS:")
+    print("- Player: " .. (player and player.Name or "Missing"))
+    print("- Character: " .. (player and player.Character and player.Character.Name or "Missing"))
+    print("- Humanoid: " .. (humanoid and "Available" or "Missing"))
+    print("- Health: " .. (humanoid and humanoid.Health or "N/A"))
+    print("- RootPart: " .. (rootPart and "Available" or "Missing"))
+    print("- Position: " .. (rootPart and tostring(rootPart.Position) or "N/A"))
+    print("- Character Loaded Once: " .. tostring(characterLoadedOnce))
+    
+    print("\nMACRO DATA:")
+    local macroNames = {}
+    for name, _ in pairs(savedMacros) do
+        table.insert(macroNames, name)
+    end
+    print("- Saved Macros (" .. #macroNames .. "): " .. table.concat(macroNames, ", "))
+    
+    print("\nUI STATUS:")
+    print("- ScreenGui: " .. (ScreenGui and "Available" or "Missing"))
+    print("- MacroFrame: " .. (MacroFrame and "Created" or "Not Created"))
+    print("- MacroFrame Visible: " .. (MacroFrame and tostring(MacroFrame.Visible) or "N/A"))
+    print("- Status Label: " .. (MacroStatusLabel and "Available" or "Missing"))
+    
+    print("\nSYSTEM STATUS:")
+    print("- Players Service: " .. (Players and "✓" or "✗"))
+    print("- RunService: " .. (RunService and "✓" or "✗"))
+    print("- HttpService: " .. (HttpService and "✓" or "✗"))
+    
+    if currentMacro and currentMacro.frames then
+        print("\nCURRENT RECORDING:")
+        print("- Frames: " .. #currentMacro.frames)
+        print("- Duration: " .. string.format("%.2f", lastFrameTime) .. "s")
+        print("- Start Time: " .. (currentMacro.startTime or "N/A"))
+    end
+    
     print("=== END DEBUG STATUS ===")
 end
 
