@@ -1,3 +1,4 @@
+
 -- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, follow player, bring player, and magnet player
 
 -- Dependencies: These must be passed from mainloader.lua
