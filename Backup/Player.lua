@@ -29,8 +29,8 @@ Player.followPathfinding = nil
 Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
 Player.deathAnimationConnections = {}
-Player.magnetEnabled = false -- Magnet Player feature
-Player.magnetOffset = Vector3.new(0, 0, -3) -- 3 studs in front
+Player.magnetEnabled = false
+Player.magnetOffset = Vector3.new(0, 0, -5) -- 5 studs in front
 Player.magnetPlayerPositions = {}
 
 -- UI Elements
@@ -286,11 +286,11 @@ local function bringPlayer(targetPlayer)
     local targetRootPart = targetPlayer.Character.HumanoidRootPart
     local ourPosition = Player.rootPart.CFrame
     
-    targetRootPart.CFrame = ourPosition * CFrame.new(0, 0, -3)
+    targetRootPart.CFrame = ourPosition * CFrame.new(0, 0, -5) -- Adjusted to 5 studs
     print("Brought player: " .. targetPlayer.Name)
 end
 
--- Magnet Players (New Feature)
+-- Magnet Players
 local function toggleMagnetPlayers(enabled)
     Player.magnetEnabled = enabled
     
@@ -332,8 +332,26 @@ local function toggleMagnetPlayers(enabled)
                     task.wait(1)
                     if character:FindFirstChild("HumanoidRootPart") then
                         Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart.CFrame
+                        print("Magnet applied to new player: " .. newPlayer.Name)
                     end
                 end)
+                if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    task.wait(1)
+                    Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart.CFrame
+                    print("Magnet applied to existing player: " .. newPlayer.Name)
+                end
+            end
+        end)
+        
+        connections.magnetRespawn = Players:GetPlayers()[1].CharacterAdded:Connect(function(character)
+            if Player.magnetEnabled and character:FindFirstChild("HumanoidRootPart") then
+                task.wait(1)
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+                        print("Magnet reapplied to respawned player: " .. p.Name)
+                    end
+                end
             end
         end)
         
@@ -348,6 +366,11 @@ local function toggleMagnetPlayers(enabled)
         if connections.magnetNewPlayers then
             connections.magnetNewPlayers:Disconnect()
             connections.magnetNewPlayers = nil
+        end
+        
+        if connections.magnetRespawn then
+            connections.magnetRespawn:Disconnect()
+            connections.magnetRespawn = nil
         end
         
         for targetPlayer, _ in pairs(Player.magnetPlayerPositions) do
@@ -437,8 +460,10 @@ local function setupPlayerMonitoring(targetPlayer)
         end
         
         if Player.magnetEnabled then
-            Player.magnetPlayerPositions[targetPlayer] = character:FindFirstChild("HumanoidRootPart") and character.HumanoidRootPart.CFrame
-            print("Added respawned player to magnet: " .. targetPlayer.Name)
+            if character:FindFirstChild("HumanoidRootPart") then
+                Player.magnetPlayerPositions[targetPlayer] = character.HumanoidRootPart.CFrame
+                print("Magnet applied to respawned player: " .. targetPlayer.Name)
+            end
         end
         
         if Player.followEnabled and Player.followTarget == targetPlayer then
@@ -465,8 +490,9 @@ local function setupPlayerMonitoring(targetPlayer)
         freezePlayer(targetPlayer)
     end
     
-    if Player.magnetEnabled and targetPlayer.Character then
-        Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character:FindFirstChild("HumanoidRootPart") and targetPlayer.Character.HumanoidRootPart.CFrame
+    if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart.CFrame
+        print("Magnet applied to player: " .. targetPlayer.Name)
     end
     
     if Player.noDeathAnimationEnabled then
@@ -974,7 +1000,7 @@ function Player.updatePlayerList()
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 180) -- Increased height for new buttons
+                playerItem.Size = UDim2.new(1, -5, 0, 180)
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -1117,7 +1143,7 @@ function Player.updatePlayerList()
                 teleportButton.MouseButton1Click:Connect(function()
                     if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
                         local targetPosition = p.Character.HumanoidRootPart.CFrame
-                        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 3)
+                        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 5) -- Adjusted to 5 studs
                         print("Teleported to: " .. p.Name)
                     else
                         print("Cannot teleport: No valid target player or missing rootPart")
@@ -1261,7 +1287,7 @@ end
 local function teleportToSpectatedPlayer()
     if Player.selectedPlayer and Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
         local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
-        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 3)
+        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 5) -- Adjusted to 5 studs
         print("Teleported to spectated player: " .. Player.selectedPlayer.Name)
     else
         print("Cannot teleport: No valid spectated player or missing rootPart")
@@ -1512,9 +1538,9 @@ local function initUI()
     EmoteListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
     local emotes = {
-        {name = "Cuco - Levitate", id = "507765000", catalogId = "15698511500"}, -- Placeholder ID
-        {name = "Victory Royale Jump", id = "507771019", catalogId = "107425576246359"}, -- Placeholder ID
-        {name = "SODA POP | SAJABOYS", id = "5092650060", catalogId = "131337151013044"} -- Placeholder ID
+        {name = "Cuco - Levitate", id = "507765000", catalogId = "15698511500"},
+        {name = "Victory Royale Jump", id = "507771019", catalogId = "107425576246359"},
+        {name = "SODA POP | SAJABOYS", id = "5092650060", catalogId = "131337151013044"}
     }
 
     for i, emote in ipairs(emotes) do
@@ -1558,7 +1584,6 @@ local function initUI()
                 print("Playing emote: " .. emote.name)
             else
                 warn("Failed to play emote " .. emote.name .. " via LoadAnimation: " .. tostring(result))
-                -- Fallback to game-specific emote triggering
                 local ReplicatedStorage = game:GetService("ReplicatedStorage")
                 local emoteRemote = ReplicatedStorage:FindFirstChild("EmoteRemote") or
                                     ReplicatedStorage:FindFirstChild("PlayEmote") or
@@ -1679,6 +1704,19 @@ function Player.init(deps)
     
     pcall(initUI)
     pcall(Player.setupPlayerEvents)
+    
+    -- Handle local player respawn for magnet
+    connections.localPlayerRespawn = player.CharacterAdded:Connect(function(newCharacter)
+        task.wait(1)
+        if newCharacter:FindFirstChild("HumanoidRootPart") then
+            Player.rootPart = newCharacter.HumanoidRootPart
+            humanoid = newCharacter:FindFirstChild("Humanoid")
+            if Player.magnetEnabled then
+                print("Local player respawned, reapplying magnet...")
+                toggleMagnetPlayers(true)
+            end
+        end
+    end)
     
     print("Player module initialized successfully")
     return true
