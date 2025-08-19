@@ -56,7 +56,7 @@ local function refreshReferences()
     end
     
     local newHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    local newRootPart = player Character:FindFirstChild("HumanoidRootPart")
+    local newRootPart = player.Character:FindFirstChild("HumanoidRootPart")
     
     if newHumanoid ~= humanoid then
         humanoid = newHumanoid
@@ -580,7 +580,7 @@ local function toggleFly(enabled)
                 if not Movement.flyEnabled then return end
                 if not refreshReferences() or not rootPart then return end
                 
-                if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
+                if not flyBodyVelocity or flyBodyVelocity.Parent != rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
                     flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
@@ -915,7 +915,7 @@ function Movement.updateReferences(newHumanoid, newRootPart)
         if humanoid:FindFirstChild("JumpHeight") then
             Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
         else
-            Movement.defaultJumpPower = humaniod.JumpPower or 50
+            Movement.defaultJumpPower = humanoid.JumpPower or 50
         end
     end
     
