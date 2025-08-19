@@ -1,4 +1,4 @@
--- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, follow player, and fling player
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, and follow player
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -29,14 +29,6 @@ Player.followPathfinding = nil
 Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
 Player.deathAnimationConnections = {}
-
--- Variables for fling player feature
-Player.flingEnabled = false
-Player.flingConnections = {}
-Player.originalRootPartProperties = {}
-Player.flingPower = 500000 -- Adjust this for more/less fling power
-Player.flingRange = 10 -- Range in studs to affect other players
-Player.spinSpeed = 50 -- How fast to spin
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
@@ -103,181 +95,6 @@ local function toggleAntiAFK(enabled)
         end
         print("Anti AFK disabled")
     end
-end
-
--- Fling Player Feature
-local function toggleFlingPlayer(enabled)
-    Player.flingEnabled = enabled
-    
-    if enabled then
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") then
-            print("Cannot enable fling: No valid character found")
-            return false
-        end
-        
-        local rootPart = player.Character.HumanoidRootPart
-        local humanoidChar = player.Character.Humanoid
-        
-        -- Store original properties
-        Player.originalRootPartProperties = {
-            massless = rootPart.Massless,
-            canCollide = rootPart.CanCollide,
-            walkSpeed = humanoidChar.WalkSpeed,
-            jumpPower = humanoidChar.JumpPower,
-            platformStand = humanoidChar.PlatformStand
-        }
-        
-        -- Create BodyVelocity for controlled spinning
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(Player.flingPower, 0, Player.flingPower)
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.Parent = rootPart
-        
-        -- Create BodyAngularVelocity for spinning effect
-        local bodyAngularVelocity = Instance.new("BodyAngularVelocity")
-        bodyAngularVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
-        bodyAngularVelocity.AngularVelocity = Vector3.new(0, Player.spinSpeed, 0)
-        bodyAngularVelocity.Parent = rootPart
-        
-        -- Modify character properties for better flinging
-        rootPart.Massless = false
-        rootPart.CanCollide = true
-        humanoidChar.WalkSpeed = 0
-        humanoidChar.JumpPower = 0
-        humanoidChar.PlatformStand = true
-        
-        -- Store references for cleanup
-        Player.flingConnections.bodyVelocity = bodyVelocity
-        Player.flingConnections.bodyAngularVelocity = bodyAngularVelocity
-        
-        -- Main fling loop
-        Player.flingConnections.heartbeat = RunService.Heartbeat:Connect(function()
-            if not Player.flingEnabled then return end
-            
-            -- Check if character still exists
-            if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-                toggleFlingPlayer(false)
-                return
-            end
-            
-            local currentRootPart = player.Character.HumanoidRootPart
-            local ourPosition = currentRootPart.Position
-            
-            -- Find nearby players and apply fling force
-            for _, otherPlayer in pairs(Players:GetPlayers()) do
-                if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    local otherRootPart = otherPlayer.Character.HumanoidRootPart
-                    local distance = (ourPosition - otherRootPart.Position).Magnitude
-                    
-                    -- If player is within fling range
-                    if distance <= Player.flingRange then
-                        -- Calculate direction to fling the other player
-                        local direction = (otherRootPart.Position - ourPosition).Unit
-                        
-                        -- Apply force to other player
-                        local flingForce = direction * (Player.flingPower / math.max(distance, 1))
-                        
-                        -- Create temporary BodyVelocity to fling other player
-                        local otherBodyVelocity = otherRootPart:FindFirstChild("FlingForce")
-                        if not otherBodyVelocity then
-                            otherBodyVelocity = Instance.new("BodyVelocity")
-                            otherBodyVelocity.Name = "FlingForce"
-                            otherBodyVelocity.MaxForce = Vector3.new(Player.flingPower, Player.flingPower, Player.flingPower)
-                            otherBodyVelocity.Parent = otherRootPart
-                        end
-                        
-                        otherBodyVelocity.Velocity = flingForce + Vector3.new(0, 50, 0) -- Add upward force
-                        
-                        -- Remove the force after a short time
-                        task.spawn(function()
-                            task.wait(0.1)
-                            if otherBodyVelocity and otherBodyVelocity.Parent then
-                                otherBodyVelocity:Destroy()
-                            end
-                        end)
-                        
-                        print("Flinging player: " .. otherPlayer.Name .. " (Distance: " .. math.floor(distance) .. ")")
-                    end
-                end
-            end
-            
-            -- Update our spinning and movement
-            if bodyVelocity and bodyVelocity.Parent then
-                -- Create erratic movement pattern
-                local time = tick()
-                local moveX = math.sin(time * 3) * 20
-                local moveZ = math.cos(time * 3) * 20
-                bodyVelocity.Velocity = Vector3.new(moveX, 0, moveZ)
-            end
-            
-            -- Vary spinning speed for more chaos
-            if bodyAngularVelocity and bodyAngularVelocity.Parent then
-                local time = tick()
-                bodyAngularVelocity.AngularVelocity = Vector3.new(0, Player.spinSpeed + math.sin(time * 2) * 10, 0)
-            end
-        end)
-        
-        -- Handle character respawn during fling
-        Player.flingConnections.characterAdded = player.CharacterAdded:Connect(function(newCharacter)
-            if Player.flingEnabled then
-                task.wait(1) -- Wait for character to fully load
-                print("Character respawned during fling, reactivating...")
-                toggleFlingPlayer(false)
-                task.wait(0.5)
-                toggleFlingPlayer(true)
-            end
-        end)
-        
-        print("Fling Player enabled! Players within " .. Player.flingRange .. " studs will be flung!")
-    else
-        -- Clean up fling connections and restore original properties
-        for name, obj in pairs(Player.flingConnections) do
-            if obj then
-                if typeof(obj) == "RBXScriptConnection" then
-                    obj:Disconnect()
-                elseif typeof(obj) == "Instance" then
-                    obj:Destroy()
-                end
-            end
-        end
-        Player.flingConnections = {}
-        
-        -- Restore original character properties
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
-            local rootPart = player.Character.HumanoidRootPart
-            local humanoidChar = player.Character.Humanoid
-            
-            if Player.originalRootPartProperties then
-                rootPart.Massless = Player.originalRootPartProperties.massless
-                rootPart.CanCollide = Player.originalRootPartProperties.canCollide
-                humanoidChar.WalkSpeed = Player.originalRootPartProperties.walkSpeed
-                humanoidChar.JumpPower = Player.originalRootPartProperties.jumpPower
-                humanoidChar.PlatformStand = Player.originalRootPartProperties.platformStand
-            end
-            
-            -- Clean up any remaining BodyVelocity or BodyAngularVelocity objects
-            for _, obj in pairs(rootPart:GetChildren()) do
-                if obj:IsA("BodyVelocity") or obj:IsA("BodyAngularVelocity") then
-                    obj:Destroy()
-                end
-            end
-        end
-        
-        -- Clean up fling forces from other players
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local otherRootPart = otherPlayer.Character.HumanoidRootPart
-                local flingForce = otherRootPart:FindFirstChild("FlingForce")
-                if flingForce then
-                    flingForce:Destroy()
-                end
-            end
-        end
-        
-        Player.originalRootPartProperties = {}
-        print("Fling Player disabled")
-    end
-    return true
 end
 
 -- Fast Respawn - Client-safe version
@@ -1094,7 +911,7 @@ function Player.updatePlayerList()
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 150) -- Increased height for fling buttons
+                playerItem.Size = UDim2.new(1, -5, 0, 120) -- Increased height for follow button
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -1157,7 +974,7 @@ function Player.updatePlayerList()
                 teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 teleportButton.TextSize = 9
                 
-                -- Follow Button (Row 2)
+                -- New Follow Button
                 local followButton = Instance.new("TextButton")
                 followButton.Name = "FollowButton"
                 followButton.Parent = playerItem
@@ -1170,7 +987,7 @@ function Player.updatePlayerList()
                 followButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 followButton.TextSize = 9
                 
-                -- Stop Follow Button (Row 2)
+                -- New Stop Follow Button
                 local stopFollowButton = Instance.new("TextButton")
                 stopFollowButton.Name = "StopFollowButton"
                 stopFollowButton.Parent = playerItem
@@ -1183,33 +1000,6 @@ function Player.updatePlayerList()
                 stopFollowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 stopFollowButton.TextSize = 8
                 
-                -- Fling Button (Row 3) - NEW
-                local flingButton = Instance.new("TextButton")
-                flingButton.Name = "FlingButton"
-                flingButton.Parent = playerItem
-                flingButton.BackgroundColor3 = Color3.fromRGB(80, 40, 20)
-                flingButton.BorderSizePixel = 0
-                flingButton.Position = UDim2.new(0, 5, 0, 120)
-                flingButton.Size = UDim2.new(0, 70, 0, 25)
-                flingButton.Font = Enum.Font.Gotham
-                flingButton.Text = "FLING"
-                flingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                flingButton.TextSize = 9
-                
-                -- Individual Fling Target Button (Row 3) - NEW
-                local flingTargetButton = Instance.new("TextButton")
-                flingTargetButton.Name = "FlingTargetButton"
-                flingTargetButton.Parent = playerItem
-                flingTargetButton.BackgroundColor3 = Color3.fromRGB(100, 60, 30)
-                flingTargetButton.BorderSizePixel = 0
-                flingTargetButton.Position = UDim2.new(0, 80, 0, 120)
-                flingTargetButton.Size = UDim2.new(1, -85, 0, 25)
-                flingTargetButton.Font = Enum.Font.Gotham
-                flingTargetButton.Text = "FLING TARGET"
-                flingTargetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                flingTargetButton.TextSize = 8
-                
-                -- Event handlers
                 selectButton.MouseButton1Click:Connect(function()
                     Player.selectedPlayer = p
                     Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
@@ -1265,55 +1055,6 @@ function Player.updatePlayerList()
                         -- Update UI
                         Player.updatePlayerList()
                     end
-                end)
-                
-                -- Fling button event handler - NEW
-                flingButton.MouseButton1Click:Connect(function()
-                    if Player.flingEnabled then
-                        print("Fling is already active")
-                    else
-                        toggleFlingPlayer(true)
-                    end
-                end)
-                
-                -- Individual fling target event handler - NEW
-                flingTargetButton.MouseButton1Click:Connect(function()
-                    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-                        print("Cannot fling: No valid character found")
-                        return
-                    end
-                    
-                    if not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then
-                        print("Cannot fling: Target has no valid character")
-                        return
-                    end
-                    
-                    local ourRootPart = player.Character.HumanoidRootPart
-                    local targetRootPart = p.Character.HumanoidRootPart
-                    
-                    -- Calculate direction and force
-                    local direction = (targetRootPart.Position - ourRootPart.Position).Unit
-                    local flingForce = direction * Player.flingPower + Vector3.new(0, Player.flingPower/10, 0)
-                    
-                    -- Create temporary BodyVelocity to fling target
-                    local targetFling = targetRootPart:FindFirstChild("TargetFling")
-                    if targetFling then targetFling:Destroy() end
-                    
-                    targetFling = Instance.new("BodyVelocity")
-                    targetFling.Name = "TargetFling"
-                    targetFling.MaxForce = Vector3.new(Player.flingPower, Player.flingPower, Player.flingPower)
-                    targetFling.Velocity = flingForce
-                    targetFling.Parent = targetRootPart
-                    
-                    -- Remove the force after a short time
-                    task.spawn(function()
-                        task.wait(0.2)
-                        if targetFling and targetFling.Parent then
-                            targetFling:Destroy()
-                        end
-                    end)
-                    
-                    print("Flung target: " .. p.Name)
                 end)
                 
                 -- Mouse enter/leave effects for all buttons
@@ -1378,23 +1119,6 @@ function Player.updatePlayerList()
                 stopFollowButton.MouseLeave:Connect(function()
                     stopFollowButton.BackgroundColor3 = Color3.fromRGB(80, 40, 60)
                 end)
-                
-                -- Fling button hover effects - NEW
-                flingButton.MouseEnter:Connect(function()
-                    flingButton.BackgroundColor3 = Color3.fromRGB(100, 60, 40)
-                end)
-                
-                flingButton.MouseLeave:Connect(function()
-                    flingButton.BackgroundColor3 = Color3.fromRGB(80, 40, 20)
-                end)
-                
-                flingTargetButton.MouseEnter:Connect(function()
-                    flingTargetButton.BackgroundColor3 = Color3.fromRGB(120, 80, 50)
-                end)
-                
-                flingTargetButton.MouseLeave:Connect(function()
-                    flingTargetButton.BackgroundColor3 = Color3.fromRGB(100, 60, 30)
-                end)
             end
         end
     end
@@ -1451,7 +1175,6 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Anti AFK", toggleAntiAFK, "Player")
     createToggleButton("Freeze Players", toggleFreezePlayers, "Player")
     createToggleButton("Follow Player", toggleFollowPlayer, "Player")
-    createToggleButton("Fling Player", toggleFlingPlayer, "Player") -- NEW BUTTON
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
     createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
     print("Player buttons loaded successfully")
@@ -1464,7 +1187,6 @@ function Player.resetStates()
     Player.antiAFKEnabled = false
     Player.freezeEnabled = false
     Player.followEnabled = false
-    Player.flingEnabled = false -- NEW STATE
     Player.fastRespawnEnabled = false
     Player.noDeathAnimationEnabled = false
     
@@ -1473,7 +1195,6 @@ function Player.resetStates()
     toggleFreezePlayers(false)
     toggleFastRespawn(false)
     toggleNoDeathAnimation(false)
-    toggleFlingPlayer(false) -- NEW RESET
     stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
@@ -1495,7 +1216,7 @@ local function initUI()
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
     PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 450) -- Increased height for fling buttons
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased height for follow buttons
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
@@ -1679,7 +1400,6 @@ function Player.init(deps)
     Player.antiAFKEnabled = false
     Player.freezeEnabled = false
     Player.followEnabled = false
-    Player.flingEnabled = false -- Initialize fling state
     Player.fastRespawnEnabled = false
     Player.noDeathAnimationEnabled = false
     Player.selectedPlayer = nil
@@ -1696,13 +1416,6 @@ function Player.init(deps)
     Player.followSpeed = 1.2
     Player.followPathfinding = nil
     Player.deathAnimationConnections = {}
-    
-    -- Initialize fling variables
-    Player.flingConnections = {}
-    Player.originalRootPartProperties = {}
-    Player.flingPower = 500000
-    Player.flingRange = 10
-    Player.spinSpeed = 50
     
     pcall(initUI)
     pcall(Player.setupPlayerEvents)
