@@ -30,7 +30,7 @@ Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
 Player.deathAnimationConnections = {}
 Player.magnetEnabled = false
-Player.magnetOffset = Vector3.new(2, 0, -8) -- Adjusted: 5 studs in front, 2 studs left
+Player.magnetOffset = Vector3.new(2, 0, -) -- Adjusted: 5 studs in front, 2 studs left
 Player.magnetPlayerPositions = {}
 
 -- UI Elements

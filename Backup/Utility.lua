@@ -19,12 +19,8 @@ local playbackConnection = nil
 local currentMacroName = nil
 local recordingPaused = false
 local lastFrameTime = 0
-
--- Admin Command Variables
-local adminFrameVisible = false
-local AdminFrame, AdminScrollFrame, AdminLayout, AdminStatusLabel
-local adminCommands = {}
-local adminList = {}
+local playbackPaused = false
+local pauseResumeTime = 5 -- Seconds to wait before resuming macro after death
 
 -- File System Integration for KRNL
 local HttpService = game:GetService("HttpService")
@@ -40,7 +36,7 @@ local function sanitizeFileName(name)
     return sanitized
 end
 
--- FIXED: Robust validation and conversion functions
+-- Robust validation and conversion functions
 local function validateAndConvertCFrame(cframeData)
     if not cframeData then 
         return CFrame.new(0, 0, 0) 
@@ -149,7 +145,7 @@ local function validateFrame(frame)
     return validFrame
 end
 
--- FIXED: More robust macro saving
+-- Robust macro saving
 local function saveToJSONFile(macroName, macroData)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
@@ -208,7 +204,7 @@ local function saveToJSONFile(macroName, macroData)
     return true
 end
 
--- FIXED: More robust macro loading
+-- Robust macro loading
 local function loadFromJSONFile(macroName)
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
@@ -451,268 +447,6 @@ local function syncMacrosFromJSON()
     return syncedCount
 end
 
--- Admin Command Functions
-local function detectAdminCommands()
-    adminCommands = {}
-    adminList = {}
-    
-    local success, result = pcall(function()
-        -- Mock detection of admin commands (simulating Infinite Yield style)
-        local possibleCommands = {
-            {cmd = "fly", desc = "Enables flying"},
-            {cmd = "noclip", desc = "Disables collision"},
-            {cmd = "god", desc = "Grants invincibility"},
-            {cmd = "speed", desc = "Sets walk speed"},
-            {cmd = "tp", desc = "Teleports player"},
-            {cmd = "kill", desc = "Kills target player"},
-            {cmd = "ban", desc = "Bans target player"},
-            {cmd = "kick", desc = "Kicks target player"}
-        }
-        
-        for _, cmdData in pairs(possibleCommands) do
-            table.insert(adminCommands, {
-                command = cmdData.cmd,
-                description = cmdData.desc
-            })
-        end
-        
-        -- Detect admins (mock implementation)
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= player then
-                table.insert(adminList, p.Name)
-            end
-        end
-        
-        return true
-    end)
-    
-    if success then
-        print("[SUPERTOOL] Detected " .. #adminCommands .. " admin commands and " .. #adminList .. " admins")
-    else
-        warn("[SUPERTOOL] Failed to detect admin commands: " .. tostring(result))
-    end
-end
-
-local function executeAdminCommand(command, args)
-    local success, error = pcall(function()
-        -- Simulate command execution with bypass
-        print("[SUPERTOOL] Executing command: " .. command .. " " .. (args or ""))
-        -- Mock implementation (replace with actual command execution logic)
-        if command == "fly" then
-            if humanoid then
-                humanoid:ChangeState(Enum.HumanoidStateType.Flying)
-            end
-        elseif command == "speed" and args then
-            if humanoid then
-                humanoid.WalkSpeed = tonumber(args) or 16
-            end
-        end
-    end)
-    
-    if not success then
-        warn("[SUPERTOOL] Failed to execute command " .. command .. ": " .. tostring(error))
-    end
-end
-
-local function showAdminPanel()
-    adminFrameVisible = true
-    if not AdminFrame then
-        initAdminUI()
-    end
-    AdminFrame.Visible = true
-    detectAdminCommands()
-    Utility.updateAdminList()
-end
-
-local function initAdminUI()
-    if AdminFrame then return end
-    
-    AdminFrame = Instance.new("Frame")
-    AdminFrame.Name = "AdminFrame"
-    AdminFrame.Parent = ScreenGui
-    AdminFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    AdminFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    AdminFrame.BorderSizePixel = 1
-    AdminFrame.Position = UDim2.new(0.35, 0, 0.1, 0)
-    AdminFrame.Size = UDim2.new(0, 450, 0, 500)
-    AdminFrame.Visible = adminFrameVisible
-    AdminFrame.Active = true
-    AdminFrame.Draggable = true
-
-    local title = Instance.new("TextLabel")
-    title.Parent = AdminFrame
-    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    title.BorderSizePixel = 0
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.Font = Enum.Font.GothamBold
-    title.Text = "ADMIN COMMAND PANEL"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 9
-
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Parent = AdminFrame
-    closeBtn.BackgroundTransparency = 1
-    closeBtn.Position = UDim2.new(1, -25, 0, 2)
-    closeBtn.Size = UDim2.new(0, 20, 0, 20)
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeBtn.TextSize = 10
-
-    local commandInput = Instance.new("TextBox")
-    commandInput.Parent = AdminFrame
-    commandInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    commandInput.BorderSizePixel = 0
-    commandInput.Position = UDim2.new(0, 10, 0, 35)
-    commandInput.Size = UDim2.new(1, -120, 0, 30)
-    commandInput.Font = Enum.Font.Gotham
-    commandInput.PlaceholderText = "Enter command..."
-    commandInput.Text = ""
-    commandInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    commandInput.TextSize = 8
-
-    local executeButton = Instance.new("TextButton")
-    executeButton.Parent = AdminFrame
-    executeButton.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
-    executeButton.BorderSizePixel = 0
-    executeButton.Position = UDim2.new(1, -100, 0, 35)
-    executeButton.Size = UDim2.new(0, 90, 0, 30)
-    executeButton.Font = Enum.Font.GothamBold
-    executeButton.Text = "EXECUTE"
-    executeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    executeButton.TextSize = 9
-
-    AdminStatusLabel = Instance.new("TextLabel")
-    AdminStatusLabel.Parent = AdminFrame
-    AdminStatusLabel.BackgroundTransparency = 1
-    AdminStatusLabel.Position = UDim2.new(0, 10, 0, 75)
-    AdminStatusLabel.Size = UDim2.new(1, -20, 0, 15)
-    AdminStatusLabel.Font = Enum.Font.Gotham
-    AdminStatusLabel.Text = "Ready to execute commands"
-    AdminStatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    AdminStatusLabel.TextSize = 7
-    AdminStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local adminListLabel = Instance.new("TextLabel")
-    adminListLabel.Parent = AdminFrame
-    adminListLabel.BackgroundTransparency = 1
-    adminListLabel.Position = UDim2.new(0, 10, 0, 95)
-    adminListLabel.Size = UDim2.new(1, -20, 0, 15)
-    adminListLabel.Font = Enum.Font.Gotham
-    adminListLabel.Text = "Admins: " .. (#adminList > 0 and table.concat(adminList, ", ") or "None detected")
-    adminListLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
-    adminListLabel.TextSize = 7
-    adminListLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    AdminScrollFrame = Instance.new("ScrollingFrame")
-    AdminScrollFrame.Parent = AdminFrame
-    AdminScrollFrame.BackgroundTransparency = 1
-    AdminScrollFrame.Position = UDim2.new(0, 10, 0, 115)
-    AdminScrollFrame.Size = UDim2.new(1, -20, 1, -125)
-    AdminScrollFrame.ScrollBarThickness = 4
-    AdminScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    AdminScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    AdminScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    AdminLayout = Instance.new("UIListLayout")
-    AdminLayout.Parent = AdminScrollFrame
-    AdminLayout.Padding = UDim.new(0, 3)
-    AdminLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-    executeButton.MouseButton1Click:Connect(function()
-        local input = commandInput.Text
-        if input ~= "" then
-            local parts = string.split(input, " ")
-            local cmd = parts[1]
-            local args = table.concat(parts, " ", 2)
-            executeAdminCommand(cmd, args)
-            commandInput.Text = ""
-        end
-    end)
-
-    commandInput.FocusLost:Connect(function(enterPressed)
-        if enterPressed and commandInput.Text ~= "" then
-            local parts = string.split(commandInput.Text, " ")
-            local cmd = parts[1]
-            local args = table.concat(parts, " ", 2)
-            executeAdminCommand(cmd, args)
-            commandInput.Text = ""
-        end
-    end)
-
-    closeBtn.MouseButton1Click:Connect(function()
-        adminFrameVisible = false
-        AdminFrame.Visible = false
-    end)
-end
-
-function Utility.updateAdminList()
-    if not AdminScrollFrame then return end
-    
-    for _, child in pairs(AdminScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    
-    for i, cmdData in ipairs(adminCommands) do
-        local cmdFrame = Instance.new("Frame")
-        cmdFrame.Name = "Command" .. i
-        cmdFrame.Parent = AdminScrollFrame
-        cmdFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        cmdFrame.BorderSizePixel = 0
-        cmdFrame.Size = UDim2.new(1, -5, 0, 50)
-        cmdFrame.LayoutOrder = i
-        
-        local cmdLabel = Instance.new("TextLabel")
-        cmdLabel.Parent = cmdFrame
-        cmdLabel.BackgroundTransparency = 1
-        cmdLabel.Position = UDim2.new(0, 5, 0, 5)
-        cmdLabel.Size = UDim2.new(1, -10, 0, 15)
-        cmdLabel.Font = Enum.Font.Gotham
-        cmdLabel.Text = cmdData.command
-        cmdLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        cmdLabel.TextSize = 7
-        cmdLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local descLabel = Instance.new("TextLabel")
-        descLabel.Parent = cmdFrame
-        descLabel.BackgroundTransparency = 1
-        descLabel.Position = UDim2.new(0, 5, 0, 20)
-        descLabel.Size = UDim2.new(1, -10, 0, 15)
-        descLabel.Font = Enum.Font.Gotham
-        descLabel.Text = cmdData.description
-        descLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-        descLabel.TextSize = 6
-        descLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local executeBtn = Instance.new("TextButton")
-        executeBtn.Parent = cmdFrame
-        executeBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
-        executeBtn.BorderSizePixel = 0
-        executeBtn.Position = UDim2.new(0.7, 5, 0, 5)
-        executeBtn.Size = UDim2.new(0.3, -10, 0, 25)
-        executeBtn.Font = Enum.Font.Gotham
-        executeBtn.Text = "EXECUTE"
-        executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        executeBtn.TextSize = 7
-        
-        executeBtn.MouseButton1Click:Connect(function()
-            executeAdminCommand(cmdData.command)
-        end)
-    end
-    
-    task.wait(0.1)
-    if AdminLayout then
-        local contentSize = AdminLayout.AbsoluteContentSize
-        AdminScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
-    end
-    
-    if AdminStatusLabel then
-        AdminStatusLabel.Text = "Detected " .. #adminCommands .. " commands"
-    end
-end
-
 -- Update macro status display
 local function updateMacroStatus()
     if not MacroStatusLabel then return end
@@ -722,7 +456,7 @@ local function updateMacroStatus()
     elseif macroPlaying and currentMacroName then
         local macro = savedMacros[currentMacroName] or loadFromFileSystem(currentMacroName)
         local speed = macro and macro.speed or 1
-        MacroStatusLabel.Text = (autoPlaying and "Auto-Playing Macro: " or "Playing Macro: ") .. currentMacroName .. " (Speed: " .. speed .. "x)"
+        MacroStatusLabel.Text = (playbackPaused and "Playback Paused: " or (autoPlaying and "Auto-Playing Macro: " or "Playing Macro: ")) .. currentMacroName .. " (Speed: " .. speed .. "x)"
         MacroStatusLabel.Visible = true
     else
         MacroStatusLabel.Visible = false
@@ -856,6 +590,7 @@ local function stopMacroPlayback()
     if not macroPlaying then return end
     macroPlaying = false
     autoPlaying = false
+    playbackPaused = false
     if playbackConnection then
         playbackConnection:Disconnect()
         playbackConnection = nil
@@ -912,6 +647,7 @@ local function playMacro(macroName, autoPlay)
     
     macroPlaying = true
     autoPlaying = autoPlay or false
+    playbackPaused = false
     currentMacroName = macroName
     humanoid.WalkSpeed = 0
     updateMacroStatus()
@@ -924,25 +660,14 @@ local function playMacro(macroName, autoPlay)
         local speed = macro.speed or 1
         
         playbackConnection = RunService.Heartbeat:Connect(function()
-            if not macroPlaying or not player.Character then
-                if playbackConnection then playbackConnection:Disconnect() end
-                macroPlaying = false
-                autoPlaying = false
-                if humanoid then humanoid.WalkSpeed = settings.WalkSpeed.value or 16 end
-                currentMacroName = nil
-                Utility.updateMacroList()
-                updateMacroStatus()
+            if not macroPlaying or playbackPaused or not player.Character then
                 return
             end
             
             if not humanoid or not rootPart or not humanoid.Parent or not rootPart.Parent then
                 updateCharacterReferences()
                 if not humanoid or not rootPart then
-                    if playbackConnection then playbackConnection:Disconnect() end
-                    macroPlaying = false
-                    autoPlaying = false
-                    currentMacroName = nil
-                    Utility.updateMacroList()
+                    playbackPaused = true
                     updateMacroStatus()
                     return
                 end
@@ -953,12 +678,7 @@ local function playMacro(macroName, autoPlay)
                     index = 1
                     startTime = tick()
                 else
-                    if playbackConnection then playbackConnection:Disconnect() end
-                    macroPlaying = false
-                    humanoid.WalkSpeed = settings.WalkSpeed.value or 16
-                    currentMacroName = nil
-                    Utility.updateMacroList()
-                    updateMacroStatus()
+                    stopMacroPlayback()
                     return
                 end
             end
@@ -988,6 +708,31 @@ local function playMacro(macroName, autoPlay)
         end)
     end
     
+    local function setupDeathHandler()
+        if humanoid then
+            humanoid.Died:Connect(function()
+                if macroPlaying then
+                    playbackPaused = true
+                    updateMacroStatus()
+                    print("[SUPERTOOL] Macro playback paused due to character death")
+                    task.spawn(function()
+                        task.wait(pauseResumeTime)
+                        if macroPlaying and playbackPaused then
+                            updateCharacterReferences()
+                            if humanoid and rootPart then
+                                playbackPaused = false
+                                updateMacroStatus()
+                                print("[SUPERTOOL] Resuming macro playback after " .. pauseResumeTime .. " seconds")
+                                playSingleMacro()
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
+    end
+    
+    setupDeathHandler()
     playSingleMacro()
 end
 
@@ -1279,7 +1024,11 @@ function Utility.updateMacroList()
                 if newSpeed and newSpeed > 0 and newSpeed <= 10 then
                     macro.speed = newSpeed
                     saveToFileSystem(macroName, macro)
-                    updateMacroStatus()
+                    if macroPlaying and currentMacroName == macroName then
+                        -- Update speed during playback
+                        savedMacros[macroName].speed = newSpeed
+                        updateMacroStatus()
+                    end
                     print("[SUPERTOOL] Updated speed for " .. macroName .. ": " .. newSpeed .. "x")
                 else
                     speedInput.Text = tostring(macro.speed or 1)
@@ -1580,7 +1329,7 @@ local function initMacroUI()
     MacroTitle.BorderSizePixel = 0
     MacroTitle.Size = UDim2.new(1, 0, 0, 20)
     MacroTitle.Font = Enum.Font.Gotham
-    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.1"
+    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.2"
     MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     MacroTitle.TextSize = 8
 
@@ -1681,7 +1430,6 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Record Macro", startMacroRecording)
     createButton("Stop Macro", stopMacroRecording)
     createButton("Macro Manager", showMacroManager)
-    createButton("Admin Commands", showAdminPanel)
 end
 
 function Utility.resetStates()
@@ -1689,6 +1437,7 @@ function Utility.resetStates()
     macroPlaying = false
     autoPlaying = false
     recordingPaused = false
+    playbackPaused = false
     
     if recordConnection then
         recordConnection:Disconnect()
@@ -1706,14 +1455,6 @@ function Utility.resetStates()
     
     if MacroFrame then
         MacroFrame.Visible = false
-    end
-    
-    adminFrameVisible = false
-    adminCommands = {}
-    adminList = {}
-    
-    if AdminFrame then
-        AdminFrame.Visible = false
     end
     
     updateMacroStatus()
@@ -1737,14 +1478,11 @@ function Utility.init(deps)
     macroPlaying = false
     autoPlaying = false
     recordingPaused = false
+    playbackPaused = false
     currentMacro = {}
     macroFrameVisible = false
     currentMacroName = nil
     lastFrameTime = 0
-    
-    adminFrameVisible = false
-    adminCommands = {}
-    adminList = {}
     
     local success, error = pcall(function()
         if not isfolder("Supertool") then
@@ -1795,7 +1533,6 @@ function Utility.init(deps)
     
     task.spawn(function()
         initMacroUI()
-        initAdminUI()
         print("[SUPERTOOL] UI components initialized")
     end)
     
@@ -1839,17 +1576,17 @@ function Utility.init(deps)
                 print("[SUPERTOOL] Macro recording paused due to character removal")
             end
             if macroPlaying then
+                playbackPaused = true
+                updateMacroStatus()
                 print("[SUPERTOOL] Macro playback paused due to character removal")
             end
         end)
     end
     
-    detectAdminCommands()
-    
     print("[SUPERTOOL] Utility module fully initialized")
     print("  - JSON Path: " .. MACRO_FOLDER_PATH)
     print("  - Total Macros: " .. (#savedMacros > 0 and tostring(#savedMacros) or "0"))
-    print("  - Version: 1.1 (Enhanced Validation)")
+    print("  - Version: 1.2 (Speed Edit & Auto-Resume)")
 end
 
 return Utility

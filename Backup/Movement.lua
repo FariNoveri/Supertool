@@ -45,7 +45,7 @@ local function setupScrollFrame()
     if ScrollFrame then
         ScrollFrame.ScrollingEnabled = true
         ScrollFrame.ScrollBarThickness = 8
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 400) -- Adjust based on number of buttons
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 400)
     end
 end
 
@@ -56,12 +56,12 @@ local function refreshReferences()
     end
     
     local newHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    local newRootPart = player Character:FindFirstChild("HumanoidRootPart")
+    local newRootPart = player.Character:FindFirstChild("HumanoidRootPart")
     
-    if newHumanoid ~= humanoid then
+    if newHumanoid then
         humanoid = newHumanoid
     end
-    if newRootPart ~= rootPart then
+    if newRootPart then
         rootPart = newRootPart
     end
     
@@ -72,13 +72,11 @@ end
 local function createMobileControls()
     print("Creating mobile controls")
     
-    -- Clean up existing controls
     if flyJoystickFrame then flyJoystickFrame:Destroy() end
     if wallClimbButton then wallClimbButton:Destroy() end
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
 
-    -- Fly Joystick - Better positioning and size
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
     flyJoystickFrame.Size = UDim2.new(0, 100, 0, 100)
@@ -108,7 +106,6 @@ local function createMobileControls()
     knobCorner.CornerRadius = UDim.new(0.5, 0)
     knobCorner.Parent = flyJoystickKnob
 
-    -- Wall Climb Button
     wallClimbButton = Instance.new("TextButton")
     wallClimbButton.Name = "WallClimbButton"
     wallClimbButton.Size = UDim2.new(0, 60, 0, 60)
@@ -128,7 +125,6 @@ local function createMobileControls()
     buttonCorner.CornerRadius = UDim.new(0.2, 0)
     buttonCorner.Parent = wallClimbButton
 
-    -- Fly Up Button
     flyUpButton = Instance.new("TextButton")
     flyUpButton.Name = "FlyUpButton"
     flyUpButton.Size = UDim2.new(0, 50, 0, 50)
@@ -148,7 +144,6 @@ local function createMobileControls()
     upCorner.CornerRadius = UDim.new(0.3, 0)
     upCorner.Parent = flyUpButton
 
-    -- Fly Down Button
     flyDownButton = Instance.new("TextButton")
     flyDownButton.Name = "FlyDownButton"
     flyDownButton.Size = UDim2.new(0, 50, 0, 50)
@@ -295,8 +290,9 @@ local function toggleFloat(enabled)
                 return
             end
             
+            humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
             
@@ -311,7 +307,7 @@ local function toggleFloat(enabled)
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                    flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
@@ -370,6 +366,9 @@ local function toggleFloat(enabled)
             end
         end)
     else
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
         if flyJoystickFrame then 
             flyJoystickFrame.Visible = false
             flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
@@ -408,12 +407,18 @@ local function toggleUnderground(enabled)
             raycastParams.FilterDescendantsInstances = {player.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
             
-            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 10, 0), raycastParams)
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -10, 0), raycastParams)
             if raycast and raycast.Instance and raycast.Instance.CanCollide then
                 rootPart.Position = rootPart.Position - Vector3.new(0, 5, 0)
                 for _, part in pairs(player.Character:GetChildren()) do
                     if part:IsA("BasePart") then
                         part.CanCollide = false
+                    end
+                end
+            else
+                for _, part in pairs(player.Character:GetChildren()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        part.CanCollide = true
                     end
                 end
             end
@@ -567,8 +572,9 @@ local function toggleFly(enabled)
                 return
             end
             
+            humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
             
@@ -583,7 +589,7 @@ local function toggleFly(enabled)
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                    flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
@@ -642,6 +648,9 @@ local function toggleFly(enabled)
             end
         end)
     else
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
         if flyJoystickFrame then 
             flyJoystickFrame.Visible = false
             flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
@@ -804,6 +813,11 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
         return
     end
     
+    if not ScrollFrame or not ScreenGui then
+        warn("Error: ScrollFrame or ScreenGui not initialized!")
+        return
+    end
+    
     setupScrollFrame()
     createToggleButton("Speed Hack", toggleSpeed)
     createToggleButton("Jump Hack", toggleJump)
@@ -865,6 +879,7 @@ function Movement.resetStates()
     if refreshReferences() then
         if humanoid then
             humanoid.WalkSpeed = Movement.defaultWalkSpeed
+            humanoid.PlatformStand = false
             if humanoid:FindFirstChild("JumpHeight") then
                 humanoid.JumpHeight = Movement.defaultJumpHeight
             else
@@ -915,7 +930,7 @@ function Movement.updateReferences(newHumanoid, newRootPart)
         if humanoid:FindFirstChild("JumpHeight") then
             Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
         else
-            Movement.defaultJumpPower = humaniod.JumpPower or 50
+            Movement.defaultJumpPower = humanoid.JumpPower or 50
         end
     end
     
@@ -938,7 +953,7 @@ function Movement.updateReferences(newHumanoid, newRootPart)
             {Movement.swimEnabled, toggleSwim, "Super Swim"},
             {Movement.floatEnabled, toggleFloat, "Float"},
             {Movement.undergroundEnabled, toggleUnderground, "Underground"},
-            {Movement.flyEnabled, toggleFly, "Fly"} -- Fly last to ensure other states are ready
+            {Movement.flyEnabled, toggleFly, "Fly"}
         }
         
         for _, state in ipairs(statesToReapply) do
@@ -964,12 +979,12 @@ function Movement.init(deps)
     UserInputService = deps.UserInputService
     humanoid = deps.humanoid
     rootPart = deps.rootPart
-    connections = deps.connections
-    buttonStates = deps.buttonStates
+    connections = deps.connections or {}
+    buttonStates = deps.buttonStates or {}
     ScrollFrame = deps.ScrollFrame
     ScreenGui = deps.ScreenGui
-    settings = deps.settings
-    player = deps.player
+    settings = deps.settings or {}
+    player = deps.player or Players.LocalPlayer
     
     if not Players or not RunService or not Workspace or not UserInputService then
         warn("Critical services missing!")
