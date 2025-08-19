@@ -1,4 +1,4 @@
--- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, follow player, and bring player
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, follow player, bring player, and magnet player
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -29,6 +29,9 @@ Player.followPathfinding = nil
 Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
 Player.deathAnimationConnections = {}
+Player.magnetEnabled = false -- Magnet Player feature
+Player.magnetOffset = Vector3.new(0, 0, -3) -- 3 studs in front
+Player.magnetPlayerPositions = {}
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
@@ -40,18 +43,16 @@ local function toggleForceField(enabled)
     Player.forceFieldEnabled = enabled
     if enabled then
         if player.Character then
-            -- Create ForceField if it doesn't exist
             if not player.Character:FindFirstChild("ForceField") then
                 local forceField = Instance.new("ForceField")
                 forceField.Parent = player.Character
-                forceField.Visible = false -- Make it invisible
+                forceField.Visible = false
                 print("Force Field enabled")
             end
             
-            -- Monitor character respawn to reapply ForceField
             connections.forcefield = player.CharacterAdded:Connect(function(character)
                 if Player.forceFieldEnabled then
-                    task.wait(0.1) -- Small delay to ensure character is fully loaded
+                    task.wait(0.1)
                     if not character:FindFirstChild("ForceField") then
                         local forceField = Instance.new("ForceField")
                         forceField.Parent = character
@@ -61,7 +62,6 @@ local function toggleForceField(enabled)
                 end
             end)
             
-            -- Ensure player is invincible
             local humanoid = player.Character:FindFirstChild("Humanoid")
             if humanoid then
                 humanoid.MaxHealth = math.huge
@@ -76,7 +76,6 @@ local function toggleForceField(enabled)
             warn("Cannot enable Force Field: No character found")
         end
     else
-        -- Remove ForceField
         if player.Character then
             if player.Character:FindFirstChild("ForceField") then
                 player.Character.ForceField:Destroy()
@@ -117,7 +116,7 @@ local function toggleAntiAFK(enabled)
     end
 end
 
--- Fast Respawn - Fixed version
+-- Fast Respawn
 local function toggleFastRespawn(enabled)
     Player.fastRespawnEnabled = enabled
     if enabled then
@@ -137,14 +136,12 @@ local function toggleFastRespawn(enabled)
                             print("Fast respawn triggered via RemoteEvent")
                         end)
                     else
-                        -- Fallback to LoadCharacter
                         pcall(function()
                             player:LoadCharacter()
                             print("Fast respawn triggered via LoadCharacter")
                         end)
                     end
                     
-                    -- Wait for new character
                     local startTime = tick()
                     while not player.Character and Player.fastRespawnEnabled and (tick() - startTime) < 5 do
                         task.wait(0.05)
@@ -181,7 +178,7 @@ local function toggleFastRespawn(enabled)
     end
 end
 
--- No Death Animation - Fixed version
+-- No Death Animation
 local function toggleNoDeathAnimation(enabled)
     Player.noDeathAnimationEnabled = enabled
     
@@ -197,7 +194,6 @@ local function toggleNoDeathAnimation(enabled)
             if humanoidTarget then
                 Player.deathAnimationConnections[targetPlayer].died = humanoidTarget.Died:Connect(function()
                     if Player.noDeathAnimationEnabled then
-                        -- Remove death sound
                         for _, sound in pairs(character:GetDescendants()) do
                             if sound:IsA("Sound") then
                                 sound:Stop()
@@ -205,7 +201,6 @@ local function toggleNoDeathAnimation(enabled)
                             end
                         end
                         
-                        -- Make character invisible
                         character.Archivable = false
                         for _, part in pairs(character:GetDescendants()) do
                             if part:IsA("BasePart") or part:IsA("Decal") then
@@ -218,7 +213,6 @@ local function toggleNoDeathAnimation(enabled)
                             end
                         end
                         
-                        -- Stop all animations
                         local animator = humanoidTarget:FindFirstChild("Animator")
                         if animator then
                             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
@@ -296,6 +290,84 @@ local function bringPlayer(targetPlayer)
     print("Brought player: " .. targetPlayer.Name)
 end
 
+-- Magnet Players (New Feature)
+local function toggleMagnetPlayers(enabled)
+    Player.magnetEnabled = enabled
+    
+    if enabled then
+        print("Activating magnet players...")
+        Player.magnetPlayerPositions = {}
+        
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+            end
+        end
+        
+        connections.magnet = RunService.Heartbeat:Connect(function()
+            if not Player.magnetEnabled or not Player.rootPart then return end
+            
+            local ourPosition = Player.rootPart.CFrame
+            for targetPlayer, _ in pairs(Player.magnetPlayerPositions) do
+                if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = targetPlayer.Character.HumanoidRootPart
+                    hrp.CFrame = ourPosition * CFrame.new(Player.magnetOffset)
+                    hrp.Anchored = true
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    
+                    if targetPlayer.Character:FindFirstChild("Humanoid") then
+                        local hum = targetPlayer.Character.Humanoid
+                        hum.PlatformStand = true
+                        hum.WalkSpeed = 0
+                        hum.JumpPower = 0
+                    end
+                end
+            end
+        end)
+        
+        connections.magnetNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
+            if Player.magnetEnabled and newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function(character)
+                    task.wait(1)
+                    if character:FindFirstChild("HumanoidRootPart") then
+                        Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart.CFrame
+                    end
+                end)
+            end
+        end)
+        
+        print("Magnet players activated successfully")
+    else
+        print("Deactivating magnet players...")
+        if connections.magnet then
+            connections.magnet:Disconnect()
+            connections.magnet = nil
+        end
+        
+        if connections.magnetNewPlayers then
+            connections.magnetNewPlayers:Disconnect()
+            connections.magnetNewPlayers = nil
+        end
+        
+        for targetPlayer, _ in pairs(Player.magnetPlayerPositions) do
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = targetPlayer.Character.HumanoidRootPart
+                hrp.Anchored = false
+                if targetPlayer.Character:FindFirstChild("Humanoid") then
+                    local hum = targetPlayer.Character.Humanoid
+                    hum.PlatformStand = false
+                    hum.WalkSpeed = 16
+                    hum.JumpPower = 50
+                end
+            end
+        end
+        
+        Player.magnetPlayerPositions = {}
+        print("Magnet players deactivated successfully")
+    end
+end
+
 -- Helper function to freeze a single player
 local function freezePlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then return end
@@ -357,11 +429,16 @@ local function setupPlayerMonitoring(targetPlayer)
     Player.playerConnections[targetPlayer] = {}
     
     Player.playerConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
-        task.wait(1) -- Wait for character to fully load
+        task.wait(1)
         
         if Player.freezeEnabled then
             freezePlayer(targetPlayer)
             print("Auto-froze respawned player: " .. targetPlayer.Name)
+        end
+        
+        if Player.magnetEnabled then
+            Player.magnetPlayerPositions[targetPlayer] = character:FindFirstChild("HumanoidRootPart") and character.HumanoidRootPart.CFrame
+            print("Added respawned player to magnet: " .. targetPlayer.Name)
         end
         
         if Player.followEnabled and Player.followTarget == targetPlayer then
@@ -379,7 +456,7 @@ local function setupPlayerMonitoring(targetPlayer)
         if Player.noDeathAnimationEnabled then
             local humanoidTarget = character:WaitForChild("Humanoid", 5)
             if humanoidTarget and not Player.deathAnimationConnections[targetPlayer] then
-                setupNoDeathForPlayer(targetPlayer)
+                toggleNoDeathAnimation(true)
             end
         end
     end)
@@ -388,8 +465,12 @@ local function setupPlayerMonitoring(targetPlayer)
         freezePlayer(targetPlayer)
     end
     
+    if Player.magnetEnabled and targetPlayer.Character then
+        Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character:FindFirstChild("HumanoidRootPart") and targetPlayer.Character.HumanoidRootPart.CFrame
+    end
+    
     if Player.noDeathAnimationEnabled then
-        setupNoDeathForPlayer(targetPlayer)
+        toggleNoDeathAnimation(true)
     end
 end
 
@@ -414,6 +495,7 @@ local function cleanupPlayerMonitoring(targetPlayer)
     end
     
     Player.frozenPlayerPositions[targetPlayer] = nil
+    Player.magnetPlayerPositions[targetPlayer] = nil
 end
 
 -- Stop Following Player
@@ -442,7 +524,7 @@ local function stopFollowing()
     print("Stopped following player")
 end
 
--- Enhanced Follow Player function with pathfinding
+-- Follow Player
 local function followPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot follow: Invalid target player")
@@ -617,7 +699,7 @@ local function toggleFollowPlayer(enabled)
     return true
 end
 
--- Enhanced Freeze Players function with new player detection
+-- Freeze Players
 local function toggleFreezePlayers(enabled)
     Player.freezeEnabled = enabled
     
@@ -752,7 +834,7 @@ local function stopSpectating()
     print("Stopped spectating")
 end
 
--- Enhanced Spectate Player with better respawn handling
+-- Spectate Player
 local function spectatePlayer(targetPlayer)
     for _, connection in pairs(Player.spectateConnections) do
         if connection then
@@ -892,7 +974,7 @@ function Player.updatePlayerList()
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 150) -- Increased height for new buttons
+                playerItem.Size = UDim2.new(1, -5, 0, 180) -- Increased height for new buttons
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -991,6 +1073,18 @@ function Player.updatePlayerList()
                 bringButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 bringButton.TextSize = 9
                 
+                local magnetButton = Instance.new("TextButton")
+                magnetButton.Name = "MagnetButton"
+                magnetButton.Parent = playerItem
+                magnetButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
+                magnetButton.BorderSizePixel = 0
+                magnetButton.Position = UDim2.new(0, 5, 0, 120)
+                magnetButton.Size = UDim2.new(1, -10, 0, 25)
+                magnetButton.Font = Enum.Font.Gotham
+                magnetButton.Text = "MAGNET"
+                magnetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                magnetButton.TextSize = 9
+                
                 selectButton.MouseButton1Click:Connect(function()
                     Player.selectedPlayer = p
                     Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
@@ -1048,6 +1142,15 @@ function Player.updatePlayerList()
                 
                 bringButton.MouseButton1Click:Connect(function()
                     bringPlayer(p)
+                end)
+                
+                magnetButton.MouseButton1Click:Connect(function()
+                    if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
+                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+                        toggleMagnetPlayers(true)
+                    else
+                        print("Cannot magnet: No valid target player or missing rootPart")
+                    end
                 end)
                 
                 selectButton.MouseEnter:Connect(function()
@@ -1119,6 +1222,14 @@ function Player.updatePlayerList()
                 bringButton.MouseLeave:Connect(function()
                     bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
                 end)
+                
+                magnetButton.MouseEnter:Connect(function()
+                    magnetButton.BackgroundColor3 = Color3.fromRGB(80, 100, 50)
+                end)
+                
+                magnetButton.MouseLeave:Connect(function()
+                    magnetButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
+                end)
             end
         end
     end
@@ -1187,6 +1298,7 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Follow Player", toggleFollowPlayer, "Player")
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
     createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
+    createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
     print("Player buttons loaded successfully")
 end
 
@@ -1199,12 +1311,14 @@ function Player.resetStates()
     Player.followEnabled = false
     Player.fastRespawnEnabled = false
     Player.noDeathAnimationEnabled = false
+    Player.magnetEnabled = false
     
     toggleForceField(false)
     toggleAntiAFK(false)
     toggleFreezePlayers(false)
     toggleFastRespawn(false)
     toggleNoDeathAnimation(false)
+    toggleMagnetPlayers(false)
     stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
@@ -1345,7 +1459,6 @@ local function initUI()
     TeleportSpectateButton.Visible = false
     TeleportSpectateButton.Active = true
 
-    -- Emote GUI
     EmoteGuiFrame = Instance.new("Frame")
     EmoteGuiFrame.Name = "EmoteGuiFrame"
     EmoteGuiFrame.Parent = ScreenGui
@@ -1398,57 +1511,77 @@ local function initUI()
     EmoteListLayout.Padding = UDim.new(0, 5)
     EmoteListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-local emotes = {
-    {name = "Cuco - Levitate", id = "15698511500"},
-    {name = "Victory Royale Jump", id = "107425576246359"},
-    {name = "SODA POP | SAJABOYS", id = "131337151013044"}
-}
+    local emotes = {
+        {name = "Cuco - Levitate", id = "507765000", catalogId = "15698511500"}, -- Placeholder ID
+        {name = "Victory Royale Jump", id = "507771019", catalogId = "107425576246359"}, -- Placeholder ID
+        {name = "SODA POP | SAJABOYS", id = "5092650060", catalogId = "131337151013044"} -- Placeholder ID
+    }
 
-for i, emote in ipairs(emotes) do
-    local emoteButton = Instance.new("TextButton")
-    emoteButton.Name = "EmoteButton" .. i
-    emoteButton.Parent = EmoteScrollFrame
-    emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    emoteButton.BorderSizePixel = 0
-    emoteButton.Size = UDim2.new(1, -10, 0, 30)
-    emoteButton.Font = Enum.Font.Gotham
-    emoteButton.Text = emote.name
-    emoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    emoteButton.TextSize = 10
-    emoteButton.LayoutOrder = i
-
-    emoteButton.MouseButton1Click:Connect(function()
-        local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
-        if humanoid then
-            if emote.id and emote.id ~= "" then
-                local success, result = pcall(function()
-                    local animation = Instance.new("Animation")
-                    animation.AnimationId = "rbxassetid://" .. emote.id
-                    local emoteTrack = humanoid:LoadAnimation(animation)
-                    emoteTrack:Play()
-                    return emoteTrack
-                end)
-                if success then
-                    print("Playing emote: " .. emote.name)
-                else
-                    warn("Failed to play emote " .. emote.name .. ": " .. tostring(result))
-                end
-            else
-                warn("Invalid or empty emote ID for: " .. emote.name)
-            end
-        else
-            warn("Cannot play emote: No humanoid found")
-        end
-    end)
-
-    emoteButton.MouseEnter:Connect(function()
-        emoteButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    end)
-
-    emoteButton.MouseLeave:Connect(function()
+    for i, emote in ipairs(emotes) do
+        local emoteButton = Instance.new("TextButton")
+        emoteButton.Name = "EmoteButton" .. i
+        emoteButton.Parent = EmoteScrollFrame
         emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    end)
-end
+        emoteButton.BorderSizePixel = 0
+        emoteButton.Size = UDim2.new(1, -10, 0, 30)
+        emoteButton.Font = Enum.Font.Gotham
+        emoteButton.Text = emote.name
+        emoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        emoteButton.TextSize = 10
+        emoteButton.LayoutOrder = i
+
+        emoteButton.MouseButton1Click:Connect(function()
+            local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+            if not humanoid then
+                warn("Cannot play emote: No humanoid found")
+                return
+            end
+
+            if not emote.id or emote.id == "" then
+                warn("Invalid or empty emote ID for: " .. emote.name)
+                return
+            end
+
+            local success, result = pcall(function()
+                local animation = Instance.new("Animation")
+                animation.AnimationId = "rbxassetid://" .. emote.id
+                local emoteTrack = humanoid:LoadAnimation(animation)
+                if emoteTrack:IsA("AnimationTrack") then
+                    emoteTrack:Play()
+                else
+                    error("Loaded animation is not valid for: " .. emote.name)
+                end
+                return emoteTrack
+            end)
+
+            if success then
+                print("Playing emote: " .. emote.name)
+            else
+                warn("Failed to play emote " .. emote.name .. " via LoadAnimation: " .. tostring(result))
+                -- Fallback to game-specific emote triggering
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local emoteRemote = ReplicatedStorage:FindFirstChild("EmoteRemote") or
+                                    ReplicatedStorage:FindFirstChild("PlayEmote") or
+                                    ReplicatedStorage:FindFirstChild("Emote")
+                if emoteRemote and emoteRemote:IsA("RemoteEvent") then
+                    pcall(function()
+                        emoteRemote:FireServer(emote.name)
+                        print("Triggered emote " .. emote.name .. " via RemoteEvent")
+                    end)
+                else
+                    warn("No valid RemoteEvent found for emote: " .. emote.name)
+                end
+            end
+        end)
+
+        emoteButton.MouseEnter:Connect(function()
+            emoteButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end)
+
+        emoteButton.MouseLeave:Connect(function()
+            emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        end)
+    end
 
     task.spawn(function()
         task.wait(0.1)
@@ -1527,6 +1660,7 @@ function Player.init(deps)
     Player.followEnabled = false
     Player.fastRespawnEnabled = false
     Player.noDeathAnimationEnabled = false
+    Player.magnetEnabled = false
     Player.selectedPlayer = nil
     Player.spectatePlayerList = {}
     Player.currentSpectateIndex = 0
@@ -1541,6 +1675,7 @@ function Player.init(deps)
     Player.followSpeed = 1.2
     Player.followPathfinding = nil
     Player.deathAnimationConnections = {}
+    Player.magnetPlayerPositions = {}
     
     pcall(initUI)
     pcall(Player.setupPlayerEvents)
