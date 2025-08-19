@@ -1398,43 +1398,57 @@ local function initUI()
     EmoteListLayout.Padding = UDim.new(0, 5)
     EmoteListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local emotes = {
-        {name = "Cuco - Levitate", id = 15698511500},
-        {name = "Victory Royale Jump", id = 107425576246359},
-        {name = "SODA POP | SAJABOYS", id = 131337151013044}
-    }
+local emotes = {
+    {name = "Cuco - Levitate", id = "15698511500"},
+    {name = "Victory Royale Jump", id = "107425576246359"},
+    {name = "SODA POP | SAJABOYS", id = "131337151013044"}
+}
 
-    for i, emote in ipairs(emotes) do
-        local emoteButton = Instance.new("TextButton")
-        emoteButton.Name = "EmoteButton" .. i
-        emoteButton.Parent = EmoteScrollFrame
-        emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        emoteButton.BorderSizePixel = 0
-        emoteButton.Size = UDim2.new(1, -10, 0, 30)
-        emoteButton.Font = Enum.Font.Gotham
-        emoteButton.Text = emote.name
-        emoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        emoteButton.TextSize = 10
-        emoteButton.LayoutOrder = i
+for i, emote in ipairs(emotes) do
+    local emoteButton = Instance.new("TextButton")
+    emoteButton.Name = "EmoteButton" .. i
+    emoteButton.Parent = EmoteScrollFrame
+    emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    emoteButton.BorderSizePixel = 0
+    emoteButton.Size = UDim2.new(1, -10, 0, 30)
+    emoteButton.Font = Enum.Font.Gotham
+    emoteButton.Text = emote.name
+    emoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    emoteButton.TextSize = 10
+    emoteButton.LayoutOrder = i
 
-        emoteButton.MouseButton1Click:Connect(function()
-            local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
-            if humanoid then
-                local emoteTrack = humanoid:LoadAnimation(Instance.new("Animation"))
-                emoteTrack.AnimationId = "rbxassetid://" .. emote.id
-                emoteTrack:Play()
-                print("Playing emote: " .. emote.name)
+    emoteButton.MouseButton1Click:Connect(function()
+        local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            if emote.id and emote.id ~= "" then
+                local success, result = pcall(function()
+                    local animation = Instance.new("Animation")
+                    animation.AnimationId = "rbxassetid://" .. emote.id
+                    local emoteTrack = humanoid:LoadAnimation(animation)
+                    emoteTrack:Play()
+                    return emoteTrack
+                end)
+                if success then
+                    print("Playing emote: " .. emote.name)
+                else
+                    warn("Failed to play emote " .. emote.name .. ": " .. tostring(result))
+                end
+            else
+                warn("Invalid or empty emote ID for: " .. emote.name)
             end
-        end)
+        else
+            warn("Cannot play emote: No humanoid found")
+        end
+    end)
 
-        emoteButton.MouseEnter:Connect(function()
-            emoteButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        end)
+    emoteButton.MouseEnter:Connect(function()
+        emoteButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    end)
 
-        emoteButton.MouseLeave:Connect(function()
-            emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        end)
-    end
+    emoteButton.MouseLeave:Connect(function()
+        emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    end)
+end
 
     task.spawn(function()
         task.wait(0.1)
