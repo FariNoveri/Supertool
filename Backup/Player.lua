@@ -1,4 +1,4 @@
--- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, and follow player
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, follow player, and bring player
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -33,6 +33,7 @@ Player.deathAnimationConnections = {}
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
+local EmoteGuiFrame
 
 -- Force Field (God Mode replacement)
 local function toggleForceField(enabled)
@@ -59,13 +60,32 @@ local function toggleForceField(enabled)
                     end
                 end
             end)
+            
+            -- Ensure player is invincible
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid.MaxHealth = math.huge
+                humanoid.Health = math.huge
+                humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                    if Player.forceFieldEnabled then
+                        humanoid.Health = math.huge
+                    end
+                end)
+            end
         else
             warn("Cannot enable Force Field: No character found")
         end
     else
         -- Remove ForceField
-        if player.Character and player.Character:FindFirstChild("ForceField") then
-            player.Character.ForceField:Destroy()
+        if player.Character then
+            if player.Character:FindFirstChild("ForceField") then
+                player.Character.ForceField:Destroy()
+            end
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid.MaxHealth = 100
+                humanoid.Health = 100
+            end
         end
         
         if connections.forcefield then
@@ -97,82 +117,57 @@ local function toggleAntiAFK(enabled)
     end
 end
 
--- Fast Respawn - Client-safe version
+-- Fast Respawn - Fixed version
 local function toggleFastRespawn(enabled)
     Player.fastRespawnEnabled = enabled
     if enabled then
-        -- Monitor for character removal and speed up the respawn waiting process
-        connections.fastrespawn = player.CharacterRemoving:Connect(function(character)
+        connections.fastrespawn = player.CharacterRemoving:Connect(function()
             if Player.fastRespawnEnabled then
-                print("Character removing, preparing for fast respawn...")
+                print("Character removing, triggering fast respawn...")
                 
-                -- Store respawn request
                 task.spawn(function()
-                    -- Wait for character to be fully removed
-                    while player.Character == character do
-                        task.wait(0.1)
-                    end
+                    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                    local respawnRemote = ReplicatedStorage:FindFirstChild("RespawnRemote") or 
+                                         ReplicatedStorage:FindFirstChild("Respawn") or
+                                         ReplicatedStorage:FindFirstChild("LoadCharacter")
                     
-                    -- Try different client-side respawn methods
-                    local success = false
-                    
-                    -- Method 1: Try using StarterGui reset
-                    if not success then
-                        local StarterGui = game:GetService("StarterGui")
-                        local resetSuccess = pcall(function()
-                            StarterGui:SetCore("ResetButtonCallback", true)
+                    if respawnRemote and respawnRemote:IsA("RemoteEvent") then
+                        pcall(function()
+                            respawnRemote:FireServer()
+                            print("Fast respawn triggered via RemoteEvent")
                         end)
-                        if resetSuccess then
-                            success = true
-                            print("Fast respawn via StarterGui")
-                        end
+                    else
+                        -- Fallback to LoadCharacter
+                        pcall(function()
+                            player:LoadCharacter()
+                            print("Fast respawn triggered via LoadCharacter")
+                        end)
                     end
                     
-                    -- Method 2: Check for game-specific respawn remotes
-                    if not success then
-                        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                        local respawnRemote = ReplicatedStorage:FindFirstChild("RespawnRemote") or 
-                                             ReplicatedStorage:FindFirstChild("Respawn") or
-                                             ReplicatedStorage:FindFirstChild("LoadCharacter")
-                        
-                        if respawnRemote and respawnRemote:IsA("RemoteEvent") then
-                            pcall(function()
-                                respawnRemote:FireServer()
-                                success = true
-                                print("Fast respawn via RemoteEvent")
-                            end)
-                        end
+                    -- Wait for new character
+                    local startTime = tick()
+                    while not player.Character and Player.fastRespawnEnabled and (tick() - startTime) < 5 do
+                        task.wait(0.05)
                     end
                     
-                    -- If no special method worked, just wait for natural respawn
-                    if not success then
-                        print("Fast respawn: Using natural respawn process")
-                        local startTime = tick()
-                        while not player.Character and Player.fastRespawnEnabled and (tick() - startTime) < 10 do
-                            task.wait(0.1)
-                        end
-                    end
-                    
-                    if player.Character and Player.fastRespawnEnabled then
+                    if player.Character then
                         print("Fast respawn completed!")
                     end
                 end)
             end
         end)
         
-        -- Also monitor for when we actually get a new character
         connections.fastrespawncharadded = player.CharacterAdded:Connect(function(newCharacter)
             if Player.fastRespawnEnabled then
                 print("Fast respawn: New character loaded")
-                -- Ensure we update our rootPart reference
-                task.wait(0.5)
+                task.wait(0.2)
                 if newCharacter:FindFirstChild("HumanoidRootPart") then
                     Player.rootPart = newCharacter.HumanoidRootPart
                 end
             end
         end)
         
-        print("Fast Respawn enabled (Client-safe version)")
+        print("Fast Respawn enabled")
     else
         if connections.fastrespawn then
             connections.fastrespawn:Disconnect()
@@ -203,16 +198,17 @@ local function toggleNoDeathAnimation(enabled)
                 Player.deathAnimationConnections[targetPlayer].died = humanoidTarget.Died:Connect(function()
                     if Player.noDeathAnimationEnabled then
                         -- Remove death sound
-                        for _, sound in pairs(character:GetChildren()) do
-                            if sound:IsA("Sound") and (sound.Name:lower():find("death") or sound.Name:lower():find("died")) then
+                        for _, sound in pairs(character:GetDescendants()) do
+                            if sound:IsA("Sound") then
                                 sound:Stop()
                                 sound.Volume = 0
                             end
                         end
                         
-                        -- Prevent death animation by making character disappear
-                        for _, part in pairs(character:GetChildren()) do
-                            if part:IsA("BasePart") then
+                        -- Make character invisible
+                        character.Archivable = false
+                        for _, part in pairs(character:GetDescendants()) do
+                            if part:IsA("BasePart") or part:IsA("Decal") then
                                 part.Transparency = 1
                             elseif part:IsA("Accessory") then
                                 local handle = part:FindFirstChild("Handle")
@@ -236,24 +232,20 @@ local function toggleNoDeathAnimation(enabled)
             end
         end
         
-        -- Setup for current character
         if targetPlayer.Character then
             setupCharacterNoDeathAnimation(targetPlayer.Character)
         end
         
-        -- Setup for future characters
         Player.deathAnimationConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
             setupCharacterNoDeathAnimation(character)
         end)
     end
     
     if enabled then
-        -- Apply to all current players
         for _, p in pairs(Players:GetPlayers()) do
             setupNoDeathForPlayer(p)
         end
         
-        -- Apply to future players
         connections.nodeathanimation = Players.PlayerAdded:Connect(function(p)
             if Player.noDeathAnimationEnabled then
                 setupNoDeathForPlayer(p)
@@ -262,7 +254,6 @@ local function toggleNoDeathAnimation(enabled)
         
         print("No Death Animation enabled for all players")
     else
-        -- Clean up all connections
         for targetPlayer, playerConnections in pairs(Player.deathAnimationConnections) do
             for _, connection in pairs(playerConnections) do
                 if connection then
@@ -279,6 +270,30 @@ local function toggleNoDeathAnimation(enabled)
         
         print("No Death Animation disabled")
     end
+end
+
+-- Bring Player
+local function bringPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot bring: Invalid target player")
+        return
+    end
+    
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        print("Cannot bring: Target player has no character or HumanoidRootPart")
+        return
+    end
+    
+    if not Player.rootPart then
+        print("Cannot bring: Missing rootPart")
+        return
+    end
+    
+    local targetRootPart = targetPlayer.Character.HumanoidRootPart
+    local ourPosition = Player.rootPart.CFrame
+    
+    targetRootPart.CFrame = ourPosition * CFrame.new(0, 0, -3)
+    print("Brought player: " .. targetPlayer.Name)
 end
 
 -- Helper function to freeze a single player
@@ -349,21 +364,18 @@ local function setupPlayerMonitoring(targetPlayer)
             print("Auto-froze respawned player: " .. targetPlayer.Name)
         end
         
-        -- Reapply follow if this was our follow target
         if Player.followEnabled and Player.followTarget == targetPlayer then
             task.wait(0.5)
             followPlayer(targetPlayer)
             print("Resumed following respawned player: " .. targetPlayer.Name)
         end
         
-        -- Reapply spectate if this was our spectate target
         if Player.selectedPlayer == targetPlayer then
             task.wait(0.5)
             spectatePlayer(targetPlayer)
             print("Resumed spectating respawned player: " .. targetPlayer.Name)
         end
         
-        -- Apply no death animation if enabled
         if Player.noDeathAnimationEnabled then
             local humanoidTarget = character:WaitForChild("Humanoid", 5)
             if humanoidTarget and not Player.deathAnimationConnections[targetPlayer] then
@@ -372,12 +384,10 @@ local function setupPlayerMonitoring(targetPlayer)
         end
     end)
     
-    -- Initial freeze if freeze is enabled
     if Player.freezeEnabled and targetPlayer.Character then
         freezePlayer(targetPlayer)
     end
     
-    -- Initial no death animation setup if enabled
     if Player.noDeathAnimationEnabled then
         setupNoDeathForPlayer(targetPlayer)
     end
@@ -412,7 +422,6 @@ local function stopFollowing()
     Player.followTarget = nil
     Player.lastTargetPosition = nil
     
-    -- Disconnect all follow connections
     for _, connection in pairs(Player.followConnections) do
         if connection then
             connection:Disconnect()
@@ -420,12 +429,10 @@ local function stopFollowing()
     end
     Player.followConnections = {}
     
-    -- Destroy pathfinding if it exists
     if Player.followPathfinding then
         Player.followPathfinding = nil
     end
     
-    -- Reset humanoid properties to normal
     if humanoid then
         humanoid.WalkSpeed = 16
         humanoid.JumpPower = 50
@@ -452,13 +459,11 @@ local function followPlayer(targetPlayer)
         return
     end
     
-    -- Stop any previous following
     stopFollowing()
     
     Player.followEnabled = true
     Player.followTarget = targetPlayer
     
-    -- Create PathfindingService
     local PathfindingService = game:GetService("PathfindingService")
     
     local targetRootPart = targetPlayer.Character.HumanoidRootPart
@@ -466,22 +471,19 @@ local function followPlayer(targetPlayer)
     
     print("Started following: " .. targetPlayer.Name)
     
-    -- Variables for pathfinding
     local currentPath = nil
     local currentWaypoint = 0
     local pathUpdateTime = 0
     local lastTargetPos = targetRootPart.Position
     
-    -- Main follow loop using Heartbeat for smooth movement
     Player.followConnections.heartbeat = RunService.Heartbeat:Connect(function()
         if not Player.followEnabled or not Player.followTarget then
             stopFollowing()
             return
         end
         
-        -- Check if target still exists and has character
         if not Player.followTarget.Character or not Player.followTarget.Character:FindFirstChild("HumanoidRootPart") or not Player.followTarget.Character:FindFirstChild("Humanoid") then
-            return -- Wait for respawn
+            return
         end
         
         local currentTargetRootPart = Player.followTarget.Character.HumanoidRootPart
@@ -496,13 +498,11 @@ local function followPlayer(targetPlayer)
         local ourPosition = Player.rootPart.Position
         local distance = (ourPosition - targetPosition).Magnitude
         
-        -- Update path if target moved significantly or enough time passed
         local currentTime = tick()
         if not currentPath or (lastTargetPos - targetPosition).Magnitude > 4 or currentTime - pathUpdateTime > 2 then
             pathUpdateTime = currentTime
             lastTargetPos = targetPosition
             
-            -- Create new path
             pcall(function()
                 currentPath = PathfindingService:CreatePath({
                     AgentRadius = 2,
@@ -521,7 +521,6 @@ local function followPlayer(targetPlayer)
             end)
         end
         
-        -- Follow the path or move directly if no path available
         if currentPath and currentPath.Status == Enum.PathStatus.Success then
             local waypoints = currentPath:GetWaypoints()
             
@@ -530,21 +529,17 @@ local function followPlayer(targetPlayer)
                 local waypointPosition = waypoint.Position
                 local waypointDistance = (ourPosition - waypointPosition).Magnitude
                 
-                -- Move to current waypoint
                 humanoid:MoveTo(waypointPosition)
                 
-                -- Handle jumping
                 if waypoint.Action == Enum.PathWaypointAction.Jump then
                     humanoid.Jump = true
                 end
                 
-                -- Move to next waypoint if close enough
                 if waypointDistance < 3 then
                     currentWaypoint = currentWaypoint + 1
                 end
             end
         else
-            -- Fallback: Direct movement if pathfinding fails
             if distance > 5 then
                 local followPosition = targetPosition - (currentTargetRootPart.CFrame.LookVector * Player.followOffset.Z)
                 followPosition = followPosition + Vector3.new(0, Player.followOffset.Y, 0)
@@ -552,24 +547,19 @@ local function followPlayer(targetPlayer)
             end
         end
         
-        -- Match target's movement behaviors
         humanoid.WalkSpeed = math.max(currentTargetHumanoid.WalkSpeed * Player.followSpeed, 16)
         
-        -- Copy jump behavior
         if currentTargetHumanoid.Jump and not humanoid.Jump then
             humanoid.Jump = true
         end
         
-        -- Copy sit behavior
         if currentTargetHumanoid.Sit ~= humanoid.Sit then
             humanoid.Sit = currentTargetHumanoid.Sit
         end
         
-        -- Store current position for next frame
         Player.lastTargetPosition = targetPosition
     end)
     
-    -- Handle target character respawn
     Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
         if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
         
@@ -578,7 +568,6 @@ local function followPlayer(targetPlayer)
         
         if newRootPart and newHumanoid then
             print("Target respawned, continuing follow: " .. Player.followTarget.Name)
-            -- Reset pathfinding
             currentPath = nil
             currentWaypoint = 0
             pathUpdateTime = 0
@@ -588,7 +577,6 @@ local function followPlayer(targetPlayer)
         end
     end)
     
-    -- Handle target leaving
     Player.followConnections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
         if leavingPlayer == Player.followTarget then
             print("Follow target left the game")
@@ -596,7 +584,6 @@ local function followPlayer(targetPlayer)
         end
     end)
     
-    -- Handle our own character respawn
     Player.followConnections.ourCharacterAdded = player.CharacterAdded:Connect(function(newCharacter)
         if not Player.followEnabled then return end
         
@@ -606,7 +593,7 @@ local function followPlayer(targetPlayer)
         if newRootPart and newHumanoid then
             Player.rootPart = newRootPart
             humanoid = newHumanoid
-            currentPath = nil -- Reset path after our respawn
+            currentPath = nil
             print("Our character respawned, continuing follow")
         else
             print("Failed to get our new character parts")
@@ -622,7 +609,6 @@ local function toggleFollowPlayer(enabled)
             followPlayer(Player.selectedPlayer)
         else
             print("No player selected to follow")
-            -- Return false to prevent toggle button from staying enabled
             return false
         end
     else
@@ -639,7 +625,6 @@ local function toggleFreezePlayers(enabled)
         print("Activating freeze players...")
         Player.frozenPlayerPositions = {}
         
-        -- Freeze all current players
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player then
                 setupPlayerMonitoring(p)
@@ -647,14 +632,12 @@ local function toggleFreezePlayers(enabled)
             end
         end
         
-        -- Monitor for new players joining
         if not connections.freezeNewPlayers then
             connections.freezeNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
                 if Player.freezeEnabled and newPlayer ~= player then
                     print("New player joined, setting up freeze monitoring: " .. newPlayer.Name)
                     setupPlayerMonitoring(newPlayer)
                     
-                    -- Wait for character to load then freeze
                     if newPlayer.Character then
                         task.wait(1)
                         freezePlayer(newPlayer)
@@ -789,12 +772,11 @@ local function spectatePlayer(targetPlayer)
         end
         print("Spectating: " .. targetPlayer.Name)
         
-        -- Enhanced character respawn handling
         Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
             if Player.selectedPlayer == targetPlayer then
                 local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
                 if newHumanoid then
-                    task.wait(0.5) -- Small delay to ensure proper loading
+                    task.wait(0.5)
                     Workspace.CurrentCamera.CameraSubject = newHumanoid
                     Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
                     print("Spectated player respawned, continuing spectate: " .. targetPlayer.Name)
@@ -802,7 +784,6 @@ local function spectatePlayer(targetPlayer)
             end
         end)
         
-        -- Handle character death
         local targetHumanoid = targetPlayer.Character.Humanoid
         Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
             if Player.selectedPlayer == targetPlayer then
@@ -911,7 +892,7 @@ function Player.updatePlayerList()
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 120) -- Increased height for follow button
+                playerItem.Size = UDim2.new(1, -5, 0, 150) -- Increased height for new buttons
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -974,7 +955,6 @@ function Player.updatePlayerList()
                 teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 teleportButton.TextSize = 9
                 
-                -- New Follow Button
                 local followButton = Instance.new("TextButton")
                 followButton.Name = "FollowButton"
                 followButton.Parent = playerItem
@@ -987,7 +967,6 @@ function Player.updatePlayerList()
                 followButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 followButton.TextSize = 9
                 
-                -- New Stop Follow Button
                 local stopFollowButton = Instance.new("TextButton")
                 stopFollowButton.Name = "StopFollowButton"
                 stopFollowButton.Parent = playerItem
@@ -999,6 +978,18 @@ function Player.updatePlayerList()
                 stopFollowButton.Text = "STOP FOLLOW"
                 stopFollowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 stopFollowButton.TextSize = 8
+                
+                local bringButton = Instance.new("TextButton")
+                bringButton.Name = "BringButton"
+                bringButton.Parent = playerItem
+                bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
+                bringButton.BorderSizePixel = 0
+                bringButton.Position = UDim2.new(0, 155, 0, 90)
+                bringButton.Size = UDim2.new(1, -160, 0, 25)
+                bringButton.Font = Enum.Font.Gotham
+                bringButton.Text = "BRING"
+                bringButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                bringButton.TextSize = 9
                 
                 selectButton.MouseButton1Click:Connect(function()
                     Player.selectedPlayer = p
@@ -1044,7 +1035,6 @@ function Player.updatePlayerList()
                         print("Already following this player")
                     else
                         followPlayer(p)
-                        -- Update UI
                         Player.updatePlayerList()
                     end
                 end)
@@ -1052,12 +1042,14 @@ function Player.updatePlayerList()
                 stopFollowButton.MouseButton1Click:Connect(function()
                     if Player.followTarget == p then
                         stopFollowing()
-                        -- Update UI
                         Player.updatePlayerList()
                     end
                 end)
                 
-                -- Mouse enter/leave effects for all buttons
+                bringButton.MouseButton1Click:Connect(function()
+                    bringPlayer(p)
+                end)
+                
                 selectButton.MouseEnter:Connect(function()
                     if Player.selectedPlayer ~= p then
                         selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -1119,6 +1111,14 @@ function Player.updatePlayerList()
                 stopFollowButton.MouseLeave:Connect(function()
                     stopFollowButton.BackgroundColor3 = Color3.fromRGB(80, 40, 60)
                 end)
+                
+                bringButton.MouseEnter:Connect(function()
+                    bringButton.BackgroundColor3 = Color3.fromRGB(50, 80, 100)
+                end)
+                
+                bringButton.MouseLeave:Connect(function()
+                    bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
+                end)
             end
         end
     end
@@ -1157,6 +1157,15 @@ local function teleportToSpectatedPlayer()
     end
 end
 
+-- Show Emote GUI
+local function showEmoteGui()
+    if EmoteGuiFrame then
+        EmoteGuiFrame.Visible = not EmoteGuiFrame.Visible
+    else
+        warn("EmoteGuiFrame not initialized")
+    end
+end
+
 -- Get Selected Player
 function Player.getSelectedPlayer()
     return Player.selectedPlayer
@@ -1171,6 +1180,7 @@ end
 function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlayer)
     print("Loading Player buttons...")
     createButton("Select Player", showPlayerSelection, "Player")
+    createButton("Emote Menu", showEmoteGui, "Player")
     createToggleButton("Force Field", toggleForceField, "Player")
     createToggleButton("Anti AFK", toggleAntiAFK, "Player")
     createToggleButton("Freeze Players", toggleFreezePlayers, "Player")
@@ -1216,7 +1226,7 @@ local function initUI()
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
     PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased height for follow buttons
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 400)
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
@@ -1335,6 +1345,103 @@ local function initUI()
     TeleportSpectateButton.Visible = false
     TeleportSpectateButton.Active = true
 
+    -- Emote GUI
+    EmoteGuiFrame = Instance.new("Frame")
+    EmoteGuiFrame.Name = "EmoteGuiFrame"
+    EmoteGuiFrame.Parent = ScreenGui
+    EmoteGuiFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    EmoteGuiFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    EmoteGuiFrame.BorderSizePixel = 1
+    EmoteGuiFrame.Position = UDim2.new(0.5, -100, 0.3, 0)
+    EmoteGuiFrame.Size = UDim2.new(0, 200, 0, 200)
+    EmoteGuiFrame.Visible = false
+    EmoteGuiFrame.Active = true
+    EmoteGuiFrame.Draggable = true
+
+    local EmoteTitle = Instance.new("TextLabel")
+    EmoteTitle.Name = "Title"
+    EmoteTitle.Parent = EmoteGuiFrame
+    EmoteTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    EmoteTitle.BorderSizePixel = 0
+    EmoteTitle.Position = UDim2.new(0, 0, 0, 0)
+    EmoteTitle.Size = UDim2.new(1, 0, 0, 35)
+    EmoteTitle.Font = Enum.Font.Gotham
+    EmoteTitle.Text = "EMOTE MENU"
+    EmoteTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    EmoteTitle.TextSize = 12
+
+    local CloseEmoteButton = Instance.new("TextButton")
+    CloseEmoteButton.Name = "CloseButton"
+    CloseEmoteButton.Parent = EmoteGuiFrame
+    CloseEmoteButton.BackgroundTransparency = 1
+    CloseEmoteButton.Position = UDim2.new(1, -30, 0, 5)
+    CloseEmoteButton.Size = UDim2.new(0, 25, 0, 25)
+    CloseEmoteButton.Font = Enum.Font.GothamBold
+    CloseEmoteButton.Text = "X"
+    CloseEmoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseEmoteButton.TextSize = 12
+
+    local EmoteScrollFrame = Instance.new("ScrollingFrame")
+    EmoteScrollFrame.Name = "EmoteScrollFrame"
+    EmoteScrollFrame.Parent = EmoteGuiFrame
+    EmoteScrollFrame.BackgroundTransparency = 1
+    EmoteScrollFrame.Position = UDim2.new(0, 10, 0, 40)
+    EmoteScrollFrame.Size = UDim2.new(1, -20, 1, -50)
+    EmoteScrollFrame.ScrollBarThickness = 4
+    EmoteScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    EmoteScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    EmoteScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    EmoteScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    local EmoteListLayout = Instance.new("UIListLayout")
+    EmoteListLayout.Parent = EmoteScrollFrame
+    EmoteListLayout.Padding = UDim.new(0, 5)
+    EmoteListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local emotes = {
+        {name = "Cuco - Levitate", id = 15698511500},
+        {name = "Victory Royale Jump", id = 107425576246359},
+        {name = "SODA POP | SAJABOYS", id = 131337151013044}
+    }
+
+    for i, emote in ipairs(emotes) do
+        local emoteButton = Instance.new("TextButton")
+        emoteButton.Name = "EmoteButton" .. i
+        emoteButton.Parent = EmoteScrollFrame
+        emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        emoteButton.BorderSizePixel = 0
+        emoteButton.Size = UDim2.new(1, -10, 0, 30)
+        emoteButton.Font = Enum.Font.Gotham
+        emoteButton.Text = emote.name
+        emoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        emoteButton.TextSize = 10
+        emoteButton.LayoutOrder = i
+
+        emoteButton.MouseButton1Click:Connect(function()
+            local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+            if humanoid then
+                local emoteTrack = humanoid:LoadAnimation(Instance.new("Animation"))
+                emoteTrack.AnimationId = "rbxassetid://" .. emote.id
+                emoteTrack:Play()
+                print("Playing emote: " .. emote.name)
+            end
+        end)
+
+        emoteButton.MouseEnter:Connect(function()
+            emoteButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end)
+
+        emoteButton.MouseLeave:Connect(function()
+            emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        end)
+    end
+
+    task.spawn(function()
+        task.wait(0.1)
+        local contentSize = EmoteListLayout.AbsoluteContentSize
+        EmoteScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
+    end)
+
     NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
     PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
     StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
@@ -1371,6 +1478,10 @@ local function initUI()
     ClosePlayerListButton.MouseButton1Click:Connect(function()
         Player.playerListVisible = false
         PlayerListFrame.Visible = false
+    end)
+
+    CloseEmoteButton.MouseButton1Click:Connect(function()
+        EmoteGuiFrame.Visible = false
     end)
     
     print("Player UI initialized successfully")
