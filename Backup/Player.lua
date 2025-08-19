@@ -1,4 +1,3 @@
-
 -- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, follow player, bring player, and magnet player
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -31,7 +30,7 @@ Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
 Player.deathAnimationConnections = {}
 Player.magnetEnabled = false
-Player.magnetOffset = Vector3.new(0, 0, -5) -- 5 studs in front
+Player.magnetOffset = Vector3.new(2, 0, -8) -- Adjusted: 5 studs in front, 2 studs left
 Player.magnetPlayerPositions = {}
 
 -- UI Elements
@@ -207,7 +206,7 @@ local function toggleNoDeathAnimation(enabled)
                             if part:IsA("BasePart") or part:IsA("Decal") then
                                 part.Transparency = 1
                             elseif part:IsA("Accessory") then
-                                local handle = part:FindFirstChild("Handle")
+                                local handle = part:FindFirstChild("Handle代替
                                 if handle then
                                     handle.Transparency = 1
                                 end
@@ -301,18 +300,19 @@ local function toggleMagnetPlayers(enabled)
         
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+                Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
             end
         end
         
         connections.magnet = RunService.Heartbeat:Connect(function()
             if not Player.magnetEnabled or not Player.rootPart then return end
             
-            local ourPosition = Player.rootPart.CFrame
+            local ourCFrame = Player.rootPart.CFrame
             for targetPlayer, _ in pairs(Player.magnetPlayerPositions) do
                 if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     local hrp = targetPlayer.Character.HumanoidRootPart
-                    hrp.CFrame = ourPosition * CFrame.new(Player.magnetOffset)
+                    local targetCFrame = ourCFrame * CFrame.new(Player.magnetOffset)
+                    hrp.CFrame = CFrame.new(targetCFrame.Position, ourCFrame.Position)
                     hrp.Anchored = true
                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                     hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
@@ -323,6 +323,8 @@ local function toggleMagnetPlayers(enabled)
                         hum.WalkSpeed = 0
                         hum.JumpPower = 0
                     end
+                else
+                    Player.magnetPlayerPositions[targetPlayer] = nil -- Remove invalid players
                 end
             end
         end)
@@ -330,27 +332,28 @@ local function toggleMagnetPlayers(enabled)
         connections.magnetNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
             if Player.magnetEnabled and newPlayer ~= player then
                 newPlayer.CharacterAdded:Connect(function(character)
-                    task.wait(1)
+                    task.wait(0.5)
                     if character:FindFirstChild("HumanoidRootPart") then
-                        Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart.CFrame
+                        Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart
                         print("Magnet applied to new player: " .. newPlayer.Name)
                     end
                 end)
                 if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    task.wait(1)
-                    Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart.CFrame
+                    task.wait(0.5)
+                    Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart
                     print("Magnet applied to existing player: " .. newPlayer.Name)
                 end
             end
         end)
         
-        connections.magnetRespawn = Players:GetPlayers()[1].CharacterAdded:Connect(function(character)
-            if Player.magnetEnabled and character:FindFirstChild("HumanoidRootPart") then
-                task.wait(1)
+        connections.magnetRespawn = player.CharacterAdded:Connect(function(character)
+            if Player.magnetEnabled then
+                task.wait(0.5)
+                Player.rootPart = character:FindFirstChild("HumanoidRootPart")
                 for _, p in pairs(Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
-                        print("Magnet reapplied to respawned player: " .. p.Name)
+                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
+                        print("Magnet reapplied to player: " .. p.Name)
                     end
                 end
             end
@@ -453,7 +456,7 @@ local function setupPlayerMonitoring(targetPlayer)
     Player.playerConnections[targetPlayer] = {}
     
     Player.playerConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
-        task.wait(1)
+        task.wait(0.5)
         
         if Player.freezeEnabled then
             freezePlayer(targetPlayer)
@@ -462,7 +465,7 @@ local function setupPlayerMonitoring(targetPlayer)
         
         if Player.magnetEnabled then
             if character:FindFirstChild("HumanoidRootPart") then
-                Player.magnetPlayerPositions[targetPlayer] = character.HumanoidRootPart.CFrame
+                Player.magnetPlayerPositions[targetPlayer] = character.HumanoidRootPart
                 print("Magnet applied to respawned player: " .. targetPlayer.Name)
             end
         end
@@ -492,7 +495,7 @@ local function setupPlayerMonitoring(targetPlayer)
     end
     
     if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart.CFrame
+        Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart
         print("Magnet applied to player: " .. targetPlayer.Name)
     end
     
@@ -748,11 +751,11 @@ local function toggleFreezePlayers(enabled)
                     setupPlayerMonitoring(newPlayer)
                     
                     if newPlayer.Character then
-                        task.wait(1)
+                        task.wait(0.5)
                         freezePlayer(newPlayer)
                     else
                         newPlayer.CharacterAdded:Wait()
-                        task.wait(1)
+                        task.wait(0.5)
                         freezePlayer(newPlayer)
                     end
                 end
@@ -1173,7 +1176,7 @@ function Player.updatePlayerList()
                 
                 magnetButton.MouseButton1Click:Connect(function()
                     if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
-                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart.CFrame
+                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
                         toggleMagnetPlayers(true)
                     else
                         print("Cannot magnet: No valid target player or missing rootPart")
@@ -1463,7 +1466,7 @@ local function initUI()
     StopSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     StopSpectateButton.BorderSizePixel = 1
     StopSpectateButton.Position = UDim2.new(0.5, -30, 0.5, 40)
-    StopSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    StopSpectateButton.Size = UDIM2.new(0, 60, 0, 30)
     StopSpectateButton.Font = Enum.Font.Gotham
     StopSpectateButton.Text = "STOP"
     StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1708,7 +1711,7 @@ function Player.init(deps)
     
     -- Handle local player respawn for magnet
     connections.localPlayerRespawn = player.CharacterAdded:Connect(function(newCharacter)
-        task.wait(1)
+        task.wait(0.5)
         if newCharacter:FindFirstChild("HumanoidRootPart") then
             Player.rootPart = newCharacter.HumanoidRootPart
             humanoid = newCharacter:FindFirstChild("Humanoid")
