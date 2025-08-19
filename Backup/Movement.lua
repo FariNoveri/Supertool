@@ -580,7 +580,7 @@ local function toggleFly(enabled)
                 if not Movement.flyEnabled then return end
                 if not refreshReferences() or not rootPart then return end
                 
-                if not flyBodyVelocity or flyBodyVelocity.Parent != rootPart then
+                if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
                     flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
@@ -616,29 +616,8 @@ local function toggleFly(enabled)
             end)
             
             connections.flyInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
-            connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
-            connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
-            
-            if flyUpButton then
-                connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
-                    floatVerticalInput = 1
-                    flyUpButton.BackgroundTransparency = 0.1
-                end)
-                connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
-                    floatVerticalInput = 0
-                    flyUpButton.BackgroundTransparency = 0.3
-                end)
-            end
-            
-            if flyDownButton then
-                connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
-                    floatVerticalInput = -1
-                    flyDownButton.BackgroundTransparency = 0.1
-                end)
-                connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
-                    floatVerticalInput = 0
-                    flyDownButton.BackgroundTransparency = 0.3
-                end)
+            connections.flyBegan = UserInputService.InputBegan:Connectkameroid:ChangeState(Enum.HumanoidStateType.Jumping)
+                Movement.jumpCount = Movement.jumpCount + 1
             end
         end)
     else
