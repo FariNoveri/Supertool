@@ -18,6 +18,8 @@ Movement.moonGravityEnabled = false
 Movement.doubleJumpEnabled = false
 Movement.wallClimbEnabled = false
 Movement.playerNoclipEnabled = false
+Movement.floatEnabled = false
+Movement.undergroundEnabled = false
 
 -- Default values
 Movement.defaultWalkSpeed = 16
@@ -34,9 +36,18 @@ local flyJoystickFrame, flyJoystickKnob
 local wallClimbButton
 local flyUpButton, flyDownButton
 local joystickDelta = Vector2.new(0, 0)
-local flyVerticalInput = 0
+local floatVerticalInput = 0
 local isTouchingJoystick = false
 local joystickTouchId = nil
+
+-- Scroll frame for UI
+local function setupScrollFrame()
+    if ScrollFrame then
+        ScrollFrame.ScrollingEnabled = true
+        ScrollFrame.ScrollBarThickness = 8
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 400) -- Adjust based on number of buttons
+    end
+end
 
 -- Reference refresh function
 local function refreshReferences()
@@ -45,7 +56,7 @@ local function refreshReferences()
     end
     
     local newHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    local newRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+    local newRootPart = player Character:FindFirstChild("HumanoidRootPart")
     
     if newHumanoid ~= humanoid then
         humanoid = newHumanoid
@@ -162,7 +173,7 @@ end
 
 -- Improved joystick handling
 local function handleFlyJoystick(input, gameProcessed)
-    if not Movement.flyEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
+    if not (Movement.flyEnabled or Movement.floatEnabled) or not flyJoystickFrame or not flyJoystickFrame.Visible then 
         return 
     end
     
@@ -211,9 +222,10 @@ local function toggleSpeed(enabled)
         end
         
         if not applySpeed() then
-            -- Retry after a short delay
-            task.wait(0.1)
-            applySpeed()
+            task.spawn(function()
+                task.wait(0.1)
+                applySpeed()
+            end)
         end
     else
         if refreshReferences() and humanoid then
@@ -240,8 +252,10 @@ local function toggleJump(enabled)
         end
         
         if not applyJump() then
-            task.wait(0.1)
-            applyJump()
+            task.spawn(function()
+                task.wait(0.1)
+                applyJump()
+            end)
         end
     else
         if refreshReferences() and humanoid then
@@ -249,6 +263,167 @@ local function toggleJump(enabled)
                 humanoid.JumpHeight = Movement.defaultJumpHeight
             else
                 humanoid.JumpPower = Movement.defaultJumpPower
+            end
+        end
+    end
+end
+
+-- Float Hack
+local function toggleFloat(enabled)
+    Movement.floatEnabled = enabled
+    print("Float toggle:", enabled)
+    
+    local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded", "floatUp", "floatUpEnd", "floatDown", "floatDownEnd"}
+    for _, connName in ipairs(floatConnections) do
+        if connections[connName] then
+            connections[connName]:Disconnect()
+            connections[connName] = nil
+        end
+    end
+    
+    if flyBodyVelocity then
+        flyBodyVelocity:Destroy()
+        flyBodyVelocity = nil
+    end
+    
+    if enabled then
+        task.spawn(function()
+            task.wait(0.1)
+            if not refreshReferences() or not rootPart then
+                print("Failed to get rootPart for float")
+                Movement.floatEnabled = false
+                return
+            end
+            
+            flyBodyVelocity = Instance.new("BodyVelocity")
+            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            flyBodyVelocity.Parent = rootPart
+            
+            if flyJoystickFrame then flyJoystickFrame.Visible = true end
+            if flyUpButton then flyUpButton.Visible = true end
+            if flyDownButton then flyDownButton.Visible = true end
+            
+            connections.float = RunService.Heartbeat:Connect(function()
+                if not Movement.floatEnabled then return end
+                if not refreshReferences() or not rootPart then return end
+                
+                if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
+                    if flyBodyVelocity then flyBodyVelocity:Destroy() end
+                    flyBodyVelocity = Instance.new("BodyVelocity")
+                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    flyBodyVelocity.Parent = rootPart
+                end
+                
+                local camera = Workspace.CurrentCamera
+                if not camera then return end
+                
+                local floatDirection = Vector3.new(0, 0, 0)
+                flySpeed = settings.FlySpeed and settings.FlySpeed.value or 50
+                
+                if joystickDelta.Magnitude > 0.05 then
+                    local forward = camera.CFrame.LookVector
+                    local right = camera.CFrame.RightVector
+                    
+                    forward = Vector3.new(forward.X, 0, forward.Z).Unit
+                    right = Vector3.new(right.X, 0, right.Z).Unit
+                    
+                    floatDirection = floatDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
+                end
+                
+                if floatVerticalInput ~= 0 then
+                    floatDirection = floatDirection + Vector3.new(0, floatVerticalInput, 0)
+                end
+                
+                if floatDirection.Magnitude > 0 then
+                    flyBodyVelocity.Velocity = floatDirection.Unit * flySpeed
+                else
+                    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                end
+            end)
+            
+            connections.floatInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
+            connections.floatBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
+            connections.floatEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
+            
+            if flyUpButton then
+                connections.floatUp = flyUpButton.MouseButton1Down:Connect(function()
+                    floatVerticalInput = 1
+                    flyUpButton.BackgroundTransparency = 0.1
+                end)
+                connections.floatUpEnd = flyUpButton.MouseButton1Up:Connect(function()
+                    floatVerticalInput = 0
+                    flyUpButton.BackgroundTransparency = 0.3
+                end)
+            end
+            
+            if flyDownButton then
+                connections.floatDown = flyDownButton.MouseButton1Down:Connect(function()
+                    floatVerticalInput = -1
+                    flyDownButton.BackgroundTransparency = 0.1
+                end)
+                connections.floatDownEnd = flyDownButton.MouseButton1Up:Connect(function()
+                    floatVerticalInput = 0
+                    flyDownButton.BackgroundTransparency = 0.3
+                end)
+            end
+        end)
+    else
+        if flyJoystickFrame then 
+            flyJoystickFrame.Visible = false
+            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+        end
+        if flyUpButton then 
+            flyUpButton.Visible = false
+            flyUpButton.BackgroundTransparency = 0.3
+        end
+        if flyDownButton then 
+            flyDownButton.Visible = false
+            flyDownButton.BackgroundTransparency = 0.3
+        end
+        
+        floatVerticalInput = 0
+        joystickDelta = Vector2.new(0, 0)
+        isTouchingJoystick = false
+        joystickTouchId = nil
+    end
+end
+
+-- Underground walking
+local function toggleUnderground(enabled)
+    Movement.undergroundEnabled = enabled
+    
+    if connections.underground then
+        connections.underground:Disconnect()
+        connections.underground = nil
+    end
+    
+    if enabled then
+        connections.underground = RunService.Heartbeat:Connect(function()
+            if not Movement.undergroundEnabled then return end
+            if not refreshReferences() or not rootPart then return end
+            
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 10, 0), raycastParams)
+            if raycast and raycast.Instance and raycast.Instance.CanCollide then
+                rootPart.Position = rootPart.Position - Vector3.new(0, 5, 0)
+                for _, part in pairs(player.Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        if refreshReferences() and player.Character then
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
             end
         end
     end
@@ -312,7 +487,6 @@ end
 local function toggleWallClimb(enabled)
     Movement.wallClimbEnabled = enabled
     
-    -- Clean up connections
     if connections.wallClimb then
         connections.wallClimb:Disconnect()
         connections.wallClimb = nil
@@ -366,12 +540,11 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Improved Fly Hack - Fixed the main issue
+-- Improved Fly Hack
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     print("Fly toggle:", enabled)
     
-    -- Clean up all fly connections
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
     for _, connName in ipairs(flyConnections) do
         if connections[connName] then
@@ -380,110 +553,95 @@ local function toggleFly(enabled)
         end
     end
     
-    -- Clean up BodyVelocity
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
     end
     
     if enabled then
-        -- Wait a moment for character to be ready
-        task.wait(0.1)
-        
-        if not refreshReferences() or not rootPart then
-            print("Failed to get rootPart for fly")
-            Movement.flyEnabled = false
-            return
-        end
-        
-        -- Create new BodyVelocity
-        flyBodyVelocity = Instance.new("BodyVelocity")
-        flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-        flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        flyBodyVelocity.Parent = rootPart
-        
-        -- Show fly controls
-        if flyJoystickFrame then flyJoystickFrame.Visible = true end
-        if flyUpButton then flyUpButton.Visible = true end
-        if flyDownButton then flyDownButton.Visible = true end
-        
-        -- Main fly loop - simplified and more reliable
-        connections.fly = RunService.Heartbeat:Connect(function()
-            if not Movement.flyEnabled then return end
-            if not refreshReferences() or not rootPart then return end
-            
-            -- Recreate BodyVelocity if it's missing
-            if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
-                if flyBodyVelocity then flyBodyVelocity:Destroy() end
-                flyBodyVelocity = Instance.new("BodyVelocity")
-                flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                flyBodyVelocity.Parent = rootPart
+        task.spawn(function()
+            task.wait(0.1)
+            if not refreshReferences() or not rootPart then
+                print("Failed to get rootPart for fly")
+                Movement.flyEnabled = false
+                return
             end
             
-            local camera = Workspace.CurrentCamera
-            if not camera then return end
+            flyBodyVelocity = Instance.new("BodyVelocity")
+            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            flyBodyVelocity.Parent = rootPart
             
-            local flyDirection = Vector3.new(0, 0, 0)
-            flySpeed = settings.FlySpeed and settings.FlySpeed.value or 50
+            if flyJoystickFrame then flyJoystickFrame.Visible = true end
+            if flyUpButton then flyUpButton.Visible = true end
+            if flyDownButton then flyDownButton.Visible = true end
             
-            -- Horizontal movement
-            if joystickDelta.Magnitude > 0.05 then
-                local forward = camera.CFrame.LookVector
-                local right = camera.CFrame.RightVector
+            connections.fly = RunService.Heartbeat:Connect(function()
+                if not Movement.flyEnabled then return end
+                if not refreshReferences() or not rootPart then return end
                 
-                -- Remove Y component for cleaner horizontal movement
-                forward = Vector3.new(forward.X, 0, forward.Z).Unit
-                right = Vector3.new(right.X, 0, right.Z).Unit
+                if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
+                    if flyBodyVelocity then flyBodyVelocity:Destroy() end
+                    flyBodyVelocity = Instance.new("BodyVelocity")
+                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    flyBodyVelocity.Parent = rootPart
+                end
                 
-                flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
+                local camera = Workspace.CurrentCamera
+                if not camera then return end
+                
+                local flyDirection = Vector3.new(0, 0, 0)
+                flySpeed = settings.FlySpeed and settings.FlySpeed.value or 50
+                
+                if joystickDelta.Magnitude > 0.05 then
+                    local forward = camera.CFrame.LookVector
+                    local right = camera.CFrame.RightVector
+                    
+                    forward = Vector3.new(forward.X, 0, forward.Z).Unit
+                    right = Vector3.new(right.X, 0, right.Z).Unit
+                    
+                    flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
+                end
+                
+                if floatVerticalInput ~= 0 then
+                    flyDirection = flyDirection + Vector3.new(0, floatVerticalInput, 0)
+                end
+                
+                if flyDirection.Magnitude > 0 then
+                    flyBodyVelocity.Velocity = flyDirection.Unit * flySpeed
+                else
+                    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                end
+            end)
+            
+            connections.flyInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
+            connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
+            connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
+            
+            if flyUpButton then
+                connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
+                    floatVerticalInput = 1
+                    flyUpButton.BackgroundTransparency = 0.1
+                end)
+                connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
+                    floatVerticalInput = 0
+                    flyUpButton.BackgroundTransparency = 0.3
+                end)
             end
             
-            -- Vertical movement
-            if flyVerticalInput ~= 0 then
-                flyDirection = flyDirection + Vector3.new(0, flyVerticalInput, 0)
-            end
-            
-            -- Apply movement with proper magnitude
-            if flyDirection.Magnitude > 0 then
-                flyBodyVelocity.Velocity = flyDirection.Unit * flySpeed
-            else
-                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            if flyDownButton then
+                connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
+                    floatVerticalInput = -1
+                    flyDownButton.BackgroundTransparency = 0.1
+                end)
+                connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
+                    floatVerticalInput = 0
+                    flyDownButton.BackgroundTransparency = 0.3
+                end)
             end
         end)
-        
-        -- Input handling
-        connections.flyInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
-        connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
-        connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
-        
-        -- Up/Down button handling
-        if flyUpButton then
-            connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
-                flyVerticalInput = 1
-                flyUpButton.BackgroundTransparency = 0.1
-            end)
-            connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
-                flyVerticalInput = 0
-                flyUpButton.BackgroundTransparency = 0.3
-            end)
-        end
-        
-        if flyDownButton then
-            connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
-                flyVerticalInput = -1
-                flyDownButton.BackgroundTransparency = 0.1
-            end)
-            connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
-                flyVerticalInput = 0
-                flyDownButton.BackgroundTransparency = 0.3
-            end)
-        end
-        
-        print("Fly enabled successfully")
     else
-        -- Disable fly
-        -- Hide controls
         if flyJoystickFrame then 
             flyJoystickFrame.Visible = false
             flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
@@ -497,13 +655,10 @@ local function toggleFly(enabled)
             flyDownButton.BackgroundTransparency = 0.3
         end
         
-        -- Reset variables
-        flyVerticalInput = 0
+        floatVerticalInput = 0
         joystickDelta = Vector2.new(0, 0)
         isTouchingJoystick = false
         joystickTouchId = nil
-        
-        print("Fly disabled")
     end
 end
 
@@ -634,8 +789,10 @@ local function toggleSwim(enabled)
     end
     
     if not applySwim() then
-        task.wait(0.1)
-        applySwim()
+        task.spawn(function()
+            task.wait(0.1)
+            applySwim()
+        end)
     end
 end
 
@@ -647,6 +804,7 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
         return
     end
     
+    setupScrollFrame()
     createToggleButton("Speed Hack", toggleSpeed)
     createToggleButton("Jump Hack", toggleJump)
     createToggleButton("Moon Gravity", toggleMoonGravity)
@@ -658,13 +816,14 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("NoClip", toggleNoclip)
     createToggleButton("Walk on Water", toggleWalkOnWater)
     createToggleButton("Super Swim", toggleSwim)
+    createToggleButton("Float", toggleFloat)
+    createToggleButton("Underground", toggleUnderground)
 end
 
 -- Improved reset function
 function Movement.resetStates()
     print("Resetting Movement states")
     
-    -- Reset all states
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -676,14 +835,21 @@ function Movement.resetStates()
     Movement.doubleJumpEnabled = false
     Movement.wallClimbEnabled = false
     Movement.playerNoclipEnabled = false
+    Movement.floatEnabled = false
+    Movement.undergroundEnabled = false
     Movement.jumpCount = 0
-    flyVerticalInput = 0
+    floatVerticalInput = 0
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
     
-    -- Disconnect all connections
-    local movementConnections = {"fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "wallClimbInput"}
+    local movementConnections = {
+        "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
+        "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", 
+        "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatInput", 
+        "floatBegan", "floatEnded", "floatUp", "floatUpEnd", "floatDown", 
+        "floatDownEnd", "underground"
+    }
     for _, connName in ipairs(movementConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
@@ -691,13 +857,11 @@ function Movement.resetStates()
         end
     end
     
-    -- Clean up fly objects
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
     end
     
-    -- Reset character properties
     if refreshReferences() then
         if humanoid then
             humanoid.WalkSpeed = Movement.defaultWalkSpeed
@@ -711,7 +875,6 @@ function Movement.resetStates()
             end)
         end
         
-        -- Re-enable collision
         if player.Character then
             for _, part in pairs(player.Character:GetChildren()) do
                 if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -721,10 +884,8 @@ function Movement.resetStates()
         end
     end
     
-    -- Reset workspace properties
     Workspace.Gravity = Movement.defaultGravity
     
-    -- Hide UI elements
     if flyJoystickFrame then
         flyJoystickFrame.Visible = false
         flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
@@ -754,38 +915,39 @@ function Movement.updateReferences(newHumanoid, newRootPart)
         if humanoid:FindFirstChild("JumpHeight") then
             Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
         else
-            Movement.defaultJumpPower = humanoid.JumpPower or 50
+            Movement.defaultJumpPower = humaniod.JumpPower or 50
         end
     end
     
     Movement.defaultGravity = Workspace.Gravity or 196.2
     
-    -- Recreate mobile controls
     createMobileControls()
     
-    -- Reapply active states with delay to ensure character is ready
-    task.wait(0.2)
-    
-    local statesToReapply = {
-        {Movement.speedEnabled, toggleSpeed, "Speed"},
-        {Movement.jumpEnabled, toggleJump, "Jump"},
-        {Movement.moonGravityEnabled, toggleMoonGravity, "Moon Gravity"},
-        {Movement.doubleJumpEnabled, toggleDoubleJump, "Double Jump"},
-        {Movement.infiniteJumpEnabled, toggleInfiniteJump, "Infinite Jump"},
-        {Movement.wallClimbEnabled, toggleWallClimb, "Wall Climb"},
-        {Movement.playerNoclipEnabled, togglePlayerNoclip, "Player NoClip"},
-        {Movement.noclipEnabled, toggleNoclip, "NoClip"},
-        {Movement.walkOnWaterEnabled, toggleWalkOnWater, "Walk on Water"},
-        {Movement.swimEnabled, toggleSwim, "Super Swim"},
-        {Movement.flyEnabled, toggleFly, "Fly"} -- Fly last to ensure other states are ready
-    }
-    
-    for _, state in ipairs(statesToReapply) do
-        if state[1] then -- if enabled
-            print("Reapplying", state[3])
-            state[2](true) -- call toggle function
+    task.spawn(function()
+        task.wait(0.2)
+        local statesToReapply = {
+            {Movement.speedEnabled, toggleSpeed, "Speed"},
+            {Movement.jumpEnabled, toggleJump, "Jump"},
+            {Movement.moonGravityEnabled, toggleMoonGravity, "Moon Gravity"},
+            {Movement.doubleJumpEnabled, toggleDoubleJump, "Double Jump"},
+            {Movement.infiniteJumpEnabled, toggleInfiniteJump, "Infinite Jump"},
+            {Movement.wallClimbEnabled, toggleWallClimb, "Wall Climb"},
+            {Movement.playerNoclipEnabled, togglePlayerNoclip, "Player NoClip"},
+            {Movement.noclipEnabled, toggleNoclip, "NoClip"},
+            {Movement.walkOnWaterEnabled, toggleWalkOnWater, "Walk on Water"},
+            {Movement.swimEnabled, toggleSwim, "Super Swim"},
+            {Movement.floatEnabled, toggleFloat, "Float"},
+            {Movement.undergroundEnabled, toggleUnderground, "Underground"},
+            {Movement.flyEnabled, toggleFly, "Fly"} -- Fly last to ensure other states are ready
+        }
+        
+        for _, state in ipairs(statesToReapply) do
+            if state[1] then
+                print("Reapplying", state[3])
+                state[2](true)
+            end
         end
-    end
+    end)
 end
 
 -- Function to set dependencies
@@ -809,7 +971,6 @@ function Movement.init(deps)
     settings = deps.settings
     player = deps.player
     
-    -- Validate critical dependencies
     if not Players or not RunService or not Workspace or not UserInputService then
         warn("Critical services missing!")
         return false
@@ -819,7 +980,6 @@ function Movement.init(deps)
         player = Players.LocalPlayer
     end
     
-    -- Initialize default values
     if humanoid then
         Movement.defaultWalkSpeed = humanoid.WalkSpeed or 16
         if humanoid:FindFirstChild("JumpHeight") then
@@ -830,7 +990,6 @@ function Movement.init(deps)
     end
     Movement.defaultGravity = Workspace.Gravity or 196.2
     
-    -- Reset all states
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -842,13 +1001,16 @@ function Movement.init(deps)
     Movement.doubleJumpEnabled = false
     Movement.wallClimbEnabled = false
     Movement.playerNoclipEnabled = false
+    Movement.floatEnabled = false
+    Movement.undergroundEnabled = false
     Movement.jumpCount = 0
-    flyVerticalInput = 0
+    floatVerticalInput = 0
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
     
     createMobileControls()
+    setupScrollFrame()
     
     print("Movement module initialized successfully")
     return true
@@ -869,6 +1031,8 @@ function Movement.debug()
     print("  doubleJumpEnabled:", Movement.doubleJumpEnabled)
     print("  wallClimbEnabled:", Movement.wallClimbEnabled)
     print("  playerNoclipEnabled:", Movement.playerNoclipEnabled)
+    print("  floatEnabled:", Movement.floatEnabled)
+    print("  undergroundEnabled:", Movement.undergroundEnabled)
     
     print("References:")
     print("  player:", player ~= nil)
@@ -876,10 +1040,10 @@ function Movement.debug()
     print("  rootPart:", rootPart ~= nil)
     print("  player.Character:", player and player.Character ~= nil)
     
-    print("Fly System:")
+    print("Fly/Float System:")
     print("  flyBodyVelocity:", flyBodyVelocity ~= nil)
     print("  joystickDelta:", joystickDelta)
-    print("  flyVerticalInput:", flyVerticalInput)
+    print("  floatVerticalInput:", floatVerticalInput)
     print("  isTouchingJoystick:", isTouchingJoystick)
     
     print("UI Elements:")
@@ -902,7 +1066,7 @@ function Movement.debug()
     print("  defaultWalkSpeed:", Movement.defaultWalkSpeed)
     print("  defaultJumpPower:", Movement.defaultJumpPower)
     print("  defaultJumpHeight:", Movement.defaultJumpHeight)
-    print("  defaultGravity:", Movement.defaultGravity)
+    print("  classified")
     print("===================================")
 end
 
@@ -910,16 +1074,13 @@ end
 function Movement.cleanup()
     print("Cleaning up Movement module")
     
-    -- Reset all states first
     Movement.resetStates()
     
-    -- Destroy UI elements
     if flyJoystickFrame then flyJoystickFrame:Destroy() end
     if wallClimbButton then wallClimbButton:Destroy() end
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
     
-    -- Clear references
     flyJoystickFrame = nil
     flyJoystickKnob = nil
     wallClimbButton = nil
