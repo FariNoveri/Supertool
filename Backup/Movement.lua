@@ -86,7 +86,7 @@ local function createMobileControls()
     flyJoystickFrame.BorderSizePixel = 0
     flyJoystickFrame.Visible = false
     flyJoystickFrame.ZIndex = 10
-    flyJoystickFrame.Parent = ScreenGui
+    flyJoystickFrame.Parent = ScreenGui or player.PlayerGui
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0.5, 0)
@@ -119,7 +119,7 @@ local function createMobileControls()
     wallClimbButton.TextSize = 12
     wallClimbButton.Visible = false
     wallClimbButton.ZIndex = 10
-    wallClimbButton.Parent = ScreenGui
+    wallClimbButton.Parent = ScreenGui or player.PlayerGui
 
     local buttonCorner = Instance.new("UICorner")
     buttonCorner.CornerRadius = UDim.new(0.2, 0)
@@ -138,7 +138,7 @@ local function createMobileControls()
     flyUpButton.TextSize = 16
     flyUpButton.Visible = false
     flyUpButton.ZIndex = 10
-    flyUpButton.Parent = ScreenGui
+    flyUpButton.Parent = ScreenGui or player.PlayerGui
 
     local upCorner = Instance.new("UICorner")
     upCorner.CornerRadius = UDim.new(0.3, 0)
@@ -157,7 +157,7 @@ local function createMobileControls()
     flyDownButton.TextSize = 16
     flyDownButton.Visible = false
     flyDownButton.ZIndex = 10
-    flyDownButton.Parent = ScreenGui
+    flyDownButton.Parent = ScreenGui or player.PlayerGui
 
     local downCorner = Instance.new("UICorner")
     downCorner.CornerRadius = UDim.new(0.3, 0)
@@ -284,15 +284,15 @@ local function toggleFloat(enabled)
     if enabled then
         task.spawn(function()
             task.wait(0.1)
-            if not refreshReferences() or not rootPart then
-                print("Failed to get rootPart for float")
+            if not refreshReferences() or not rootPart or not humanoid then
+                print("Failed to get references for float")
                 Movement.floatEnabled = false
                 return
             end
             
             humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
             
@@ -302,12 +302,12 @@ local function toggleFloat(enabled)
             
             connections.float = RunService.Heartbeat:Connect(function()
                 if not Movement.floatEnabled then return end
-                if not refreshReferences() or not rootPart then return end
+                if not refreshReferences() or not rootPart or not humanoid then return end
                 
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
@@ -401,7 +401,7 @@ local function toggleUnderground(enabled)
     if enabled then
         connections.underground = RunService.Heartbeat:Connect(function()
             if not Movement.undergroundEnabled then return end
-            if not refreshReferences() or not rootPart then return end
+            if not refreshReferences() or not rootPart or not player.Character then return end
             
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {player.Character}
@@ -566,7 +566,7 @@ local function toggleFly(enabled)
     if enabled then
         task.spawn(function()
             task.wait(0.1)
-            if not refreshReferences() or not rootPart then
+            if not refreshReferences() or not rootPart or not humanoid then
                 print("Failed to get rootPart for fly")
                 Movement.flyEnabled = false
                 return
@@ -574,7 +574,7 @@ local function toggleFly(enabled)
             
             humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
             
@@ -589,7 +589,7 @@ local function toggleFly(enabled)
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
@@ -813,11 +813,6 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
         return
     end
     
-    if not ScrollFrame or not ScreenGui then
-        warn("Error: ScrollFrame or ScreenGui not initialized!")
-        return
-    end
-    
     setupScrollFrame()
     createToggleButton("Speed Hack", toggleSpeed)
     createToggleButton("Jump Hack", toggleJump)
@@ -973,10 +968,10 @@ function Movement.init(deps)
         return false
     end
     
-    Players = deps.Players
-    RunService = deps.RunService
-    Workspace = deps.Workspace
-    UserInputService = deps.UserInputService
+    Players = deps.Players or game:GetService("Players")
+    RunService = deps.RunService or game:GetService("RunService")
+    Workspace = deps.Workspace or game:GetService("Workspace")
+    UserInputService = deps.UserInputService or game:GetService("UserInputService")
     humanoid = deps.humanoid
     rootPart = deps.rootPart
     connections = deps.connections or {}
@@ -989,10 +984,6 @@ function Movement.init(deps)
     if not Players or not RunService or not Workspace or not UserInputService then
         warn("Critical services missing!")
         return false
-    end
-    
-    if not player then
-        player = Players.LocalPlayer
     end
     
     if humanoid then
