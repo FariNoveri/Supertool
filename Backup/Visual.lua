@@ -1,3 +1,4 @@
+
 -- Visual-related features for MinimalHackGUI by Fari Noveri, including ESP, Freecam, Fullbright, Flashlight, Time Modes, and Low Detail Mode for mobile
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -856,7 +857,7 @@ local function toggleFlashlight(enabled)
     end
 end
 
--- Low Detail Mode (Enhanced - Better optimization)
+-- Low Detail Mode (Enhanced - Better optimization with proper grass removal)
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
@@ -883,6 +884,42 @@ local function toggleLowDetail(enabled)
             gameSettings.RenderDistance = 50
         end)
         
+        -- Enhanced terrain processing with proper grass/decoration removal
+        pcall(function()
+            local terrain = Workspace.Terrain
+            -- Store original terrain settings
+            if not foliageStates.terrainSettings then
+                foliageStates.terrainSettings = {
+                    Decoration = terrain.Decoration,
+                    WaterWaveSize = terrain.WaterWaveSize,
+                    WaterWaveSpeed = terrain.WaterWaveSpeed,
+                    WaterReflectance = terrain.WaterReflectance,
+                    WaterTransparency = terrain.WaterTransparency
+                }
+            end
+            
+            -- Apply low detail terrain settings
+            terrain.Decoration = false -- This removes grass/decorations
+            terrain.WaterWaveSize = 0
+            terrain.WaterWaveSpeed = 0
+            terrain.WaterReflectance = 0
+            terrain.WaterTransparency = 0.9
+            
+            -- Force remove terrain decorations more aggressively
+            spawn(function()
+                pcall(function()
+                    local success = pcall(function()
+                        terrain:ReadVoxels(workspace.CurrentCamera.CFrame.Position - Vector3.new(100, 100, 100), Vector3.new(200, 200, 200))
+                    end)
+                    if success then
+                        terrain.Decoration = false -- Re-apply to ensure it sticks
+                    end
+                end)
+            end)
+            
+            print("Terrain decorations (grass) disabled")
+        end)
+        
         -- Process objects more aggressively for low detail
         spawn(function()
             local processCount = 0
@@ -893,6 +930,17 @@ local function toggleLowDetail(enabled)
                     processedObjects[obj] = true
                     
                     pcall(function()
+                        -- Enhanced grass/foliage detection
+                        local name = obj.Name:lower()
+                        local parent = obj.Parent and obj.Parent.Name:lower() or ""
+                        local isGrassOrFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
+                                               name:find("grass") or name:find("tree") or name:find("plant") or 
+                                               name:find("flower") or name:find("bush") or name:find("shrub") or
+                                               name:find("fern") or name:find("moss") or name:find("vine") or
+                                               parent:find("grass") or parent:find("foliage") or parent:find("decoration") or
+                                               obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature") or
+                                               obj:GetAttribute("IsDecoration")
+                        
                         if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
                            obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                             foliageStates[obj] = { Enabled = obj.Enabled }
@@ -908,22 +956,17 @@ local function toggleLowDetail(enabled)
                             obj.Enabled = false
                             
                         elseif obj:IsA("BasePart") then
-                            -- Check for foliage/nature objects
-                            local name = obj.Name:lower()
-                            local isFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
-                                              name:find("grass") or name:find("tree") or name:find("plant") or 
-                                              name:find("flower") or name:find("bush") or name:find("shrub") or
-                                              obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature")
-                            
-                            if isFoliage then
+                            if isGrassOrFoliage then
                                 foliageStates[obj] = { 
                                     Transparency = obj.Transparency,
                                     Material = obj.Material,
                                     Color = obj.Color,
-                                    CanCollide = obj.CanCollide
+                                    CanCollide = obj.CanCollide,
+                                    Anchored = obj.Anchored
                                 }
                                 obj.Transparency = 1 -- Hide foliage completely
                                 obj.CanCollide = false -- Remove collision for performance
+                                obj.Anchored = true -- Prevent physics calculations
                             else
                                 -- Make regular parts pixelated/low detail
                                 foliageStates[obj] = { 
@@ -943,22 +986,18 @@ local function toggleLowDetail(enabled)
                             end
                             
                         elseif obj:IsA("MeshPart") then
-                            local name = obj.Name:lower()
-                            local isFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
-                                              name:find("grass") or name:find("tree") or name:find("plant") or 
-                                              name:find("flower") or name:find("bush") or name:find("shrub") or
-                                              obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature")
-                            
-                            if isFoliage then
+                            if isGrassOrFoliage then
                                 foliageStates[obj] = { 
                                     Transparency = obj.Transparency,
                                     TextureID = obj.TextureID,
                                     Material = obj.Material,
-                                    CanCollide = obj.CanCollide
+                                    CanCollide = obj.CanCollide,
+                                    Anchored = obj.Anchored
                                 }
                                 obj.Transparency = 1 -- Hide foliage
                                 obj.TextureID = ""
                                 obj.CanCollide = false
+                                obj.Anchored = true
                             else
                                 foliageStates[obj] = { 
                                     TextureID = obj.TextureID, 
@@ -980,8 +1019,10 @@ local function toggleLowDetail(enabled)
                             
                         elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
                             -- Keep essential lights but reduce their intensity
-                            foliageStates[obj] = { Enabled = obj.Enabled, Brightness = obj.Brightness }
-                            obj.Brightness = obj.Brightness * 0.3
+                            if not (obj.Name == "Flashlight" or obj.Name == "FlashlightPoint") then
+                                foliageStates[obj] = { Enabled = obj.Enabled, Brightness = obj.Brightness }
+                                obj.Brightness = obj.Brightness * 0.3
+                            end
                             
                         elseif obj:IsA("Sound") then
                             -- Reduce sound quality for performance
@@ -997,16 +1038,6 @@ local function toggleLowDetail(enabled)
                     end
                 end
             end
-            
-            -- Process terrain more aggressively
-            pcall(function()
-                local terrain = Workspace.Terrain
-                terrain.WaterWaveSize = 0
-                terrain.WaterWaveSpeed = 0
-                terrain.WaterReflectance = 0
-                terrain.WaterTransparency = 0.9
-                terrain.Decoration = false -- Remove all grass/decorations
-            end)
         end)
         
         -- Enhanced streaming settings for better performance
@@ -1026,7 +1057,29 @@ local function toggleLowDetail(enabled)
             end
         end)
         
+        -- Add persistent monitoring for terrain decorations
+        if connections.lowDetailMonitor then
+            connections.lowDetailMonitor:Disconnect()
+        end
+        connections.lowDetailMonitor = RunService.Heartbeat:Connect(function()
+            if Visual.lowDetailEnabled then
+                pcall(function()
+                    local terrain = Workspace.Terrain
+                    if terrain.Decoration == true then
+                        terrain.Decoration = false -- Force disable grass
+                        print("Re-disabled terrain decorations")
+                    end
+                end)
+            end
+        end)
+        
     else
+        -- Stop monitoring
+        if connections.lowDetailMonitor then
+            connections.lowDetailMonitor:Disconnect()
+            connections.lowDetailMonitor = nil
+        end
+        
         -- Restore all settings efficiently
         if defaultLightingSettings.stored then
             Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
@@ -1047,66 +1100,87 @@ local function toggleLowDetail(enabled)
             gameSettings.RenderDistance = 500
         end)
         
+        -- Restore terrain settings
+        if foliageStates.terrainSettings then
+            pcall(function()
+                local terrain = Workspace.Terrain
+                terrain.Decoration = foliageStates.terrainSettings.Decoration
+                terrain.WaterWaveSize = foliageStates.terrainSettings.WaterWaveSize
+                terrain.WaterWaveSpeed = foliageStates.terrainSettings.WaterWaveSpeed
+                terrain.WaterReflectance = foliageStates.terrainSettings.WaterReflectance
+                terrain.WaterTransparency = foliageStates.terrainSettings.WaterTransparency
+            end)
+            foliageStates.terrainSettings = nil
+        end
+        
         -- Restore objects efficiently
         spawn(function()
             local restoreCount = 0
             for obj, state in pairs(foliageStates) do
-                pcall(function()
-                    if obj and obj.Parent then
-                        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
-                           obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                            obj.Enabled = state.Enabled ~= false
-                            
-                        elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                            obj.Transparency = state.Transparency or 0
-                            obj.Texture = state.Texture or ""
-                            
-                        elseif obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
-                            obj.Enabled = state.Enabled ~= false
-                            
-                        elseif obj:IsA("BasePart") then
-                            obj.Material = state.Material or Enum.Material.Plastic
-                            obj.Reflectance = state.Reflectance or 0
-                            obj.CastShadow = state.CastShadow ~= false
-                            obj.Color = state.Color or Color3.new(1, 1, 1)
-                            if state.Transparency then
-                                obj.Transparency = state.Transparency
+                if obj ~= "terrainSettings" then
+                    pcall(function()
+                        if obj and obj.Parent then
+                            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                                obj.Enabled = state.Enabled ~= false
+                                
+                            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                                obj.Transparency = state.Transparency or 0
+                                obj.Texture = state.Texture or ""
+                                
+                            elseif obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
+                                obj.Enabled = state.Enabled ~= false
+                                
+                            elseif obj:IsA("BasePart") then
+                                obj.Material = state.Material or Enum.Material.Plastic
+                                obj.Reflectance = state.Reflectance or 0
+                                obj.CastShadow = state.CastShadow ~= false
+                                obj.Color = state.Color or Color3.new(1, 1, 1)
+                                if state.Transparency then
+                                    obj.Transparency = state.Transparency
+                                end
+                                if state.CanCollide ~= nil then
+                                    obj.CanCollide = state.CanCollide
+                                end
+                                if state.Anchored ~= nil then
+                                    obj.Anchored = state.Anchored
+                                end
+                                
+                            elseif obj:IsA("MeshPart") then
+                                obj.TextureID = state.TextureID or ""
+                                obj.Material = state.Material or Enum.Material.Plastic
+                                obj.Color = state.Color or Color3.new(1, 1, 1)
+                                if state.Transparency then
+                                    obj.Transparency = state.Transparency
+                                end
+                                if state.CanCollide ~= nil then
+                                    obj.CanCollide = state.CanCollide
+                                end
+                                if state.Anchored ~= nil then
+                                    obj.Anchored = state.Anchored
+                                end
+                                
+                            elseif obj:IsA("SpecialMesh") then
+                                obj.TextureId = state.TextureId or ""
+                                
+                            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                                obj.Enabled = state.Enabled ~= false
+                                obj.Brightness = state.Brightness or 1
+                                
+                            elseif obj:IsA("Sound") then
+                                obj.Volume = state.Volume or 0.5
+                                
+                            elseif obj:IsA("PostEffect") then
+                                obj.Enabled = state.Enabled ~= false
                             end
-                            if state.CanCollide ~= nil then
-                                obj.CanCollide = state.CanCollide
-                            end
-                            
-                        elseif obj:IsA("MeshPart") then
-                            obj.TextureID = state.TextureID or ""
-                            obj.Material = state.Material or Enum.Material.Plastic
-                            obj.Color = state.Color or Color3.new(1, 1, 1)
-                            if state.Transparency then
-                                obj.Transparency = state.Transparency
-                            end
-                            if state.CanCollide ~= nil then
-                                obj.CanCollide = state.CanCollide
-                            end
-                            
-                        elseif obj:IsA("SpecialMesh") then
-                            obj.TextureId = state.TextureId or ""
-                            
-                        elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                            obj.Enabled = state.Enabled ~= false
-                            obj.Brightness = state.Brightness or 1
-                            
-                        elseif obj:IsA("Sound") then
-                            obj.Volume = state.Volume or 0.5
-                            
-                        elseif obj:IsA("PostEffect") then
-                            obj.Enabled = state.Enabled ~= false
                         end
+                    end)
+                    
+                    restoreCount = restoreCount + 1
+                    -- Yield every 30 objects to prevent lag
+                    if restoreCount % 30 == 0 then
+                        RunService.Heartbeat:Wait()
                     end
-                end)
-                
-                restoreCount = restoreCount + 1
-                -- Yield every 30 objects to prevent lag
-                if restoreCount % 30 == 0 then
-                    RunService.Heartbeat:Wait()
                 end
             end
             foliageStates = {} -- Clear after restoring
@@ -1119,18 +1193,6 @@ local function toggleLowDetail(enabled)
             Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
             Workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
         end)
-        
-        -- Restore terrain
-        pcall(function()
-            local terrain = Workspace.Terrain
-            terrain.WaterWaveSize = 0.15
-            terrain.WaterWaveSpeed = 10
-            terrain.WaterReflectance = 0.3
-            terrain.WaterTransparency = 0.5
-            terrain.Decoration = defaultLightingSettings.TerrainDecoration ~= false
-        end)
-    end
-end
     end
 end
 
