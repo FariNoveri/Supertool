@@ -1,1592 +1,1622 @@
--- Utility-related features for MinimalHackGUI by Fari Noveri
+-- Enhanced Visual-related features with Penetration, Auto-aim, and Health-based ESP
+-- Enhanced by request for penetration through objects, auto-aim, and health-based ESP colors
 
 -- Dependencies: These must be passed from mainloader.lua
-local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
+local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
 
 -- Initialize module
-local Utility = {}
+local Visual = {}
 
 -- Variables
-local macroRecording = false
-local macroPlaying = false
-local autoPlaying = false
-local currentMacro = {}
-local savedMacros = {}
-local macroFrameVisible = false
-local MacroFrame, MacroScrollFrame, MacroLayout, MacroInput, SaveMacroButton, MacroStatusLabel
-local recordConnection = nil
-local playbackConnection = nil
-local currentMacroName = nil
-local recordingPaused = false
-local lastFrameTime = 0
-local playbackPaused = false
-local pauseResumeTime = 5 -- Seconds to wait before resuming macro after death
+Visual.freecamEnabled = false
+Visual.freecamPosition = nil
+Visual.freecamCFrame = nil
+Visual.fullbrightEnabled = false
+Visual.flashlightEnabled = false
+Visual.lowDetailEnabled = false
+Visual.espEnabled = false
+Visual.penetrationEnabled = false -- New feature
+Visual.autoAimEnabled = false -- New feature
+Visual.currentTimeMode = "normal"
+Visual.joystickDelta = Vector2.new(0, 0)
+Visual.character = nil
+local flashlight
+local pointLight
+local espHighlights = {}
+local defaultLightingSettings = {}
+local joystickFrame
+local joystickKnob
+local touchStartPos
+local lastYaw, lastPitch = 0, 0
+local foliageStates = {}
+local processedObjects = {}
+local freecamSpeed = 50
+local cameraSensitivity = 0.003
 
--- File System Integration for KRNL
-local HttpService = game:GetService("HttpService")
-local MACRO_FOLDER_PATH = "Supertool/Macro/"
+-- New variables for enhanced features
+local penetrationConnections = {}
+local autoAimConnections = {}
+local lastAutoAimTarget = nil
+local autoAimCooldown = 0
 
--- Helper function untuk sanitize filename
-local function sanitizeFileName(name)
-    local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
-    sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
-    if sanitized == "" then
-        sanitized = "unnamed_macro"
+-- Function to get enemy health and determine color
+local function getHealthColor(enemy)
+    if not enemy or not enemy.Character then
+        return Color3.fromRGB(0, 0, 0) -- Black for dead/no character
     end
-    return sanitized
+    
+    local humanoid = enemy.Character:FindFirstChild("Humanoid")
+    if not humanoid then
+        return Color3.fromRGB(0, 0, 0) -- Black for no humanoid
+    end
+    
+    local healthPercent = humanoid.Health / humanoid.MaxHealth
+    
+    if humanoid.Health <= 0 then
+        return Color3.fromRGB(0, 0, 0) -- Black for dead
+    elseif healthPercent >= 0.8 then
+        return Color3.fromRGB(0, 100, 255) -- Blue for full health
+    elseif healthPercent >= 0.4 then
+        return Color3.fromRGB(255, 255, 0) -- Yellow for half health
+    else
+        return Color3.fromRGB(255, 0, 0) -- Red for low health
+    end
 end
 
--- Robust validation and conversion functions
-local function validateAndConvertCFrame(cframeData)
-    if not cframeData then 
-        return CFrame.new(0, 0, 0) 
+-- Function to check if enemy is behind cover
+local function isEnemyBehindCover(enemyPosition)
+    if not Visual.penetrationEnabled then
+        return false -- If penetration is disabled, don't ignore cover
     end
     
-    if typeof(cframeData) == "CFrame" then
-        return cframeData
-    end
+    local camera = workspace.CurrentCamera
+    local rayDirection = (enemyPosition - camera.CFrame.Position).Unit * 1000
     
-    if type(cframeData) == "table" and #cframeData == 12 then
-        local success, result = pcall(function()
-            return CFrame.new(unpack(cframeData))
-        end)
-        if success and typeof(result) == "CFrame" then
-            return result
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {player.Character}
+    
+    local raycastResult = workspace:Raycast(camera.CFrame.Position, rayDirection, raycastParams)
+    
+    if raycastResult then
+        local hitPart = raycastResult.Instance
+        local hitCharacter = hitPart.Parent
+        
+        -- If we hit the enemy directly, they're not behind cover
+        if hitCharacter and hitCharacter:FindFirstChild("Humanoid") then
+            return false
         end
+        
+        -- If we hit something else first, enemy is behind cover
+        return true
     end
     
-    if type(cframeData) == "table" and cframeData.x and cframeData.y and cframeData.z then
-        local success, result = pcall(function()
-            return CFrame.new(cframeData.x, cframeData.y, cframeData.z)
-        end)
-        if success and typeof(result) == "CFrame" then
-            return result
-        end
-    end
-    
-    warn("[SUPERTOOL] Invalid CFrame data, using origin: " .. tostring(cframeData))
-    return CFrame.new(0, 0, 0)
+    return false
 end
 
-local function validateAndConvertVector3(vectorData)
-    if not vectorData then 
-        return Vector3.new(0, 0, 0) 
+-- Function to find nearest visible enemy for auto-aim
+local function findNearestEnemy()
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+        return nil
     end
     
-    if typeof(vectorData) == "Vector3" then
-        return vectorData
-    end
+    local playerPosition = player.Character.HumanoidRootPart.Position
+    local nearestEnemy = nil
+    local nearestDistance = math.huge
     
-    if type(vectorData) == "table" and #vectorData == 3 then
-        local success, result = pcall(function()
-            return Vector3.new(vectorData[1] or 0, vectorData[2] or 0, vectorData[3] or 0)
-        end)
-        if success and typeof(result) == "Vector3" then
-            return result
-        end
-    end
-    
-    if type(vectorData) == "table" and type(vectorData.x) == "number" and type(vectorData.y) == "number" and type(vectorData.z) == "number" then
-        return Vector3.new(vectorData.x, vectorData.y, vectorData.z)
-    end
-    
-    warn("[SUPERTOOL] Invalid Vector3 data, using zero: " .. tostring(vectorData))
-    return Vector3.new(0, 0, 0)
-end
-
-local function validateAndConvertState(stateData)
-    if not stateData then 
-        return Enum.HumanoidStateType.Running 
-    end
-    
-    if typeof(stateData) == "EnumItem" and stateData.EnumType == Enum.HumanoidStateType then
-        return stateData
-    end
-    
-    if type(stateData) == "string" then
-        local success, result = pcall(function()
-            return Enum.HumanoidStateType[stateData]
-        end)
-        if success and result then
-            return result
-        end
-    end
-    
-    if type(stateData) == "number" then
-        for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
-            if state.Value == stateData then
-                return state
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local enemyPosition = otherPlayer.Character.HumanoidRootPart.Position
+            local distance = (playerPosition - enemyPosition).Magnitude
+            
+            -- Check if enemy is closer and either not behind cover or penetration is enabled
+            if distance < nearestDistance then
+                local behindCover = isEnemyBehindCover(enemyPosition)
+                
+                -- Include enemy if penetration is enabled or they're not behind cover
+                if Visual.penetrationEnabled or not behindCover then
+                    nearestDistance = distance
+                    nearestEnemy = otherPlayer
+                end
             end
         end
     end
     
-    return Enum.HumanoidStateType.Running
+    return nearestEnemy
 end
 
-local function validateFrame(frame)
-    if not frame or type(frame) ~= "table" then
-        return nil
+-- Function to create penetrating projectile
+local function createPenetratingProjectile(startPos, targetPos)
+    if not Visual.penetrationEnabled then
+        return
     end
     
-    if not frame.time or type(frame.time) ~= "number" or frame.time < 0 then
-        return nil
+    local direction = (targetPos - startPos).Unit
+    local distance = (targetPos - startPos).Magnitude
+    
+    -- Create visual effect for penetrating shot
+    local beam = Instance.new("Beam")
+    local attachment1 = Instance.new("Attachment")
+    local attachment2 = Instance.new("Attachment")
+    
+    -- Create temporary parts for beam attachments
+    local part1 = Instance.new("Part")
+    part1.Anchored = true
+    part1.CanCollide = false
+    part1.Transparency = 1
+    part1.Size = Vector3.new(0.1, 0.1, 0.1)
+    part1.Position = startPos
+    part1.Parent = workspace
+    
+    local part2 = Instance.new("Part")
+    part2.Anchored = true
+    part2.CanCollide = false
+    part2.Transparency = 1
+    part2.Size = Vector3.new(0.1, 0.1, 0.1)
+    part2.Position = targetPos
+    part2.Parent = workspace
+    
+    attachment1.Parent = part1
+    attachment2.Parent = part2
+    
+    beam.Attachment0 = attachment1
+    beam.Attachment1 = attachment2
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+    beam.Width0 = 0.5
+    beam.Width1 = 0.5
+    beam.Transparency = NumberSequence.new(0)
+    beam.Parent = workspace
+    
+    -- Damage all enemies in line
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {player.Character}
+    
+    -- Multiple raycasts to hit through objects
+    local currentPos = startPos
+    local remainingDistance = distance
+    
+    while remainingDistance > 0 do
+        local rayDirection = direction * math.min(remainingDistance, 50)
+        local raycastResult = workspace:Raycast(currentPos, rayDirection, raycastParams)
+        
+        if raycastResult then
+            local hitPart = raycastResult.Instance
+            local hitCharacter = hitPart.Parent
+            
+            -- Check if we hit an enemy
+            if hitCharacter and hitCharacter:FindFirstChild("Humanoid") then
+                local enemyHumanoid = hitCharacter:FindFirstChild("Humanoid")
+                if enemyHumanoid and enemyHumanoid ~= humanoid then
+                    -- Deal damage (simulated)
+                    pcall(function()
+                        enemyHumanoid.Health = enemyHumanoid.Health - 50
+                        print("Penetrating hit on", hitCharacter.Name)
+                    end)
+                end
+            end
+            
+            -- Continue through the object
+            currentPos = raycastResult.Position + direction * 0.1
+            remainingDistance = remainingDistance - (raycastResult.Position - currentPos).Magnitude
+        else
+            break
+        end
     end
     
-    local validFrame = {
-        time = frame.time,
-        cframe = validateAndConvertCFrame(frame.cframe),
-        velocity = validateAndConvertVector3(frame.velocity),
-        walkSpeed = tonumber(frame.walkSpeed) or 16,
-        jumpPower = tonumber(frame.jumpPower) or 50,
-        hipHeight = tonumber(frame.hipHeight) or 0,
-        state = validateAndConvertState(frame.state)
+    -- Clean up visual effect after delay
+    game:GetService("Debris"):AddItem(part1, 0.5)
+    game:GetService("Debris"):AddItem(part2, 0.5)
+    game:GetService("Debris"):AddItem(beam, 0.5)
+end
+
+-- Auto-aim function
+local function performAutoAim()
+    if not Visual.autoAimEnabled or autoAimCooldown > 0 then
+        return
+    end
+    
+    local nearestEnemy = findNearestEnemy()
+    if not nearestEnemy or not nearestEnemy.Character or not nearestEnemy.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    local camera = workspace.CurrentCamera
+    local enemyPosition = nearestEnemy.Character.HumanoidRootPart.Position
+    local playerPosition = camera.CFrame.Position
+    
+    -- Calculate aim direction
+    local aimDirection = (enemyPosition - playerPosition).Unit
+    local newCFrame = CFrame.lookAt(playerPosition, enemyPosition)
+    
+    -- Smoothly adjust camera to target
+    camera.CFrame = camera.CFrame:Lerp(newCFrame, 0.3)
+    
+    -- If penetration is enabled, create penetrating shot
+    if Visual.penetrationEnabled then
+        createPenetratingProjectile(playerPosition, enemyPosition)
+    end
+    
+    lastAutoAimTarget = nearestEnemy
+    autoAimCooldown = 0.5 -- Cooldown to prevent spam
+    
+    print("Auto-aimed at", nearestEnemy.Name)
+end
+
+-- Toggle penetration
+local function togglePenetration(enabled)
+    Visual.penetrationEnabled = enabled
+    print("Penetration Mode:", enabled)
+    
+    if enabled then
+        -- Monitor for shooting to enable penetration
+        if connections.penetrationMonitor then
+            connections.penetrationMonitor:Disconnect()
+        end
+        
+        connections.penetrationMonitor = UserInputService.InputBegan:Connect(function(input, processed)
+            if processed then return end
+            
+            -- Detect shooting (left mouse button or touch)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+               input.UserInputType == Enum.UserInputType.Touch then
+                
+                local camera = workspace.CurrentCamera
+                local nearestEnemy = findNearestEnemy()
+                
+                if nearestEnemy and nearestEnemy.Character and nearestEnemy.Character:FindFirstChild("HumanoidRootPart") then
+                    createPenetratingProjectile(camera.CFrame.Position, nearestEnemy.Character.HumanoidRootPart.Position)
+                end
+            end
+        end)
+    else
+        if connections.penetrationMonitor then
+            connections.penetrationMonitor:Disconnect()
+            connections.penetrationMonitor = nil
+        end
+    end
+end
+
+-- Toggle auto-aim
+local function toggleAutoAim(enabled)
+    Visual.autoAimEnabled = enabled
+    print("Auto-Aim:", enabled)
+    
+    if enabled then
+        -- Monitor for continuous auto-aim
+        if connections.autoAimUpdate then
+            connections.autoAimUpdate:Disconnect()
+        end
+        
+        connections.autoAimUpdate = RunService.Heartbeat:Connect(function(deltaTime)
+            if Visual.autoAimEnabled then
+                -- Reduce cooldown
+                if autoAimCooldown > 0 then
+                    autoAimCooldown = autoAimCooldown - deltaTime
+                end
+                
+                -- Auto-aim when shooting
+                if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                    performAutoAim()
+                end
+            end
+        end)
+        
+        -- Also trigger on touch for mobile
+        if connections.autoAimTouch then
+            connections.autoAimTouch:Disconnect()
+        end
+        
+        connections.autoAimTouch = UserInputService.TouchTap:Connect(function(touchPositions, processed)
+            if not processed and Visual.autoAimEnabled then
+                performAutoAim()
+            end
+        end)
+    else
+        if connections.autoAimUpdate then
+            connections.autoAimUpdate:Disconnect()
+            connections.autoAimUpdate = nil
+        end
+        if connections.autoAimTouch then
+            connections.autoAimTouch:Disconnect()
+            connections.autoAimTouch = nil
+        end
+    end
+end
+
+-- Time mode configurations
+local timeModeConfigs = {
+    normal = {
+        ClockTime = nil,
+        Brightness = nil,
+        Ambient = nil,
+        OutdoorAmbient = nil,
+        ColorShift_Top = nil,
+        ColorShift_Bottom = nil,
+        SunAngularSize = nil,
+        FogColor = nil
+    },
+    morning = {
+        ClockTime = 6.5,
+        Brightness = 1.5,
+        Ambient = Color3.fromRGB(150, 120, 80),
+        OutdoorAmbient = Color3.fromRGB(255, 200, 120),
+        ColorShift_Top = Color3.fromRGB(255, 180, 120),
+        ColorShift_Bottom = Color3.fromRGB(255, 220, 180),
+        SunAngularSize = 25,
+        FogColor = Color3.fromRGB(200, 180, 150)
+    },
+    day = {
+        ClockTime = 12,
+        Brightness = 2,
+        Ambient = Color3.fromRGB(180, 180, 180),
+        OutdoorAmbient = Color3.fromRGB(255, 255, 255),
+        ColorShift_Top = Color3.fromRGB(255, 255, 255),
+        ColorShift_Bottom = Color3.fromRGB(240, 240, 255),
+        SunAngularSize = 21,
+        FogColor = Color3.fromRGB(220, 220, 255)
+    },
+    evening = {
+        ClockTime = 18,
+        Brightness = 1,
+        Ambient = Color3.fromRGB(120, 80, 60),
+        OutdoorAmbient = Color3.fromRGB(255, 150, 100),
+        ColorShift_Top = Color3.fromRGB(255, 120, 80),
+        ColorShift_Bottom = Color3.fromRGB(255, 180, 140),
+        SunAngularSize = 30,
+        FogColor = Color3.fromRGB(180, 120, 80)
+    },
+    night = {
+        ClockTime = 0,
+        Brightness = 0.3,
+        Ambient = Color3.fromRGB(30, 30, 60),
+        OutdoorAmbient = Color3.fromRGB(80, 80, 120),
+        ColorShift_Top = Color3.fromRGB(50, 50, 80),
+        ColorShift_Bottom = Color3.fromRGB(20, 20, 40),
+        SunAngularSize = 21,
+        FogColor = Color3.fromRGB(40, 40, 80)
+    }
+}
+
+-- Store original lighting settings
+local function storeOriginalLightingSettings()
+    if not defaultLightingSettings.stored then
+        defaultLightingSettings.stored = true
+        defaultLightingSettings.Brightness = Lighting.Brightness
+        defaultLightingSettings.ClockTime = Lighting.ClockTime
+        defaultLightingSettings.FogEnd = Lighting.FogEnd
+        defaultLightingSettings.FogStart = Lighting.FogStart
+        defaultLightingSettings.FogColor = Lighting.FogColor
+        defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
+        defaultLightingSettings.Ambient = Lighting.Ambient
+        defaultLightingSettings.OutdoorAmbient = Lighting.OutdoorAmbient
+        defaultLightingSettings.ColorShift_Top = Lighting.ColorShift_Top
+        defaultLightingSettings.ColorShift_Bottom = Lighting.ColorShift_Bottom
+        defaultLightingSettings.SunAngularSize = Lighting.SunAngularSize
+        defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration
+        
+        pcall(function()
+            defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
+            defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
+            defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
+            defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
+        end)
+        
+        print("Original lighting settings stored")
+    end
+end
+
+-- Create virtual joystick for mobile Freecam
+local function createJoystick()
+    joystickFrame = Instance.new("Frame")
+    joystickFrame.Name = "FreecamJoystick"
+    joystickFrame.Size = UDim2.new(0, 120, 0, 120)
+    joystickFrame.Position = UDim2.new(0.05, 0, 0.75, 0)
+    joystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    joystickFrame.BackgroundTransparency = 0.3
+    joystickFrame.BorderSizePixel = 0
+    joystickFrame.Visible = false
+    joystickFrame.ZIndex = 10
+    joystickFrame.Parent = ScreenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.5, 0)
+    corner.Parent = joystickFrame
+
+    local outerRing = Instance.new("Frame")
+    outerRing.Name = "OuterRing"
+    outerRing.Size = UDim2.new(1, -4, 1, -4)
+    outerRing.Position = UDim2.new(0, 2, 0, 2)
+    outerRing.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    outerRing.BackgroundTransparency = 0.5
+    outerRing.BorderSizePixel = 0
+    outerRing.ZIndex = 9
+    outerRing.Parent = joystickFrame
+    
+    local outerCorner = Instance.new("UICorner")
+    outerCorner.CornerRadius = UDim.new(0.5, 0)
+    outerCorner.Parent = outerRing
+
+    joystickKnob = Instance.new("Frame")
+    joystickKnob.Name = "Knob"
+    joystickKnob.Size = UDim2.new(0, 50, 0, 50)
+    joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+    joystickKnob.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+    joystickKnob.BackgroundTransparency = 0.1
+    joystickKnob.BorderSizePixel = 0
+    joystickKnob.ZIndex = 11
+    joystickKnob.Parent = joystickFrame
+
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = UDim.new(0.5, 0)
+    knobCorner.Parent = joystickKnob
+    
+    local instructionText = Instance.new("TextLabel")
+    instructionText.Name = "Instruction"
+    instructionText.Size = UDim2.new(0, 200, 0, 30)
+    instructionText.Position = UDim2.new(0, 0, 0, -40)
+    instructionText.BackgroundTransparency = 1
+    instructionText.Text = "Move: Left joystick | Look: Right side swipe"
+    instructionText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    instructionText.TextSize = 12
+    instructionText.Font = Enum.Font.SourceSansBold
+    instructionText.TextStrokeTransparency = 0.5
+    instructionText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    instructionText.ZIndex = 12
+    instructionText.Parent = joystickFrame
+end
+
+-- Handle joystick input for Freecam movement
+local function handleJoystickInput(input, processed)
+    if not Visual.freecamEnabled or processed then return Vector2.new(0, 0) end
+    
+    if input.UserInputType == Enum.UserInputType.Touch then
+        local touchPos = input.Position
+        local joystickCenter = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
+        local frameRect = {
+            X = joystickFrame.AbsolutePosition.X,
+            Y = joystickFrame.AbsolutePosition.Y,
+            Width = joystickFrame.AbsoluteSize.X,
+            Height = joystickFrame.AbsoluteSize.Y
+        }
+        
+        local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
+                            touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
+        
+        if input.UserInputState == Enum.UserInputState.Begin and isInJoystick then
+            local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
+            local magnitude = delta.Magnitude
+            local maxRadius = 35
+            if magnitude > maxRadius then
+                delta = delta * (maxRadius / magnitude)
+            end
+            joystickKnob.Position = UDim2.new(0.5, delta.X - 25, 0.5, delta.Y - 25)
+            return delta / maxRadius
+            
+        elseif input.UserInputState == Enum.UserInputState.Change and isInJoystick then
+            local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
+            local magnitude = delta.Magnitude
+            local maxRadius = 35
+            if magnitude > maxRadius then
+                delta = delta * (maxRadius / magnitude)
+            end
+            joystickKnob.Position = UDim2.new(0.5, delta.X - 25, 0.5, delta.Y - 25)
+            return delta / maxRadius
+            
+        elseif input.UserInputState == Enum.UserInputState.End then
+            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+            return Vector2.new(0, 0)
+        end
+    end
+    return Vector2.new(0, 0)
+end
+
+-- Handle swipe for Freecam rotation
+local function handleSwipe(input, processed)
+    if not Visual.freecamEnabled or input.UserInputType ~= Enum.UserInputType.Touch or processed then return end
+    
+    local touchPos = input.Position
+    local screenSize = workspace.CurrentCamera.ViewportSize
+    local joystickCenter = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
+    local frameRect = {
+        X = joystickFrame.AbsolutePosition.X,
+        Y = joystickFrame.AbsolutePosition.Y,
+        Width = joystickFrame.AbsoluteSize.X,
+        Height = joystickFrame.AbsoluteSize.Y
     }
     
-    return validFrame
+    local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
+                        touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
+    
+    if isInJoystick then return end
+    
+    local isRightSide = touchPos.X > screenSize.X * 0.5
+    if not isRightSide then return end
+    
+    if input.UserInputState == Enum.UserInputState.Begin then
+        touchStartPos = touchPos
+    elseif input.UserInputState == Enum.UserInputState.Change and touchStartPos then
+        local delta = touchPos - touchStartPos
+        lastYaw = lastYaw - delta.X * cameraSensitivity
+        lastPitch = math.clamp(lastPitch - delta.Y * cameraSensitivity, -math.rad(89), math.rad(89))
+        touchStartPos = touchPos
+    elseif input.UserInputState == Enum.UserInputState.End then
+        touchStartPos = nil
+    end
 end
 
--- Robust macro saving
-local function saveToJSONFile(macroName, macroData)
-    local success, error = pcall(function()
-        local sanitizedName = sanitizeFileName(macroName)
-        local fileName = sanitizedName .. ".json"
-        local filePath = MACRO_FOLDER_PATH .. fileName
+-- Enhanced ESP with health-based colors
+local function toggleESP(enabled)
+    Visual.espEnabled = enabled
+    print("ESP:", enabled)
+    
+    if enabled then
+        for _, highlight in pairs(espHighlights) do
+            if highlight and highlight.Parent then
+                highlight:Destroy()
+            end
+        end
+        espHighlights = {}
         
-        if not macroData or not macroData.frames or type(macroData.frames) ~= "table" then
-            warn("[SUPERTOOL] Invalid macro data for saving: " .. macroName)
-            return false
+        local function createESPForCharacter(character, targetPlayer)
+            if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+            
+            local isInvisible = false
+            
+            pcall(function()
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.Transparency >= 0.9 then
+                        isInvisible = true
+                        break
+                    end
+                end
+                if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
+                    isInvisible = true
+                end
+            end)
+            
+            if espHighlights[targetPlayer] then
+                espHighlights[targetPlayer]:Destroy()
+                espHighlights[targetPlayer] = nil
+            end
+            
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "ESPHighlight"
+            
+            -- Set color based on health
+            local healthColor = getHealthColor(targetPlayer)
+            highlight.FillColor = healthColor
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            highlight.FillTransparency = isInvisible and 0.3 or 0.5
+            highlight.OutlineTransparency = 0
+            highlight.Adornee = character
+            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            highlight.Parent = character
+            espHighlights[targetPlayer] = highlight
         end
         
-        local serializedFrames = {}
-        for i, frame in pairs(macroData.frames) do
-            if frame and frame.time then
-                local serializedFrame = {
-                    time = frame.time,
-                    cframe = {frame.cframe:GetComponents()},
-                    velocity = {frame.velocity.X, frame.velocity.Y, frame.velocity.Z},
-                    walkSpeed = frame.walkSpeed,
-                    jumpPower = frame.jumpPower,
-                    hipHeight = frame.hipHeight,
-                    state = frame.state.Name
-                }
-                table.insert(serializedFrames, serializedFrame)
+        -- Create highlights for existing players
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character then
+                createESPForCharacter(otherPlayer.Character, otherPlayer)
             end
         end
         
-        if #serializedFrames == 0 then
-            warn("[SUPERTOOL] No valid frames to save for macro: " .. macroName)
-            return false
+        -- Update ESP colors based on health continuously
+        if connections.espHealthUpdate then
+            connections.espHealthUpdate:Disconnect()
         end
-        
-        local jsonData = {
-            name = macroName,
-            created = macroData.created or os.time(),
-            modified = os.time(),
-            version = "1.1",
-            frames = serializedFrames,
-            startTime = macroData.startTime or 0,
-            speed = macroData.speed or 1,
-            frameCount = #serializedFrames,
-            duration = serializedFrames[#serializedFrames].time
-        }
-        
-        local jsonString = HttpService:JSONEncode(jsonData)
-        writefile(filePath, jsonString)
-        
-        print("[SUPERTOOL] Macro saved: " .. filePath .. " (" .. #serializedFrames .. " frames)")
-        return true
-    end)
-    
-    if not success then
-        warn("[SUPERTOOL] Failed to save macro to JSON: " .. tostring(error))
-        return false
-    end
-    return true
-end
-
--- Robust macro loading
-local function loadFromJSONFile(macroName)
-    local success, result = pcall(function()
-        local sanitizedName = sanitizeFileName(macroName)
-        local fileName = sanitizedName .. ".json"
-        local filePath = MACRO_FOLDER_PATH .. fileName
-        
-        if not isfile(filePath) then
-            return nil
-        end
-        
-        local jsonString = readfile(filePath)
-        if not jsonString or jsonString == "" then
-            warn("[SUPERTOOL] Empty JSON file: " .. filePath)
-            return nil
-        end
-        
-        local jsonData = HttpService:JSONDecode(jsonString)
-        if not jsonData or type(jsonData) ~= "table" then
-            warn("[SUPERTOOL] Invalid JSON data in: " .. filePath)
-            return nil
-        end
-        
-        local rawFrames = jsonData.frames or {}
-        local validFrames = {}
-        local skippedFrames = 0
-        
-        for i, rawFrame in pairs(rawFrames) do
-            local validFrame = validateFrame(rawFrame)
-            if validFrame then
-                table.insert(validFrames, validFrame)
-            else
-                skippedFrames = skippedFrames + 1
-            end
-        end
-        
-        if #validFrames == 0 then
-            warn("[SUPERTOOL] No valid frames found in macro: " .. macroName .. " (skipped: " .. skippedFrames .. ")")
-            return nil
-        end
-        
-        if skippedFrames > 0 then
-            print("[SUPERTOOL] Loaded macro with " .. skippedFrames .. " skipped invalid frames")
-        end
-        
-        local macroData = {
-            name = jsonData.name or macroName,
-            created = jsonData.created or os.time(),
-            modified = jsonData.modified or os.time(),
-            version = jsonData.version or "1.0",
-            frames = validFrames,
-            startTime = tonumber(jsonData.startTime) or 0,
-            speed = tonumber(jsonData.speed) or 1,
-            frameCount = #validFrames,
-            duration = validFrames[#validFrames].time
-        }
-        
-        return macroData
-    end)
-    
-    if success then
-        if result then
-            print("[SUPERTOOL] Successfully loaded macro: " .. macroName .. " (" .. #(result.frames or {}) .. " frames)")
-        end
-        return result
-    else
-        warn("[SUPERTOOL] Failed to load macro from JSON: " .. macroName .. " - " .. tostring(result))
-        return nil
-    end
-end
-
-local function deleteFromJSONFile(macroName)
-    local success, error = pcall(function()
-        local sanitizedName = sanitizeFileName(macroName)
-        local fileName = sanitizedName .. ".json"
-        local filePath = MACRO_FOLDER_PATH .. fileName
-        
-        if isfile(filePath) then
-            delfile(filePath)
-            print("[SUPERTOOL] Macro deleted: " .. filePath)
-            return true
-        else
-            return false
-        end
-    end)
-    
-    if success then
-        return error
-    else
-        warn("[SUPERTOOL] Failed to delete macro JSON: " .. tostring(error))
-        return false
-    end
-end
-
-local function renameInJSONFile(oldName, newName)
-    local success, error = pcall(function()
-        local oldData = loadFromJSONFile(oldName)
-        if not oldData then
-            return false
-        end
-        
-        oldData.name = newName
-        oldData.modified = os.time()
-        
-        if saveToJSONFile(newName, oldData) then
-            deleteFromJSONFile(oldName)
-            print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
-            return true
-        else
-            return false
-        end
-    end)
-    
-    if success then
-        return error
-    else
-        warn("[SUPERTOOL] Failed to rename macro: " .. tostring(error))
-        return false
-    end
-end
-
-local function loadAllMacrosFromFolder()
-    local success, result = pcall(function()
-        if not isfolder(MACRO_FOLDER_PATH) then
-            makefolder(MACRO_FOLDER_PATH)
-            print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
-            return {}
-        end
-        
-        local loadedMacros = {}
-        local files = listfiles(MACRO_FOLDER_PATH)
-        local totalFiles = 0
-        local loadedCount = 0
-        local errorCount = 0
-        
-        for _, filePath in pairs(files) do
-            if string.match(filePath, "%.json$") then
-                totalFiles = totalFiles + 1
-                local fileName = string.match(filePath, "([^/\\]+)%.json$")
-                if fileName then
-                    local macroData = loadFromJSONFile(fileName)
-                    if macroData and macroData.frames and #macroData.frames > 0 then
-                        local originalName = macroData.name or fileName
-                        loadedMacros[originalName] = macroData
-                        loadedCount = loadedCount + 1
-                        print("[SUPERTOOL] Loaded macro: " .. originalName .. " (" .. #macroData.frames .. " frames)")
-                    else
-                        errorCount = errorCount + 1
-                        warn("[SUPERTOOL] Failed to load macro: " .. fileName)
+        connections.espHealthUpdate = RunService.Heartbeat:Connect(function()
+            if Visual.espEnabled then
+                for targetPlayer, highlight in pairs(espHighlights) do
+                    if targetPlayer and targetPlayer.Character and highlight and highlight.Parent then
+                        local newColor = getHealthColor(targetPlayer)
+                        highlight.FillColor = newColor
                     end
                 end
             end
+        end)
+        
+        -- Handle new players joining
+        if connections.espPlayerAdded then
+            connections.espPlayerAdded:Disconnect()
+        end
+        connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
+            if Visual.espEnabled and newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function(character)
+                    task.wait(0.3)
+                    if Visual.espEnabled then
+                        createESPForCharacter(character, newPlayer)
+                    end
+                end)
+            end
+        end)
+        
+        -- Handle players leaving
+        if connections.espPlayerLeaving then
+            connections.espPlayerLeaving:Disconnect()
+        end
+        connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            if espHighlights[leavingPlayer] then
+                espHighlights[leavingPlayer]:Destroy()
+                espHighlights[leavingPlayer] = nil
+            end
+        end)
+        
+        -- Handle character respawning
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= player then
+                if connections["espCharAdded" .. otherPlayer.UserId] then
+                    connections["espCharAdded" .. otherPlayer.UserId]:Disconnect()
+                end
+                if connections["espCharRemoving" .. otherPlayer.UserId] then
+                    connections["espCharRemoving" .. otherPlayer.UserId]:Disconnect()
+                end
+                
+                connections["espCharAdded" .. otherPlayer.UserId] = otherPlayer.CharacterAdded:Connect(function(character)
+                    task.wait(0.3)
+                    if Visual.espEnabled then
+                        createESPForCharacter(character, otherPlayer)
+                    end
+                end)
+                
+                connections["espCharRemoving" .. otherPlayer.UserId] = otherPlayer.CharacterRemoving:Connect(function()
+                    if espHighlights[otherPlayer] then
+                        espHighlights[otherPlayer]:Destroy()
+                        espHighlights[otherPlayer] = nil
+                    end
+                end)
+            end
         end
         
-        print("[SUPERTOOL] Macro loading complete: " .. loadedCount .. "/" .. totalFiles .. " files loaded" .. (errorCount > 0 and " (" .. errorCount .. " errors)" or ""))
-        return loadedMacros
-    end)
-    
-    if success then
-        return result or {}
-    else
-        warn("[SUPERTOOL] Failed to load macros from folder: " .. tostring(result))
-        return {}
-    end
-end
-
--- Mock file system for backward compatibility
-local fileSystem = {
-    ["Supertool/Macro"] = {}
-}
-
-local function ensureFileSystem()
-    if not fileSystem["Supertool"] then
-        fileSystem["Supertool"] = {}
-    end
-    if not fileSystem["Supertool/Macro"] then
-        fileSystem["Supertool/Macro"] = {}
-    end
-end
-
-local function saveToFileSystem(macroName, macroData)
-    ensureFileSystem()
-    fileSystem["Supertool/Macro"][macroName] = macroData
-    saveToJSONFile(macroName, macroData)
-end
-
-local function loadFromFileSystem(macroName)
-    local jsonData = loadFromJSONFile(macroName)
-    if jsonData then
-        return jsonData
-    end
-    
-    ensureFileSystem()
-    return fileSystem["Supertool/Macro"][macroName]
-end
-
-local function deleteFromFileSystem(macroName)
-    ensureFileSystem()
-    local memoryDeleted = false
-    if fileSystem["Supertool/Macro"][macroName] then
-        fileSystem["Supertool/Macro"][macroName] = nil
-        memoryDeleted = true
-    end
-    
-    local jsonDeleted = deleteFromJSONFile(macroName)
-    
-    return memoryDeleted or jsonDeleted
-end
-
-local function renameInFileSystem(oldName, newName)
-    ensureFileSystem()
-    local memoryRenamed = false
-    
-    if fileSystem["Supertool/Macro"][oldName] and newName ~= "" then
-        fileSystem["Supertool/Macro"][newName] = fileSystem["Supertool/Macro"][oldName]
-        fileSystem["Supertool/Macro"][oldName] = nil
-        memoryRenamed = true
-    end
-    
-    local jsonRenamed = renameInJSONFile(oldName, newName)
-    
-    return memoryRenamed or jsonRenamed
-end
-
-local function syncMacrosFromJSON()
-    print("[SUPERTOOL] Starting macro sync from JSON files...")
-    local jsonMacros = loadAllMacrosFromFolder()
-    local syncedCount = 0
-    
-    for macroName, macroData in pairs(jsonMacros) do
-        if macroData and macroData.frames and #macroData.frames > 0 then
-            savedMacros[macroName] = macroData
-            fileSystem["Supertool/Macro"][macroName] = macroData
-            syncedCount = syncedCount + 1
-        else
-            warn("[SUPERTOOL] Skipped invalid macro during sync: " .. macroName)
+        -- Backup check for missed characters
+        if connections.espBackupCheck then
+            connections.espBackupCheck:Disconnect()
         end
-    end
-    
-    print("[SUPERTOOL] Sync complete: " .. syncedCount .. " macros loaded from JSON files")
-    return syncedCount
-end
-
--- Update macro status display
-local function updateMacroStatus()
-    if not MacroStatusLabel then return end
-    if macroRecording then
-        MacroStatusLabel.Text = recordingPaused and "Recording Paused" or "Recording Macro"
-        MacroStatusLabel.Visible = true
-    elseif macroPlaying and currentMacroName then
-        local macro = savedMacros[currentMacroName] or loadFromFileSystem(currentMacroName)
-        local speed = macro and macro.speed or 1
-        MacroStatusLabel.Text = (playbackPaused and "Playback Paused: " or (autoPlaying and "Auto-Playing Macro: " or "Playing Macro: ")) .. currentMacroName .. " (Speed: " .. speed .. "x)"
-        MacroStatusLabel.Visible = true
+        connections.espBackupCheck = RunService.Heartbeat:Connect(function()
+            if Visual.espEnabled then
+                for _, otherPlayer in pairs(Players:GetPlayers()) do
+                    if otherPlayer ~= player and otherPlayer.Character and 
+                       otherPlayer.Character:FindFirstChild("HumanoidRootPart") and 
+                       not espHighlights[otherPlayer] then
+                        createESPForCharacter(otherPlayer.Character, otherPlayer)
+                    end
+                end
+            end
+        end)
+        
     else
-        MacroStatusLabel.Visible = false
-    end
-end
-
--- Update character references
-local function updateCharacterReferences()
-    if player.Character then
-        humanoid = player.Character:WaitForChild("Humanoid", 30)
-        rootPart = player.Character:WaitForChild("HumanoidRootPart", 30)
-        if macroRecording and recordingPaused then
-            recordingPaused = false
-            updateMacroStatus()
+        -- Clean up connections
+        if connections.espHealthUpdate then
+            connections.espHealthUpdate:Disconnect()
+            connections.espHealthUpdate = nil
         end
+        if connections.espPlayerLeaving then
+            connections.espPlayerLeaving:Disconnect()
+            connections.espPlayerLeaving = nil
+        end
+        if connections.espPlayerAdded then
+            connections.espPlayerAdded:Disconnect()
+            connections.espPlayerAdded = nil
+        end
+        if connections.espBackupCheck then
+            connections.espBackupCheck:Disconnect()
+            connections.espBackupCheck = nil
+        end
+        
+        for key, connection in pairs(connections) do
+            if string.match(key, "espCharAdded") or string.match(key, "espCharRemoving") then
+                connection:Disconnect()
+                connections[key] = nil
+            end
+        end
+        
+        for _, highlight in pairs(espHighlights) do
+            if highlight and highlight.Parent then
+                highlight:Destroy()
+            end
+        end
+        espHighlights = {}
     end
 end
 
-local function startMacroRecording()
-    if macroRecording or macroPlaying then return end
+-- Freecam (keeping the same implementation as before)
+local function toggleFreecam(enabled)
+    Visual.freecamEnabled = enabled
+    print("Freecam:", enabled)
     
-    if not player.Character or not player.Character:FindFirstChild("Humanoid") or not player.Character:FindFirstChild("HumanoidRootPart") then
-        warn("[SUPERTOOL] Cannot start recording: Character not ready")
+    if enabled then
+        local camera = Workspace.CurrentCamera
+        
+        local currentCharacter = player.Character
+        local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
+        local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+        
+        if not currentHumanoid or not currentRootPart then
+            print("Warning: No character found for freecam")
+            Visual.freecamEnabled = false
+            return
+        end
+        
+        Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
+        Visual.originalJumpPower = currentHumanoid.JumpPower
+        Visual.originalJumpHeight = currentHumanoid.JumpHeight
+        Visual.originalPosition = currentRootPart.CFrame
+        
+        currentHumanoid.PlatformStand = true
+        currentHumanoid.WalkSpeed = 0
+        currentHumanoid.JumpPower = 0
+        currentHumanoid.JumpHeight = 0
+        currentRootPart.Anchored = true
+        currentRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        currentRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        
+        camera.CameraType = Enum.CameraType.Scriptable
+        camera.CameraSubject = nil
+        
+        Visual.freecamCFrame = camera.CFrame
+        Visual.freecamPosition = camera.CFrame.Position
+        
+        local _, yaw, pitch = camera.CFrame:ToEulerAnglesYXZ()
+        lastYaw = yaw
+        lastPitch = pitch
+        
+        freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
+        
+        if joystickFrame then
+            joystickFrame.Visible = true
+        end
+        
+        if connections.freecam then
+            connections.freecam:Disconnect()
+        end
+        connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
+            if Visual.freecamEnabled then
+                local char = player.Character
+                local hum = char and char:FindFirstChild("Humanoid")
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                
+                local moveVector = Vector3.new()
+                
+                local cameraCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
+                
+                if Visual.joystickDelta.Magnitude > 0.1 then
+                    local forward = -cameraCFrame.LookVector * Visual.joystickDelta.Y
+                    local right = cameraCFrame.RightVector * Visual.joystickDelta.X
+                    moveVector = (forward + right) * freecamSpeed * deltaTime * Visual.joystickDelta.Magnitude
+                end
+                
+                Visual.freecamPosition = Visual.freecamPosition + moveVector
+                
+                Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
+                camera.CFrame = Visual.freecamCFrame
+                
+                if hum and root and Visual.originalPosition then
+                    hum.PlatformStand = true
+                    hum.WalkSpeed = 0
+                    hum.JumpPower = 0
+                    hum.JumpHeight = 0
+                    root.Anchored = true
+                    root.CFrame = Visual.originalPosition
+                    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end)
+        
+        if connections.touchInput then
+            connections.touchInput:Disconnect()
+        end
+        connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                Visual.joystickDelta = handleJoystickInput(input, processed)
+                handleSwipe(input, processed)
+            end
+        end)
+        
+        if connections.touchBegan then
+            connections.touchBegan:Disconnect()
+        end
+        connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                Visual.joystickDelta = handleJoystickInput(input, processed)
+                handleSwipe(input, processed)
+            end
+        end)
+        
+        if connections.touchEnded then
+            connections.touchEnded:Disconnect()
+        end
+        connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                Visual.joystickDelta = handleJoystickInput(input, processed)
+                handleSwipe(input, processed)
+            end
+        end)
+        
+    else
+        if connections.freecam then
+            connections.freecam:Disconnect()
+            connections.freecam = nil
+        end
+        if connections.touchInput then
+            connections.touchInput:Disconnect()
+            connections.touchInput = nil
+        end
+        if connections.touchBegan then
+            connections.touchBegan:Disconnect()
+            connections.touchBegan = nil
+        end
+        if connections.touchEnded then
+            connections.touchEnded:Disconnect()
+            connections.touchEnded = nil
+        end
+        
+        if joystickFrame then
+            joystickFrame.Visible = false
+            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+        end
+        
+        local camera = Workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Custom
+        
+        local currentCharacter = player.Character
+        local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
+        local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+        
+        if currentHumanoid then
+            camera.CameraSubject = currentHumanoid
+        end
+        
+        if currentHumanoid and currentRootPart then
+            currentHumanoid.PlatformStand = false
+            currentRootPart.Anchored = false
+            
+            currentHumanoid.WalkSpeed = Visual.originalWalkSpeed or (settings.WalkSpeed and settings.WalkSpeed.value) or 16
+            currentHumanoid.JumpPower = Visual.originalJumpPower or ((settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50)
+            currentHumanoid.JumpHeight = Visual.originalJumpHeight or (settings.JumpHeight and settings.JumpHeight.value) or 7.2
+            
+            task.wait(0.1)
+            camera.CFrame = CFrame.lookAt(currentRootPart.Position + Vector3.new(0, 2, 10), currentRootPart.Position)
+        end
+        
+        Visual.freecamPosition = nil
+        Visual.freecamCFrame = nil
+        Visual.joystickDelta = Vector2.new(0, 0)
+        lastYaw, lastPitch = 0, 0
+        touchStartPos = nil
+    end
+end
+
+-- Time Mode Functions
+local function setTimeMode(mode)
+    storeOriginalLightingSettings()
+    Visual.currentTimeMode = mode
+    print("Time Mode:", mode)
+    
+    local config = timeModeConfigs[mode]
+    if not config then
+        print("Invalid time mode:", mode)
         return
     end
     
-    macroRecording = true
-    recordingPaused = false
-    currentMacro = {frames = {}, startTime = tick(), speed = 1}
-    lastFrameTime = 0
+    for property, value in pairs(config) do
+        if value ~= nil then
+            pcall(function()
+                Lighting[property] = value
+            end)
+        else
+            if defaultLightingSettings[property] ~= nil then
+                pcall(function()
+                    Lighting[property] = defaultLightingSettings[property]
+                end)
+            end
+        end
+    end
     
-    updateCharacterReferences()
-    updateMacroStatus()
+    if connections.timeModeMonitor then
+        connections.timeModeMonitor:Disconnect()
+    end
     
-    local function setupDeathHandler()
-        if humanoid then
-            humanoid.Died:Connect(function()
-                if macroRecording then
-                    recordingPaused = true
-                    updateMacroStatus()
+    if mode ~= "normal" then
+        connections.timeModeMonitor = RunService.Heartbeat:Connect(function()
+            if Visual.currentTimeMode == mode then
+                local currentConfig = timeModeConfigs[mode]
+                for property, expectedValue in pairs(currentConfig) do
+                    if expectedValue ~= nil then
+                        pcall(function()
+                            if Lighting[property] ~= expectedValue then
+                                Lighting[property] = expectedValue
+                            end
+                        end)
+                    end
+                end
+            end
+        end)
+    else
+        if connections.timeModeMonitor then
+            connections.timeModeMonitor:Disconnect()
+            connections.timeModeMonitor = nil
+        end
+    end
+end
+
+local function toggleMorning(enabled)
+    if enabled then
+        setTimeMode("morning")
+    else
+        setTimeMode("normal")
+    end
+end
+
+local function toggleDay(enabled)
+    if enabled then
+        setTimeMode("day")
+    else
+        setTimeMode("normal")
+    end
+end
+
+local function toggleEvening(enabled)
+    if enabled then
+        setTimeMode("evening")
+    else
+        setTimeMode("normal")
+    end
+end
+
+local function toggleNight(enabled)
+    if enabled then
+        setTimeMode("night")
+    else
+        setTimeMode("normal")
+    end
+end
+
+-- Fullbright
+local function toggleFullbright(enabled)
+    Visual.fullbrightEnabled = enabled
+    print("Fullbright:", enabled)
+    
+    storeOriginalLightingSettings()
+    
+    if enabled then
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        Lighting.GlobalShadows = false
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+    else
+        Lighting.Brightness = defaultLightingSettings.Brightness or 1
+        Lighting.ClockTime = defaultLightingSettings.ClockTime or 12
+        Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
+        Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
+        Lighting.Ambient = defaultLightingSettings.Ambient or Color3.fromRGB(100, 100, 100)
+    end
+end
+
+-- Flashlight
+local function toggleFlashlight(enabled)
+    Visual.flashlightEnabled = enabled
+    print("Flashlight:", enabled)
+    
+    if enabled then
+        local function setupFlashlight()
+            if flashlight then
+                flashlight:Destroy()
+                flashlight = nil
+            end
+            if pointLight then
+                pointLight:Destroy()
+                pointLight = nil
+            end
+            
+            flashlight = Instance.new("SpotLight")
+            flashlight.Name = "Flashlight"
+            flashlight.Brightness = 20
+            flashlight.Range = 150
+            flashlight.Angle = 45
+            flashlight.Face = Enum.NormalId.Front
+            flashlight.Color = Color3.fromRGB(255, 255, 200)
+            flashlight.Enabled = true
+            
+            pointLight = Instance.new("PointLight")
+            pointLight.Name = "FlashlightPoint"
+            pointLight.Brightness = 8
+            pointLight.Range = 80
+            pointLight.Color = Color3.fromRGB(255, 255, 200)
+            pointLight.Enabled = true
+            
+            local character = player.Character
+            local head = character and character:FindFirstChild("Head")
+            
+            if head then
+                flashlight.Parent = head
+                pointLight.Parent = head
+                print("Flashlight attached to head")
+            else
+                local camera = Workspace.CurrentCamera
+                flashlight.Parent = camera
+                pointLight.Parent = camera
+                print("Flashlight attached to camera (fallback)")
+            end
+        end
+        
+        setupFlashlight()
+        
+        if connections.flashlight then
+            connections.flashlight:Disconnect()
+        end
+        connections.flashlight = RunService.Heartbeat:Connect(function()
+            if Visual.flashlightEnabled then
+                local character = player.Character
+                local head = character and character:FindFirstChild("Head")
+                local camera = Workspace.CurrentCamera
+                
+                if not flashlight or not flashlight.Parent then
+                    setupFlashlight()
+                end
+                
+                if head and (not flashlight.Parent or flashlight.Parent ~= head) then
+                    flashlight.Parent = head
+                    pointLight.Parent = head
+                elseif not head and (not flashlight.Parent or flashlight.Parent ~= camera) then
+                    flashlight.Parent = camera
+                    pointLight.Parent = camera
+                end
+                
+                if flashlight then
+                    flashlight.Enabled = true
+                end
+                if pointLight then
+                    pointLight.Enabled = true
+                end
+                
+                pcall(function()
+                    if head and flashlight.Parent == head then
+                        local cameraDirection = camera.CFrame.LookVector
+                        head.CFrame = CFrame.lookAt(head.Position, head.Position + cameraDirection)
+                    end
+                end)
+            end
+        end)
+        
+        if connections.flashlightCharAdded then
+            connections.flashlightCharAdded:Disconnect()
+        end
+        if player then
+            connections.flashlightCharAdded = player.CharacterAdded:Connect(function()
+                if Visual.flashlightEnabled then
+                    task.wait(1)
+                    setupFlashlight()
                 end
             end)
         end
-    end
-    
-    setupDeathHandler()
-    
-    recordConnection = RunService.Heartbeat:Connect(function()
-        if not macroRecording or recordingPaused then return end
         
-        if not humanoid or not rootPart or not humanoid.Parent or not rootPart.Parent then
-            updateCharacterReferences()
-            if not humanoid or not rootPart then return end
-            setupDeathHandler()
-        end
-        
-        local success, frame = pcall(function()
-            return {
-                time = tick() - currentMacro.startTime,
-                cframe = rootPart.CFrame,
-                velocity = rootPart.Velocity,
-                walkSpeed = humanoid.WalkSpeed,
-                jumpPower = humanoid.JumpPower,
-                hipHeight = humanoid.HipHeight,
-                state = humanoid:GetState()
-            }
-        end)
-        
-        if success and frame and frame.time and frame.cframe and frame.velocity then
-            table.insert(currentMacro.frames, frame)
-            lastFrameTime = frame.time
-        end
-    end)
-end
-
-local function stopMacroRecording()
-    if not macroRecording then return end
-    macroRecording = false
-    recordingPaused = false
-    if recordConnection then
-        recordConnection:Disconnect()
-        recordConnection = nil
-    end
-    
-    local macroName = MacroInput.Text
-    if macroName == "" then
-        macroName = "Macro_" .. os.date("%H%M%S") .. "_" .. (#savedMacros + 1)
-    end
-    
-    if #currentMacro.frames == 0 then
-        warn("[SUPERTOOL] Cannot save empty macro")
-        updateMacroStatus()
-        return
-    end
-    
-    local validFrameCount = 0
-    for i, frame in pairs(currentMacro.frames) do
-        if validateFrame(frame) then
-            validFrameCount = validFrameCount + 1
-        end
-    end
-    
-    if validFrameCount == 0 then
-        warn("[SUPERTOOL] Cannot save macro: No valid frames found")
-        updateMacroStatus()
-        return
-    end
-    
-    currentMacro.frameCount = #currentMacro.frames
-    currentMacro.duration = currentMacro.frames[#currentMacro.frames].time
-    currentMacro.created = os.time()
-    
-    savedMacros[macroName] = currentMacro
-    local saveSuccess = saveToFileSystem(macroName, currentMacro)
-    
-    if saveSuccess then
-        MacroInput.Text = ""
-        Utility.updateMacroList()
-        updateMacroStatus()
-        if MacroFrame then
-            MacroFrame.Visible = true
-        end
-        
-        print("[SUPERTOOL] Macro recorded and saved: " .. macroName .. " (" .. #currentMacro.frames .. " frames, " .. validFrameCount .. " valid)")
     else
-        warn("[SUPERTOOL] Failed to save macro: " .. macroName)
-    end
-end
-
-local function stopMacroPlayback()
-    if not macroPlaying then return end
-    macroPlaying = false
-    autoPlaying = false
-    playbackPaused = false
-    if playbackConnection then
-        playbackConnection:Disconnect()
-        playbackConnection = nil
-    end
-    if humanoid then
-        humanoid.WalkSpeed = settings.WalkSpeed.value or 16
-    end
-    currentMacroName = nil
-    Utility.updateMacroList()
-    updateMacroStatus()
-end
-
-local function playMacro(macroName, autoPlay)
-    if macroRecording or macroPlaying then return end
-    
-    if not player.Character or not player.Character:FindFirstChild("Humanoid") or not player.Character:FindFirstChild("HumanoidRootPart") then
-        warn("[SUPERTOOL] Cannot play macro: Character not ready")
-        return
-    end
-    
-    updateCharacterReferences()
-    if not humanoid or not rootPart then
-        warn("[SUPERTOOL] Cannot play macro: Failed to get character references")
-        return
-    end
-    
-    local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
-    if not macro or not macro.frames or #macro.frames == 0 then
-        warn("[SUPERTOOL] Cannot play macro: Invalid or empty macro data for " .. macroName)
-        return
-    end
-    
-    local validFrames = {}
-    for i, frame in pairs(macro.frames) do
-        local validFrame = validateFrame(frame)
-        if validFrame then
-            table.insert(validFrames, validFrame)
+        if connections.flashlight then
+            connections.flashlight:Disconnect()
+            connections.flashlight = nil
+        end
+        if connections.flashlightCharAdded then
+            connections.flashlightCharAdded:Disconnect()
+            connections.flashlightCharAdded = nil
+        end
+        
+        if flashlight then
+            flashlight:Destroy()
+            flashlight = nil
+        end
+        if pointLight then
+            pointLight:Destroy()
+            pointLight = nil
         end
     end
+end
+
+-- Low Detail Mode
+local function toggleLowDetail(enabled)
+    Visual.lowDetailEnabled = enabled
+    print("Low Detail Mode:", enabled)
     
-    if #validFrames == 0 then
-        warn("[SUPERTOOL] Cannot play macro: No valid frames in " .. macroName)
-        return
-    end
+    storeOriginalLightingSettings()
     
-    if #validFrames < #macro.frames then
-        warn("[SUPERTOOL] Playing macro with " .. (#macro.frames - #validFrames) .. " invalid frames skipped")
-        macro.frames = validFrames
-        macro.frameCount = #validFrames
-        macro.duration = validFrames[#validFrames].time
-        savedMacros[macroName] = macro
-        saveToFileSystem(macroName, macro)
-    end
-    
-    macroPlaying = true
-    autoPlaying = autoPlay or false
-    playbackPaused = false
-    currentMacroName = macroName
-    humanoid.WalkSpeed = 0
-    updateMacroStatus()
-    
-    print("[SUPERTOOL] Playing macro: " .. macroName .. " (Auto: " .. tostring(autoPlaying) .. ", Speed: " .. (macro.speed or 1) .. "x, Frames: " .. #validFrames .. ")")
-    
-    local function playSingleMacro()
-        local startTime = tick()
-        local index = 1
-        local speed = macro.speed or 1
+    if enabled then
+        Lighting.GlobalShadows = false
+        Lighting.Brightness = 0.3
+        Lighting.FogEnd = 200
+        Lighting.FogStart = 0
+        Lighting.FogColor = Color3.fromRGB(80, 80, 80)
         
-        playbackConnection = RunService.Heartbeat:Connect(function()
-            if not macroPlaying or playbackPaused or not player.Character then
-                return
+        pcall(function()
+            local renderSettings = game:GetService("Settings").Rendering
+            renderSettings.QualityLevel = Enum.QualityLevel.Level01
+        end)
+        pcall(function()
+            local userSettings = UserSettings()
+            local gameSettings = userSettings.GameSettings
+            gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+            gameSettings.RenderDistance = 50
+        end)
+        
+        pcall(function()
+            local terrain = Workspace.Terrain
+            if not foliageStates.terrainSettings then
+                foliageStates.terrainSettings = {
+                    Decoration = terrain.Decoration,
+                    WaterWaveSize = terrain.WaterWaveSize,
+                    WaterWaveSpeed = terrain.WaterWaveSpeed,
+                    WaterReflectance = terrain.WaterReflectance,
+                    WaterTransparency = terrain.WaterTransparency
+                }
             end
             
-            if not humanoid or not rootPart or not humanoid.Parent or not rootPart.Parent then
-                updateCharacterReferences()
-                if not humanoid or not rootPart then
-                    playbackPaused = true
-                    updateMacroStatus()
-                    return
-                end
-            end
+            terrain.Decoration = false
+            terrain.WaterWaveSize = 0
+            terrain.WaterWaveSpeed = 0
+            terrain.WaterReflectance = 0
+            terrain.WaterTransparency = 0.9
             
-            if index > #validFrames then
-                if autoPlaying then
-                    index = 1
-                    startTime = tick()
-                else
-                    stopMacroPlayback()
-                    return
-                end
-            end
-            
-            local frame = validFrames[index]
-            local scaledTime = frame.time / speed
-            while index <= #validFrames and scaledTime <= (tick() - startTime) do
-                local success = pcall(function()
-                    rootPart.CFrame = frame.cframe
-                    rootPart.Velocity = frame.velocity
-                    humanoid.WalkSpeed = frame.walkSpeed
-                    humanoid.JumpPower = frame.jumpPower
-                    humanoid.HipHeight = frame.hipHeight
-                    humanoid:ChangeState(frame.state)
+            spawn(function()
+                pcall(function()
+                    local success = pcall(function()
+                        terrain:ReadVoxels(workspace.CurrentCamera.CFrame.Position - Vector3.new(100, 100, 100), Vector3.new(200, 200, 200))
+                    end)
+                    if success then
+                        terrain.Decoration = false
+                    end
                 end)
-                
-                if not success then
-                    warn("[SUPERTOOL] Error applying frame " .. index .. " in macro " .. macroName)
-                end
-                
-                index = index + 1
-                if index <= #validFrames then
-                    frame = validFrames[index]
-                    scaledTime = frame.time / speed
+            end)
+            
+            print("Terrain decorations (grass) disabled")
+        end)
+        
+        spawn(function()
+            local processCount = 0
+            local pixelMaterial = Enum.Material.SmoothPlastic
+            
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if not processedObjects[obj] then
+                    processedObjects[obj] = true
+                    
+                    pcall(function()
+                        local name = obj.Name:lower()
+                        local parent = obj.Parent and obj.Parent.Name:lower() or ""
+                        local isGrassOrFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
+                                               name:find("grass") or name:find("tree") or name:find("plant") or 
+                                               name:find("flower") or name:find("bush") or name:find("shrub") or
+                                               name:find("fern") or name:find("moss") or name:find("vine") or
+                                               parent:find("grass") or parent:find("foliage") or parent:find("decoration") or
+                                               obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature") or
+                                               obj:GetAttribute("IsDecoration")
+                        
+                        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                           obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                            foliageStates[obj] = { Enabled = obj.Enabled }
+                            obj.Enabled = false
+                            
+                        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                            foliageStates[obj] = { Transparency = obj.Transparency, Texture = obj.Texture }
+                            obj.Transparency = 1
+                            obj.Texture = ""
+                            
+                        elseif obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
+                            foliageStates[obj] = { Enabled = obj.Enabled }
+                            obj.Enabled = false
+                            
+                        elseif obj:IsA("BasePart") then
+                            if isGrassOrFoliage then
+                                foliageStates[obj] = { 
+                                    Transparency = obj.Transparency,
+                                    Material = obj.Material,
+                                    Color = obj.Color,
+                                    CanCollide = obj.CanCollide,
+                                    Anchored = obj.Anchored
+                                }
+                                obj.Transparency = 1
+                                obj.CanCollide = false
+                                obj.Anchored = true
+                            else
+                                foliageStates[obj] = { 
+                                    Material = obj.Material, 
+                                    Reflectance = obj.Reflectance, 
+                                    CastShadow = obj.CastShadow,
+                                    Color = obj.Color
+                                }
+                                obj.Material = pixelMaterial
+                                obj.Reflectance = 0
+                                obj.CastShadow = false
+                                local r = math.floor(obj.Color.R * 4) / 4
+                                local g = math.floor(obj.Color.G * 4) / 4
+                                local b = math.floor(obj.Color.B * 4) / 4
+                                obj.Color = Color3.new(r, g, b)
+                            end
+                            
+                        elseif obj:IsA("MeshPart") then
+                            if isGrassOrFoliage then
+                                foliageStates[obj] = { 
+                                    Transparency = obj.Transparency,
+                                    TextureID = obj.TextureID,
+                                    Material = obj.Material,
+                                    CanCollide = obj.CanCollide,
+                                    Anchored = obj.Anchored
+                                }
+                                obj.Transparency = 1
+                                obj.TextureID = ""
+                                obj.CanCollide = false
+                                obj.Anchored = true
+                            else
+                                foliageStates[obj] = { 
+                                    TextureID = obj.TextureID, 
+                                    Material = obj.Material,
+                                    Color = obj.Color
+                                }
+                                obj.TextureID = ""
+                                obj.Material = pixelMaterial
+                                local r = math.floor(obj.Color.R * 4) / 4
+                                local g = math.floor(obj.Color.G * 4) / 4
+                                local b = math.floor(obj.Color.B * 4) / 4
+                                obj.Color = Color3.new(r, g, b)
+                            end
+                            
+                        elseif obj:IsA("SpecialMesh") then
+                            foliageStates[obj] = { TextureId = obj.TextureId }
+                            obj.TextureId = ""
+                            
+                        elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                            if not (obj.Name == "Flashlight" or obj.Name == "FlashlightPoint") then
+                                foliageStates[obj] = { Enabled = obj.Enabled, Brightness = obj.Brightness }
+                                obj.Brightness = obj.Brightness * 0.3
+                            end
+                            
+                        elseif obj:IsA("Sound") then
+                            foliageStates[obj] = { Volume = obj.Volume }
+                            obj.Volume = obj.Volume * 0.5
+                        end
+                    end)
+                    
+                    processCount = processCount + 1
+                    if processCount % 30 == 0 then
+                        RunService.Heartbeat:Wait()
+                    end
                 end
             end
         end)
-    end
-    
-    local function setupDeathHandler()
-        if humanoid then
-            humanoid.Died:Connect(function()
-                if macroPlaying then
-                    playbackPaused = true
-                    updateMacroStatus()
-                    print("[SUPERTOOL] Macro playback paused due to character death")
-                    task.spawn(function()
-                        task.wait(pauseResumeTime)
-                        if macroPlaying and playbackPaused then
-                            updateCharacterReferences()
-                            if humanoid and rootPart then
-                                playbackPaused = false
-                                updateMacroStatus()
-                                print("[SUPERTOOL] Resuming macro playback after " .. pauseResumeTime .. " seconds")
-                                playSingleMacro()
+        
+        pcall(function()
+            Workspace.StreamingEnabled = true
+            Workspace.StreamingMinRadius = 8
+            Workspace.StreamingTargetRadius = 16
+        end)
+        
+        pcall(function()
+            for _, effect in pairs(Lighting:GetChildren()) do
+                if effect:IsA("PostEffect") then
+                    foliageStates[effect] = { Enabled = effect.Enabled }
+                    effect.Enabled = false
+                end
+            end
+        end)
+        
+        if connections.lowDetailMonitor then
+            connections.lowDetailMonitor:Disconnect()
+        end
+        connections.lowDetailMonitor = RunService.Heartbeat:Connect(function()
+            if Visual.lowDetailEnabled then
+                pcall(function()
+                    local terrain = Workspace.Terrain
+                    if terrain.Decoration == true then
+                        terrain.Decoration = false
+                        print("Re-disabled terrain decorations")
+                    end
+                end)
+            end
+        end)
+        
+    else
+        if connections.lowDetailMonitor then
+            connections.lowDetailMonitor:Disconnect()
+            connections.lowDetailMonitor = nil
+        end
+        
+        if defaultLightingSettings.stored then
+            Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
+            Lighting.Brightness = defaultLightingSettings.Brightness or 1
+            Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
+            Lighting.FogStart = defaultLightingSettings.FogStart or 0
+            Lighting.FogColor = defaultLightingSettings.FogColor or Color3.fromRGB(192, 192, 192)
+        end
+        
+        pcall(function()
+            local renderSettings = game:GetService("Settings").Rendering
+            renderSettings.QualityLevel = defaultLightingSettings.QualityLevel or Enum.QualityLevel.Automatic
+        end)
+        pcall(function()
+            local userSettings = UserSettings()
+            local gameSettings = userSettings.GameSettings
+            gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.Automatic
+            gameSettings.RenderDistance = 500
+        end)
+        
+        if foliageStates.terrainSettings then
+            pcall(function()
+                local terrain = Workspace.Terrain
+                terrain.Decoration = foliageStates.terrainSettings.Decoration
+                terrain.WaterWaveSize = foliageStates.terrainSettings.WaterWaveSize
+                terrain.WaterWaveSpeed = foliageStates.terrainSettings.WaterWaveSpeed
+                terrain.WaterReflectance = foliageStates.terrainSettings.WaterReflectance
+                terrain.WaterTransparency = foliageStates.terrainSettings.WaterTransparency
+            end)
+            foliageStates.terrainSettings = nil
+        end
+        
+        spawn(function()
+            local restoreCount = 0
+            for obj, state in pairs(foliageStates) do
+                if obj ~= "terrainSettings" then
+                    pcall(function()
+                        if obj and obj.Parent then
+                            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                                obj.Enabled = state.Enabled ~= false
+                                
+                            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                                obj.Transparency = state.Transparency or 0
+                                obj.Texture = state.Texture or ""
+                                
+                            elseif obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
+                                obj.Enabled = state.Enabled ~= false
+                                
+                            elseif obj:IsA("BasePart") then
+                                obj.Material = state.Material or Enum.Material.Plastic
+                                obj.Reflectance = state.Reflectance or 0
+                                obj.CastShadow = state.CastShadow ~= false
+                                obj.Color = state.Color or Color3.new(1, 1, 1)
+                                if state.Transparency then
+                                    obj.Transparency = state.Transparency
+                                end
+                                if state.CanCollide ~= nil then
+                                    obj.CanCollide = state.CanCollide
+                                end
+                                if state.Anchored ~= nil then
+                                    obj.Anchored = state.Anchored
+                                end
+                                
+                            elseif obj:IsA("MeshPart") then
+                                obj.TextureID = state.TextureID or ""
+                                obj.Material = state.Material or Enum.Material.Plastic
+                                obj.Color = state.Color or Color3.new(1, 1, 1)
+                                if state.Transparency then
+                                    obj.Transparency = state.Transparency
+                                end
+                                if state.CanCollide ~= nil then
+                                    obj.CanCollide = state.CanCollide
+                                end
+                                if state.Anchored ~= nil then
+                                    obj.Anchored = state.Anchored
+                                end
+                                
+                            elseif obj:IsA("SpecialMesh") then
+                                obj.TextureId = state.TextureId or ""
+                                
+                            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                                obj.Enabled = state.Enabled ~= false
+                                obj.Brightness = state.Brightness or 1
+                                
+                            elseif obj:IsA("Sound") then
+                                obj.Volume = state.Volume or 0.5
+                                
+                            elseif obj:IsA("PostEffect") then
+                                obj.Enabled = state.Enabled ~= false
                             end
                         end
                     end)
-                end
-            end)
-        end
-    end
-    
-    setupDeathHandler()
-    playSingleMacro()
-end
-
-local function deleteMacro(macroName)
-    if savedMacros[macroName] then
-        if macroPlaying and currentMacroName == macroName then
-            stopMacroPlayback()
-        end
-        savedMacros[macroName] = nil
-        deleteFromFileSystem(macroName)
-        Utility.updateMacroList()
-        print("[SUPERTOOL] Macro deleted: " .. macroName)
-    end
-end
-
-local function renameMacro(oldName, newName)
-    if savedMacros[oldName] and newName ~= "" then
-        if renameInFileSystem(oldName, newName) then
-            if currentMacroName == oldName then
-                currentMacroName = newName
-                updateMacroStatus()
-            end
-            savedMacros[newName] = savedMacros[oldName]
-            savedMacros[oldName] = nil
-            Utility.updateMacroList()
-            print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
-        end
-    end
-end
-
-local function showMacroManager()
-    macroFrameVisible = true
-    if not MacroFrame then
-        initMacroUI()
-    end
-    MacroFrame.Visible = true
-    Utility.updateMacroList()
-end
-
-function Utility.updateMacroList()
-    if not MacroScrollFrame then return end
-    
-    for _, child in pairs(MacroScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    
-    local itemCount = 0
-    
-    local infoFrame = Instance.new("Frame")
-    infoFrame.Name = "InfoFrame"
-    infoFrame.Parent = MacroScrollFrame
-    infoFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-    infoFrame.BorderSizePixel = 0
-    infoFrame.Size = UDim2.new(1, -5, 0, 25)
-    infoFrame.LayoutOrder = -1
-    
-    local macroCount = 0
-    for _ in pairs(savedMacros) do
-        macroCount = macroCount + 1
-    end
-    
-    local infoLabel = Instance.new("TextLabel")
-    infoLabel.Parent = infoFrame
-    infoLabel.BackgroundTransparency = 1
-    infoLabel.Size = UDim2.new(1, 0, 1, 0)
-    infoLabel.Font = Enum.Font.Gotham
-    infoLabel.Text = "JSON Sync: " .. MACRO_FOLDER_PATH .. " (" .. macroCount .. " macros)"
-    infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
-    infoLabel.TextSize = 7
-    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
-    for macroName, macro in pairs(savedMacros) do
-        if not macro or not macro.frames or type(macro.frames) ~= "table" then
-            warn("[SUPERTOOL] Skipping invalid macro in UI: " .. macroName)
-            continue
-        end
-        
-        local macroItem = Instance.new("Frame")
-        macroItem.Name = macroName .. "Item"
-        macroItem.Parent = MacroScrollFrame
-        macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        macroItem.BorderSizePixel = 0
-        macroItem.Size = UDim2.new(1, -5, 0, 110)
-        macroItem.LayoutOrder = itemCount
-        
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "NameLabel"
-        nameLabel.Parent = macroItem
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Position = UDim2.new(0, 5, 0, 5)
-        nameLabel.Size = UDim2.new(1, -10, 0, 15)
-        nameLabel.Font = Enum.Font.Gotham
-        nameLabel.Text = macroName
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextSize = 7
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local frameCount = macro.frameCount or (macro.frames and #macro.frames) or 0
-        local duration = macro.duration or (macro.frames and #macro.frames > 0 and macro.frames[#macro.frames] and macro.frames[#macro.frames].time) or 0
-        local speed = macro.speed or 1
-        
-        local validFrameCount = 0
-        if macro.frames then
-            for _, frame in pairs(macro.frames) do
-                if validateFrame(frame) then
-                    validFrameCount = validFrameCount + 1
-                end
-            end
-        end
-        
-        local statusColor = Color3.fromRGB(150, 150, 150)
-        local statusSuffix = ""
-        
-        if validFrameCount == 0 then
-            statusColor = Color3.fromRGB(255, 100, 100)
-            statusSuffix = " (INVALID)"
-        elseif validFrameCount < frameCount then
-            statusColor = Color3.fromRGB(255, 200, 100)
-            statusSuffix = " (PARTIAL)"
-        else
-            statusColor = Color3.fromRGB(100, 255, 100)
-            statusSuffix = " (VALID)"
-        end
-        
-        local infoText = string.format("Frames: %d/%d | Duration: %.1fs | Speed: %.1fx%s", 
-                                     validFrameCount, frameCount, duration, speed, statusSuffix)
-        
-        local macroInfoLabel = Instance.new("TextLabel")
-        macroInfoLabel.Parent = macroItem
-        macroInfoLabel.BackgroundTransparency = 1
-        macroInfoLabel.Position = UDim2.new(0, 5, 0, 20)
-        macroInfoLabel.Size = UDim2.new(1, -10, 0, 10)
-        macroInfoLabel.Font = Enum.Font.Gotham
-        macroInfoLabel.Text = infoText
-        macroInfoLabel.TextColor3 = statusColor
-        macroInfoLabel.TextSize = 6
-        macroInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local renameInput = Instance.new("TextBox")
-        renameInput.Name = "RenameInput"
-        renameInput.Parent = macroItem
-        renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        renameInput.BorderSizePixel = 0
-        renameInput.Position = UDim2.new(0, 5, 0, 35)
-        renameInput.Size = UDim2.new(1, -10, 0, 15)
-        renameInput.Font = Enum.Font.Gotham
-        renameInput.Text = ""
-        renameInput.PlaceholderText = "Enter new name..."
-        renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameInput.TextSize = 7
-        
-        local speedLabel = Instance.new("TextLabel")
-        speedLabel.Name = "SpeedLabel"
-        speedLabel.Parent = macroItem
-        speedLabel.BackgroundTransparency = 1
-        speedLabel.Position = UDim2.new(0, 5, 0, 55)
-        speedLabel.Size = UDim2.new(0, 50, 0, 15)
-        speedLabel.Font = Enum.Font.Gotham
-        speedLabel.Text = "Speed:"
-        speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        speedLabel.TextSize = 7
-        speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local speedInput = Instance.new("TextBox")
-        speedInput.Name = "SpeedInput"
-        speedInput.Parent = macroItem
-        speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        speedInput.BorderSizePixel = 0
-        speedInput.Position = UDim2.new(0, 60, 0, 55)
-        speedInput.Size = UDim2.new(0, 40, 0, 15)
-        speedInput.Font = Enum.Font.Gotham
-        speedInput.Text = tostring(speed)
-        speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        speedInput.TextSize = 7
-        speedInput.TextXAlignment = Enum.TextXAlignment.Center
-        
-        local buttonFrame = Instance.new("Frame")
-        buttonFrame.Name = "ButtonFrame"
-        buttonFrame.Parent = macroItem
-        buttonFrame.BackgroundTransparency = 1
-        buttonFrame.Position = UDim2.new(0, 5, 0, 75)
-        buttonFrame.Size = UDim2.new(1, -10, 0, 15)
-        
-        local canPlay = validFrameCount > 0
-        local playButtonColor = canPlay and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(40, 40, 40)
-        local autoButtonColor = canPlay and Color3.fromRGB(60, 80, 60) or Color3.fromRGB(40, 50, 40)
-        
-        if macroPlaying and currentMacroName == macroName then
-            playButtonColor = Color3.fromRGB(100, 100, 100)
-            autoButtonColor = Color3.fromRGB(100, 100, 100)
-        end
-        
-        local playButton = Instance.new("TextButton")
-        playButton.Name = "PlayButton"
-        playButton.Parent = buttonFrame
-        playButton.BackgroundColor3 = playButtonColor
-        playButton.BorderSizePixel = 0
-        playButton.Position = UDim2.new(0, 0, 0, 0)
-        playButton.Size = UDim2.new(0, 40, 0, 15)
-        playButton.Font = Enum.Font.Gotham
-        playButton.Text = (macroPlaying and currentMacroName == macroName and not autoPlaying) and "PLAYING" or (canPlay and "PLAY" or "INVALID")
-        playButton.TextColor3 = canPlay and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-        playButton.TextSize = 7
-        
-        local autoPlayButton = Instance.new("TextButton")
-        autoPlayButton.Name = "AutoPlayButton"
-        autoPlayButton.Parent = buttonFrame
-        autoPlayButton.BackgroundColor3 = autoButtonColor
-        autoPlayButton.BorderSizePixel = 0
-        autoPlayButton.Position = UDim2.new(0, 45, 0, 0)
-        autoPlayButton.Size = UDim2.new(0, 40, 0, 15)
-        autoPlayButton.Font = Enum.Font.Gotham
-        autoPlayButton.Text = (macroPlaying and currentMacroName == macroName and autoPlaying) and "STOP" or (canPlay and "AUTO" or "INVALID")
-        autoPlayButton.TextColor3 = canPlay and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-        autoPlayButton.TextSize = 7
-        
-        local deleteButton = Instance.new("TextButton")
-        deleteButton.Name = "DeleteButton"
-        deleteButton.Parent = buttonFrame
-        deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-        deleteButton.BorderSizePixel = 0
-        deleteButton.Position = UDim2.new(0, 90, 0, 0)
-        deleteButton.Size = UDim2.new(0, 40, 0, 15)
-        deleteButton.Font = Enum.Font.Gotham
-        deleteButton.Text = "DELETE"
-        deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        deleteButton.TextSize = 7
-        
-        local renameButton = Instance.new("TextButton")
-        renameButton.Name = "RenameButton"
-        renameButton.Parent = buttonFrame
-        renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-        renameButton.BorderSizePixel = 0
-        renameButton.Position = UDim2.new(0, 135, 0, 0)
-        renameButton.Size = UDim2.new(0, 40, 0, 15)
-        renameButton.Font = Enum.Font.Gotham
-        renameButton.Text = "RENAME"
-        renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        renameButton.TextSize = 7
-        
-        local buttonFrame2 = Instance.new("Frame")
-        buttonFrame2.Name = "ButtonFrame2"
-        buttonFrame2.Parent = macroItem
-        buttonFrame2.BackgroundTransparency = 1
-        buttonFrame2.Position = UDim2.new(0, 5, 0, 92)
-        buttonFrame2.Size = UDim2.new(1, -10, 0, 15)
-        
-        local fixButton = Instance.new("TextButton")
-        fixButton.Name = "FixButton"
-        fixButton.Parent = buttonFrame2
-        fixButton.BackgroundColor3 = canPlay and Color3.fromRGB(80, 60, 120) or Color3.fromRGB(120, 80, 60)
-        fixButton.BorderSizePixel = 0
-        fixButton.Position = UDim2.new(0, 0, 0, 0)
-        fixButton.Size = UDim2.new(0, 45, 0, 15)
-        fixButton.Font = Enum.Font.Gotham
-        fixButton.Text = canPlay and "RESYNC" or "FIX"
-        fixButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        fixButton.TextSize = 6
-        
-        local exportButton = Instance.new("TextButton")
-        exportButton.Name = "ExportButton"
-        exportButton.Parent = buttonFrame2
-        exportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
-        exportButton.BorderSizePixel = 0
-        exportButton.Position = UDim2.new(0, 50, 0, 0)
-        exportButton.Size = UDim2.new(0, 45, 0, 15)
-        exportButton.Font = Enum.Font.Gotham
-        exportButton.Text = "EXPORT"
-        exportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        exportButton.TextSize = 6
-        
-        local fileStatusLabel = Instance.new("TextLabel")
-        fileStatusLabel.Name = "FileStatusLabel"
-        fileStatusLabel.Parent = buttonFrame2
-        fileStatusLabel.BackgroundTransparency = 1
-        fileStatusLabel.Position = UDim2.new(0, 100, 0, 0)
-        fileStatusLabel.Size = UDim2.new(1, -100, 0, 15)
-        fileStatusLabel.Font = Enum.Font.Gotham
-        fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
-        fileStatusLabel.TextColor3 = canPlay and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 100)
-        fileStatusLabel.TextSize = 6
-        fileStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        speedInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed then
-                local newSpeed = tonumber(speedInput.Text)
-                if newSpeed and newSpeed > 0 and newSpeed <= 10 then
-                    macro.speed = newSpeed
-                    saveToFileSystem(macroName, macro)
-                    if macroPlaying and currentMacroName == macroName then
-                        -- Update speed during playback
-                        savedMacros[macroName].speed = newSpeed
-                        updateMacroStatus()
-                    end
-                    print("[SUPERTOOL] Updated speed for " .. macroName .. ": " .. newSpeed .. "x")
-                else
-                    speedInput.Text = tostring(macro.speed or 1)
-                    warn("[SUPERTOOL] Invalid speed value. Must be between 0.1 and 10")
-                end
-            end
-        end)
-        
-        playButton.MouseButton1Click:Connect(function()
-            if not canPlay then 
-                warn("[SUPERTOOL] Cannot play invalid macro: " .. macroName)
-                return 
-            end
-            
-            if macroPlaying and currentMacroName == macroName and not autoPlaying then
-                stopMacroPlayback()
-            else
-                playMacro(macroName, false)
-                Utility.updateMacroList()
-            end
-        end)
-        
-        autoPlayButton.MouseButton1Click:Connect(function()
-            if not canPlay then 
-                warn("[SUPERTOOL] Cannot auto-play invalid macro: " .. macroName)
-                return 
-            end
-            
-            if macroPlaying and currentMacroName == macroName and autoPlaying then
-                stopMacroPlayback()
-            else
-                playMacro(macroName, true)
-                Utility.updateMacroList()
-            end
-        end)
-        
-        deleteButton.MouseButton1Click:Connect(function()
-            deleteMacro(macroName)
-        end)
-        
-        renameButton.MouseButton1Click:Connect(function()
-            if renameInput.Text ~= "" then
-                renameMacro(macroName, renameInput.Text)
-                renameInput.Text = ""
-            end
-        end)
-        
-        renameInput.FocusLost:Connect(function(enterPressed)
-            if enterPressed and renameInput.Text ~= "" then
-                renameMacro(macroName, renameInput.Text)
-                renameInput.Text = ""
-            end
-        end)
-        
-        fixButton.MouseButton1Click:Connect(function()
-            if canPlay then
-                saveToJSONFile(macroName, macro)
-                fileStatusLabel.Text = "📁 ✓ " .. sanitizeFileName(macroName) .. ".json"
-                fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-            else
-                local originalMacro = loadFromJSONFile(macroName)
-                if originalMacro and originalMacro.frames and #originalMacro.frames > 0 then
-                    savedMacros[macroName] = originalMacro
-                    Utility.updateMacroList()
-                    fileStatusLabel.Text = "🔧 Fixed from JSON!"
-                    fileStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-                else
-                    fileStatusLabel.Text = "❌ Cannot fix - No valid data"
-                    fileStatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-                end
-            end
-            
-            task.wait(2)
-            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
-            fileStatusLabel.TextColor3 = canPlay and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 100)
-        end)
-        
-        exportButton.MouseButton1Click:Connect(function()
-            fileStatusLabel.Text = "📤 Exported to JSON!"
-            fileStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-            saveToJSONFile(macroName, macro)
-            task.wait(2)
-            fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
-            fileStatusLabel.TextColor3 = canPlay and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 100)
-        end)
-        
-        if canPlay then
-            playButton.MouseEnter:Connect(function()
-                if not (macroPlaying and currentMacroName == macroName and not autoPlaying) then
-                    playButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-                end
-            end)
-            
-            playButton.MouseLeave:Connect(function()
-                if macroPlaying and currentMacroName == macroName and not autoPlaying then
-                    playButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                else
-                    playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                end
-            end)
-            
-            autoPlayButton.MouseEnter:Connect(function()
-                if not (macroPlaying and currentMacroName == macroName and autoPlaying) then
-                    autoPlayButton.BackgroundColor3 = Color3.fromRGB(80, 100, 80)
-                end
-            end)
-            
-            autoPlayButton.MouseLeave:Connect(function()
-                if macroPlaying and currentMacroName == macroName and autoPlaying then
-                    autoPlayButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                else
-                    autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 80, 60)
-                end
-            end)
-        end
-        
-        deleteButton.MouseEnter:Connect(function()
-            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-        end)
-        
-        deleteButton.MouseLeave:Connect(function()
-            deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-        end)
-        
-        renameButton.MouseEnter:Connect(function()
-            renameButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-        end)
-        
-        renameButton.MouseLeave:Connect(function()
-            renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-        end)
-        
-        fixButton.MouseEnter:Connect(function()
-            if canPlay then
-                fixButton.BackgroundColor3 = Color3.fromRGB(100, 80, 150)
-            else
-                fixButton.BackgroundColor3 = Color3.fromRGB(150, 100, 80)
-            end
-        end)
-        
-        fixButton.MouseLeave:Connect(function()
-            if canPlay then
-                fixButton.BackgroundColor3 = Color3.fromRGB(80, 60, 120)
-            else
-                fixButton.BackgroundColor3 = Color3.fromRGB(120, 80, 60)
-            end
-        end)
-        
-        exportButton.MouseEnter:Connect(function()
-            exportButton.BackgroundColor3 = Color3.fromRGB(80, 150, 100)
-        end)
-        
-        exportButton.MouseLeave:Connect(function()
-            exportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
-        end)
-        
-        itemCount = itemCount + 1
-    end
-    
-    if itemCount > 0 then
-        local utilityFrame = Instance.new("Frame")
-        utilityFrame.Name = "UtilityFrame"
-        utilityFrame.Parent = MacroScrollFrame
-        utilityFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
-        utilityFrame.BorderSizePixel = 0
-        utilityFrame.Size = UDim2.new(1, -5, 0, 50)
-        utilityFrame.LayoutOrder = itemCount + 1
-        
-        local refreshButton = Instance.new("TextButton")
-        refreshButton.Parent = utilityFrame
-        refreshButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
-        refreshButton.BorderSizePixel = 0
-        refreshButton.Position = UDim2.new(0, 5, 0, 5)
-        refreshButton.Size = UDim2.new(0, 80, 0, 18)
-        refreshButton.Font = Enum.Font.Gotham
-        refreshButton.Text = "🔄 REFRESH"
-        refreshButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        refreshButton.TextSize = 7
-        
-        local syncAllButton = Instance.new("TextButton")
-        syncAllButton.Parent = utilityFrame
-        syncAllButton.BackgroundColor3 = Color3.fromRGB(40, 80, 80)
-        syncAllButton.BorderSizePixel = 0
-        syncAllButton.Position = UDim2.new(0, 90, 0, 5)
-        syncAllButton.Size = UDim2.new(0, 80, 0, 18)
-        syncAllButton.Font = Enum.Font.Gotham
-        syncAllButton.Text = "💾 SYNC ALL"
-        syncAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        syncAllButton.TextSize = 7
-        
-        local fixAllButton = Instance.new("TextButton")
-        fixAllButton.Parent = utilityFrame
-        fixAllButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
-        fixAllButton.BorderSizePixel = 0
-        fixAllButton.Position = UDim2.new(0, 175, 0, 5)
-        fixAllButton.Size = UDim2.new(0, 80, 0, 18)
-        fixAllButton.Font = Enum.Font.Gotham
-        fixAllButton.Text = "🔧 FIX ALL"
-        fixAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        fixAllButton.TextSize = 7
-        
-        local statusLabel = Instance.new("TextLabel")
-        statusLabel.Parent = utilityFrame
-        statusLabel.BackgroundTransparency = 1
-        statusLabel.Position = UDim2.new(0, 5, 0, 25)
-        statusLabel.Size = UDim2.new(1, -10, 0, 20)
-        statusLabel.Font = Enum.Font.Gotham
-        statusLabel.Text = "Total: " .. itemCount .. " macros loaded"
-        statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        statusLabel.TextSize = 7
-        statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        refreshButton.MouseButton1Click:Connect(function()
-            statusLabel.Text = "Refreshing..."
-            local count = syncMacrosFromJSON()
-            Utility.updateMacroList()
-            statusLabel.Text = "Refreshed: " .. count .. " macros loaded"
-            task.wait(2)
-            statusLabel.Text = "Total: " .. itemCount .. " macros loaded"
-        end)
-        
-        syncAllButton.MouseButton1Click:Connect(function()
-            statusLabel.Text = "Syncing all..."
-            local count = 0
-            for name, data in pairs(savedMacros) do
-                if saveToJSONFile(name, data) then
-                    count = count + 1
-                end
-            end
-            statusLabel.Text = "Synced: " .. count .. " macros to JSON"
-            task.wait(2)
-            statusLabel.Text = "Total: " .. itemCount .. " macros loaded"
-            print("[SUPERTOOL] Synced " .. count .. " macros to JSON files")
-        end)
-        
-        fixAllButton.MouseButton1Click:Connect(function()
-            statusLabel.Text = "Fixing all macros..."
-            local fixedCount = 0
-            local totalCount = 0
-            
-            for macroName, macro in pairs(savedMacros) do
-                totalCount = totalCount + 1
-                
-                if macro and macro.frames then
-                    local validFrames = {}
-                    for i, frame in pairs(macro.frames) do
-                        local validFrame = validateFrame(frame)
-                        if validFrame then
-                            table.insert(validFrames, validFrame)
-                        end
-                    end
                     
-                    if #validFrames > 0 then
-                        macro.frames = validFrames
-                        macro.frameCount = #validFrames
-                        macro.duration = validFrames[#validFrames].time
-                        macro.modified = os.time()
-                        saveToJSONFile(macroName, macro)
-                        fixedCount = fixedCount + 1
+                    restoreCount = restoreCount + 1
+                    if restoreCount % 30 == 0 then
+                        RunService.Heartbeat:Wait()
                     end
                 end
             end
-            
-            Utility.updateMacroList()
-            statusLabel.Text = "Fixed: " .. fixedCount .. "/" .. totalCount .. " macros"
-            task.wait(3)
-            statusLabel.Text = "Total: " .. itemCount .. " macros loaded"
-            print("[SUPERTOOL] Fixed " .. fixedCount .. "/" .. totalCount .. " macros")
+            foliageStates = {}
+            processedObjects = {}
+        end)
+        
+        pcall(function()
+            Workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
+            Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
+            Workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
         end)
     end
-    
-    task.wait(0.1)
-    if MacroLayout then
-        local contentSize = MacroLayout.AbsoluteContentSize
-        MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 5)
-    end
 end
 
-local function initMacroUI()
-    if MacroFrame then return end
-    
-    MacroFrame = Instance.new("Frame")
-    MacroFrame.Name = "MacroFrame"
-    MacroFrame.Parent = ScreenGui
-    MacroFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    MacroFrame.BorderSizePixel = 1
-    MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-    MacroFrame.Size = UDim2.new(0, 300, 0, 400)
-    MacroFrame.Visible = macroFrameVisible
-    MacroFrame.Active = true
-    MacroFrame.Draggable = true
-
-    local MacroTitle = Instance.new("TextLabel")
-    MacroTitle.Name = "Title"
-    MacroTitle.Parent = MacroFrame
-    MacroTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MacroTitle.BorderSizePixel = 0
-    MacroTitle.Size = UDim2.new(1, 0, 0, 20)
-    MacroTitle.Font = Enum.Font.Gotham
-    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.2"
-    MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroTitle.TextSize = 8
-
-    local CloseMacroButton = Instance.new("TextButton")
-    CloseMacroButton.Name = "CloseButton"
-    CloseMacroButton.Parent = MacroFrame
-    CloseMacroButton.BackgroundTransparency = 1
-    CloseMacroButton.Position = UDim2.new(1, -20, 0, 2)
-    CloseMacroButton.Size = UDim2.new(0, 15, 0, 15)
-    CloseMacroButton.Font = Enum.Font.GothamBold
-    CloseMacroButton.Text = "X"
-    CloseMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseMacroButton.TextSize = 8
-
-    MacroInput = Instance.new("TextBox")
-    MacroInput.Name = "MacroInput"
-    MacroInput.Parent = MacroFrame
-    MacroInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MacroInput.BorderSizePixel = 0
-    MacroInput.Position = UDim2.new(0, 5, 0, 25)
-    MacroInput.Size = UDim2.new(1, -65, 0, 20)
-    MacroInput.Font = Enum.Font.Gotham
-    MacroInput.PlaceholderText = "Enter macro name..."
-    MacroInput.Text = ""
-    MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroInput.TextSize = 7
-
-    SaveMacroButton = Instance.new("TextButton")
-    SaveMacroButton.Name = "SaveMacroButton"
-    SaveMacroButton.Parent = MacroFrame
-    SaveMacroButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    SaveMacroButton.BorderSizePixel = 0
-    SaveMacroButton.Position = UDim2.new(1, -55, 0, 25)
-    SaveMacroButton.Size = UDim2.new(0, 50, 0, 20)
-    SaveMacroButton.Font = Enum.Font.Gotham
-    SaveMacroButton.Text = "SAVE"
-    SaveMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SaveMacroButton.TextSize = 7
-
-    MacroScrollFrame = Instance.new("ScrollingFrame")
-    MacroScrollFrame.Name = "MacroScrollFrame"
-    MacroScrollFrame.Parent = MacroFrame
-    MacroScrollFrame.BackgroundTransparency = 1
-    MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
-    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -55)
-    MacroScrollFrame.ScrollBarThickness = 2
-    MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    MacroScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    MacroScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    MacroLayout = Instance.new("UIListLayout")
-    MacroLayout.Parent = MacroScrollFrame
-    MacroLayout.Padding = UDim.new(0, 2)
-    MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-    MacroStatusLabel = Instance.new("TextLabel")
-    MacroStatusLabel.Name = "MacroStatusLabel"
-    MacroStatusLabel.Parent = ScreenGui
-    MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    MacroStatusLabel.BorderSizePixel = 1
-    MacroStatusLabel.Position = UDim2.new(1, -200, 0, 10)
-    MacroStatusLabel.Size = UDim2.new(0, 190, 0, 20)
-    MacroStatusLabel.Font = Enum.Font.Gotham
-    MacroStatusLabel.Text = ""
-    MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MacroStatusLabel.TextSize = 8
-    MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    MacroStatusLabel.Visible = false
-
-    SaveMacroButton.MouseButton1Click:Connect(function()
-        stopMacroRecording()
-        MacroFrame.Visible = true
-    end)
-    
-    CloseMacroButton.MouseButton1Click:Connect(function()
-        macroFrameVisible = false
-        MacroFrame.Visible = false
-    end)
-end
-
-local function killPlayer()
-    if humanoid then
-        humanoid.Health = 0
-    end
-end
-
-local function resetCharacter()
-    if player and player.Character then
-        player:LoadCharacter()
-    end
-end
-
-function Utility.loadUtilityButtons(createButton)
-    createButton("Kill Player", killPlayer)
-    createButton("Reset Character", resetCharacter)
-    createButton("Record Macro", startMacroRecording)
-    createButton("Stop Macro", stopMacroRecording)
-    createButton("Macro Manager", showMacroManager)
-end
-
-function Utility.resetStates()
-    macroRecording = false
-    macroPlaying = false
-    autoPlaying = false
-    recordingPaused = false
-    playbackPaused = false
-    
-    if recordConnection then
-        recordConnection:Disconnect()
-        recordConnection = nil
-    end
-    if playbackConnection then
-        playbackConnection:Disconnect()
-        playbackConnection = nil
+-- Function to create buttons for Visual features
+function Visual.loadVisualButtons(createToggleButton)
+    print("Loading visual buttons")
+    if not createToggleButton then
+        warn("Error: createToggleButton not provided! Buttons will not be created.")
+        return
     end
     
-    currentMacro = {}
-    currentMacroName = nil
-    lastFrameTime = 0
-    macroFrameVisible = false
+    -- Core visual features
+    createToggleButton("Freecam", toggleFreecam)
+    createToggleButton("Fullbright", toggleFullbright)
+    createToggleButton("Flashlight", toggleFlashlight)
+    createToggleButton("Low Detail Mode", toggleLowDetail)
+    createToggleButton("ESP", toggleESP)
     
-    if MacroFrame then
-        MacroFrame.Visible = false
-    end
+    -- New enhanced features
+    createToggleButton("Penetration Mode", togglePenetration)
+    createToggleButton("Auto-Aim", toggleAutoAim)
     
-    updateMacroStatus()
-    Utility.updateMacroList()
-    
-    print("[SUPERTOOL] Utility states reset")
+    -- Time mode features
+    createToggleButton("Morning Mode", toggleMorning)
+    createToggleButton("Day Mode", toggleDay)
+    createToggleButton("Evening Mode", toggleEvening)
+    createToggleButton("Night Mode", toggleNight)
 end
 
-function Utility.init(deps)
+-- Function to reset Visual states
+function Visual.resetStates()
+    Visual.freecamEnabled = false
+    Visual.fullbrightEnabled = false
+    Visual.flashlightEnabled = false
+    Visual.lowDetailEnabled = false
+    Visual.espEnabled = false
+    Visual.penetrationEnabled = false
+    Visual.autoAimEnabled = false
+    Visual.currentTimeMode = "normal"
+    
+    if connections.timeModeMonitor then
+        connections.timeModeMonitor:Disconnect()
+        connections.timeModeMonitor = nil
+    end
+    if connections.lowDetailMonitor then
+        connections.lowDetailMonitor:Disconnect()
+        connections.lowDetailMonitor = nil
+    end
+    
+    toggleFreecam(false)
+    toggleFullbright(false)
+    toggleFlashlight(false)
+    toggleLowDetail(false)
+    toggleESP(false)
+    togglePenetration(false)
+    toggleAutoAim(false)
+    setTimeMode("normal")
+end
+
+-- Function to get freecam state
+function Visual.getFreecamState()
+    return Visual.freecamEnabled, Visual.freecamPosition
+end
+
+-- Function to toggle freecam
+function Visual.toggleFreecam(enabled)
+    toggleFreecam(enabled)
+end
+
+-- Function to set dependencies
+function Visual.init(deps)
+    print("Initializing Visual module")
+    if not deps then
+        warn("Error: No dependencies provided!")
+        return false
+    end
+    
     Players = deps.Players
+    UserInputService = deps.UserInputService
+    RunService = deps.RunService
+    Workspace = deps.Workspace
+    Lighting = deps.Lighting
+    RenderSettings = deps.RenderSettings
+    ContextActionService = game:GetService("ContextActionService")
+    connections = deps.connections
+    buttonStates = deps.buttonStates
+    ScrollFrame = deps.ScrollFrame
+    ScreenGui = deps.ScreenGui
+    settings = deps.settings
     humanoid = deps.humanoid
     rootPart = deps.rootPart
-    ScrollFrame = deps.ScrollFrame
-    buttonStates = deps.buttonStates
     player = deps.player
-    RunService = deps.RunService
-    settings = deps.settings
-    ScreenGui = deps.ScreenGui
+    Visual.character = deps.character or (player and player.Character)
     
-    macroRecording = false
-    macroPlaying = false
-    autoPlaying = false
-    recordingPaused = false
-    playbackPaused = false
-    currentMacro = {}
-    macroFrameVisible = false
-    currentMacroName = nil
-    lastFrameTime = 0
+    -- Initialize states
+    Visual.freecamEnabled = false
+    Visual.freecamPosition = nil
+    Visual.freecamCFrame = nil
+    Visual.fullbrightEnabled = false
+    Visual.flashlightEnabled = false
+    Visual.lowDetailEnabled = false
+    Visual.espEnabled = false
+    Visual.penetrationEnabled = false
+    Visual.autoAimEnabled = false
+    Visual.currentTimeMode = "normal"
+    Visual.joystickDelta = Vector2.new(0, 0)
+    espHighlights = {}
+    foliageStates = {}
+    processedObjects = {}
+    lastAutoAimTarget = nil
+    autoAimCooldown = 0
     
-    local success, error = pcall(function()
-        if not isfolder("Supertool") then
-            makefolder("Supertool")
-            print("[SUPERTOOL] Created Supertool folder")
-        end
-        if not isfolder(MACRO_FOLDER_PATH) then
-            makefolder(MACRO_FOLDER_PATH)
-            print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
-        end
-    end)
+    -- Store original lighting settings immediately
+    storeOriginalLightingSettings()
     
-    if not success then
-        warn("[SUPERTOOL] Failed to create folder structure: " .. tostring(error))
-    end
+    -- Create joystick
+    createJoystick()
     
-    ensureFileSystem()
-    
-    print("[SUPERTOOL] Loading macros from JSON files...")
-    local loadedCount = syncMacrosFromJSON()
-    
-    local legacyCount = 0
-    if fileSystem["Supertool/Macro"] then
-        for macroName, macroData in pairs(fileSystem["Supertool/Macro"]) do
-            if not savedMacros[macroName] and macroData and macroData.frames then
-                local validFrames = {}
-                for _, frame in pairs(macroData.frames) do
-                    local validFrame = validateFrame(frame)
-                    if validFrame then
-                        table.insert(validFrames, validFrame)
-                    end
-                end
-                
-                if #validFrames > 0 then
-                    macroData.frames = validFrames
-                    macroData.frameCount = #validFrames
-                    macroData.duration = validFrames[#validFrames].time
-                    savedMacros[macroName] = macroData
-                    saveToJSONFile(macroName, macroData)
-                    legacyCount = legacyCount + 1
-                    print("[SUPERTOOL] Converted legacy macro: " .. macroName)
-                end
-            end
-        end
-    end
-    
-    print("[SUPERTOOL] Macro loading complete: " .. loadedCount .. " from JSON, " .. legacyCount .. " from legacy")
-    
-    task.spawn(function()
-        initMacroUI()
-        print("[SUPERTOOL] UI components initialized")
-    end)
-    
-    if player then
-        player.CharacterAdded:Connect(function(newCharacter)
-            if newCharacter then
-                task.spawn(function()
-                    humanoid = newCharacter:WaitForChild("Humanoid", 30)
-                    rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
-                    
-                    if humanoid and rootPart then
-                        print("[SUPERTOOL] Character loaded successfully")
-                        
-                        if macroRecording and recordingPaused then
-                            recordingPaused = false
-                            updateMacroStatus()
-                            print("[SUPERTOOL] Macro recording resumed")
-                        end
-                        
-                        if macroPlaying and currentMacroName then
-                            print("[SUPERTOOL] Resuming macro playback: " .. currentMacroName)
-                            if autoPlaying then
-                                playMacro(currentMacroName, true)
-                            else
-                                playMacro(currentMacroName, false)
-                            end
-                        end
-                        
-                        updateMacroStatus()
-                    else
-                        warn("[SUPERTOOL] Failed to get character references after spawn")
-                    end
-                end)
-            end
-        end)
-        
-        player.CharacterRemoving:Connect(function()
-            if macroRecording then
-                recordingPaused = true
-                updateMacroStatus()
-                print("[SUPERTOOL] Macro recording paused due to character removal")
-            end
-            if macroPlaying then
-                playbackPaused = true
-                updateMacroStatus()
-                print("[SUPERTOOL] Macro playback paused due to character removal")
-            end
-        end)
-    end
-    
-    print("[SUPERTOOL] Utility module fully initialized")
-    print("  - JSON Path: " .. MACRO_FOLDER_PATH)
-    print("  - Total Macros: " .. (#savedMacros > 0 and tostring(#savedMacros) or "0"))
-    print("  - Version: 1.2 (Speed Edit & Auto-Resume)")
+    print("Enhanced Visual module initialized successfully with Penetration and Auto-Aim features")
+    return true
 end
 
-return Utility
+-- Function to update references when character respawns
+function Visual.updateReferences(newHumanoid, newRootPart)
+    humanoid = newHumanoid
+    rootPart = newRootPart
+    Visual.character = newHumanoid and newHumanoid.Parent
+    
+    print("Updating Enhanced Visual module references for respawn")
+    
+    -- Store current states
+    local wasFreecamEnabled = Visual.freecamEnabled
+    local wasFullbrightEnabled = Visual.fullbrightEnabled
+    local wasFlashlightEnabled = Visual.flashlightEnabled
+    local wasLowDetailEnabled = Visual.lowDetailEnabled
+    local wasESPEnabled = Visual.espEnabled
+    local wasPenetrationEnabled = Visual.penetrationEnabled
+    local wasAutoAimEnabled = Visual.autoAimEnabled
+    local currentTimeMode = Visual.currentTimeMode
+    
+    -- Temporarily disable all features
+    if wasFreecamEnabled then
+        toggleFreecam(false)
+    end
+    if wasFlashlightEnabled then
+        toggleFlashlight(false)
+    end
+    if wasPenetrationEnabled then
+        togglePenetration(false)
+    end
+    if wasAutoAimEnabled then
+        toggleAutoAim(false)
+    end
+    
+    -- Wait a moment for character to fully load
+    task.wait(0.5)
+    
+    -- Re-enable features that were active
+    if wasFreecamEnabled then
+        print("Re-enabling Freecam after respawn")
+        toggleFreecam(true)
+    end
+    if wasFullbrightEnabled then
+        print("Re-enabling Fullbright after respawn")
+        toggleFullbright(true)
+    end
+    if wasFlashlightEnabled then
+        print("Re-enabling Flashlight after respawn")
+        toggleFlashlight(true)
+    end
+    if wasLowDetailEnabled then
+        print("Re-enabling Low Detail Mode after respawn")
+        toggleLowDetail(true)
+    end
+    if wasESPEnabled then
+        print("Re-enabling ESP after respawn")
+        toggleESP(true)
+    end
+    if wasPenetrationEnabled then
+        print("Re-enabling Penetration Mode after respawn")
+        togglePenetration(true)
+    end
+    if wasAutoAimEnabled then
+        print("Re-enabling Auto-Aim after respawn")
+        toggleAutoAim(true)
+    end
+    if currentTimeMode and currentTimeMode ~= "normal" then
+        print("Re-enabling Time Mode after respawn:", currentTimeMode)
+        setTimeMode(currentTimeMode)
+    end
+end
+
+return Visual
