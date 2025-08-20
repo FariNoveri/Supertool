@@ -30,7 +30,7 @@ Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
 Player.deathAnimationConnections = {}
 Player.magnetEnabled = false
-Player.magnetOffset = Vector3.new(2, 0, -) -- Adjusted: 5 studs in front, 2 studs left
+Player.magnetOffset = Vector3.new(2, 0, -5) -- Adjusted: 5 studs in front, 2 studs left
 Player.magnetPlayerPositions = {}
 
 -- UI Elements
@@ -206,7 +206,7 @@ local function toggleNoDeathAnimation(enabled)
                             if part:IsA("BasePart") or part:IsA("Decal") then
                                 part.Transparency = 1
                             elseif part:IsA("Accessory") then
-                                local handle = part:FindFirstChild("Handle代替
+                                local handle = part:FindFirstChild("Handle")
                                 if handle then
                                     handle.Transparency = 1
                                 end
