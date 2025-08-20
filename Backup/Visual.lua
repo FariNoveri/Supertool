@@ -1,4 +1,4 @@
--- Visual-related features for MinimalHackGUI by Fari Noveri, including ESP, Freecam, Fullbright, Flashlight, and Low Detail Mode for mobile
+-- Visual-related features for MinimalHackGUI by Fari Noveri, including ESP, Freecam, Fullbright, Flashlight, Time Modes, and Low Detail Mode for mobile
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
@@ -14,6 +14,7 @@ Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.espEnabled = false
+Visual.currentTimeMode = "normal" -- normal, morning, day, evening, night
 Visual.joystickDelta = Vector2.new(0, 0) -- Global for Freecam movement
 Visual.character = nil
 local flashlight
@@ -28,6 +29,89 @@ local foliageStates = {} -- Store original foliage properties for restoration
 local processedObjects = {} -- Track processed objects for low detail mode
 local freecamSpeed = 50
 local cameraSensitivity = 0.003
+
+-- Time mode configurations
+local timeModeConfigs = {
+    normal = {
+        ClockTime = nil, -- Use original
+        Brightness = nil, -- Use original
+        Ambient = nil, -- Use original
+        OutdoorAmbient = nil, -- Use original
+        ColorShift_Top = nil, -- Use original
+        ColorShift_Bottom = nil, -- Use original
+        SunAngularSize = nil, -- Use original
+        FogColor = nil -- Use original
+    },
+    morning = {
+        ClockTime = 6.5,
+        Brightness = 1.5,
+        Ambient = Color3.fromRGB(150, 120, 80),
+        OutdoorAmbient = Color3.fromRGB(255, 200, 120),
+        ColorShift_Top = Color3.fromRGB(255, 180, 120),
+        ColorShift_Bottom = Color3.fromRGB(255, 220, 180),
+        SunAngularSize = 25,
+        FogColor = Color3.fromRGB(200, 180, 150)
+    },
+    day = {
+        ClockTime = 12,
+        Brightness = 2,
+        Ambient = Color3.fromRGB(180, 180, 180),
+        OutdoorAmbient = Color3.fromRGB(255, 255, 255),
+        ColorShift_Top = Color3.fromRGB(255, 255, 255),
+        ColorShift_Bottom = Color3.fromRGB(240, 240, 255),
+        SunAngularSize = 21,
+        FogColor = Color3.fromRGB(220, 220, 255)
+    },
+    evening = {
+        ClockTime = 18,
+        Brightness = 1,
+        Ambient = Color3.fromRGB(120, 80, 60),
+        OutdoorAmbient = Color3.fromRGB(255, 150, 100),
+        ColorShift_Top = Color3.fromRGB(255, 120, 80),
+        ColorShift_Bottom = Color3.fromRGB(255, 180, 140),
+        SunAngularSize = 30,
+        FogColor = Color3.fromRGB(180, 120, 80)
+    },
+    night = {
+        ClockTime = 0,
+        Brightness = 0.3,
+        Ambient = Color3.fromRGB(30, 30, 60),
+        OutdoorAmbient = Color3.fromRGB(80, 80, 120),
+        ColorShift_Top = Color3.fromRGB(50, 50, 80),
+        ColorShift_Bottom = Color3.fromRGB(20, 20, 40),
+        SunAngularSize = 21,
+        FogColor = Color3.fromRGB(40, 40, 80)
+    }
+}
+
+-- Store original lighting settings (improved)
+local function storeOriginalLightingSettings()
+    if not defaultLightingSettings.stored then
+        defaultLightingSettings.stored = true
+        defaultLightingSettings.Brightness = Lighting.Brightness
+        defaultLightingSettings.ClockTime = Lighting.ClockTime
+        defaultLightingSettings.FogEnd = Lighting.FogEnd
+        defaultLightingSettings.FogStart = Lighting.FogStart
+        defaultLightingSettings.FogColor = Lighting.FogColor
+        defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
+        defaultLightingSettings.Ambient = Lighting.Ambient
+        defaultLightingSettings.OutdoorAmbient = Lighting.OutdoorAmbient
+        defaultLightingSettings.ColorShift_Top = Lighting.ColorShift_Top
+        defaultLightingSettings.ColorShift_Bottom = Lighting.ColorShift_Bottom
+        defaultLightingSettings.SunAngularSize = Lighting.SunAngularSize
+        defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration
+        
+        -- Store rendering settings
+        pcall(function()
+            defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
+            defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
+            defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
+            defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
+        end)
+        
+        print("Original lighting settings stored")
+    end
+end
 
 -- Create virtual joystick for mobile Freecam (Fixed positioning)
 local function createJoystick()
@@ -232,10 +316,13 @@ local function toggleESP(enabled)
         end
         
         -- Handle new players joining
+        if connections.espPlayerAdded then
+            connections.espPlayerAdded:Disconnect()
+        end
         connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
             if Visual.espEnabled and newPlayer ~= player then
                 newPlayer.CharacterAdded:Connect(function(character)
-                    wait(0.3) -- Longer delay to ensure character is fully loaded
+                    task.wait(0.3) -- Longer delay to ensure character is fully loaded
                     if Visual.espEnabled then
                         createESPForCharacter(character, newPlayer)
                     end
@@ -244,6 +331,9 @@ local function toggleESP(enabled)
         end)
         
         -- Handle players leaving
+        if connections.espPlayerLeaving then
+            connections.espPlayerLeaving:Disconnect()
+        end
         connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
             if espHighlights[leavingPlayer] then
                 espHighlights[leavingPlayer]:Destroy()
@@ -254,8 +344,16 @@ local function toggleESP(enabled)
         -- Handle character respawning for ALL players (including existing ones)
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player then
+                -- Disconnect old connections
+                if connections["espCharAdded" .. otherPlayer.UserId] then
+                    connections["espCharAdded" .. otherPlayer.UserId]:Disconnect()
+                end
+                if connections["espCharRemoving" .. otherPlayer.UserId] then
+                    connections["espCharRemoving" .. otherPlayer.UserId]:Disconnect()
+                end
+                
                 connections["espCharAdded" .. otherPlayer.UserId] = otherPlayer.CharacterAdded:Connect(function(character)
-                    wait(0.3) -- Longer delay
+                    task.wait(0.3) -- Longer delay
                     if Visual.espEnabled then
                         createESPForCharacter(character, otherPlayer)
                     end
@@ -272,6 +370,9 @@ local function toggleESP(enabled)
         end
         
         -- Continuous check for missed characters (backup system)
+        if connections.espBackupCheck then
+            connections.espBackupCheck:Disconnect()
+        end
         connections.espBackupCheck = RunService.Heartbeat:Connect(function()
             if Visual.espEnabled then
                 for _, otherPlayer in pairs(Players:GetPlayers()) do
@@ -325,22 +426,31 @@ local function toggleFreecam(enabled)
     if enabled then
         local camera = Workspace.CurrentCamera
         
-        -- Store original character position and completely freeze it
-        if humanoid and rootPart then
-            Visual.originalWalkSpeed = humanoid.WalkSpeed
-            Visual.originalJumpPower = humanoid.JumpPower
-            Visual.originalJumpHeight = humanoid.JumpHeight
-            Visual.originalPosition = rootPart.CFrame
-            
-            -- Completely disable character movement
-            humanoid.PlatformStand = true
-            humanoid.WalkSpeed = 0
-            humanoid.JumpPower = 0
-            humanoid.JumpHeight = 0
-            rootPart.Anchored = true
-            rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        -- Get current character and humanoid references
+        local currentCharacter = player.Character
+        local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
+        local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+        
+        if not currentHumanoid or not currentRootPart then
+            print("Warning: No character found for freecam")
+            Visual.freecamEnabled = false
+            return
         end
+        
+        -- Store original character position and completely freeze it
+        Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
+        Visual.originalJumpPower = currentHumanoid.JumpPower
+        Visual.originalJumpHeight = currentHumanoid.JumpHeight
+        Visual.originalPosition = currentRootPart.CFrame
+        
+        -- Completely disable character movement
+        currentHumanoid.PlatformStand = true
+        currentHumanoid.WalkSpeed = 0
+        currentHumanoid.JumpPower = 0
+        currentHumanoid.JumpHeight = 0
+        currentRootPart.Anchored = true
+        currentRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        currentRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
         
         -- Setup camera for free flight
         camera.CameraType = Enum.CameraType.Scriptable
@@ -364,8 +474,16 @@ local function toggleFreecam(enabled)
         end
         
         -- Main freecam update loop
+        if connections.freecam then
+            connections.freecam:Disconnect()
+        end
         connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
             if Visual.freecamEnabled then
+                -- Get current character references
+                local char = player.Character
+                local hum = char and char:FindFirstChild("Humanoid")
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                
                 local moveVector = Vector3.new()
                 
                 -- Calculate movement based on camera direction
@@ -385,21 +503,24 @@ local function toggleFreecam(enabled)
                 Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
                 camera.CFrame = Visual.freecamCFrame
                 
-                -- Ensure character stays completely frozen
-                if humanoid and rootPart then
-                    humanoid.PlatformStand = true
-                    humanoid.WalkSpeed = 0
-                    humanoid.JumpPower = 0
-                    humanoid.JumpHeight = 0
-                    rootPart.Anchored = true
-                    rootPart.CFrame = Visual.originalPosition -- Force position back
-                    rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                -- Ensure character stays completely frozen (use current character)
+                if hum and root and Visual.originalPosition then
+                    hum.PlatformStand = true
+                    hum.WalkSpeed = 0
+                    hum.JumpPower = 0
+                    hum.JumpHeight = 0
+                    root.Anchored = true
+                    root.CFrame = Visual.originalPosition -- Force position back
+                    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
                 end
             end
         end)
         
         -- Mobile touch controls
+        if connections.touchInput then
+            connections.touchInput:Disconnect()
+        end
         connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
             if input.UserInputType == Enum.UserInputType.Touch then
                 Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -407,6 +528,9 @@ local function toggleFreecam(enabled)
             end
         end)
         
+        if connections.touchBegan then
+            connections.touchBegan:Disconnect()
+        end
         connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
             if input.UserInputType == Enum.UserInputType.Touch then
                 Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -414,6 +538,9 @@ local function toggleFreecam(enabled)
             end
         end)
         
+        if connections.touchEnded then
+            connections.touchEnded:Disconnect()
+        end
         connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
             if input.UserInputType == Enum.UserInputType.Touch then
                 Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -449,21 +576,29 @@ local function toggleFreecam(enabled)
         -- Reset camera to normal
         local camera = Workspace.CurrentCamera
         camera.CameraType = Enum.CameraType.Custom
-        camera.CameraSubject = humanoid
+        
+        -- Get current character references
+        local currentCharacter = player.Character
+        local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
+        local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+        
+        if currentHumanoid then
+            camera.CameraSubject = currentHumanoid
+        end
         
         -- Restore character movement
-        if humanoid and rootPart then
-            humanoid.PlatformStand = false
-            rootPart.Anchored = false
+        if currentHumanoid and currentRootPart then
+            currentHumanoid.PlatformStand = false
+            currentRootPart.Anchored = false
             
             -- Restore original stats
-            humanoid.WalkSpeed = Visual.originalWalkSpeed or (settings.WalkSpeed and settings.WalkSpeed.value) or 16
-            humanoid.JumpPower = Visual.originalJumpPower or ((settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50)
-            humanoid.JumpHeight = Visual.originalJumpHeight or (settings.JumpHeight and settings.JumpHeight.value) or 7.2
+            currentHumanoid.WalkSpeed = Visual.originalWalkSpeed or (settings.WalkSpeed and settings.WalkSpeed.value) or 16
+            currentHumanoid.JumpPower = Visual.originalJumpPower or ((settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50)
+            currentHumanoid.JumpHeight = Visual.originalJumpHeight or (settings.JumpHeight and settings.JumpHeight.value) or 7.2
             
             -- Reset camera position relative to character
             task.wait(0.1)
-            camera.CFrame = CFrame.lookAt(rootPart.Position + Vector3.new(0, 2, 10), rootPart.Position)
+            camera.CFrame = CFrame.lookAt(currentRootPart.Position + Vector3.new(0, 2, 10), currentRootPart.Position)
         end
         
         -- Reset freecam variables
@@ -475,18 +610,75 @@ local function toggleFreecam(enabled)
     end
 end
 
+-- Time Mode Functions
+local function setTimeMode(mode)
+    storeOriginalLightingSettings()
+    Visual.currentTimeMode = mode
+    print("Time Mode:", mode)
+    
+    local config = timeModeConfigs[mode]
+    if not config then
+        print("Invalid time mode:", mode)
+        return
+    end
+    
+    -- Apply settings
+    for property, value in pairs(config) do
+        if value ~= nil then
+            pcall(function()
+                Lighting[property] = value
+            end)
+        else
+            -- Restore original value
+            if defaultLightingSettings[property] ~= nil then
+                pcall(function()
+                    Lighting[property] = defaultLightingSettings[property]
+                end)
+            end
+        end
+    end
+end
+
+local function toggleMorning(enabled)
+    if enabled then
+        setTimeMode("morning")
+    else
+        setTimeMode("normal")
+    end
+end
+
+local function toggleDay(enabled)
+    if enabled then
+        setTimeMode("day")
+    else
+        setTimeMode("normal")
+    end
+end
+
+local function toggleEvening(enabled)
+    if enabled then
+        setTimeMode("evening")
+    else
+        setTimeMode("normal")
+    end
+end
+
+local function toggleNight(enabled)
+    if enabled then
+        setTimeMode("night")
+    else
+        setTimeMode("normal")
+    end
+end
+
 -- Fullbright (Same as before)
 local function toggleFullbright(enabled)
     Visual.fullbrightEnabled = enabled
     print("Fullbright:", enabled)
     
+    storeOriginalLightingSettings()
+    
     if enabled then
-        defaultLightingSettings.Brightness = Lighting.Brightness
-        defaultLightingSettings.ClockTime = Lighting.ClockTime
-        defaultLightingSettings.FogEnd = Lighting.FogEnd
-        defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
-        defaultLightingSettings.Ambient = Lighting.Ambient
-        
         Lighting.Brightness = 2
         Lighting.ClockTime = 14
         Lighting.FogEnd = 100000
@@ -501,7 +693,7 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Flashlight (Completely Fixed)
+-- Flashlight (Completely Fixed - Enhanced)
 local function toggleFlashlight(enabled)
     Visual.flashlightEnabled = enabled
     print("Flashlight:", enabled)
@@ -538,7 +730,7 @@ local function toggleFlashlight(enabled)
             pointLight.Enabled = true
             
             -- Parent to player's head
-            local character = Visual.character or (player and player.Character)
+            local character = player.Character
             local head = character and character:FindFirstChild("Head")
             
             if head then
@@ -558,9 +750,12 @@ local function toggleFlashlight(enabled)
         setupFlashlight()
         
         -- Update flashlight direction and ensure it stays attached
+        if connections.flashlight then
+            connections.flashlight:Disconnect()
+        end
         connections.flashlight = RunService.Heartbeat:Connect(function()
             if Visual.flashlightEnabled then
-                local character = Visual.character or (player and player.Character)
+                local character = player.Character
                 local head = character and character:FindFirstChild("Head")
                 local camera = Workspace.CurrentCamera
                 
@@ -598,6 +793,9 @@ local function toggleFlashlight(enabled)
         end)
         
         -- Handle character respawning
+        if connections.flashlightCharAdded then
+            connections.flashlightCharAdded:Disconnect()
+        end
         if player then
             connections.flashlightCharAdded = player.CharacterAdded:Connect(function()
                 if Visual.flashlightEnabled then
@@ -635,20 +833,9 @@ local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
     
+    storeOriginalLightingSettings()
+    
     if enabled then
-        -- Store default settings (one-time)
-        if not defaultLightingSettings.GlobalShadowsStored then
-            defaultLightingSettings.GlobalShadowsStored = true
-            defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
-            defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration
-            pcall(function()
-                defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
-                defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
-                defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
-                defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
-            end)
-        end
-        
         -- Apply lighting changes for performance
         Lighting.GlobalShadows = false
         Lighting.Brightness = 0.3
@@ -791,11 +978,6 @@ local function toggleLowDetail(enabled)
                 terrain.WaterReflectance = 0
                 terrain.WaterTransparency = 0.9
                 terrain.Decoration = false -- Remove all grass/decorations
-                
-                -- Reduce terrain quality
-                if terrain.ReadVoxels then
-                    -- Additional terrain optimizations could be added here
-                end
             end)
         end)
         
@@ -816,24 +998,15 @@ local function toggleLowDetail(enabled)
             end
         end)
         
-        -- Disable expensive rendering features
-        pcall(function()
-            game:GetService("RunService"):Set3dRenderingEnabled(true) -- Keep rendering but optimize
-            -- Disable some expensive features
-            for _, obj in pairs(Workspace:GetDescendants()) do
-                if obj:IsA("Explosion") then
-                    obj.Visible = false
-                end
-            end
-        end)
-        
     else
         -- Restore all settings efficiently
-        Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
-        Lighting.Brightness = defaultLightingSettings.Brightness or 1
-        Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
-        Lighting.FogStart = 0
-        Lighting.FogColor = Color3.fromRGB(192, 192, 192)
+        if defaultLightingSettings.stored then
+            Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
+            Lighting.Brightness = defaultLightingSettings.Brightness or 1
+            Lighting.FogEnd = defaultLightingSettings.FogEnd or 1000
+            Lighting.FogStart = defaultLightingSettings.FogStart or 0
+            Lighting.FogColor = defaultLightingSettings.FogColor or Color3.fromRGB(192, 192, 192)
+        end
         
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
@@ -938,11 +1111,19 @@ function Visual.loadVisualButtons(createToggleButton)
         warn("Error: createToggleButton not provided! Buttons will not be created.")
         return
     end
+    
+    -- Core visual features
     createToggleButton("Freecam", toggleFreecam)
     createToggleButton("Fullbright", toggleFullbright)
     createToggleButton("Flashlight", toggleFlashlight)
     createToggleButton("Low Detail Mode", toggleLowDetail)
     createToggleButton("ESP", toggleESP)
+    
+    -- Time mode features
+    createToggleButton("Morning Mode", toggleMorning)
+    createToggleButton("Day Mode", toggleDay)
+    createToggleButton("Evening Mode", toggleEvening)
+    createToggleButton("Night Mode", toggleNight)
 end
 
 -- Function to reset Visual states
@@ -952,12 +1133,14 @@ function Visual.resetStates()
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.currentTimeMode = "normal"
     
     toggleFreecam(false)
     toggleFullbright(false)
     toggleFlashlight(false)
     toggleLowDetail(false)
     toggleESP(false)
+    setTimeMode("normal")
 end
 
 -- Function to get freecam state (for teleport.lua)
@@ -995,6 +1178,7 @@ function Visual.init(deps)
     player = deps.player
     Visual.character = deps.character or (player and player.Character)
     
+    -- Initialize states
     Visual.freecamEnabled = false
     Visual.freecamPosition = nil
     Visual.freecamCFrame = nil
@@ -1002,48 +1186,73 @@ function Visual.init(deps)
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.currentTimeMode = "normal"
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
     foliageStates = {}
     processedObjects = {}
     
-    defaultLightingSettings.Brightness = Lighting.Brightness
-    defaultLightingSettings.ClockTime = Lighting.ClockTime
-    defaultLightingSettings.FogEnd = Lighting.FogEnd
-    defaultLightingSettings.GlobalShadows = Lighting.GlobalShadows
-    defaultLightingSettings.Ambient = Lighting.Ambient
+    -- Store original lighting settings immediately
+    storeOriginalLightingSettings()
     
+    -- Create joystick
     createJoystick()
     
     print("Visual module initialized successfully")
     return true
 end
 
--- Function to update references when character respawns
+-- Function to update references when character respawns (Enhanced)
 function Visual.updateReferences(newHumanoid, newRootPart)
     humanoid = newHumanoid
     rootPart = newRootPart
     Visual.character = newHumanoid and newHumanoid.Parent
     
-    -- Re-enable features if they were active
-    if Visual.freecamEnabled then
+    print("Updating Visual module references for respawn")
+    
+    -- Store current states
+    local wasFreecamEnabled = Visual.freecamEnabled
+    local wasFullbrightEnabled = Visual.fullbrightEnabled
+    local wasFlashlightEnabled = Visual.flashlightEnabled
+    local wasLowDetailEnabled = Visual.lowDetailEnabled
+    local wasESPEnabled = Visual.espEnabled
+    local currentTimeMode = Visual.currentTimeMode
+    
+    -- Temporarily disable all features
+    if wasFreecamEnabled then
         toggleFreecam(false)
-        task.wait(0.1)
+    end
+    if wasFlashlightEnabled then
+        toggleFlashlight(false)
+    end
+    
+    -- Wait a moment for character to fully load
+    task.wait(0.5)
+    
+    -- Re-enable features that were active
+    if wasFreecamEnabled then
+        print("Re-enabling Freecam after respawn")
         toggleFreecam(true)
     end
-    if Visual.fullbrightEnabled then
+    if wasFullbrightEnabled then
+        print("Re-enabling Fullbright after respawn")
         toggleFullbright(true)
     end
-    if Visual.flashlightEnabled then
-        toggleFlashlight(false)
-        task.wait(0.1)
+    if wasFlashlightEnabled then
+        print("Re-enabling Flashlight after respawn")
         toggleFlashlight(true)
     end
-    if Visual.lowDetailEnabled then
+    if wasLowDetailEnabled then
+        print("Re-enabling Low Detail Mode after respawn")
         toggleLowDetail(true)
     end
-    if Visual.espEnabled then
+    if wasESPEnabled then
+        print("Re-enabling ESP after respawn")
         toggleESP(true)
+    end
+    if currentTimeMode and currentTimeMode ~= "normal" then
+        print("Re-enabling Time Mode after respawn:", currentTimeMode)
+        setTimeMode(currentTimeMode)
     end
 end
 
