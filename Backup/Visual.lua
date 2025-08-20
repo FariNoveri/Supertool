@@ -610,7 +610,7 @@ local function toggleFreecam(enabled)
     end
 end
 
--- Time Mode Functions
+-- Time Mode Functions (Enhanced with persistence)
 local function setTimeMode(mode)
     storeOriginalLightingSettings()
     Visual.currentTimeMode = mode
@@ -635,6 +635,34 @@ local function setTimeMode(mode)
                     Lighting[property] = defaultLightingSettings[property]
                 end)
             end
+        end
+    end
+    
+    -- Add persistent monitoring to prevent override
+    if connections.timeModeMonitor then
+        connections.timeModeMonitor:Disconnect()
+    end
+    
+    if mode ~= "normal" then
+        connections.timeModeMonitor = RunService.Heartbeat:Connect(function()
+            if Visual.currentTimeMode == mode then
+                -- Check if settings were overridden and restore them
+                local currentConfig = timeModeConfigs[mode]
+                for property, expectedValue in pairs(currentConfig) do
+                    if expectedValue ~= nil then
+                        pcall(function()
+                            if Lighting[property] ~= expectedValue then
+                                Lighting[property] = expectedValue
+                            end
+                        end)
+                    end
+                end
+            end
+        end)
+    else
+        if connections.timeModeMonitor then
+            connections.timeModeMonitor:Disconnect()
+            connections.timeModeMonitor = nil
         end
     end
 end
@@ -1103,6 +1131,8 @@ local function toggleLowDetail(enabled)
         end)
     end
 end
+    end
+end
 
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
@@ -1134,6 +1164,16 @@ function Visual.resetStates()
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
     Visual.currentTimeMode = "normal"
+    
+    -- Disconnect monitoring connections
+    if connections.timeModeMonitor then
+        connections.timeModeMonitor:Disconnect()
+        connections.timeModeMonitor = nil
+    end
+    if connections.lowDetailMonitor then
+        connections.lowDetailMonitor:Disconnect()
+        connections.lowDetailMonitor = nil
+    end
     
     toggleFreecam(false)
     toggleFullbright(false)
