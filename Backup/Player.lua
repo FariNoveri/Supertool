@@ -266,28 +266,79 @@ local function toggleNoDeathAnimation(enabled)
     end
 end
 
--- Bring Player
+-- Bring Player (FIXED VERSION)
 local function bringPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
-        print("Cannot bring: Invalid target player")
-        return
+        warn("Cannot bring: Invalid target player")
+        return false
     end
     
     if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        print("Cannot bring: Target player has no character or HumanoidRootPart")
-        return
+        warn("Cannot bring: Target player has no character or HumanoidRootPart")
+        return false
     end
     
-    if not Player.rootPart then
-        print("Cannot bring: Missing rootPart")
-        return
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+        warn("Cannot bring: Local player has no character or HumanoidRootPart")
+        return false
     end
     
     local targetRootPart = targetPlayer.Character.HumanoidRootPart
-    local ourPosition = Player.rootPart.CFrame
+    local ourRootPart = player.Character.HumanoidRootPart
+    local ourPosition = ourRootPart.CFrame
     
-    targetRootPart.CFrame = ourPosition * CFrame.new(0, 0, -5) -- Adjusted to 5 studs
-    print("Brought player: " .. targetPlayer.Name)
+    -- Try multiple methods to bring the player
+    local success = false
+    
+    -- Method 1: Direct CFrame manipulation
+    pcall(function()
+        targetRootPart.CFrame = ourPosition * CFrame.new(0, 0, -5) -- 5 studs in front
+        success = true
+        print("Brought player using CFrame: " .. targetPlayer.Name)
+    end)
+    
+    -- Method 2: If direct CFrame fails, try teleportation via Position
+    if not success then
+        pcall(function()
+            local newPosition = ourPosition.Position + ourPosition.LookVector * -5
+            targetRootPart.Position = newPosition
+            success = true
+            print("Brought player using Position: " .. targetPlayer.Name)
+        end)
+    end
+    
+    -- Method 3: Try using MoveTo if available
+    if not success then
+        local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+        if targetHumanoid then
+            pcall(function()
+                local newPosition = ourPosition.Position + ourPosition.LookVector * -5
+                targetHumanoid:MoveTo(newPosition)
+                success = true
+                print("Brought player using MoveTo: " .. targetPlayer.Name)
+            end)
+        end
+    end
+    
+    -- Method 4: Try anchoring and positioning
+    if not success then
+        pcall(function()
+            local wasAnchored = targetRootPart.Anchored
+            targetRootPart.Anchored = true
+            targetRootPart.CFrame = ourPosition * CFrame.new(0, 0, -5)
+            task.wait(0.1)
+            targetRootPart.Anchored = wasAnchored
+            success = true
+            print("Brought player using anchored method: " .. targetPlayer.Name)
+        end)
+    end
+    
+    if not success then
+        warn("Failed to bring player: " .. targetPlayer.Name)
+        return false
+    end
+    
+    return true
 end
 
 -- Magnet Players
@@ -809,14 +860,25 @@ local function toggleFreezePlayers(enabled)
     end
 end
 
--- Show Player Selection UI
+-- Show Player Selection UI (FIXED VERSION)
 local function showPlayerSelection()
-    Player.playerListVisible = true
-    if PlayerListFrame then
-        PlayerListFrame.Visible = true
-        Player.updatePlayerList()
-    else
+    if not PlayerListFrame then
         warn("PlayerListFrame not initialized")
+        return
+    end
+    
+    Player.playerListVisible = true
+    PlayerListFrame.Visible = true
+    Player.updatePlayerList()
+    print("Player selection UI opened")
+end
+
+-- Hide Player Selection UI (NEW FUNCTION)
+local function hidePlayerSelection()
+    if PlayerListFrame then
+        Player.playerListVisible = false
+        PlayerListFrame.Visible = false
+        print("Player selection UI closed")
     end
 end
 
@@ -1170,8 +1232,14 @@ function Player.updatePlayerList()
                     end
                 end)
                 
+                -- FIXED BRING BUTTON CONNECTION
                 bringButton.MouseButton1Click:Connect(function()
-                    bringPlayer(p)
+                    local success = bringPlayer(p)
+                    if success then
+                        print("Successfully brought player: " .. p.Name)
+                    else
+                        warn("Failed to bring player: " .. p.Name)
+                    end
                 end)
                 
                 magnetButton.MouseButton1Click:Connect(function()
@@ -1183,6 +1251,7 @@ function Player.updatePlayerList()
                     end
                 end)
                 
+                -- Mouse hover effects
                 selectButton.MouseEnter:Connect(function()
                     if Player.selectedPlayer ~= p then
                         selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -1466,7 +1535,7 @@ local function initUI()
     StopSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     StopSpectateButton.BorderSizePixel = 1
     StopSpectateButton.Position = UDim2.new(0.5, -30, 0.5, 40)
-    StopSpectateButton.Size = UDIM2.new(0, 60, 0, 30)
+    StopSpectateButton.Size = UDim2.new(0, 60, 0, 30)
     StopSpectateButton.Font = Enum.Font.Gotham
     StopSpectateButton.Text = "STOP"
     StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1618,6 +1687,7 @@ local function initUI()
         EmoteScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
     end)
 
+    -- FIXED: Event connections for spectate buttons
     NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
     PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
     StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
@@ -1651,13 +1721,32 @@ local function initUI()
         TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
     end)
 
+    -- FIXED: Close button event connections
     ClosePlayerListButton.MouseButton1Click:Connect(function()
-        Player.playerListVisible = false
-        PlayerListFrame.Visible = false
+        hidePlayerSelection()
+        print("Player list closed via X button")
     end)
 
     CloseEmoteButton.MouseButton1Click:Connect(function()
         EmoteGuiFrame.Visible = false
+        print("Emote GUI closed via X button")
+    end)
+    
+    -- Add hover effects for close buttons
+    ClosePlayerListButton.MouseEnter:Connect(function()
+        ClosePlayerListButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end)
+    
+    ClosePlayerListButton.MouseLeave:Connect(function()
+        ClosePlayerListButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+    
+    CloseEmoteButton.MouseEnter:Connect(function()
+        CloseEmoteButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end)
+    
+    CloseEmoteButton.MouseLeave:Connect(function()
+        CloseEmoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     end)
     
     print("Player UI initialized successfully")
