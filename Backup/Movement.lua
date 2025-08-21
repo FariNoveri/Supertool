@@ -390,6 +390,7 @@ local function toggleFloat(enabled)
 end
 
 -- Underground walking
+-- Underground walking - Fixed version
 local function toggleUnderground(enabled)
     Movement.undergroundEnabled = enabled
     
@@ -399,32 +400,101 @@ local function toggleUnderground(enabled)
     end
     
     if enabled then
-        connections.underground = RunService.Heartbeat:Connect(function()
-            if not Movement.undergroundEnabled then return end
+        -- Move player underground when enabled
+        task.spawn(function()
             if not refreshReferences() or not rootPart or not player.Character then return end
             
+            -- Disable collision for all character parts
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+            
+            -- Move player down underground (5-10 studs below ground)
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {player.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
             
-            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -10, 0), raycastParams)
-            if raycast and raycast.Instance and raycast.Instance.CanCollide then
-                rootPart.Position = rootPart.Position - Vector3.new(0, 5, 0)
-                for _, part in pairs(player.Character:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -1000, 0), raycastParams)
+            if raycast and raycast.Instance then
+                -- Position player 7 studs below the ground surface
+                local undergroundPosition = Vector3.new(
+                    rootPart.Position.X, 
+                    raycast.Position.Y - 7, 
+                    rootPart.Position.Z
+                )
+                rootPart.CFrame = CFrame.new(undergroundPosition)
             else
-                for _, part in pairs(player.Character:GetChildren()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                        part.CanCollide = true
-                    end
+                -- If no ground found, just move down
+                rootPart.CFrame = rootPart.CFrame - Vector3.new(0, 10, 0)
+            end
+        end)
+        
+        -- Keep player underground and maintain collision state
+        connections.underground = RunService.Heartbeat:Connect(function()
+            if not Movement.undergroundEnabled then return end
+            if not refreshReferences() or not rootPart or not player.Character then return end
+            
+            -- Ensure all parts remain non-collidable
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+            
+            -- Prevent player from floating up by checking if they're above ground
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local upwardRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 100, 0), raycastParams)
+            if upwardRaycast and upwardRaycast.Instance then
+                local groundLevel = upwardRaycast.Position.Y
+                local playerLevel = rootPart.Position.Y
+                
+                -- If player is too close to surface (less than 3 studs below), push them down
+                if playerLevel > groundLevel - 3 then
+                    rootPart.CFrame = CFrame.new(
+                        rootPart.Position.X,
+                        groundLevel - 7,
+                        rootPart.Position.Z
+                    )
                 end
             end
         end)
     else
-        if refreshReferences() and player.Character then
+        -- When disabled, teleport player back to surface
+        if refreshReferences() and rootPart and player.Character then
+            -- First, restore collision for body parts (except HumanoidRootPart)
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
+            end
+            
+            -- Find ground surface above player
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            -- Cast ray upward to find surface
+            local upwardRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 1000, 0), raycastParams)
+            if upwardRaycast and upwardRaycast.Instance then
+                -- Teleport player to surface + 3 studs above ground
+                local surfacePosition = Vector3.new(
+                    rootPart.Position.X,
+                    upwardRaycast.Position.Y + 3,
+                    rootPart.Position.Z
+                )
+                rootPart.CFrame = CFrame.new(surfacePosition)
+            else
+                -- If no surface found above, just move player up significantly
+                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 50, 0)
+            end
+            
+            -- Wait a bit then ensure collision is restored
+            task.wait(0.1)
             for _, part in pairs(player.Character:GetChildren()) do
                 if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                     part.CanCollide = true
