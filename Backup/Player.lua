@@ -33,16 +33,66 @@ Player.magnetEnabled = false
 Player.magnetOffset = Vector3.new(2, 0, -5) -- Adjusted: 5 studs in front, 2 studs left
 Player.magnetPlayerPositions = {}
 
+-- Underground variables
+Player.undergroundEnabled = false
+Player.originalYPosition = 0
+
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 local EmoteGuiFrame
 
--- Force Field (God Mode replacement)
+-- Underground feature (FIXED - Manual control)
+local function toggleUnderground(enabled)
+    Player.undergroundEnabled = enabled
+    if not Player.rootPart or not humanoid then
+        warn("Cannot toggle underground: Missing rootPart or humanoid")
+        return
+    end
+    
+    if enabled then
+        -- Store original Y position
+        Player.originalYPosition = Player.rootPart.Position.Y
+        
+        -- Move character 10 studs underground
+        Player.rootPart.CFrame = Player.rootPart.CFrame - Vector3.new(0, 10, 0)
+        
+        -- Let player move manually but maintain underground position
+        connections.underground = RunService.Heartbeat:Connect(function()
+            if Player.undergroundEnabled and Player.rootPart then
+                -- Only adjust Y position if player tries to go above ground
+                local currentPos = Player.rootPart.Position
+                local targetY = Player.originalYPosition - 10
+                
+                if currentPos.Y > targetY + 5 then -- Allow some tolerance
+                    Player.rootPart.Position = Vector3.new(currentPos.X, targetY, currentPos.Z)
+                end
+            end
+        end)
+        
+        print("Underground mode enabled - you can move manually while staying underground")
+    else
+        if connections.underground then
+            connections.underground:Disconnect()
+            connections.underground = nil
+        end
+        
+        -- Return to original position
+        if Player.rootPart then
+            local currentPos = Player.rootPart.Position
+            Player.rootPart.Position = Vector3.new(currentPos.X, Player.originalYPosition, currentPos.Z)
+        end
+        
+        print("Underground mode disabled")
+    end
+end
+
+-- Force Field (FIXED - True invincibility)
 local function toggleForceField(enabled)
     Player.forceFieldEnabled = enabled
     if enabled then
         if player.Character then
+            -- Create visual force field
             if not player.Character:FindFirstChild("ForceField") then
                 local forceField = Instance.new("ForceField")
                 forceField.Parent = player.Character
@@ -50,6 +100,7 @@ local function toggleForceField(enabled)
                 print("Force Field enabled")
             end
             
+            -- TRUE INVINCIBILITY - Hook all damage sources
             connections.forcefield = player.CharacterAdded:Connect(function(character)
                 if Player.forceFieldEnabled then
                     task.wait(0.1)
@@ -57,25 +108,84 @@ local function toggleForceField(enabled)
                         local forceField = Instance.new("ForceField")
                         forceField.Parent = character
                         forceField.Visible = false
-                        print("Force Field reapplied after respawn")
+                    end
+                    
+                    local humanoid = character:WaitForChild("Humanoid", 5)
+                    if humanoid then
+                        -- Set max health to huge and maintain it
+                        humanoid.MaxHealth = math.huge
+                        humanoid.Health = math.huge
+                        
+                        -- Block all damage
+                        connections.healthChanged = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                            if Player.forceFieldEnabled and humanoid.Health < math.huge then
+                                humanoid.Health = math.huge
+                            end
+                        end)
+                        
+                        -- Block damage from humanoid state changes
+                        connections.stateChanged = humanoid.StateChanged:Connect(function(oldState, newState)
+                            if Player.forceFieldEnabled then
+                                -- Prevent death and damage states
+                                if newState == Enum.HumanoidStateType.Dead or 
+                                   newState == Enum.HumanoidStateType.Physics or
+                                   newState == Enum.HumanoidStateType.FallingDown then
+                                    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                                    humanoid.Health = math.huge
+                                end
+                            end
+                        end)
+                        
+                        -- Block taking damage event
+                        if humanoid:FindFirstChild("TakeDamage") then
+                            connections.takeDamage = humanoid.TakeDamage:Connect(function()
+                                if Player.forceFieldEnabled then
+                                    humanoid.Health = math.huge
+                                end
+                            end)
+                        end
+                        
+                        print("Force Field reapplied after respawn with full invincibility")
                     end
                 end
             end)
             
+            -- Apply to current character
             local humanoid = player.Character:FindFirstChild("Humanoid")
             if humanoid then
                 humanoid.MaxHealth = math.huge
                 humanoid.Health = math.huge
-                humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-                    if Player.forceFieldEnabled then
+                
+                connections.healthChanged = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                    if Player.forceFieldEnabled and humanoid.Health < math.huge then
                         humanoid.Health = math.huge
                     end
                 end)
+                
+                connections.stateChanged = humanoid.StateChanged:Connect(function(oldState, newState)
+                    if Player.forceFieldEnabled then
+                        if newState == Enum.HumanoidStateType.Dead or 
+                           newState == Enum.HumanoidStateType.Physics or
+                           newState == Enum.HumanoidStateType.FallingDown then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                            humanoid.Health = math.huge
+                        end
+                    end
+                end)
+                
+                if humanoid:FindFirstChild("TakeDamage") then
+                    connections.takeDamage = humanoid.TakeDamage:Connect(function()
+                        if Player.forceFieldEnabled then
+                            humanoid.Health = math.huge
+                        end
+                    end)
+                end
             end
         else
             warn("Cannot enable Force Field: No character found")
         end
     else
+        -- Disable force field
         if player.Character then
             if player.Character:FindFirstChild("ForceField") then
                 player.Character.ForceField:Destroy()
@@ -87,9 +197,22 @@ local function toggleForceField(enabled)
             end
         end
         
+        -- Disconnect all force field connections
         if connections.forcefield then
             connections.forcefield:Disconnect()
             connections.forcefield = nil
+        end
+        if connections.healthChanged then
+            connections.healthChanged:Disconnect()
+            connections.healthChanged = nil
+        end
+        if connections.stateChanged then
+            connections.stateChanged:Disconnect()
+            connections.stateChanged = nil
+        end
+        if connections.takeDamage then
+            connections.takeDamage:Disconnect()
+            connections.takeDamage = nil
         end
         print("Force Field disabled")
     end
@@ -341,7 +464,7 @@ local function bringPlayer(targetPlayer)
     return true
 end
 
--- Magnet Players
+-- Magnet Players (FIXED - Better handling of new players)
 local function toggleMagnetPlayers(enabled)
     Player.magnetEnabled = enabled
     
@@ -349,9 +472,11 @@ local function toggleMagnetPlayers(enabled)
         print("Activating magnet players...")
         Player.magnetPlayerPositions = {}
         
+        -- Apply magnet to existing players
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                 Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
+                print("Magnet applied to existing player: " .. p.Name)
             end
         end
         
@@ -380,20 +505,33 @@ local function toggleMagnetPlayers(enabled)
             end
         end)
         
+        -- FIXED: Better handling for new players joining
         connections.magnetNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
             if Player.magnetEnabled and newPlayer ~= player then
-                newPlayer.CharacterAdded:Connect(function(character)
-                    task.wait(0.5)
-                    if character:FindFirstChild("HumanoidRootPart") then
-                        Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart
-                        print("Magnet applied to new player: " .. newPlayer.Name)
+                print("New player detected for magnet: " .. newPlayer.Name)
+                
+                -- Handle if player already has character
+                if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    task.wait(1) -- Wait a bit longer for character to fully load
+                    if Player.magnetEnabled then -- Check if still enabled
+                        Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart
+                        print("Magnet applied to new player (existing character): " .. newPlayer.Name)
+                    end
+                end
+                
+                -- Handle character spawning
+                local charConnection
+                charConnection = newPlayer.CharacterAdded:Connect(function(character)
+                    if Player.magnetEnabled then
+                        task.wait(1) -- Wait for character to fully load
+                        if character:FindFirstChild("HumanoidRootPart") and Player.magnetEnabled then
+                            Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart
+                            print("Magnet applied to new player (new character): " .. newPlayer.Name)
+                        end
+                    else
+                        charConnection:Disconnect()
                     end
                 end)
-                if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    task.wait(0.5)
-                    Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart
-                    print("Magnet applied to existing player: " .. newPlayer.Name)
-                end
             end
         end)
         
@@ -401,10 +539,11 @@ local function toggleMagnetPlayers(enabled)
             if Player.magnetEnabled then
                 task.wait(0.5)
                 Player.rootPart = character:FindFirstChild("HumanoidRootPart")
+                -- Reapply magnet to all players
                 for _, p in pairs(Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                         Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
-                        print("Magnet reapplied to player: " .. p.Name)
+                        print("Magnet reapplied to player after our respawn: " .. p.Name)
                     end
                 end
             end
@@ -507,7 +646,7 @@ local function setupPlayerMonitoring(targetPlayer)
     Player.playerConnections[targetPlayer] = {}
     
     Player.playerConnections[targetPlayer].characterAdded = targetPlayer.CharacterAdded:Connect(function(character)
-        task.wait(0.5)
+        task.wait(1) -- Wait longer for character to fully load
         
         if Player.freezeEnabled then
             freezePlayer(targetPlayer)
@@ -541,13 +680,19 @@ local function setupPlayerMonitoring(targetPlayer)
         end
     end)
     
-    if Player.freezeEnabled and targetPlayer.Character then
-        freezePlayer(targetPlayer)
-    end
-    
-    if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart
-        print("Magnet applied to player: " .. targetPlayer.Name)
+    -- Apply effects to existing character
+    if targetPlayer.Character then
+        task.wait(0.5) -- Wait for character to be ready
+        
+        if Player.freezeEnabled then
+            freezePlayer(targetPlayer)
+            print("Applied freeze to existing player: " .. targetPlayer.Name)
+        end
+        
+        if Player.magnetEnabled and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart
+            print("Applied magnet to existing player: " .. targetPlayer.Name)
+        end
     end
     
     if Player.noDeathAnimationEnabled then
@@ -780,7 +925,7 @@ local function toggleFollowPlayer(enabled)
     return true
 end
 
--- Freeze Players
+-- Freeze Players (FIXED - Better handling of new players)
 local function toggleFreezePlayers(enabled)
     Player.freezeEnabled = enabled
     
@@ -788,30 +933,44 @@ local function toggleFreezePlayers(enabled)
         print("Activating freeze players...")
         Player.frozenPlayerPositions = {}
         
+        -- Apply freeze to existing players
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player then
                 setupPlayerMonitoring(p)
+                task.wait(0.1) -- Small delay between players
                 freezePlayer(p)
             end
         end
         
-        if not connections.freezeNewPlayers then
-            connections.freezeNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
-                if Player.freezeEnabled and newPlayer ~= player then
-                    print("New player joined, setting up freeze monitoring: " .. newPlayer.Name)
-                    setupPlayerMonitoring(newPlayer)
-                    
-                    if newPlayer.Character then
-                        task.wait(0.5)
-                        freezePlayer(newPlayer)
-                    else
-                        newPlayer.CharacterAdded:Wait()
-                        task.wait(0.5)
+        -- FIXED: Better handling for new players joining
+        connections.freezeNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
+            if Player.freezeEnabled and newPlayer ~= player then
+                print("New player detected for freeze: " .. newPlayer.Name)
+                setupPlayerMonitoring(newPlayer)
+                
+                -- Handle if player already has character
+                if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    task.wait(1) -- Wait longer for character to fully load
+                    if Player.freezeEnabled then -- Check if still enabled
                         freezePlayer(newPlayer)
                     end
                 end
-            end)
-        end
+                
+                -- Handle character spawning
+                local charConnection
+                charConnection = newPlayer.CharacterAdded:Connect(function(character)
+                    if Player.freezeEnabled then
+                        task.wait(1) -- Wait for character to fully load
+                        if character:FindFirstChild("HumanoidRootPart") and Player.freezeEnabled then
+                            freezePlayer(newPlayer)
+                            print("Auto-froze new player after spawn: " .. newPlayer.Name)
+                        end
+                    else
+                        charConnection:Disconnect()
+                    end
+                end)
+            end
+        end)
         
         connections.freeze = RunService.Heartbeat:Connect(function()
             if Player.freezeEnabled then
@@ -1393,6 +1552,7 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createButton("Emote Menu", showEmoteGui, "Player")
     createToggleButton("Force Field", toggleForceField, "Player")
     createToggleButton("Anti AFK", toggleAntiAFK, "Player")
+    createToggleButton("Underground", toggleUnderground, "Player")
     createToggleButton("Freeze Players", toggleFreezePlayers, "Player")
     createToggleButton("Follow Player", toggleFollowPlayer, "Player")
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
@@ -1406,6 +1566,7 @@ function Player.resetStates()
     print("Resetting Player states...")
     Player.forceFieldEnabled = false
     Player.antiAFKEnabled = false
+    Player.undergroundEnabled = false
     Player.freezeEnabled = false
     Player.followEnabled = false
     Player.fastRespawnEnabled = false
@@ -1414,6 +1575,7 @@ function Player.resetStates()
     
     toggleForceField(false)
     toggleAntiAFK(false)
+    toggleUnderground(false)
     toggleFreezePlayers(false)
     toggleFastRespawn(false)
     toggleNoDeathAnimation(false)
@@ -1774,6 +1936,7 @@ function Player.init(deps)
     
     Player.forceFieldEnabled = false
     Player.antiAFKEnabled = false
+    Player.undergroundEnabled = false
     Player.freezeEnabled = false
     Player.followEnabled = false
     Player.fastRespawnEnabled = false
@@ -1794,19 +1957,31 @@ function Player.init(deps)
     Player.followPathfinding = nil
     Player.deathAnimationConnections = {}
     Player.magnetPlayerPositions = {}
+    Player.originalYPosition = 0
     
     pcall(initUI)
     pcall(Player.setupPlayerEvents)
     
-    -- Handle local player respawn for magnet
+    -- Handle local player respawn for magnet and underground
     connections.localPlayerRespawn = player.CharacterAdded:Connect(function(newCharacter)
         task.wait(0.5)
         if newCharacter:FindFirstChild("HumanoidRootPart") then
             Player.rootPart = newCharacter.HumanoidRootPart
             humanoid = newCharacter:FindFirstChild("Humanoid")
+            
+            -- Store original Y position for underground
+            if Player.rootPart then
+                Player.originalYPosition = Player.rootPart.Position.Y
+            end
+            
             if Player.magnetEnabled then
                 print("Local player respawned, reapplying magnet...")
                 toggleMagnetPlayers(true)
+            end
+            
+            if Player.undergroundEnabled then
+                print("Local player respawned, reapplying underground...")
+                toggleUnderground(true)
             end
         end
     end)
@@ -1827,6 +2002,7 @@ function Player.setupPlayerEvents()
     Players.PlayerAdded:Connect(function(p)
         if p ~= player then
             print("New player joined: " .. p.Name)
+            task.wait(0.5) -- Wait a bit for player to fully load
             setupPlayerMonitoring(p)
             Player.updatePlayerList()
         end
