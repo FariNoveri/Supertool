@@ -1,5 +1,5 @@
-
--- Visual-related features for MinimalHackGUI by Fari Noveri, including ESP, Freecam, Fullbright, Flashlight, Time Modes, and Low Detail Mode for mobile
+-- Enhanced Visual-related features with Penetration, Auto-aim, and Health-based ESP
+-- Enhanced by request for penetration through objects, auto-aim, and health-based ESP colors
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
@@ -15,33 +15,326 @@ Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.espEnabled = false
-Visual.currentTimeMode = "normal" -- normal, morning, day, evening, night
-Visual.joystickDelta = Vector2.new(0, 0) -- Global for Freecam movement
+Visual.penetrationEnabled = false -- New feature
+Visual.autoAimEnabled = false -- New feature
+Visual.currentTimeMode = "normal"
+Visual.joystickDelta = Vector2.new(0, 0)
 Visual.character = nil
 local flashlight
-local pointLight -- Fallback for broader illumination
-local espHighlights = {} -- Store Highlight instances for ESP
-local defaultLightingSettings = {} -- Store default lighting settings
-local joystickFrame -- Virtual joystick for mobile Freecam
+local pointLight
+local espHighlights = {}
+local defaultLightingSettings = {}
+local joystickFrame
 local joystickKnob
-local touchStartPos -- Track swipe for rotation
+local touchStartPos
 local lastYaw, lastPitch = 0, 0
-local foliageStates = {} -- Store original foliage properties for restoration
-local processedObjects = {} -- Track processed objects for low detail mode
+local foliageStates = {}
+local processedObjects = {}
 local freecamSpeed = 50
 local cameraSensitivity = 0.003
+
+-- New variables for enhanced features
+local penetrationConnections = {}
+local autoAimConnections = {}
+local lastAutoAimTarget = nil
+local autoAimCooldown = 0
+
+-- Function to get enemy health and determine color
+local function getHealthColor(enemy)
+    if not enemy or not enemy.Character then
+        return Color3.fromRGB(0, 0, 0) -- Black for dead/no character
+    end
+    
+    local humanoid = enemy.Character:FindFirstChild("Humanoid")
+    if not humanoid then
+        return Color3.fromRGB(0, 0, 0) -- Black for no humanoid
+    end
+    
+    local healthPercent = humanoid.Health / humanoid.MaxHealth
+    
+    if humanoid.Health <= 0 then
+        return Color3.fromRGB(0, 0, 0) -- Black for dead
+    elseif healthPercent >= 0.8 then
+        return Color3.fromRGB(0, 100, 255) -- Blue for full health
+    elseif healthPercent >= 0.4 then
+        return Color3.fromRGB(255, 255, 0) -- Yellow for half health
+    else
+        return Color3.fromRGB(255, 0, 0) -- Red for low health
+    end
+end
+
+-- Function to check if enemy is behind cover
+local function isEnemyBehindCover(enemyPosition)
+    if not Visual.penetrationEnabled then
+        return false -- If penetration is disabled, don't ignore cover
+    end
+    
+    local camera = workspace.CurrentCamera
+    local rayDirection = (enemyPosition - camera.CFrame.Position).Unit * 1000
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {player.Character}
+    
+    local raycastResult = workspace:Raycast(camera.CFrame.Position, rayDirection, raycastParams)
+    
+    if raycastResult then
+        local hitPart = raycastResult.Instance
+        local hitCharacter = hitPart.Parent
+        
+        -- If we hit the enemy directly, they're not behind cover
+        if hitCharacter and hitCharacter:FindFirstChild("Humanoid") then
+            return false
+        end
+        
+        -- If we hit something else first, enemy is behind cover
+        return true
+    end
+    
+    return false
+end
+
+-- Function to find nearest visible enemy for auto-aim
+local function findNearestEnemy()
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+    
+    local playerPosition = player.Character.HumanoidRootPart.Position
+    local nearestEnemy = nil
+    local nearestDistance = math.huge
+    
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local enemyPosition = otherPlayer.Character.HumanoidRootPart.Position
+            local distance = (playerPosition - enemyPosition).Magnitude
+            
+            -- Check if enemy is closer and either not behind cover or penetration is enabled
+            if distance < nearestDistance then
+                local behindCover = isEnemyBehindCover(enemyPosition)
+                
+                -- Include enemy if penetration is enabled or they're not behind cover
+                if Visual.penetrationEnabled or not behindCover then
+                    nearestDistance = distance
+                    nearestEnemy = otherPlayer
+                end
+            end
+        end
+    end
+    
+    return nearestEnemy
+end
+
+-- Function to create penetrating projectile
+local function createPenetratingProjectile(startPos, targetPos)
+    if not Visual.penetrationEnabled then
+        return
+    end
+    
+    local direction = (targetPos - startPos).Unit
+    local distance = (targetPos - startPos).Magnitude
+    
+    -- Create visual effect for penetrating shot
+    local beam = Instance.new("Beam")
+    local attachment1 = Instance.new("Attachment")
+    local attachment2 = Instance.new("Attachment")
+    
+    -- Create temporary parts for beam attachments
+    local part1 = Instance.new("Part")
+    part1.Anchored = true
+    part1.CanCollide = false
+    part1.Transparency = 1
+    part1.Size = Vector3.new(0.1, 0.1, 0.1)
+    part1.Position = startPos
+    part1.Parent = workspace
+    
+    local part2 = Instance.new("Part")
+    part2.Anchored = true
+    part2.CanCollide = false
+    part2.Transparency = 1
+    part2.Size = Vector3.new(0.1, 0.1, 0.1)
+    part2.Position = targetPos
+    part2.Parent = workspace
+    
+    attachment1.Parent = part1
+    attachment2.Parent = part2
+    
+    beam.Attachment0 = attachment1
+    beam.Attachment1 = attachment2
+    beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+    beam.Width0 = 0.5
+    beam.Width1 = 0.5
+    beam.Transparency = NumberSequence.new(0)
+    beam.Parent = workspace
+    
+    -- Damage all enemies in line
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {player.Character}
+    
+    -- Multiple raycasts to hit through objects
+    local currentPos = startPos
+    local remainingDistance = distance
+    
+    while remainingDistance > 0 do
+        local rayDirection = direction * math.min(remainingDistance, 50)
+        local raycastResult = workspace:Raycast(currentPos, rayDirection, raycastParams)
+        
+        if raycastResult then
+            local hitPart = raycastResult.Instance
+            local hitCharacter = hitPart.Parent
+            
+            -- Check if we hit an enemy
+            if hitCharacter and hitCharacter:FindFirstChild("Humanoid") then
+                local enemyHumanoid = hitCharacter:FindFirstChild("Humanoid")
+                if enemyHumanoid and enemyHumanoid ~= humanoid then
+                    -- Deal damage (simulated)
+                    pcall(function()
+                        enemyHumanoid.Health = enemyHumanoid.Health - 50
+                        print("Penetrating hit on", hitCharacter.Name)
+                    end)
+                end
+            end
+            
+            -- Continue through the object
+            currentPos = raycastResult.Position + direction * 0.1
+            remainingDistance = remainingDistance - (raycastResult.Position - currentPos).Magnitude
+        else
+            break
+        end
+    end
+    
+    -- Clean up visual effect after delay
+    game:GetService("Debris"):AddItem(part1, 0.5)
+    game:GetService("Debris"):AddItem(part2, 0.5)
+    game:GetService("Debris"):AddItem(beam, 0.5)
+end
+
+-- Auto-aim function
+local function performAutoAim()
+    if not Visual.autoAimEnabled or autoAimCooldown > 0 then
+        return
+    end
+    
+    local nearestEnemy = findNearestEnemy()
+    if not nearestEnemy or not nearestEnemy.Character or not nearestEnemy.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    local camera = workspace.CurrentCamera
+    local enemyPosition = nearestEnemy.Character.HumanoidRootPart.Position
+    local playerPosition = camera.CFrame.Position
+    
+    -- Calculate aim direction
+    local aimDirection = (enemyPosition - playerPosition).Unit
+    local newCFrame = CFrame.lookAt(playerPosition, enemyPosition)
+    
+    -- Smoothly adjust camera to target
+    camera.CFrame = camera.CFrame:Lerp(newCFrame, 0.3)
+    
+    -- If penetration is enabled, create penetrating shot
+    if Visual.penetrationEnabled then
+        createPenetratingProjectile(playerPosition, enemyPosition)
+    end
+    
+    lastAutoAimTarget = nearestEnemy
+    autoAimCooldown = 0.5 -- Cooldown to prevent spam
+    
+    print("Auto-aimed at", nearestEnemy.Name)
+end
+
+-- Toggle penetration
+local function togglePenetration(enabled)
+    Visual.penetrationEnabled = enabled
+    print("Penetration Mode:", enabled)
+    
+    if enabled then
+        -- Monitor for shooting to enable penetration
+        if connections.penetrationMonitor then
+            connections.penetrationMonitor:Disconnect()
+        end
+        
+        connections.penetrationMonitor = UserInputService.InputBegan:Connect(function(input, processed)
+            if processed then return end
+            
+            -- Detect shooting (left mouse button or touch)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+               input.UserInputType == Enum.UserInputType.Touch then
+                
+                local camera = workspace.CurrentCamera
+                local nearestEnemy = findNearestEnemy()
+                
+                if nearestEnemy and nearestEnemy.Character and nearestEnemy.Character:FindFirstChild("HumanoidRootPart") then
+                    createPenetratingProjectile(camera.CFrame.Position, nearestEnemy.Character.HumanoidRootPart.Position)
+                end
+            end
+        end)
+    else
+        if connections.penetrationMonitor then
+            connections.penetrationMonitor:Disconnect()
+            connections.penetrationMonitor = nil
+        end
+    end
+end
+
+-- Toggle auto-aim
+local function toggleAutoAim(enabled)
+    Visual.autoAimEnabled = enabled
+    print("Auto-Aim:", enabled)
+    
+    if enabled then
+        -- Monitor for continuous auto-aim
+        if connections.autoAimUpdate then
+            connections.autoAimUpdate:Disconnect()
+        end
+        
+        connections.autoAimUpdate = RunService.Heartbeat:Connect(function(deltaTime)
+            if Visual.autoAimEnabled then
+                -- Reduce cooldown
+                if autoAimCooldown > 0 then
+                    autoAimCooldown = autoAimCooldown - deltaTime
+                end
+                
+                -- Auto-aim when shooting
+                if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                    performAutoAim()
+                end
+            end
+        end)
+        
+        -- Also trigger on touch for mobile
+        if connections.autoAimTouch then
+            connections.autoAimTouch:Disconnect()
+        end
+        
+        connections.autoAimTouch = UserInputService.TouchTap:Connect(function(touchPositions, processed)
+            if not processed and Visual.autoAimEnabled then
+                performAutoAim()
+            end
+        end)
+    else
+        if connections.autoAimUpdate then
+            connections.autoAimUpdate:Disconnect()
+            connections.autoAimUpdate = nil
+        end
+        if connections.autoAimTouch then
+            connections.autoAimTouch:Disconnect()
+            connections.autoAimTouch = nil
+        end
+    end
+end
 
 -- Time mode configurations
 local timeModeConfigs = {
     normal = {
-        ClockTime = nil, -- Use original
-        Brightness = nil, -- Use original
-        Ambient = nil, -- Use original
-        OutdoorAmbient = nil, -- Use original
-        ColorShift_Top = nil, -- Use original
-        ColorShift_Bottom = nil, -- Use original
-        SunAngularSize = nil, -- Use original
-        FogColor = nil -- Use original
+        ClockTime = nil,
+        Brightness = nil,
+        Ambient = nil,
+        OutdoorAmbient = nil,
+        ColorShift_Top = nil,
+        ColorShift_Bottom = nil,
+        SunAngularSize = nil,
+        FogColor = nil
     },
     morning = {
         ClockTime = 6.5,
@@ -85,7 +378,7 @@ local timeModeConfigs = {
     }
 }
 
--- Store original lighting settings (improved)
+-- Store original lighting settings
 local function storeOriginalLightingSettings()
     if not defaultLightingSettings.stored then
         defaultLightingSettings.stored = true
@@ -102,7 +395,6 @@ local function storeOriginalLightingSettings()
         defaultLightingSettings.SunAngularSize = Lighting.SunAngularSize
         defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration
         
-        -- Store rendering settings
         pcall(function()
             defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
             defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
@@ -114,12 +406,12 @@ local function storeOriginalLightingSettings()
     end
 end
 
--- Create virtual joystick for mobile Freecam (Fixed positioning)
+-- Create virtual joystick for mobile Freecam
 local function createJoystick()
     joystickFrame = Instance.new("Frame")
     joystickFrame.Name = "FreecamJoystick"
     joystickFrame.Size = UDim2.new(0, 120, 0, 120)
-    joystickFrame.Position = UDim2.new(0.05, 0, 0.75, 0) -- Bottom left corner
+    joystickFrame.Position = UDim2.new(0.05, 0, 0.75, 0)
     joystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     joystickFrame.BackgroundTransparency = 0.3
     joystickFrame.BorderSizePixel = 0
@@ -131,7 +423,6 @@ local function createJoystick()
     corner.CornerRadius = UDim.new(0.5, 0)
     corner.Parent = joystickFrame
 
-    -- Add outer ring for better visibility
     local outerRing = Instance.new("Frame")
     outerRing.Name = "OuterRing"
     outerRing.Size = UDim2.new(1, -4, 1, -4)
@@ -149,7 +440,7 @@ local function createJoystick()
     joystickKnob = Instance.new("Frame")
     joystickKnob.Name = "Knob"
     joystickKnob.Size = UDim2.new(0, 50, 0, 50)
-    joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25) -- Centered
+    joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
     joystickKnob.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
     joystickKnob.BackgroundTransparency = 0.1
     joystickKnob.BorderSizePixel = 0
@@ -160,11 +451,10 @@ local function createJoystick()
     knobCorner.CornerRadius = UDim.new(0.5, 0)
     knobCorner.Parent = joystickKnob
     
-    -- Add movement instruction text
     local instructionText = Instance.new("TextLabel")
     instructionText.Name = "Instruction"
     instructionText.Size = UDim2.new(0, 200, 0, 30)
-    instructionText.Position = UDim2.new(0, 0, 0, -40) -- Above joystick
+    instructionText.Position = UDim2.new(0, 0, 0, -40)
     instructionText.BackgroundTransparency = 1
     instructionText.Text = "Move: Left joystick | Look: Right side swipe"
     instructionText.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -176,7 +466,7 @@ local function createJoystick()
     instructionText.Parent = joystickFrame
 end
 
--- Handle joystick input for Freecam movement (Mobile only - Fixed)
+-- Handle joystick input for Freecam movement
 local function handleJoystickInput(input, processed)
     if not Visual.freecamEnabled or processed then return Vector2.new(0, 0) end
     
@@ -190,7 +480,6 @@ local function handleJoystickInput(input, processed)
             Height = joystickFrame.AbsoluteSize.Y
         }
         
-        -- Check if touch is within joystick area
         local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
                             touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
         
@@ -222,7 +511,7 @@ local function handleJoystickInput(input, processed)
     return Vector2.new(0, 0)
 end
 
--- Handle swipe for Freecam rotation (Mobile only - Fixed for right side)
+-- Handle swipe for Freecam rotation
 local function handleSwipe(input, processed)
     if not Visual.freecamEnabled or input.UserInputType ~= Enum.UserInputType.Touch or processed then return end
     
@@ -236,13 +525,11 @@ local function handleSwipe(input, processed)
         Height = joystickFrame.AbsoluteSize.Y
     }
     
-    -- Check if touch is within joystick area (ignore swipe if in joystick)
     local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
                         touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
     
-    if isInJoystick then return end -- Don't handle swipe if touching joystick
+    if isInJoystick then return end
     
-    -- Only handle swipe on right side of screen (better for right-handed users)
     local isRightSide = touchPos.X > screenSize.X * 0.5
     if not isRightSide then return end
     
@@ -258,13 +545,12 @@ local function handleSwipe(input, processed)
     end
 end
 
--- ESP (Fixed to detect all players including dead/respawning ones)
+-- Enhanced ESP with health-based colors
 local function toggleESP(enabled)
     Visual.espEnabled = enabled
     print("ESP:", enabled)
     
     if enabled then
-        -- Clean existing highlights first
         for _, highlight in pairs(espHighlights) do
             if highlight and highlight.Parent then
                 highlight:Destroy()
@@ -272,13 +558,11 @@ local function toggleESP(enabled)
         end
         espHighlights = {}
         
-        -- Function to create ESP for a character
         local function createESPForCharacter(character, targetPlayer)
             if not character or not character:FindFirstChild("HumanoidRootPart") then return end
             
             local isInvisible = false
             
-            -- Check for invisibility
             pcall(function()
                 for _, part in pairs(character:GetDescendants()) do
                     if part:IsA("BasePart") and part.Transparency >= 0.9 then
@@ -291,7 +575,6 @@ local function toggleESP(enabled)
                 end
             end)
             
-            -- Remove old highlight if exists
             if espHighlights[targetPlayer] then
                 espHighlights[targetPlayer]:Destroy()
                 espHighlights[targetPlayer] = nil
@@ -299,7 +582,10 @@ local function toggleESP(enabled)
             
             local highlight = Instance.new("Highlight")
             highlight.Name = "ESPHighlight"
-            highlight.FillColor = isInvisible and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
+            
+            -- Set color based on health
+            local healthColor = getHealthColor(targetPlayer)
+            highlight.FillColor = healthColor
             highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
             highlight.FillTransparency = isInvisible and 0.3 or 0.5
             highlight.OutlineTransparency = 0
@@ -316,6 +602,21 @@ local function toggleESP(enabled)
             end
         end
         
+        -- Update ESP colors based on health continuously
+        if connections.espHealthUpdate then
+            connections.espHealthUpdate:Disconnect()
+        end
+        connections.espHealthUpdate = RunService.Heartbeat:Connect(function()
+            if Visual.espEnabled then
+                for targetPlayer, highlight in pairs(espHighlights) do
+                    if targetPlayer and targetPlayer.Character and highlight and highlight.Parent then
+                        local newColor = getHealthColor(targetPlayer)
+                        highlight.FillColor = newColor
+                    end
+                end
+            end
+        end)
+        
         -- Handle new players joining
         if connections.espPlayerAdded then
             connections.espPlayerAdded:Disconnect()
@@ -323,7 +624,7 @@ local function toggleESP(enabled)
         connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
             if Visual.espEnabled and newPlayer ~= player then
                 newPlayer.CharacterAdded:Connect(function(character)
-                    task.wait(0.3) -- Longer delay to ensure character is fully loaded
+                    task.wait(0.3)
                     if Visual.espEnabled then
                         createESPForCharacter(character, newPlayer)
                     end
@@ -342,10 +643,9 @@ local function toggleESP(enabled)
             end
         end)
         
-        -- Handle character respawning for ALL players (including existing ones)
+        -- Handle character respawning
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player then
-                -- Disconnect old connections
                 if connections["espCharAdded" .. otherPlayer.UserId] then
                     connections["espCharAdded" .. otherPlayer.UserId]:Disconnect()
                 end
@@ -354,13 +654,12 @@ local function toggleESP(enabled)
                 end
                 
                 connections["espCharAdded" .. otherPlayer.UserId] = otherPlayer.CharacterAdded:Connect(function(character)
-                    task.wait(0.3) -- Longer delay
+                    task.wait(0.3)
                     if Visual.espEnabled then
                         createESPForCharacter(character, otherPlayer)
                     end
                 end)
                 
-                -- Also handle character removing (death)
                 connections["espCharRemoving" .. otherPlayer.UserId] = otherPlayer.CharacterRemoving:Connect(function()
                     if espHighlights[otherPlayer] then
                         espHighlights[otherPlayer]:Destroy()
@@ -370,7 +669,7 @@ local function toggleESP(enabled)
             end
         end
         
-        -- Continuous check for missed characters (backup system)
+        -- Backup check for missed characters
         if connections.espBackupCheck then
             connections.espBackupCheck:Disconnect()
         end
@@ -387,7 +686,11 @@ local function toggleESP(enabled)
         end)
         
     else
-        -- Clean up ALL connections
+        -- Clean up connections
+        if connections.espHealthUpdate then
+            connections.espHealthUpdate:Disconnect()
+            connections.espHealthUpdate = nil
+        end
         if connections.espPlayerLeaving then
             connections.espPlayerLeaving:Disconnect()
             connections.espPlayerLeaving = nil
@@ -401,7 +704,6 @@ local function toggleESP(enabled)
             connections.espBackupCheck = nil
         end
         
-        -- Clean up character connections
         for key, connection in pairs(connections) do
             if string.match(key, "espCharAdded") or string.match(key, "espCharRemoving") then
                 connection:Disconnect()
@@ -409,7 +711,6 @@ local function toggleESP(enabled)
             end
         end
         
-        -- Clean up highlights
         for _, highlight in pairs(espHighlights) do
             if highlight and highlight.Parent then
                 highlight:Destroy()
@@ -419,7 +720,7 @@ local function toggleESP(enabled)
     end
 end
 
--- Freecam (Fixed - Character stays completely still, camera moves freely)
+-- Freecam (keeping the same implementation as before)
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -427,7 +728,6 @@ local function toggleFreecam(enabled)
     if enabled then
         local camera = Workspace.CurrentCamera
         
-        -- Get current character and humanoid references
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
@@ -438,13 +738,11 @@ local function toggleFreecam(enabled)
             return
         end
         
-        -- Store original character position and completely freeze it
         Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
         Visual.originalJumpPower = currentHumanoid.JumpPower
         Visual.originalJumpHeight = currentHumanoid.JumpHeight
         Visual.originalPosition = currentRootPart.CFrame
         
-        -- Completely disable character movement
         currentHumanoid.PlatformStand = true
         currentHumanoid.WalkSpeed = 0
         currentHumanoid.JumpPower = 0
@@ -453,72 +751,59 @@ local function toggleFreecam(enabled)
         currentRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         currentRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
         
-        -- Setup camera for free flight
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
         
-        -- Initialize freecam position and rotation
         Visual.freecamCFrame = camera.CFrame
         Visual.freecamPosition = camera.CFrame.Position
         
-        -- Extract initial rotation from camera
         local _, yaw, pitch = camera.CFrame:ToEulerAnglesYXZ()
         lastYaw = yaw
         lastPitch = pitch
         
-        -- Get speed from settings
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
         
-        -- Show mobile controls
         if joystickFrame then
             joystickFrame.Visible = true
         end
         
-        -- Main freecam update loop
         if connections.freecam then
             connections.freecam:Disconnect()
         end
         connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
             if Visual.freecamEnabled then
-                -- Get current character references
                 local char = player.Character
                 local hum = char and char:FindFirstChild("Humanoid")
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 
                 local moveVector = Vector3.new()
                 
-                -- Calculate movement based on camera direction
                 local cameraCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
                 
-                -- Apply joystick movement (WASD-like controls)
                 if Visual.joystickDelta.Magnitude > 0.1 then
                     local forward = -cameraCFrame.LookVector * Visual.joystickDelta.Y
                     local right = cameraCFrame.RightVector * Visual.joystickDelta.X
                     moveVector = (forward + right) * freecamSpeed * deltaTime * Visual.joystickDelta.Magnitude
                 end
                 
-                -- Update position
                 Visual.freecamPosition = Visual.freecamPosition + moveVector
                 
-                -- Apply final camera transform
                 Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
                 camera.CFrame = Visual.freecamCFrame
                 
-                -- Ensure character stays completely frozen (use current character)
                 if hum and root and Visual.originalPosition then
                     hum.PlatformStand = true
                     hum.WalkSpeed = 0
                     hum.JumpPower = 0
                     hum.JumpHeight = 0
                     root.Anchored = true
-                    root.CFrame = Visual.originalPosition -- Force position back
+                    root.CFrame = Visual.originalPosition
                     root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                     root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
                 end
             end
         end)
         
-        -- Mobile touch controls
         if connections.touchInput then
             connections.touchInput:Disconnect()
         end
@@ -550,7 +835,6 @@ local function toggleFreecam(enabled)
         end)
         
     else
-        -- Cleanup connections
         if connections.freecam then
             connections.freecam:Disconnect()
             connections.freecam = nil
@@ -568,17 +852,14 @@ local function toggleFreecam(enabled)
             connections.touchEnded = nil
         end
         
-        -- Hide mobile controls
         if joystickFrame then
             joystickFrame.Visible = false
             joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
         end
         
-        -- Reset camera to normal
         local camera = Workspace.CurrentCamera
         camera.CameraType = Enum.CameraType.Custom
         
-        -- Get current character references
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
@@ -587,22 +868,18 @@ local function toggleFreecam(enabled)
             camera.CameraSubject = currentHumanoid
         end
         
-        -- Restore character movement
         if currentHumanoid and currentRootPart then
             currentHumanoid.PlatformStand = false
             currentRootPart.Anchored = false
             
-            -- Restore original stats
             currentHumanoid.WalkSpeed = Visual.originalWalkSpeed or (settings.WalkSpeed and settings.WalkSpeed.value) or 16
             currentHumanoid.JumpPower = Visual.originalJumpPower or ((settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50)
             currentHumanoid.JumpHeight = Visual.originalJumpHeight or (settings.JumpHeight and settings.JumpHeight.value) or 7.2
             
-            -- Reset camera position relative to character
             task.wait(0.1)
             camera.CFrame = CFrame.lookAt(currentRootPart.Position + Vector3.new(0, 2, 10), currentRootPart.Position)
         end
         
-        -- Reset freecam variables
         Visual.freecamPosition = nil
         Visual.freecamCFrame = nil
         Visual.joystickDelta = Vector2.new(0, 0)
@@ -611,7 +888,7 @@ local function toggleFreecam(enabled)
     end
 end
 
--- Time Mode Functions (Enhanced with persistence)
+-- Time Mode Functions
 local function setTimeMode(mode)
     storeOriginalLightingSettings()
     Visual.currentTimeMode = mode
@@ -623,14 +900,12 @@ local function setTimeMode(mode)
         return
     end
     
-    -- Apply settings
     for property, value in pairs(config) do
         if value ~= nil then
             pcall(function()
                 Lighting[property] = value
             end)
         else
-            -- Restore original value
             if defaultLightingSettings[property] ~= nil then
                 pcall(function()
                     Lighting[property] = defaultLightingSettings[property]
@@ -639,7 +914,6 @@ local function setTimeMode(mode)
         end
     end
     
-    -- Add persistent monitoring to prevent override
     if connections.timeModeMonitor then
         connections.timeModeMonitor:Disconnect()
     end
@@ -647,7 +921,6 @@ local function setTimeMode(mode)
     if mode ~= "normal" then
         connections.timeModeMonitor = RunService.Heartbeat:Connect(function()
             if Visual.currentTimeMode == mode then
-                -- Check if settings were overridden and restore them
                 local currentConfig = timeModeConfigs[mode]
                 for property, expectedValue in pairs(currentConfig) do
                     if expectedValue ~= nil then
@@ -700,7 +973,7 @@ local function toggleNight(enabled)
     end
 end
 
--- Fullbright (Same as before)
+-- Fullbright
 local function toggleFullbright(enabled)
     Visual.fullbrightEnabled = enabled
     print("Fullbright:", enabled)
@@ -722,15 +995,13 @@ local function toggleFullbright(enabled)
     end
 end
 
--- Flashlight (Completely Fixed - Enhanced)
+-- Flashlight
 local function toggleFlashlight(enabled)
     Visual.flashlightEnabled = enabled
     print("Flashlight:", enabled)
     
     if enabled then
-        -- Function to create/setup flashlight
         local function setupFlashlight()
-            -- Clean up existing lights
             if flashlight then
                 flashlight:Destroy()
                 flashlight = nil
@@ -740,7 +1011,6 @@ local function toggleFlashlight(enabled)
                 pointLight = nil
             end
             
-            -- Create new flashlight (SpotLight)
             flashlight = Instance.new("SpotLight")
             flashlight.Name = "Flashlight"
             flashlight.Brightness = 20
@@ -750,7 +1020,6 @@ local function toggleFlashlight(enabled)
             flashlight.Color = Color3.fromRGB(255, 255, 200)
             flashlight.Enabled = true
             
-            -- Create PointLight for broader illumination
             pointLight = Instance.new("PointLight")
             pointLight.Name = "FlashlightPoint"
             pointLight.Brightness = 8
@@ -758,7 +1027,6 @@ local function toggleFlashlight(enabled)
             pointLight.Color = Color3.fromRGB(255, 255, 200)
             pointLight.Enabled = true
             
-            -- Parent to player's head
             local character = player.Character
             local head = character and character:FindFirstChild("Head")
             
@@ -767,7 +1035,6 @@ local function toggleFlashlight(enabled)
                 pointLight.Parent = head
                 print("Flashlight attached to head")
             else
-                -- Fallback to camera
                 local camera = Workspace.CurrentCamera
                 flashlight.Parent = camera
                 pointLight.Parent = camera
@@ -775,10 +1042,8 @@ local function toggleFlashlight(enabled)
             end
         end
         
-        -- Setup flashlight initially
         setupFlashlight()
         
-        -- Update flashlight direction and ensure it stays attached
         if connections.flashlight then
             connections.flashlight:Disconnect()
         end
@@ -788,12 +1053,10 @@ local function toggleFlashlight(enabled)
                 local head = character and character:FindFirstChild("Head")
                 local camera = Workspace.CurrentCamera
                 
-                -- Re-create flashlight if missing
                 if not flashlight or not flashlight.Parent then
                     setupFlashlight()
                 end
                 
-                -- Ensure proper parenting
                 if head and (not flashlight.Parent or flashlight.Parent ~= head) then
                     flashlight.Parent = head
                     pointLight.Parent = head
@@ -802,7 +1065,6 @@ local function toggleFlashlight(enabled)
                     pointLight.Parent = camera
                 end
                 
-                -- Ensure lights are enabled
                 if flashlight then
                     flashlight.Enabled = true
                 end
@@ -810,10 +1072,8 @@ local function toggleFlashlight(enabled)
                     pointLight.Enabled = true
                 end
                 
-                -- Update light direction to follow camera
                 pcall(function()
                     if head and flashlight.Parent == head then
-                        -- Align head to camera direction for better flashlight
                         local cameraDirection = camera.CFrame.LookVector
                         head.CFrame = CFrame.lookAt(head.Position, head.Position + cameraDirection)
                     end
@@ -821,21 +1081,19 @@ local function toggleFlashlight(enabled)
             end
         end)
         
-        -- Handle character respawning
         if connections.flashlightCharAdded then
             connections.flashlightCharAdded:Disconnect()
         end
         if player then
             connections.flashlightCharAdded = player.CharacterAdded:Connect(function()
                 if Visual.flashlightEnabled then
-                    task.wait(1) -- Wait for character to fully load
+                    task.wait(1)
                     setupFlashlight()
                 end
             end)
         end
         
     else
-        -- Clean up connections
         if connections.flashlight then
             connections.flashlight:Disconnect()
             connections.flashlight = nil
@@ -845,7 +1103,6 @@ local function toggleFlashlight(enabled)
             connections.flashlightCharAdded = nil
         end
         
-        -- Clean up lights
         if flashlight then
             flashlight:Destroy()
             flashlight = nil
@@ -857,7 +1114,7 @@ local function toggleFlashlight(enabled)
     end
 end
 
--- Low Detail Mode (Enhanced - Better optimization with proper grass removal)
+-- Low Detail Mode
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
@@ -865,14 +1122,12 @@ local function toggleLowDetail(enabled)
     storeOriginalLightingSettings()
     
     if enabled then
-        -- Apply lighting changes for performance
         Lighting.GlobalShadows = false
         Lighting.Brightness = 0.3
         Lighting.FogEnd = 200
         Lighting.FogStart = 0
         Lighting.FogColor = Color3.fromRGB(80, 80, 80)
         
-        -- Set rendering quality to lowest
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
             renderSettings.QualityLevel = Enum.QualityLevel.Level01
@@ -884,10 +1139,8 @@ local function toggleLowDetail(enabled)
             gameSettings.RenderDistance = 50
         end)
         
-        -- Enhanced terrain processing with proper grass/decoration removal
         pcall(function()
             local terrain = Workspace.Terrain
-            -- Store original terrain settings
             if not foliageStates.terrainSettings then
                 foliageStates.terrainSettings = {
                     Decoration = terrain.Decoration,
@@ -898,21 +1151,19 @@ local function toggleLowDetail(enabled)
                 }
             end
             
-            -- Apply low detail terrain settings
-            terrain.Decoration = false -- This removes grass/decorations
+            terrain.Decoration = false
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
             terrain.WaterTransparency = 0.9
             
-            -- Force remove terrain decorations more aggressively
             spawn(function()
                 pcall(function()
                     local success = pcall(function()
                         terrain:ReadVoxels(workspace.CurrentCamera.CFrame.Position - Vector3.new(100, 100, 100), Vector3.new(200, 200, 200))
                     end)
                     if success then
-                        terrain.Decoration = false -- Re-apply to ensure it sticks
+                        terrain.Decoration = false
                     end
                 end)
             end)
@@ -920,7 +1171,6 @@ local function toggleLowDetail(enabled)
             print("Terrain decorations (grass) disabled")
         end)
         
-        -- Process objects more aggressively for low detail
         spawn(function()
             local processCount = 0
             local pixelMaterial = Enum.Material.SmoothPlastic
@@ -930,7 +1180,6 @@ local function toggleLowDetail(enabled)
                     processedObjects[obj] = true
                     
                     pcall(function()
-                        -- Enhanced grass/foliage detection
                         local name = obj.Name:lower()
                         local parent = obj.Parent and obj.Parent.Name:lower() or ""
                         local isGrassOrFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
@@ -964,11 +1213,10 @@ local function toggleLowDetail(enabled)
                                     CanCollide = obj.CanCollide,
                                     Anchored = obj.Anchored
                                 }
-                                obj.Transparency = 1 -- Hide foliage completely
-                                obj.CanCollide = false -- Remove collision for performance
-                                obj.Anchored = true -- Prevent physics calculations
+                                obj.Transparency = 1
+                                obj.CanCollide = false
+                                obj.Anchored = true
                             else
-                                -- Make regular parts pixelated/low detail
                                 foliageStates[obj] = { 
                                     Material = obj.Material, 
                                     Reflectance = obj.Reflectance, 
@@ -978,7 +1226,6 @@ local function toggleLowDetail(enabled)
                                 obj.Material = pixelMaterial
                                 obj.Reflectance = 0
                                 obj.CastShadow = false
-                                -- Simplify colors to make it more pixelated
                                 local r = math.floor(obj.Color.R * 4) / 4
                                 local g = math.floor(obj.Color.G * 4) / 4
                                 local b = math.floor(obj.Color.B * 4) / 4
@@ -994,7 +1241,7 @@ local function toggleLowDetail(enabled)
                                     CanCollide = obj.CanCollide,
                                     Anchored = obj.Anchored
                                 }
-                                obj.Transparency = 1 -- Hide foliage
+                                obj.Transparency = 1
                                 obj.TextureID = ""
                                 obj.CanCollide = false
                                 obj.Anchored = true
@@ -1004,9 +1251,8 @@ local function toggleLowDetail(enabled)
                                     Material = obj.Material,
                                     Color = obj.Color
                                 }
-                                obj.TextureID = "" -- Remove detailed textures
+                                obj.TextureID = ""
                                 obj.Material = pixelMaterial
-                                -- Pixelate colors
                                 local r = math.floor(obj.Color.R * 4) / 4
                                 local g = math.floor(obj.Color.G * 4) / 4
                                 local b = math.floor(obj.Color.B * 4) / 4
@@ -1015,24 +1261,21 @@ local function toggleLowDetail(enabled)
                             
                         elseif obj:IsA("SpecialMesh") then
                             foliageStates[obj] = { TextureId = obj.TextureId }
-                            obj.TextureId = "" -- Remove mesh textures
+                            obj.TextureId = ""
                             
                         elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-                            -- Keep essential lights but reduce their intensity
                             if not (obj.Name == "Flashlight" or obj.Name == "FlashlightPoint") then
                                 foliageStates[obj] = { Enabled = obj.Enabled, Brightness = obj.Brightness }
                                 obj.Brightness = obj.Brightness * 0.3
                             end
                             
                         elseif obj:IsA("Sound") then
-                            -- Reduce sound quality for performance
                             foliageStates[obj] = { Volume = obj.Volume }
                             obj.Volume = obj.Volume * 0.5
                         end
                     end)
                     
                     processCount = processCount + 1
-                    -- Yield every 30 objects to prevent lag
                     if processCount % 30 == 0 then
                         RunService.Heartbeat:Wait()
                     end
@@ -1040,14 +1283,12 @@ local function toggleLowDetail(enabled)
             end
         end)
         
-        -- Enhanced streaming settings for better performance
         pcall(function()
             Workspace.StreamingEnabled = true
             Workspace.StreamingMinRadius = 8
             Workspace.StreamingTargetRadius = 16
         end)
         
-        -- Disable post-processing effects
         pcall(function()
             for _, effect in pairs(Lighting:GetChildren()) do
                 if effect:IsA("PostEffect") then
@@ -1057,7 +1298,6 @@ local function toggleLowDetail(enabled)
             end
         end)
         
-        -- Add persistent monitoring for terrain decorations
         if connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
         end
@@ -1066,7 +1306,7 @@ local function toggleLowDetail(enabled)
                 pcall(function()
                     local terrain = Workspace.Terrain
                     if terrain.Decoration == true then
-                        terrain.Decoration = false -- Force disable grass
+                        terrain.Decoration = false
                         print("Re-disabled terrain decorations")
                     end
                 end)
@@ -1074,13 +1314,11 @@ local function toggleLowDetail(enabled)
         end)
         
     else
-        -- Stop monitoring
         if connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
             connections.lowDetailMonitor = nil
         end
         
-        -- Restore all settings efficiently
         if defaultLightingSettings.stored then
             Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
             Lighting.Brightness = defaultLightingSettings.Brightness or 1
@@ -1100,7 +1338,6 @@ local function toggleLowDetail(enabled)
             gameSettings.RenderDistance = 500
         end)
         
-        -- Restore terrain settings
         if foliageStates.terrainSettings then
             pcall(function()
                 local terrain = Workspace.Terrain
@@ -1113,7 +1350,6 @@ local function toggleLowDetail(enabled)
             foliageStates.terrainSettings = nil
         end
         
-        -- Restore objects efficiently
         spawn(function()
             local restoreCount = 0
             for obj, state in pairs(foliageStates) do
@@ -1177,17 +1413,15 @@ local function toggleLowDetail(enabled)
                     end)
                     
                     restoreCount = restoreCount + 1
-                    -- Yield every 30 objects to prevent lag
                     if restoreCount % 30 == 0 then
                         RunService.Heartbeat:Wait()
                     end
                 end
             end
-            foliageStates = {} -- Clear after restoring
-            processedObjects = {} -- Clear processed objects
+            foliageStates = {}
+            processedObjects = {}
         end)
         
-        -- Restore streaming
         pcall(function()
             Workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
             Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
@@ -1211,6 +1445,10 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Low Detail Mode", toggleLowDetail)
     createToggleButton("ESP", toggleESP)
     
+    -- New enhanced features
+    createToggleButton("Penetration Mode", togglePenetration)
+    createToggleButton("Auto-Aim", toggleAutoAim)
+    
     -- Time mode features
     createToggleButton("Morning Mode", toggleMorning)
     createToggleButton("Day Mode", toggleDay)
@@ -1225,9 +1463,10 @@ function Visual.resetStates()
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.penetrationEnabled = false
+    Visual.autoAimEnabled = false
     Visual.currentTimeMode = "normal"
     
-    -- Disconnect monitoring connections
     if connections.timeModeMonitor then
         connections.timeModeMonitor:Disconnect()
         connections.timeModeMonitor = nil
@@ -1242,15 +1481,17 @@ function Visual.resetStates()
     toggleFlashlight(false)
     toggleLowDetail(false)
     toggleESP(false)
+    togglePenetration(false)
+    toggleAutoAim(false)
     setTimeMode("normal")
 end
 
--- Function to get freecam state (for teleport.lua)
+-- Function to get freecam state
 function Visual.getFreecamState()
     return Visual.freecamEnabled, Visual.freecamPosition
 end
 
--- Function to toggle freecam (for teleport.lua)
+-- Function to toggle freecam
 function Visual.toggleFreecam(enabled)
     toggleFreecam(enabled)
 end
@@ -1288,11 +1529,15 @@ function Visual.init(deps)
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.penetrationEnabled = false
+    Visual.autoAimEnabled = false
     Visual.currentTimeMode = "normal"
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
     foliageStates = {}
     processedObjects = {}
+    lastAutoAimTarget = nil
+    autoAimCooldown = 0
     
     -- Store original lighting settings immediately
     storeOriginalLightingSettings()
@@ -1300,17 +1545,17 @@ function Visual.init(deps)
     -- Create joystick
     createJoystick()
     
-    print("Visual module initialized successfully")
+    print("Enhanced Visual module initialized successfully with Penetration and Auto-Aim features")
     return true
 end
 
--- Function to update references when character respawns (Enhanced)
+-- Function to update references when character respawns
 function Visual.updateReferences(newHumanoid, newRootPart)
     humanoid = newHumanoid
     rootPart = newRootPart
     Visual.character = newHumanoid and newHumanoid.Parent
     
-    print("Updating Visual module references for respawn")
+    print("Updating Enhanced Visual module references for respawn")
     
     -- Store current states
     local wasFreecamEnabled = Visual.freecamEnabled
@@ -1318,6 +1563,8 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     local wasFlashlightEnabled = Visual.flashlightEnabled
     local wasLowDetailEnabled = Visual.lowDetailEnabled
     local wasESPEnabled = Visual.espEnabled
+    local wasPenetrationEnabled = Visual.penetrationEnabled
+    local wasAutoAimEnabled = Visual.autoAimEnabled
     local currentTimeMode = Visual.currentTimeMode
     
     -- Temporarily disable all features
@@ -1326,6 +1573,12 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     end
     if wasFlashlightEnabled then
         toggleFlashlight(false)
+    end
+    if wasPenetrationEnabled then
+        togglePenetration(false)
+    end
+    if wasAutoAimEnabled then
+        toggleAutoAim(false)
     end
     
     -- Wait a moment for character to fully load
@@ -1351,6 +1604,14 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     if wasESPEnabled then
         print("Re-enabling ESP after respawn")
         toggleESP(true)
+    end
+    if wasPenetrationEnabled then
+        print("Re-enabling Penetration Mode after respawn")
+        togglePenetration(true)
+    end
+    if wasAutoAimEnabled then
+        print("Re-enabling Auto-Aim after respawn")
+        toggleAutoAim(true)
     end
     if currentTimeMode and currentTimeMode ~= "normal" then
         print("Re-enabling Time Mode after respawn:", currentTimeMode)
