@@ -1,4 +1,4 @@
--- Enhanced Visual-related features (Removed Auto-aim and Penetration, Fixed Freecam)
+-- Enhanced Visual-related features (Added NoClipCamera, Removed Auto-aim and Penetration, Fixed Freecam)
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
@@ -9,6 +9,11 @@ local Visual = {}
 -- Variables
 Visual.freecamEnabled = false
 Visual.freecamConnection = nil
+Visual.noClipCameraEnabled = false
+Visual.noClipCameraConnection = nil
+Visual.noClipCameraCFrame = nil
+Visual.originalCameraType = nil
+Visual.originalCameraSubject = nil
 Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
@@ -133,10 +138,10 @@ local function storeOriginalLightingSettings()
     end
 end
 
--- Create virtual joystick for mobile Freecam
+-- Create virtual joystick for mobile control (used by both Freecam and NoClipCamera)
 local function createJoystick()
     joystickFrame = Instance.new("Frame")
-    joystickFrame.Name = "FreecamJoystick"
+    joystickFrame.Name = "Joystick"
     joystickFrame.Size = UDim2.new(0, 120, 0, 120)
     joystickFrame.Position = UDim2.new(0.05, 0, 0.75, 0)
     joystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -193,9 +198,9 @@ local function createJoystick()
     instructionText.Parent = joystickFrame
 end
 
--- Handle joystick input for Freecam movement
+-- Handle joystick input for camera movement
 local function handleJoystickInput(input, processed)
-    if not Visual.freecamEnabled or processed then return Vector2.new(0, 0) end
+    if not (Visual.freecamEnabled or Visual.noClipCameraEnabled) or processed then return Vector2.new(0, 0) end
     
     if input.UserInputType == Enum.UserInputType.Touch then
         local touchPos = input.Position
@@ -236,6 +241,118 @@ local function handleJoystickInput(input, processed)
         end
     end
     return Vector2.new(0, 0)
+end
+
+-- New NoClipCamera feature
+local function toggleNoClipCamera(enabled)
+    Visual.noClipCameraEnabled = enabled
+    print("NoClipCamera:", enabled)
+    
+    local camera = Workspace.CurrentCamera
+    
+    if enabled then
+        -- Ensure Freecam is disabled to avoid conflicts
+        if Visual.freecamEnabled then
+            toggleFreecam(false)
+        end
+        
+        -- Store original camera settings
+        Visual.originalCameraType = camera.CameraType
+        Visual.originalCameraSubject = camera.CameraSubject
+        
+        -- Set camera to scriptable mode for no-clip movement
+        camera.CameraType = Enum.CameraType.Scriptable
+        camera.CameraSubject = nil
+        
+        -- Initialize camera position
+        Visual.noClipCameraCFrame = camera.CFrame
+        
+        -- Show joystick for mobile
+        if joystickFrame then
+            joystickFrame.Visible = true
+        end
+        
+        -- Main no-clip camera loop
+        if Visual.noClipCameraConnection then
+            Visual.noClipCameraConnection:Disconnect()
+        end
+        
+        Visual.noClipCameraConnection = RunService.RenderStepped:Connect(function(deltaTime)
+            if Visual.noClipCameraEnabled then
+                local currentCFrame = Visual.noClipCameraCFrame or camera.CFrame
+                local moveSpeed = freecamSpeed * deltaTime
+                
+                -- Calculate movement directions
+                local forwardVector = -currentCFrame.LookVector
+                local rightVector = currentCFrame.RightVector
+                local upVector = currentCFrame.UpVector
+                
+                -- Apply joystick input
+                local horizontalMovement = rightVector * Visual.joystickDelta.X * moveSpeed
+                local verticalMovement = forwardVector * -Visual.joystickDelta.Y * moveSpeed
+                
+                -- Update camera position (no collision checks needed)
+                local newPosition = currentCFrame.Position + horizontalMovement + verticalMovement
+                Visual.noClipCameraCFrame = CFrame.lookAt(newPosition, newPosition + currentCFrame.LookVector, currentCFrame.UpVector)
+                camera.CFrame = Visual.noClipCameraCFrame
+            end
+        end)
+        
+        -- Set up touch input (shared with Freecam)
+        if not connections.touchInput then
+            connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    Visual.joystickDelta = handleJoystickInput(input, processed)
+                end
+            end)
+        end
+        
+        if not connections.touchBegan then
+            connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    Visual.joystickDelta = handleJoystickInput(input, processed)
+                end
+            end)
+        end
+        
+        if not connections.touchEnded then
+            connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    Visual.joystickDelta = handleJoystickInput(input, processed)
+                end
+            end)
+        end
+        
+    else
+        -- Disable no-clip camera
+        if Visual.noClipCameraConnection then
+            Visual.noClipCameraConnection:Disconnect()
+            Visual.noClipCameraConnection = nil
+        end
+        
+        -- Hide joystick
+        if joystickFrame then
+            joystickFrame.Visible = false
+            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+        end
+        
+        -- Restore original camera settings
+        if Visual.originalCameraType then
+            camera.CameraType = Visual.originalCameraType
+        end
+        if Visual.originalCameraSubject then
+            camera.CameraSubject = Visual.originalCameraSubject
+        else
+            local currentHumanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+            if currentHumanoid then
+                camera.CameraSubject = currentHumanoid
+            end
+        end
+        
+        -- Clear no-clip camera state
+        Visual.noClipCameraCFrame = nil
+        Visual.joystickDelta = Vector2.new(0, 0)
+    end
 end
 
 -- Enhanced ESP with health-based colors
@@ -419,6 +536,11 @@ local function toggleFreecam(enabled)
     print("Freecam:", enabled)
     
     if enabled then
+        -- Ensure NoClipCamera is disabled to avoid conflicts
+        if Visual.noClipCameraEnabled then
+            toggleNoClipCamera(false)
+        end
+        
         local camera = Workspace.CurrentCamera
         
         local currentCharacter = player.Character
@@ -514,50 +636,35 @@ local function toggleFreecam(enabled)
         end)
         
         -- Handle touch input for joystick
-        if connections.touchInput then
-            connections.touchInput:Disconnect()
+        if not connections.touchInput then
+            connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    Visual.joystickDelta = handleJoystickInput(input, processed)
+                end
+            end)
         end
-        connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
-            if input.UserInputType == Enum.UserInputType.Touch then
-                Visual.joystickDelta = handleJoystickInput(input, processed)
-            end
-        end)
         
-        if connections.touchBegan then
-            connections.touchBegan:Disconnect()
+        if not connections.touchBegan then
+            connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    Visual.joystickDelta = handleJoystickInput(input, processed)
+                end
+            end)
         end
-        connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
-            if input.UserInputType == Enum.UserInputType.Touch then
-                Visual.joystickDelta = handleJoystickInput(input, processed)
-            end
-        end)
         
-        if connections.touchEnded then
-            connections.touchEnded:Disconnect()
+        if not connections.touchEnded then
+            connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    Visual.joystickDelta = handleJoystickInput(input, processed)
+                end
+            end)
         end
-        connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
-            if input.UserInputType == Enum.UserInputType.Touch then
-                Visual.joystickDelta = handleJoystickInput(input, processed)
-            end
-        end)
         
     else
         -- Disable freecam
         if Visual.freecamConnection then
             Visual.freecamConnection:Disconnect()
             Visual.freecamConnection = nil
-        end
-        if connections.touchInput then
-            connections.touchInput:Disconnect()
-            connections.touchInput = nil
-        end
-        if connections.touchBegan then
-            connections.touchBegan:Disconnect()
-            connections.touchBegan = nil
-        end
-        if connections.touchEnded then
-            connections.touchEnded:Disconnect()
-            connections.touchEnded = nil
         end
         
         -- Hide joystick
@@ -783,7 +890,7 @@ local function toggleFlashlight(enabled)
                 end
                 
                 pcall(function()
-                    if head and flashlight.Parent == head then
+                    if head and flashlight.Parent == head and not Visual.noClipCameraEnabled then
                         local cameraDirection = camera.CFrame.LookVector
                         head.CFrame = CFrame.lookAt(head.Position, head.Position + cameraDirection)
                     end
@@ -1150,6 +1257,7 @@ function Visual.loadVisualButtons(createToggleButton)
     
     -- Core visual features
     createToggleButton("Freecam", toggleFreecam)
+    createToggleButton("NoClipCamera", toggleNoClipCamera)
     createToggleButton("Fullbright", toggleFullbright)
     createToggleButton("Flashlight", toggleFlashlight)
     createToggleButton("Low Detail Mode", toggleLowDetail)
@@ -1165,6 +1273,7 @@ end
 -- Function to reset Visual states
 function Visual.resetStates()
     Visual.freecamEnabled = false
+    Visual.noClipCameraEnabled = false
     Visual.fullbrightEnabled = false
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
@@ -1179,8 +1288,13 @@ function Visual.resetStates()
         connections.lowDetailMonitor:Disconnect()
         connections.lowDetailMonitor = nil
     end
+    if connections.noClipCameraConnection then
+        connections.noClipCameraConnection:Disconnect()
+        connections.noClipCameraConnection = nil
+    end
     
     toggleFreecam(false)
+    toggleNoClipCamera(false)
     toggleFullbright(false)
     toggleFlashlight(false)
     toggleLowDetail(false)
@@ -1196,6 +1310,11 @@ end
 -- Function to toggle freecam
 function Visual.toggleFreecam(enabled)
     toggleFreecam(enabled)
+end
+
+-- Function to toggle no-clip camera
+function Visual.toggleNoClipCamera(enabled)
+    toggleNoClipCamera(enabled)
 end
 
 -- Function to set dependencies
@@ -1226,6 +1345,8 @@ function Visual.init(deps)
     -- Initialize states
     Visual.freecamEnabled = false
     Visual.freecamConnection = nil
+    Visual.noClipCameraEnabled = false
+    Visual.noClipCameraConnection = nil
     Visual.fullbrightEnabled = false
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
@@ -1256,15 +1377,19 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     
     -- Store current states
     local wasFreecamEnabled = Visual.freecamEnabled
+    local wasNoClipCameraEnabled = Visual.noClipCameraEnabled
     local wasFullbrightEnabled = Visual.fullbrightEnabled
     local wasFlashlightEnabled = Visual.flashlightEnabled
     local wasLowDetailEnabled = Visual.lowDetailEnabled
     local wasESPEnabled = Visual.espEnabled
     local currentTimeMode = Visual.currentTimeMode
     
-    -- Temporarily disable freecam if it was enabled
+    -- Temporarily disable features that need updating
     if wasFreecamEnabled then
         toggleFreecam(false)
+    end
+    if wasNoClipCameraEnabled then
+        toggleNoClipCamera(false)
     end
     if wasFlashlightEnabled then
         toggleFlashlight(false)
@@ -1277,6 +1402,10 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     if wasFreecamEnabled then
         print("Re-enabling Freecam after respawn")
         toggleFreecam(true)
+    end
+    if wasNoClipCameraEnabled then
+        print("Re-enabling NoClipCamera after respawn")
+        toggleNoClipCamera(true)
     end
     if wasFullbrightEnabled then
         print("Re-enabling Fullbright after respawn")
