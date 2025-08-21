@@ -1,5 +1,4 @@
--- Enhanced Visual-related features with Penetration, Auto-aim, and Health-based ESP
--- Enhanced by request for penetration through objects, auto-aim, and health-based ESP colors
+-- Enhanced Visual-related features (Removed Auto-aim and Penetration, Fixed Freecam)
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
@@ -9,14 +8,11 @@ local Visual = {}
 
 -- Variables
 Visual.freecamEnabled = false
-Visual.freecamPosition = nil
-Visual.freecamCFrame = nil
+Visual.freecamConnection = nil
 Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.espEnabled = false
-Visual.penetrationEnabled = false -- New feature
-Visual.autoAimEnabled = false -- New feature
 Visual.currentTimeMode = "normal"
 Visual.joystickDelta = Vector2.new(0, 0)
 Visual.character = nil
@@ -27,17 +23,9 @@ local defaultLightingSettings = {}
 local joystickFrame
 local joystickKnob
 local touchStartPos
-local lastYaw, lastPitch = 0, 0
 local foliageStates = {}
 local processedObjects = {}
 local freecamSpeed = 50
-local cameraSensitivity = 0.003
-
--- New variables for enhanced features
-local penetrationConnections = {}
-local autoAimConnections = {}
-local lastAutoAimTarget = nil
-local autoAimCooldown = 0
 
 -- Function to get enemy health and determine color
 local function getHealthColor(enemy)
@@ -60,267 +48,6 @@ local function getHealthColor(enemy)
         return Color3.fromRGB(255, 255, 0) -- Yellow for half health
     else
         return Color3.fromRGB(255, 0, 0) -- Red for low health
-    end
-end
-
--- Function to check if enemy is behind cover
-local function isEnemyBehindCover(enemyPosition)
-    if not Visual.penetrationEnabled then
-        return false -- If penetration is disabled, don't ignore cover
-    end
-    
-    local camera = workspace.CurrentCamera
-    local rayDirection = (enemyPosition - camera.CFrame.Position).Unit * 1000
-    
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.FilterDescendantsInstances = {player.Character}
-    
-    local raycastResult = workspace:Raycast(camera.CFrame.Position, rayDirection, raycastParams)
-    
-    if raycastResult then
-        local hitPart = raycastResult.Instance
-        local hitCharacter = hitPart.Parent
-        
-        -- If we hit the enemy directly, they're not behind cover
-        if hitCharacter and hitCharacter:FindFirstChild("Humanoid") then
-            return false
-        end
-        
-        -- If we hit something else first, enemy is behind cover
-        return true
-    end
-    
-    return false
-end
-
--- Function to find nearest visible enemy for auto-aim
-local function findNearestEnemy()
-    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-        return nil
-    end
-    
-    local playerPosition = player.Character.HumanoidRootPart.Position
-    local nearestEnemy = nil
-    local nearestDistance = math.huge
-    
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local enemyPosition = otherPlayer.Character.HumanoidRootPart.Position
-            local distance = (playerPosition - enemyPosition).Magnitude
-            
-            -- Check if enemy is closer and either not behind cover or penetration is enabled
-            if distance < nearestDistance then
-                local behindCover = isEnemyBehindCover(enemyPosition)
-                
-                -- Include enemy if penetration is enabled or they're not behind cover
-                if Visual.penetrationEnabled or not behindCover then
-                    nearestDistance = distance
-                    nearestEnemy = otherPlayer
-                end
-            end
-        end
-    end
-    
-    return nearestEnemy
-end
-
--- Function to create penetrating projectile
-local function createPenetratingProjectile(startPos, targetPos)
-    if not Visual.penetrationEnabled then
-        return
-    end
-    
-    local direction = (targetPos - startPos).Unit
-    local distance = (targetPos - startPos).Magnitude
-    
-    -- Create visual effect for penetrating shot
-    local beam = Instance.new("Beam")
-    local attachment1 = Instance.new("Attachment")
-    local attachment2 = Instance.new("Attachment")
-    
-    -- Create temporary parts for beam attachments
-    local part1 = Instance.new("Part")
-    part1.Anchored = true
-    part1.CanCollide = false
-    part1.Transparency = 1
-    part1.Size = Vector3.new(0.1, 0.1, 0.1)
-    part1.Position = startPos
-    part1.Parent = workspace
-    
-    local part2 = Instance.new("Part")
-    part2.Anchored = true
-    part2.CanCollide = false
-    part2.Transparency = 1
-    part2.Size = Vector3.new(0.1, 0.1, 0.1)
-    part2.Position = targetPos
-    part2.Parent = workspace
-    
-    attachment1.Parent = part1
-    attachment2.Parent = part2
-    
-    beam.Attachment0 = attachment1
-    beam.Attachment1 = attachment2
-    beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
-    beam.Width0 = 0.5
-    beam.Width1 = 0.5
-    beam.Transparency = NumberSequence.new(0)
-    beam.Parent = workspace
-    
-    -- Damage all enemies in line
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.FilterDescendantsInstances = {player.Character}
-    
-    -- Multiple raycasts to hit through objects
-    local currentPos = startPos
-    local remainingDistance = distance
-    
-    while remainingDistance > 0 do
-        local rayDirection = direction * math.min(remainingDistance, 50)
-        local raycastResult = workspace:Raycast(currentPos, rayDirection, raycastParams)
-        
-        if raycastResult then
-            local hitPart = raycastResult.Instance
-            local hitCharacter = hitPart.Parent
-            
-            -- Check if we hit an enemy
-            if hitCharacter and hitCharacter:FindFirstChild("Humanoid") then
-                local enemyHumanoid = hitCharacter:FindFirstChild("Humanoid")
-                if enemyHumanoid and enemyHumanoid ~= humanoid then
-                    -- Deal damage (simulated)
-                    pcall(function()
-                        enemyHumanoid.Health = enemyHumanoid.Health - 50
-                        print("Penetrating hit on", hitCharacter.Name)
-                    end)
-                end
-            end
-            
-            -- Continue through the object
-            currentPos = raycastResult.Position + direction * 0.1
-            remainingDistance = remainingDistance - (raycastResult.Position - currentPos).Magnitude
-        else
-            break
-        end
-    end
-    
-    -- Clean up visual effect after delay
-    game:GetService("Debris"):AddItem(part1, 0.5)
-    game:GetService("Debris"):AddItem(part2, 0.5)
-    game:GetService("Debris"):AddItem(beam, 0.5)
-end
-
--- Auto-aim function
-local function performAutoAim()
-    if not Visual.autoAimEnabled or autoAimCooldown > 0 then
-        return
-    end
-    
-    local nearestEnemy = findNearestEnemy()
-    if not nearestEnemy or not nearestEnemy.Character or not nearestEnemy.Character:FindFirstChild("HumanoidRootPart") then
-        return
-    end
-    
-    local camera = workspace.CurrentCamera
-    local enemyPosition = nearestEnemy.Character.HumanoidRootPart.Position
-    local playerPosition = camera.CFrame.Position
-    
-    -- Calculate aim direction
-    local aimDirection = (enemyPosition - playerPosition).Unit
-    local newCFrame = CFrame.lookAt(playerPosition, enemyPosition)
-    
-    -- Smoothly adjust camera to target
-    camera.CFrame = camera.CFrame:Lerp(newCFrame, 0.3)
-    
-    -- If penetration is enabled, create penetrating shot
-    if Visual.penetrationEnabled then
-        createPenetratingProjectile(playerPosition, enemyPosition)
-    end
-    
-    lastAutoAimTarget = nearestEnemy
-    autoAimCooldown = 0.5 -- Cooldown to prevent spam
-    
-    print("Auto-aimed at", nearestEnemy.Name)
-end
-
--- Toggle penetration
-local function togglePenetration(enabled)
-    Visual.penetrationEnabled = enabled
-    print("Penetration Mode:", enabled)
-    
-    if enabled then
-        -- Monitor for shooting to enable penetration
-        if connections.penetrationMonitor then
-            connections.penetrationMonitor:Disconnect()
-        end
-        
-        connections.penetrationMonitor = UserInputService.InputBegan:Connect(function(input, processed)
-            if processed then return end
-            
-            -- Detect shooting (left mouse button or touch)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-               input.UserInputType == Enum.UserInputType.Touch then
-                
-                local camera = workspace.CurrentCamera
-                local nearestEnemy = findNearestEnemy()
-                
-                if nearestEnemy and nearestEnemy.Character and nearestEnemy.Character:FindFirstChild("HumanoidRootPart") then
-                    createPenetratingProjectile(camera.CFrame.Position, nearestEnemy.Character.HumanoidRootPart.Position)
-                end
-            end
-        end)
-    else
-        if connections.penetrationMonitor then
-            connections.penetrationMonitor:Disconnect()
-            connections.penetrationMonitor = nil
-        end
-    end
-end
-
--- Toggle auto-aim
-local function toggleAutoAim(enabled)
-    Visual.autoAimEnabled = enabled
-    print("Auto-Aim:", enabled)
-    
-    if enabled then
-        -- Monitor for continuous auto-aim
-        if connections.autoAimUpdate then
-            connections.autoAimUpdate:Disconnect()
-        end
-        
-        connections.autoAimUpdate = RunService.Heartbeat:Connect(function(deltaTime)
-            if Visual.autoAimEnabled then
-                -- Reduce cooldown
-                if autoAimCooldown > 0 then
-                    autoAimCooldown = autoAimCooldown - deltaTime
-                end
-                
-                -- Auto-aim when shooting
-                if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                    performAutoAim()
-                end
-            end
-        end)
-        
-        -- Also trigger on touch for mobile
-        if connections.autoAimTouch then
-            connections.autoAimTouch:Disconnect()
-        end
-        
-        connections.autoAimTouch = UserInputService.TouchTap:Connect(function(touchPositions, processed)
-            if not processed and Visual.autoAimEnabled then
-                performAutoAim()
-            end
-        end)
-    else
-        if connections.autoAimUpdate then
-            connections.autoAimUpdate:Disconnect()
-            connections.autoAimUpdate = nil
-        end
-        if connections.autoAimTouch then
-            connections.autoAimTouch:Disconnect()
-            connections.autoAimTouch = nil
-        end
     end
 end
 
@@ -456,7 +183,7 @@ local function createJoystick()
     instructionText.Size = UDim2.new(0, 200, 0, 30)
     instructionText.Position = UDim2.new(0, 0, 0, -40)
     instructionText.BackgroundTransparency = 1
-    instructionText.Text = "Move: Left joystick | Look: Right side swipe"
+    instructionText.Text = "Use joystick to move camera"
     instructionText.TextColor3 = Color3.fromRGB(255, 255, 255)
     instructionText.TextSize = 12
     instructionText.Font = Enum.Font.SourceSansBold
@@ -509,40 +236,6 @@ local function handleJoystickInput(input, processed)
         end
     end
     return Vector2.new(0, 0)
-end
-
--- Handle swipe for Freecam rotation
-local function handleSwipe(input, processed)
-    if not Visual.freecamEnabled or input.UserInputType ~= Enum.UserInputType.Touch or processed then return end
-    
-    local touchPos = input.Position
-    local screenSize = workspace.CurrentCamera.ViewportSize
-    local joystickCenter = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
-    local frameRect = {
-        X = joystickFrame.AbsolutePosition.X,
-        Y = joystickFrame.AbsolutePosition.Y,
-        Width = joystickFrame.AbsoluteSize.X,
-        Height = joystickFrame.AbsoluteSize.Y
-    }
-    
-    local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
-                        touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
-    
-    if isInJoystick then return end
-    
-    local isRightSide = touchPos.X > screenSize.X * 0.5
-    if not isRightSide then return end
-    
-    if input.UserInputState == Enum.UserInputState.Begin then
-        touchStartPos = touchPos
-    elseif input.UserInputState == Enum.UserInputState.Change and touchStartPos then
-        local delta = touchPos - touchStartPos
-        lastYaw = lastYaw - delta.X * cameraSensitivity
-        lastPitch = math.clamp(lastPitch - delta.Y * cameraSensitivity, -math.rad(89), math.rad(89))
-        touchStartPos = touchPos
-    elseif input.UserInputState == Enum.UserInputState.End then
-        touchStartPos = nil
-    end
 end
 
 -- Enhanced ESP with health-based colors
@@ -720,7 +413,7 @@ local function toggleESP(enabled)
     end
 end
 
--- Freecam (keeping the same implementation as before)
+-- Fixed Freecam - Character stays still, camera moves smoothly
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -738,11 +431,13 @@ local function toggleFreecam(enabled)
             return
         end
         
+        -- Store original values
         Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
         Visual.originalJumpPower = currentHumanoid.JumpPower
         Visual.originalJumpHeight = currentHumanoid.JumpHeight
         Visual.originalPosition = currentRootPart.CFrame
         
+        -- Freeze character completely
         currentHumanoid.PlatformStand = true
         currentHumanoid.WalkSpeed = 0
         currentHumanoid.JumpPower = 0
@@ -751,46 +446,33 @@ local function toggleFreecam(enabled)
         currentRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         currentRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
         
+        -- Set camera to scriptable mode
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
         
-        Visual.freecamCFrame = camera.CFrame
-        Visual.freecamPosition = camera.CFrame.Position
-        
-        local _, yaw, pitch = camera.CFrame:ToEulerAnglesYXZ()
-        lastYaw = yaw
-        lastPitch = pitch
+        -- Store initial camera position
+        local startCFrame = camera.CFrame
+        Visual.freecamCFrame = startCFrame
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
         
+        -- Show joystick for mobile
         if joystickFrame then
             joystickFrame.Visible = true
         end
         
-        if connections.freecam then
-            connections.freecam:Disconnect()
+        -- Main freecam loop
+        if Visual.freecamConnection then
+            Visual.freecamConnection:Disconnect()
         end
-        connections.freecam = RunService.RenderStepped:Connect(function(deltaTime)
+        
+        Visual.freecamConnection = RunService.RenderStepped:Connect(function(deltaTime)
             if Visual.freecamEnabled then
                 local char = player.Character
                 local hum = char and char:FindFirstChild("Humanoid")
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 
-                local moveVector = Vector3.new()
-                
-                local cameraCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
-                
-                if Visual.joystickDelta.Magnitude > 0.1 then
-                    local forward = -cameraCFrame.LookVector * Visual.joystickDelta.Y
-                    local right = cameraCFrame.RightVector * Visual.joystickDelta.X
-                    moveVector = (forward + right) * freecamSpeed * deltaTime * Visual.joystickDelta.Magnitude
-                end
-                
-                Visual.freecamPosition = Visual.freecamPosition + moveVector
-                
-                Visual.freecamCFrame = CFrame.new(Visual.freecamPosition) * CFrame.Angles(lastPitch, lastYaw, 0)
-                camera.CFrame = Visual.freecamCFrame
-                
+                -- Keep character frozen in place
                 if hum and root and Visual.originalPosition then
                     hum.PlatformStand = true
                     hum.WalkSpeed = 0
@@ -801,16 +483,43 @@ local function toggleFreecam(enabled)
                     root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                     root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
                 end
+                
+                -- Handle camera movement
+                local camera = Workspace.CurrentCamera
+                local currentCFrame = Visual.freecamCFrame or camera.CFrame
+                
+                -- Calculate movement based on joystick input
+                if Visual.joystickDelta.Magnitude > 0.1 then
+                    local moveSpeed = freecamSpeed * deltaTime
+                    
+                    -- Calculate movement directions relative to camera orientation
+                    local forwardVector = -currentCFrame.LookVector
+                    local rightVector = currentCFrame.RightVector
+                    local upVector = currentCFrame.UpVector
+                    
+                    -- Apply joystick input to movement
+                    local horizontalMovement = rightVector * Visual.joystickDelta.X * moveSpeed
+                    local verticalMovement = forwardVector * -Visual.joystickDelta.Y * moveSpeed
+                    
+                    -- Move camera position
+                    local newPosition = currentCFrame.Position + horizontalMovement + verticalMovement
+                    
+                    -- Update camera CFrame with new position but keep same orientation
+                    Visual.freecamCFrame = CFrame.lookAt(newPosition, newPosition + currentCFrame.LookVector, currentCFrame.UpVector)
+                end
+                
+                -- Apply camera position
+                camera.CFrame = Visual.freecamCFrame
             end
         end)
         
+        -- Handle touch input for joystick
         if connections.touchInput then
             connections.touchInput:Disconnect()
         end
         connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
             if input.UserInputType == Enum.UserInputType.Touch then
                 Visual.joystickDelta = handleJoystickInput(input, processed)
-                handleSwipe(input, processed)
             end
         end)
         
@@ -820,7 +529,6 @@ local function toggleFreecam(enabled)
         connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
             if input.UserInputType == Enum.UserInputType.Touch then
                 Visual.joystickDelta = handleJoystickInput(input, processed)
-                handleSwipe(input, processed)
             end
         end)
         
@@ -830,14 +538,14 @@ local function toggleFreecam(enabled)
         connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
             if input.UserInputType == Enum.UserInputType.Touch then
                 Visual.joystickDelta = handleJoystickInput(input, processed)
-                handleSwipe(input, processed)
             end
         end)
         
     else
-        if connections.freecam then
-            connections.freecam:Disconnect()
-            connections.freecam = nil
+        -- Disable freecam
+        if Visual.freecamConnection then
+            Visual.freecamConnection:Disconnect()
+            Visual.freecamConnection = nil
         end
         if connections.touchInput then
             connections.touchInput:Disconnect()
@@ -852,11 +560,13 @@ local function toggleFreecam(enabled)
             connections.touchEnded = nil
         end
         
+        -- Hide joystick
         if joystickFrame then
             joystickFrame.Visible = false
             joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
         end
         
+        -- Restore camera
         local camera = Workspace.CurrentCamera
         camera.CameraType = Enum.CameraType.Custom
         
@@ -868,6 +578,7 @@ local function toggleFreecam(enabled)
             camera.CameraSubject = currentHumanoid
         end
         
+        -- Restore character movement
         if currentHumanoid and currentRootPart then
             currentHumanoid.PlatformStand = false
             currentRootPart.Anchored = false
@@ -876,15 +587,14 @@ local function toggleFreecam(enabled)
             currentHumanoid.JumpPower = Visual.originalJumpPower or ((settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50)
             currentHumanoid.JumpHeight = Visual.originalJumpHeight or (settings.JumpHeight and settings.JumpHeight.value) or 7.2
             
+            -- Reset camera to normal position
             task.wait(0.1)
             camera.CFrame = CFrame.lookAt(currentRootPart.Position + Vector3.new(0, 2, 10), currentRootPart.Position)
         end
         
-        Visual.freecamPosition = nil
+        -- Clear freecam state
         Visual.freecamCFrame = nil
         Visual.joystickDelta = Vector2.new(0, 0)
-        lastYaw, lastPitch = 0, 0
-        touchStartPos = nil
     end
 end
 
@@ -1445,10 +1155,6 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Low Detail Mode", toggleLowDetail)
     createToggleButton("ESP", toggleESP)
     
-    -- New enhanced features
-    createToggleButton("Penetration Mode", togglePenetration)
-    createToggleButton("Auto-Aim", toggleAutoAim)
-    
     -- Time mode features
     createToggleButton("Morning Mode", toggleMorning)
     createToggleButton("Day Mode", toggleDay)
@@ -1463,8 +1169,6 @@ function Visual.resetStates()
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
-    Visual.penetrationEnabled = false
-    Visual.autoAimEnabled = false
     Visual.currentTimeMode = "normal"
     
     if connections.timeModeMonitor then
@@ -1481,14 +1185,12 @@ function Visual.resetStates()
     toggleFlashlight(false)
     toggleLowDetail(false)
     toggleESP(false)
-    togglePenetration(false)
-    toggleAutoAim(false)
     setTimeMode("normal")
 end
 
 -- Function to get freecam state
 function Visual.getFreecamState()
-    return Visual.freecamEnabled, Visual.freecamPosition
+    return Visual.freecamEnabled
 end
 
 -- Function to toggle freecam
@@ -1523,21 +1225,16 @@ function Visual.init(deps)
     
     -- Initialize states
     Visual.freecamEnabled = false
-    Visual.freecamPosition = nil
-    Visual.freecamCFrame = nil
+    Visual.freecamConnection = nil
     Visual.fullbrightEnabled = false
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
-    Visual.penetrationEnabled = false
-    Visual.autoAimEnabled = false
     Visual.currentTimeMode = "normal"
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
     foliageStates = {}
     processedObjects = {}
-    lastAutoAimTarget = nil
-    autoAimCooldown = 0
     
     -- Store original lighting settings immediately
     storeOriginalLightingSettings()
@@ -1545,7 +1242,7 @@ function Visual.init(deps)
     -- Create joystick
     createJoystick()
     
-    print("Enhanced Visual module initialized successfully with Penetration and Auto-Aim features")
+    print("Visual module initialized successfully")
     return true
 end
 
@@ -1555,7 +1252,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     rootPart = newRootPart
     Visual.character = newHumanoid and newHumanoid.Parent
     
-    print("Updating Enhanced Visual module references for respawn")
+    print("Updating Visual module references for respawn")
     
     -- Store current states
     local wasFreecamEnabled = Visual.freecamEnabled
@@ -1563,22 +1260,14 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     local wasFlashlightEnabled = Visual.flashlightEnabled
     local wasLowDetailEnabled = Visual.lowDetailEnabled
     local wasESPEnabled = Visual.espEnabled
-    local wasPenetrationEnabled = Visual.penetrationEnabled
-    local wasAutoAimEnabled = Visual.autoAimEnabled
     local currentTimeMode = Visual.currentTimeMode
     
-    -- Temporarily disable all features
+    -- Temporarily disable freecam if it was enabled
     if wasFreecamEnabled then
         toggleFreecam(false)
     end
     if wasFlashlightEnabled then
         toggleFlashlight(false)
-    end
-    if wasPenetrationEnabled then
-        togglePenetration(false)
-    end
-    if wasAutoAimEnabled then
-        toggleAutoAim(false)
     end
     
     -- Wait a moment for character to fully load
@@ -1604,14 +1293,6 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     if wasESPEnabled then
         print("Re-enabling ESP after respawn")
         toggleESP(true)
-    end
-    if wasPenetrationEnabled then
-        print("Re-enabling Penetration Mode after respawn")
-        togglePenetration(true)
-    end
-    if wasAutoAimEnabled then
-        print("Re-enabling Auto-Aim after respawn")
-        toggleAutoAim(true)
     end
     if currentTimeMode and currentTimeMode ~= "normal" then
         print("Re-enabling Time Mode after respawn:", currentTimeMode)
