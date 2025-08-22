@@ -1,5 +1,4 @@
--- Enhanced Visual-related features (Added NoClipCamera, Removed Auto-aim and Penetration, Fixed Freecam)
-
+-- Enhanced Visual-related features (Added NoClipCamera, Removed Auto-aim and Penetration, Fixed Freecam, Added Nickname Hiding)
 -- Dependencies: These must be passed from mainloader.lua
 local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
 
@@ -18,6 +17,8 @@ Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.espEnabled = false
+Visual.hideAllNicknames = false
+Visual.hideOwnNickname = false
 Visual.currentTimeMode = "normal"
 Visual.joystickDelta = Vector2.new(0, 0)
 Visual.character = nil
@@ -138,7 +139,7 @@ local function storeOriginalLightingSettings()
     end
 end
 
--- Create virtual joystick for mobile control (used by both Freecam and NoClipCamera)
+-- Create virtual joystick for mobile control
 local function createJoystick()
     joystickFrame = Instance.new("Frame")
     joystickFrame.Name = "Joystick"
@@ -243,12 +244,49 @@ local function handleJoystickInput(input, processed)
     return Vector2.new(0, 0)
 end
 
--- New NoClipCamera feature
+-- Function to hide all nicknames except the player's
+local function toggleHideAllNicknames(enabled)
+    Visual.hideAllNicknames = enabled
+    print("Hide All Nicknames:", enabled)
+    
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local head = otherPlayer.Character:FindFirstChild("Head")
+            if head then
+                local billboard = head:FindFirstChildOfClass("BillboardGui")
+                if billboard then
+                    billboard.Enabled = not enabled
+                end
+            end
+        end
+    end
+end
+
+-- Function to hide only the player's nickname
+local function toggleHideOwnNickname(enabled)
+    Visual.hideOwnNickname = enabled
+    print("Hide Own Nickname:", enabled)
+    
+    local character = player.Character
+    if character then
+        local head = character:FindFirstChild("Head")
+        if head then
+            local billboard = head:FindFirstChildOfClass("BillboardGui")
+            if billboard then
+                billboard.Enabled = not enabled
+            end
+        end
+    end
+end
+
+-- Enhanced NoClipCamera feature
 local function toggleNoClipCamera(enabled)
     Visual.noClipCameraEnabled = enabled
     print("NoClipCamera:", enabled)
     
     local camera = Workspace.CurrentCamera
+    local character = player.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     
     if enabled then
         -- Ensure Freecam is disabled to avoid conflicts
@@ -264,8 +302,12 @@ local function toggleNoClipCamera(enabled)
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
         
-        -- Initialize camera position
-        Visual.noClipCameraCFrame = camera.CFrame
+        -- Initialize camera position relative to character
+        if rootPart then
+            Visual.noClipCameraCFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 10), rootPart.Position)
+        else
+            Visual.noClipCameraCFrame = camera.CFrame
+        end
         
         -- Show joystick for mobile
         if joystickFrame then
@@ -283,7 +325,7 @@ local function toggleNoClipCamera(enabled)
                 local moveSpeed = freecamSpeed * deltaTime
                 
                 -- Calculate movement directions
-                local forwardVector = -currentCFrame.LookVector
+                local forwardVector = currentCFrame.LookVector
                 local rightVector = currentCFrame.RightVector
                 local upVector = currentCFrame.UpVector
                 
@@ -293,8 +335,12 @@ local function toggleNoClipCamera(enabled)
                 
                 -- Update camera position (no collision checks needed)
                 local newPosition = currentCFrame.Position + horizontalMovement + verticalMovement
-                Visual.noClipCameraCFrame = CFrame.lookAt(newPosition, newPosition + currentCFrame.LookVector, currentCFrame.UpVector)
+                local lookAtPoint = newPosition + currentCFrame.LookVector
+                Visual.noClipCameraCFrame = CFrame.new(newPosition, lookAtPoint)
                 camera.CFrame = Visual.noClipCameraCFrame
+                
+                -- Ensure camera can pass through objects
+                camera.CameraType = Enum.CameraType.Scriptable
             end
         end)
         
@@ -1262,6 +1308,8 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Flashlight", toggleFlashlight)
     createToggleButton("Low Detail Mode", toggleLowDetail)
     createToggleButton("ESP", toggleESP)
+    createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
+    createToggleButton("Hide Own Nickname", toggleHideOwnNickname)
     
     -- Time mode features
     createToggleButton("Morning Mode", toggleMorning)
@@ -1278,6 +1326,8 @@ function Visual.resetStates()
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.hideAllNicknames = false
+    Visual.hideOwnNickname = false
     Visual.currentTimeMode = "normal"
     
     if connections.timeModeMonitor then
@@ -1299,6 +1349,8 @@ function Visual.resetStates()
     toggleFlashlight(false)
     toggleLowDetail(false)
     toggleESP(false)
+    toggleHideAllNicknames(false)
+    toggleHideOwnNickname(false)
     setTimeMode("normal")
 end
 
@@ -1351,6 +1403,8 @@ function Visual.init(deps)
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.hideAllNicknames = false
+    Visual.hideOwnNickname = false
     Visual.currentTimeMode = "normal"
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
@@ -1382,6 +1436,8 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     local wasFlashlightEnabled = Visual.flashlightEnabled
     local wasLowDetailEnabled = Visual.lowDetailEnabled
     local wasESPEnabled = Visual.espEnabled
+    local wasHideAllNicknames = Visual.hideAllNicknames
+    local wasHideOwnNickname = Visual.hideOwnNickname
     local currentTimeMode = Visual.currentTimeMode
     
     -- Temporarily disable features that need updating
@@ -1422,6 +1478,14 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     if wasESPEnabled then
         print("Re-enabling ESP after respawn")
         toggleESP(true)
+    end
+    if wasHideAllNicknames then
+        print("Re-enabling Hide All Nicknames after respawn")
+        toggleHideAllNicknames(true)
+    end
+    if wasHideOwnNickname then
+        print("Re-enabling Hide Own Nickname after respawn")
+        toggleHideOwnNickname(true)
     end
     if currentTimeMode and currentTimeMode ~= "normal" then
         print("Re-enabling Time Mode after respawn:", currentTimeMode)

@@ -24,10 +24,205 @@ Player.magnetEnabled = false
 Player.magnetOffset = Vector3.new(2, 0, -5) -- Adjusted: 5 studs in front, 2 studs left
 Player.magnetPlayerPositions = {}
 
+-- Variables for hide features
+Player.hideCharacterEnabled = false
+Player.hideMyCharacterEnabled = false
+Player.hiddenPlayers = {}
+Player.originalMyCharacterTransparency = {}
+
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 local EmoteGuiFrame
+
+-- Hide Character (all players except me)
+local function hidePlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player or not targetPlayer.Character then return end
+    
+    if not Player.hiddenPlayers[targetPlayer] then
+        Player.hiddenPlayers[targetPlayer] = {}
+    end
+    
+    for _, part in pairs(targetPlayer.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if not Player.hiddenPlayers[targetPlayer][part] then
+                Player.hiddenPlayers[targetPlayer][part] = part.Transparency
+            end
+            part.Transparency = 1
+        elseif part:IsA("Decal") or part:IsA("Texture") then
+            if not Player.hiddenPlayers[targetPlayer][part] then
+                Player.hiddenPlayers[targetPlayer][part] = part.Transparency
+            end
+            part.Transparency = 1
+        elseif part:IsA("Accessory") then
+            local handle = part:FindFirstChild("Handle")
+            if handle then
+                if not Player.hiddenPlayers[targetPlayer][handle] then
+                    Player.hiddenPlayers[targetPlayer][handle] = handle.Transparency
+                end
+                handle.Transparency = 1
+                for _, mesh in pairs(handle:GetDescendants()) do
+                    if mesh:IsA("SpecialMesh") or mesh:IsA("MeshPart") then
+                        if not Player.hiddenPlayers[targetPlayer][mesh] then
+                            Player.hiddenPlayers[targetPlayer][mesh] = mesh.Transparency or 0
+                        end
+                        if mesh:IsA("MeshPart") then
+                            mesh.Transparency = 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    print("Hidden player: " .. targetPlayer.Name)
+end
+
+local function showPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player or not targetPlayer.Character then return end
+    
+    if Player.hiddenPlayers[targetPlayer] then
+        for part, originalTransparency in pairs(Player.hiddenPlayers[targetPlayer]) do
+            if part and part.Parent then
+                part.Transparency = originalTransparency
+            end
+        end
+        Player.hiddenPlayers[targetPlayer] = nil
+    end
+    print("Shown player: " .. targetPlayer.Name)
+end
+
+local function toggleHideCharacter(enabled)
+    Player.hideCharacterEnabled = enabled
+    
+    if enabled then
+        print("Hiding all other players...")
+        Player.hiddenPlayers = {}
+        
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player then
+                hidePlayer(p)
+            end
+        end
+        
+        connections.hidecharacter = Players.PlayerAdded:Connect(function(newPlayer)
+            if Player.hideCharacterEnabled and newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function(character)
+                    if Player.hideCharacterEnabled then
+                        task.wait(0.5)
+                        hidePlayer(newPlayer)
+                    end
+                end)
+                if newPlayer.Character then
+                    task.wait(0.5)
+                    hidePlayer(newPlayer)
+                end
+            end
+        end)
+        
+        connections.hidecharacterrespawn = RunService.Heartbeat:Connect(function()
+            if Player.hideCharacterEnabled then
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= player and p.Character and not Player.hiddenPlayers[p] then
+                        hidePlayer(p)
+                    end
+                end
+            end
+        end)
+        
+        print("All other players hidden successfully")
+    else
+        print("Showing all other players...")
+        
+        if connections.hidecharacter then
+            connections.hidecharacter:Disconnect()
+            connections.hidecharacter = nil
+        end
+        
+        if connections.hidecharacterrespawn then
+            connections.hidecharacterrespawn:Disconnect()
+            connections.hidecharacterrespawn = nil
+        end
+        
+        for targetPlayer, _ in pairs(Player.hiddenPlayers) do
+            showPlayer(targetPlayer)
+        end
+        
+        Player.hiddenPlayers = {}
+        print("All other players shown successfully")
+    end
+end
+
+-- Hide My Character (only local player)
+local function hideMyCharacter()
+    if not player.Character then return end
+    
+    Player.originalMyCharacterTransparency = {}
+    
+    for _, part in pairs(player.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            Player.originalMyCharacterTransparency[part] = part.Transparency
+            part.Transparency = 1
+        elseif part:IsA("Decal") or part:IsA("Texture") then
+            Player.originalMyCharacterTransparency[part] = part.Transparency
+            part.Transparency = 1
+        elseif part:IsA("Accessory") then
+            local handle = part:FindFirstChild("Handle")
+            if handle then
+                Player.originalMyCharacterTransparency[handle] = handle.Transparency
+                handle.Transparency = 1
+                for _, mesh in pairs(handle:GetDescendants()) do
+                    if mesh:IsA("SpecialMesh") or mesh:IsA("MeshPart") then
+                        Player.originalMyCharacterTransparency[mesh] = mesh.Transparency or 0
+                        if mesh:IsA("MeshPart") then
+                            mesh.Transparency = 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    print("Hidden my character")
+end
+
+local function showMyCharacter()
+    if not player.Character then return end
+    
+    for part, originalTransparency in pairs(Player.originalMyCharacterTransparency) do
+        if part and part.Parent then
+            part.Transparency = originalTransparency
+        end
+    end
+    Player.originalMyCharacterTransparency = {}
+    print("Shown my character")
+end
+
+local function toggleHideMyCharacter(enabled)
+    Player.hideMyCharacterEnabled = enabled
+    
+    if enabled then
+        print("Hiding my character...")
+        hideMyCharacter()
+        
+        connections.hidemycharacter = player.CharacterAdded:Connect(function(character)
+            if Player.hideMyCharacterEnabled then
+                task.wait(0.5)
+                hideMyCharacter()
+            end
+        end)
+        
+        print("My character hidden successfully")
+    else
+        print("Showing my character...")
+        
+        if connections.hidemycharacter then
+            connections.hidemycharacter:Disconnect()
+            connections.hidemycharacter = nil
+        end
+        
+        showMyCharacter()
+        print("My character shown successfully")
+    end
+end
 
 -- Force Field (God Mode replacement)
 local function toggleForceField(enabled)
@@ -461,6 +656,11 @@ local function setupPlayerMonitoring(targetPlayer)
             end
         end
         
+        if Player.hideCharacterEnabled then
+            hidePlayer(targetPlayer)
+            print("Re-hidden respawned player: " .. targetPlayer.Name)
+        end
+        
         if Player.selectedPlayer == targetPlayer then
             task.wait(0.5)
             spectatePlayer(targetPlayer)
@@ -482,6 +682,10 @@ local function setupPlayerMonitoring(targetPlayer)
     if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart
         print("Magnet applied to player: " .. targetPlayer.Name)
+    end
+    
+    if Player.hideCharacterEnabled then
+        hidePlayer(targetPlayer)
     end
     
     if Player.noDeathAnimationEnabled then
@@ -511,6 +715,7 @@ local function cleanupPlayerMonitoring(targetPlayer)
     
     Player.frozenPlayerPositions[targetPlayer] = nil
     Player.magnetPlayerPositions[targetPlayer] = nil
+    Player.hiddenPlayers[targetPlayer] = nil
 end
 
 -- Freeze Players
@@ -788,7 +993,7 @@ function Player.updatePlayerList()
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 180)
+                playerItem.Size = UDim2.new(1, -5, 0, 210) -- Increased height for new buttons
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -899,6 +1104,46 @@ function Player.updatePlayerList()
                 magnetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 magnetButton.TextSize = 9
                 
+                -- New Hide Button for individual players
+                local hideButton = Instance.new("TextButton")
+                hideButton.Name = "HideButton"
+                hideButton.Parent = playerItem
+                hideButton.BackgroundColor3 = Player.hiddenPlayers[p] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(80, 60, 40)
+                hideButton.BorderSizePixel = 0
+                hideButton.Position = UDim2.new(0, 5, 0, 150)
+                hideButton.Size = UDim2.new(0, 70, 0, 25)
+                hideButton.Font = Enum.Font.Gotham
+                hideButton.Text = Player.hiddenPlayers[p] and "SHOW" or "HIDE"
+                hideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                hideButton.TextSize = 9
+                
+                -- New Show Button (opposite of hide)
+                local showButton = Instance.new("TextButton")
+                showButton.Name = "ShowButton"
+                showButton.Parent = playerItem
+                showButton.BackgroundColor3 = Color3.fromRGB(40, 80, 60)
+                showButton.BorderSizePixel = 0
+                showButton.Position = UDim2.new(0, 80, 0, 150)
+                showButton.Size = UDim2.new(0, 70, 0, 25)
+                showButton.Font = Enum.Font.Gotham
+                showButton.Text = "VISIBLE"
+                showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                showButton.TextSize = 8
+                
+                -- New Freeze Individual Button
+                local freezeIndividualButton = Instance.new("TextButton")
+                freezeIndividualButton.Name = "FreezeIndividualButton"
+                freezeIndividualButton.Parent = playerItem
+                freezeIndividualButton.BackgroundColor3 = Player.frozenPlayerPositions[p] and Color3.fromRGB(80, 80, 40) or Color3.fromRGB(40, 40, 100)
+                freezeIndividualButton.BorderSizePixel = 0
+                freezeIndividualButton.Position = UDim2.new(0, 155, 0, 150)
+                freezeIndividualButton.Size = UDim2.new(1, -160, 0, 25)
+                freezeIndividualButton.Font = Enum.Font.Gotham
+                freezeIndividualButton.Text = Player.frozenPlayerPositions[p] and "UNFREEZE" or "FREEZE"
+                freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                freezeIndividualButton.TextSize = 8
+                
+                -- Button Events
                 selectButton.MouseButton1Click:Connect(function()
                     Player.selectedPlayer = p
                     Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
@@ -964,6 +1209,42 @@ function Player.updatePlayerList()
                     end
                 end)
                 
+                -- Hide button event
+                hideButton.MouseButton1Click:Connect(function()
+                    if Player.hiddenPlayers[p] then
+                        showPlayer(p)
+                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                        hideButton.Text = "HIDE"
+                    else
+                        hidePlayer(p)
+                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
+                        hideButton.Text = "SHOW"
+                    end
+                end)
+                
+                -- Show button event
+                showButton.MouseButton1Click:Connect(function()
+                    if Player.hiddenPlayers[p] then
+                        showPlayer(p)
+                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                        hideButton.Text = "HIDE"
+                    end
+                end)
+                
+                -- Freeze individual button event
+                freezeIndividualButton.MouseButton1Click:Connect(function()
+                    if Player.frozenPlayerPositions[p] then
+                        unfreezePlayer(p)
+                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(40, 40, 100)
+                        freezeIndividualButton.Text = "FREEZE"
+                    else
+                        freezePlayer(p)
+                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
+                        freezeIndividualButton.Text = "UNFREEZE"
+                    end
+                end)
+                
+                -- Hover effects for all buttons
                 selectButton.MouseEnter:Connect(function()
                     if Player.selectedPlayer ~= p then
                         selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -1040,6 +1321,46 @@ function Player.updatePlayerList()
                 
                 magnetButton.MouseLeave:Connect(function()
                     magnetButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
+                end)
+                
+                hideButton.MouseEnter:Connect(function()
+                    if Player.hiddenPlayers[p] then
+                        hideButton.BackgroundColor3 = Color3.fromRGB(100, 60, 100)
+                    else
+                        hideButton.BackgroundColor3 = Color3.fromRGB(100, 80, 60)
+                    end
+                end)
+                
+                hideButton.MouseLeave:Connect(function()
+                    if Player.hiddenPlayers[p] then
+                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
+                    else
+                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                    end
+                end)
+                
+                showButton.MouseEnter:Connect(function()
+                    showButton.BackgroundColor3 = Color3.fromRGB(60, 100, 80)
+                end)
+                
+                showButton.MouseLeave:Connect(function()
+                    showButton.BackgroundColor3 = Color3.fromRGB(40, 80, 60)
+                end)
+                
+                freezeIndividualButton.MouseEnter:Connect(function()
+                    if Player.frozenPlayerPositions[p] then
+                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(100, 100, 60)
+                    else
+                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(60, 60, 120)
+                    end
+                end)
+                
+                freezeIndividualButton.MouseLeave:Connect(function()
+                    if Player.frozenPlayerPositions[p] then
+                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
+                    else
+                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(40, 40, 100)
+                    end
                 end)
             end
         end
@@ -1307,6 +1628,9 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
     createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
     createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
+    -- New toggle buttons for hide features
+    createToggleButton("Hide Character", toggleHideCharacter, "Player")
+    createToggleButton("Hide My Character", toggleHideMyCharacter, "Player")
     print("Player buttons loaded successfully")
 end
 
@@ -1320,6 +1644,8 @@ function Player.resetStates()
     Player.fastRespawnEnabled = false
     Player.noDeathAnimationEnabled = false
     Player.magnetEnabled = false
+    Player.hideCharacterEnabled = false
+    Player.hideMyCharacterEnabled = false
     
     toggleForceField(false)
     toggleAntiAFK(false)
@@ -1327,6 +1653,8 @@ function Player.resetStates()
     toggleFastRespawn(false)
     toggleNoDeathAnimation(false)
     toggleMagnetPlayers(false)
+    toggleHideCharacter(false)
+    toggleHideMyCharacter(false)
     stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
@@ -1348,7 +1676,7 @@ local function initUI()
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
     PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 400)
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 450) -- Increased height for better scrolling
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
@@ -1393,17 +1721,21 @@ local function initUI()
     PlayerListScrollFrame.Parent = PlayerListFrame
     PlayerListScrollFrame.BackgroundTransparency = 1
     PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 80)
-    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -90)
-    PlayerListScrollFrame.ScrollBarThickness = 4
-    PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -90) -- Better size for scrolling
+    PlayerListScrollFrame.ScrollBarThickness = 8 -- Increased scroll bar thickness
+    PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100) -- Better visibility
     PlayerListScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     PlayerListScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     PlayerListScrollFrame.BorderSizePixel = 0
+    PlayerListScrollFrame.ScrollingEnabled = true -- Ensure scrolling is enabled
+    PlayerListScrollFrame.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png" -- Custom scroll bar
+    PlayerListScrollFrame.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    PlayerListScrollFrame.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
 
     PlayerListLayout = Instance.new("UIListLayout")
     PlayerListLayout.Parent = PlayerListScrollFrame
-    PlayerListLayout.Padding = UDim.new(0, 2)
+    PlayerListLayout.Padding = UDim.new(0, 5) -- Increased padding for better spacing
     PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
 
@@ -1474,7 +1806,7 @@ local function initUI()
     EmoteGuiFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     EmoteGuiFrame.BorderSizePixel = 1
     EmoteGuiFrame.Position = UDim2.new(0.5, -100, 0.3, 0)
-    EmoteGuiFrame.Size = UDim2.new(0, 200, 0, 200)
+    EmoteGuiFrame.Size = UDim2.new(0, 200, 0, 250) -- Increased height for better scrolling
     EmoteGuiFrame.Visible = false
     EmoteGuiFrame.Active = true
     EmoteGuiFrame.Draggable = true
@@ -1508,11 +1840,12 @@ local function initUI()
     EmoteScrollFrame.BackgroundTransparency = 1
     EmoteScrollFrame.Position = UDim2.new(0, 10, 0, 40)
     EmoteScrollFrame.Size = UDim2.new(1, -20, 1, -50)
-    EmoteScrollFrame.ScrollBarThickness = 4
-    EmoteScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    EmoteScrollFrame.ScrollBarThickness = 6 -- Better scroll bar
+    EmoteScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
     EmoteScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     EmoteScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     EmoteScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    EmoteScrollFrame.ScrollingEnabled = true
 
     local EmoteListLayout = Instance.new("UIListLayout")
     EmoteListLayout.Parent = EmoteScrollFrame
@@ -1522,7 +1855,10 @@ local function initUI()
     local emotes = {
         {name = "Cuco - Levitate", id = "507765000", catalogId = "15698511500"},
         {name = "Victory Royale Jump", id = "507771019", catalogId = "107425576246359"},
-        {name = "SODA POP | SAJABOYS", id = "5092650060", catalogId = "131337151013044"}
+        {name = "SODA POP | SAJABOYS", id = "5092650060", catalogId = "131337151013044"},
+        {name = "Orange Justice", id = "507771019", catalogId = "107425576246359"},
+        {name = "Default Dance", id = "507771019", catalogId = "107425576246359"},
+        {name = "Floss", id = "507771019", catalogId = "107425576246359"}
     }
 
     for i, emote in ipairs(emotes) do
@@ -1668,6 +2004,8 @@ function Player.init(deps)
     Player.fastRespawnEnabled = false
     Player.noDeathAnimationEnabled = false
     Player.magnetEnabled = false
+    Player.hideCharacterEnabled = false
+    Player.hideMyCharacterEnabled = false
     Player.selectedPlayer = nil
     Player.spectatePlayerList = {}
     Player.currentSpectateIndex = 0
@@ -1683,11 +2021,13 @@ function Player.init(deps)
     Player.followPathfinding = nil
     Player.deathAnimationConnections = {}
     Player.magnetPlayerPositions = {}
+    Player.hiddenPlayers = {}
+    Player.originalMyCharacterTransparency = {}
     
     pcall(initUI)
     pcall(Player.setupPlayerEvents)
     
-    -- Handle local player respawn for magnet
+    -- Handle local player respawn for magnet and hide
     connections.localPlayerRespawn = player.CharacterAdded:Connect(function(newCharacter)
         task.wait(0.5)
         if newCharacter:FindFirstChild("HumanoidRootPart") then
@@ -1696,6 +2036,11 @@ function Player.init(deps)
             if Player.magnetEnabled then
                 print("Local player respawned, reapplying magnet...")
                 toggleMagnetPlayers(true)
+            end
+            if Player.hideMyCharacterEnabled then
+                print("Local player respawned, reapplying hide my character...")
+                task.wait(0.5)
+                hideMyCharacter()
             end
         end
     end)
