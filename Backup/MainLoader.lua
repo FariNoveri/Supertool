@@ -496,12 +496,10 @@ local function loadButtons()
                     createButton(name, callback, "Settings")
                 end)
             end)
-        elseif selectedCategory == "Info" and modules.Info and type(modules.Info.loadInfoButtons) == "function" then
+        elseif selectedCategory == "Info" and modules.Info and type(modules.Info.createInfoDisplay) == "function" then
             success, errorMessage = pcall(function()
-                print("Loading Info buttons...")
-                modules.Info.loadInfoButtons(function(name, callback)
-                    createButton(name, callback, "Info")
-                end)
+                print("Loading Info display...")
+                modules.Info.createInfoDisplay(FeatureContainer)
             end)
         else
             errorMessage = "Module for " .. selectedCategory .. " not loaded or invalid!"
