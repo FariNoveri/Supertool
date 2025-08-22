@@ -1,4 +1,4 @@
--- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, follow player, bring player, and magnet player
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, bring player, and magnet player
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -16,15 +16,6 @@ Player.freezeEnabled = false
 Player.frozenPlayerPositions = {}
 Player.playerConnections = {}
 
--- Variables for follow player feature
-Player.followEnabled = false
-Player.followTarget = nil
-Player.followConnections = {}
-Player.followOffset = Vector3.new(0, 0, 3) -- Follow from behind by 3 studs
-Player.lastTargetPosition = nil
-Player.followSpeed = 1.2 -- Multiplier for follow speed to keep up
-Player.followPathfinding = nil
-
 -- Variables for new features
 Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
@@ -35,7 +26,7 @@ Player.magnetPlayerPositions = {}
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
-local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton, FollowSpectateButton
+local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 local EmoteGuiFrame
 
 -- Force Field (God Mode replacement)
@@ -470,12 +461,6 @@ local function setupPlayerMonitoring(targetPlayer)
             end
         end
         
-        if Player.followEnabled and Player.followTarget == targetPlayer then
-            task.wait(0.5)
-            followPlayer(targetPlayer)
-            print("Resumed following respawned player: " .. targetPlayer.Name)
-        end
-        
         if Player.selectedPlayer == targetPlayer then
             task.wait(0.5)
             spectatePlayer(targetPlayer)
@@ -526,208 +511,6 @@ local function cleanupPlayerMonitoring(targetPlayer)
     
     Player.frozenPlayerPositions[targetPlayer] = nil
     Player.magnetPlayerPositions[targetPlayer] = nil
-end
-
--- Stop Following Player
-local function stopFollowing()
-    Player.followEnabled = false
-    Player.followTarget = nil
-    Player.lastTargetPosition = nil
-    
-    for _, connection in pairs(Player.followConnections) do
-        if connection then
-            connection:Disconnect()
-        end
-    end
-    Player.followConnections = {}
-    
-    if Player.followPathfinding then
-        Player.followPathfinding = nil
-    end
-    
-    if humanoid then
-        humanoid.WalkSpeed = 16
-        humanoid.JumpPower = 50
-        humanoid.PlatformStand = false
-    end
-    
-    print("Stopped following player")
-    updateSpectateButtons()
-end
-
--- Follow Player
-local function followPlayer(targetPlayer)
-    if not targetPlayer or targetPlayer == player then
-        print("Cannot follow: Invalid target player")
-        return
-    end
-    
-    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        print("Cannot follow: Target player has no character or HumanoidRootPart")
-        return
-    end
-    
-    if not Player.rootPart or not humanoid then
-        print("Cannot follow: Missing rootPart or humanoid")
-        return
-    end
-    
-    stopFollowing()
-    
-    Player.followEnabled = true
-    Player.followTarget = targetPlayer
-    
-    local PathfindingService = game:GetService("PathfindingService")
-    
-    local targetRootPart = targetPlayer.Character.HumanoidRootPart
-    local targetHumanoid = targetPlayer.Character.Humanoid
-    
-    print("Started following: " .. targetPlayer.Name)
-    
-    local currentPath = nil
-    local currentWaypoint = 0
-    local pathUpdateTime = 0
-    local lastTargetPos = targetRootPart.Position
-    
-    Player.followConnections.heartbeat = RunService.Heartbeat:Connect(function()
-        if not Player.followEnabled or not Player.followTarget then
-            stopFollowing()
-            return
-        end
-        
-        if not Player.followTarget.Character or not Player.followTarget.Character:FindFirstChild("HumanoidRootPart") or not Player.followTarget.Character:FindFirstChild("Humanoid") then
-            return
-        end
-        
-        local currentTargetRootPart = Player.followTarget.Character.HumanoidRootPart
-        local currentTargetHumanoid = Player.followTarget.Character.Humanoid
-        
-        if not Player.rootPart or not humanoid then
-            stopFollowing()
-            return
-        end
-        
-        local targetPosition = currentTargetRootPart.Position
-        local ourPosition = Player.rootPart.Position
-        local distance = (ourPosition - targetPosition).Magnitude
-        
-        local currentTime = tick()
-        if not currentPath or (lastTargetPos - targetPosition).Magnitude > 4 or currentTime - pathUpdateTime > 2 then
-            pathUpdateTime = currentTime
-            lastTargetPos = targetPosition
-            
-            pcall(function()
-                currentPath = PathfindingService:CreatePath({
-                    AgentRadius = 2,
-                    AgentHeight = 5,
-                    AgentCanJump = true,
-                    WaypointSpacing = 4
-                })
-                
-                currentPath:ComputeAsync(ourPosition, targetPosition)
-                
-                if currentPath.Status == Enum.PathStatus.Success then
-                    currentWaypoint = 1
-                else
-                    currentPath = nil
-                end
-            end)
-        end
-        
-        if currentPath and currentPath.Status == Enum.PathStatus.Success then
-            local waypoints = currentPath:GetWaypoints()
-            
-            if currentWaypoint <= #waypoints then
-                local waypoint = waypoints[currentWaypoint]
-                local waypointPosition = waypoint.Position
-                local waypointDistance = (ourPosition - waypointPosition).Magnitude
-                
-                humanoid:MoveTo(waypointPosition)
-                
-                if waypoint.Action == Enum.PathWaypointAction.Jump then
-                    humanoid.Jump = true
-                end
-                
-                if waypointDistance < 3 then
-                    currentWaypoint = currentWaypoint + 1
-                end
-            end
-        else
-            if distance > 5 then
-                local followPosition = targetPosition - (currentTargetRootPart.CFrame.LookVector * Player.followOffset.Z)
-                followPosition = followPosition + Vector3.new(0, Player.followOffset.Y, 0)
-                humanoid:MoveTo(followPosition)
-            end
-        end
-        
-        humanoid.WalkSpeed = math.max(currentTargetHumanoid.WalkSpeed * Player.followSpeed, 16)
-        
-        if currentTargetHumanoid.Jump and not humanoid.Jump then
-            humanoid.Jump = true
-        end
-        
-        if currentTargetHumanoid.Sit ~= humanoid.Sit then
-            humanoid.Sit = currentTargetHumanoid.Sit
-        end
-        
-        Player.lastTargetPosition = targetPosition
-    end)
-    
-    Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
-        if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
-        
-        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
-        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
-        
-        if newRootPart and newHumanoid then
-            print("Target respawned, continuing follow: " .. Player.followTarget.Name)
-            currentPath = nil
-            currentWaypoint = 0
-            pathUpdateTime = 0
-        else
-            print("Failed to get new character parts for follow target")
-            stopFollowing()
-        end
-    end)
-    
-    Player.followConnections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
-        if leavingPlayer == Player.followTarget then
-            print("Follow target left the game")
-            stopFollowing()
-        end
-    end)
-    
-    Player.followConnections.ourCharacterAdded = player.CharacterAdded:Connect(function(newCharacter)
-        if not Player.followEnabled then return end
-        
-        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
-        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
-        
-        if newRootPart and newHumanoid then
-            Player.rootPart = newRootPart
-            humanoid = newHumanoid
-            currentPath = nil
-            print("Our character respawned, continuing follow")
-        else
-            print("Failed to get our new character parts")
-            stopFollowing()
-        end
-    end)
-    
-    updateSpectateButtons()
-end
-
--- Toggle Follow Player
-local function toggleFollowPlayer(targetPlayer)
-    if not targetPlayer then
-        print("No player selected to follow")
-        return
-    end
-    if Player.followTarget == targetPlayer then
-        stopFollowing()
-    else
-        followPlayer(targetPlayer)
-    end
 end
 
 -- Freeze Players
@@ -828,11 +611,6 @@ local function updateSpectateButtons()
     if PrevSpectateButton then PrevSpectateButton.Visible = isSpectating end
     if StopSpectateButton then StopSpectateButton.Visible = isSpectating end
     if TeleportSpectateButton then TeleportSpectateButton.Visible = isSpectating end
-    if FollowSpectateButton then
-        FollowSpectateButton.Visible = isSpectating
-        FollowSpectateButton.Text = Player.followTarget == Player.selectedPlayer and "STOP FOLLOW" or "FOLLOW"
-        FollowSpectateButton.BackgroundColor3 = Player.followTarget == Player.selectedPlayer and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
-    end
 end
 
 -- Stop Spectating
@@ -1311,14 +1089,211 @@ local function showEmoteGui()
     end
 end
 
+-- Stop Following Player
+local function stopFollowing()
+    Player.followEnabled = false
+    Player.followTarget = nil
+    Player.lastTargetPosition = nil
+    
+    for _, connection in pairs(Player.followConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    Player.followConnections = {}
+    
+    if Player.followPathfinding then
+        Player.followPathfinding = nil
+    end
+    
+    if humanoid then
+        humanoid.WalkSpeed = 16
+        humanoid.JumpPower = 50
+        humanoid.PlatformStand = false
+    end
+    
+    print("Stopped following player")
+    Player.updatePlayerList()
+end
+
+-- Follow Player
+local function followPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot follow: Invalid target player")
+        return
+    end
+    
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        print("Cannot follow: Target player has no character or HumanoidRootPart")
+        return
+    end
+    
+    if not Player.rootPart or not humanoid then
+        print("Cannot follow: Missing rootPart or humanoid")
+        return
+    end
+    
+    stopFollowing()
+    
+    Player.followEnabled = true
+    Player.followTarget = targetPlayer
+    
+    local PathfindingService = game:GetService("PathfindingService")
+    
+    local targetRootPart = targetPlayer.Character.HumanoidRootPart
+    local targetHumanoid = targetPlayer.Character.Humanoid
+    
+    print("Started following: " .. targetPlayer.Name)
+    
+    local currentPath = nil
+    local currentWaypoint = 0
+    local pathUpdateTime = 0
+    local lastTargetPos = targetRootPart.Position
+    
+    Player.followConnections.heartbeat = RunService.Heartbeat:Connect(function()
+        if not Player.followEnabled or not Player.followTarget then
+            stopFollowing()
+            return
+        end
+        
+        if not Player.followTarget.Character or not Player.followTarget.Character:FindFirstChild("HumanoidRootPart") or not Player.followTarget.Character:FindFirstChild("Humanoid") then
+            return
+        end
+        
+        local currentTargetRootPart = Player.followTarget.Character.HumanoidRootPart
+        local currentTargetHumanoid = Player.followTarget.Character.Humanoid
+        
+        if not Player.rootPart or not humanoid then
+            stopFollowing()
+            return
+        end
+        
+        local targetPosition = currentTargetRootPart.Position
+        local ourPosition = Player.rootPart.Position
+        local distance = (ourPosition - targetPosition).Magnitude
+        
+        local currentTime = tick()
+        if not currentPath or (lastTargetPos - targetPosition).Magnitude > 4 or currentTime - pathUpdateTime > 2 then
+            pathUpdateTime = currentTime
+            lastTargetPos = targetPosition
+            
+            pcall(function()
+                currentPath = PathfindingService:CreatePath({
+                    AgentRadius = 2,
+                    AgentHeight = 5,
+                    AgentCanJump = true,
+                    WaypointSpacing = 4
+                })
+                
+                currentPath:ComputeAsync(ourPosition, targetPosition)
+                
+                if currentPath.Status == Enum.PathStatus.Success then
+                    currentWaypoint = 1
+                else
+                    currentPath = nil
+                end
+            end)
+        end
+        
+        if currentPath and currentPath.Status == Enum.PathStatus.Success then
+            local waypoints = currentPath:GetWaypoints()
+            
+            if currentWaypoint <= #waypoints then
+                local waypoint = waypoints[currentWaypoint]
+                local waypointPosition = waypoint.Position
+                local waypointDistance = (ourPosition - waypointPosition).Magnitude
+                
+                humanoid:MoveTo(waypointPosition)
+                
+                if waypoint.Action == Enum.PathWaypointAction.Jump then
+                    humanoid.Jump = true
+                end
+                
+                if waypointDistance < 3 then
+                    currentWaypoint = currentWaypoint + 1
+                end
+            end
+        else
+            if distance > 5 then
+                local followPosition = targetPosition - (currentTargetRootPart.CFrame.LookVector * Player.followOffset.Z)
+                followPosition = followPosition + Vector3.new(0, Player.followOffset.Y, 0)
+                humanoid:MoveTo(followPosition)
+            end
+        end
+        
+        humanoid.WalkSpeed = math.max(currentTargetHumanoid.WalkSpeed * Player.followSpeed, 16)
+        
+        if currentTargetHumanoid.Jump and not humanoid.Jump then
+            humanoid.Jump = true
+        end
+        
+        if currentTargetHumanoid.Sit ~= humanoid.Sit then
+            humanoid.Sit = currentTargetHumanoid.Sit
+        end
+        
+        Player.lastTargetPosition = targetPosition
+    end)
+    
+    Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
+        if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
+        
+        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
+        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+        
+        if newRootPart and newHumanoid then
+            print("Target respawned, continuing follow: " .. Player.followTarget.Name)
+            currentPath = nil
+            currentWaypoint = 0
+            pathUpdateTime = 0
+        else
+            print("Failed to get new character parts for follow target")
+            stopFollowing()
+        end
+    end)
+    
+    Player.followConnections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+        if leavingPlayer == Player.followTarget then
+            print("Follow target left the game")
+            stopFollowing()
+        end
+    end)
+    
+    Player.followConnections.ourCharacterAdded = player.CharacterAdded:Connect(function(newCharacter)
+        if not Player.followEnabled then return end
+        
+        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
+        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+        
+        if newRootPart and newHumanoid then
+            Player.rootPart = newRootPart
+            humanoid = newHumanoid
+            currentPath = nil
+            print("Our character respawned, continuing follow")
+        else
+            print("Failed to get our new character parts")
+            stopFollowing()
+        end
+    end)
+    
+    Player.updatePlayerList()
+end
+
+-- Toggle Follow Player
+local function toggleFollowPlayer(targetPlayer)
+    if not targetPlayer then
+        print("No player selected to follow")
+        return
+    end
+    if Player.followTarget == targetPlayer then
+        stopFollowing()
+    else
+        followPlayer(targetPlayer)
+    end
+end
+
 -- Get Selected Player
 function Player.getSelectedPlayer()
     return Player.selectedPlayer
-end
-
--- Get Follow Target
-function Player.getFollowTarget()
-    return Player.followTarget
 end
 
 -- Load Player Buttons
@@ -1461,21 +1436,6 @@ local function initUI()
     PrevSpectateButton.TextSize = 10
     PrevSpectateButton.Visible = false
     PrevSpectateButton.Active = true
-
-    FollowSpectateButton = Instance.new("TextButton")
-    FollowSpectateButton.Name = "FollowSpectateButton"
-    FollowSpectateButton.Parent = ScreenGui
-    FollowSpectateButton.BackgroundColor3 = Color3.fromRGB(60, 40, 80)
-    FollowSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    FollowSpectateButton.BorderSizePixel = 1
-    FollowSpectateButton.Position = UDim2.new(0.5, -80, 0.5, 40)
-    FollowSpectateButton.Size = UDim2.new(0, 60, 0, 30)
-    FollowSpectateButton.Font = Enum.Font.Gotham
-    FollowSpectateButton.Text = "FOLLOW"
-    FollowSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    FollowSpectateButton.TextSize = 10
-    FollowSpectateButton.Visible = false
-    FollowSpectateButton.Active = true
 
     StopSpectateButton = Instance.new("TextButton")
     StopSpectateButton.Name = "StopSpectateButton"
@@ -1640,11 +1600,6 @@ local function initUI()
     PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
     StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
     TeleportSpectateButton.MouseButton1Click:Connect(teleportToSpectatedPlayer)
-    FollowSpectateButton.MouseButton1Click:Connect(function()
-        if Player.selectedPlayer then
-            toggleFollowPlayer(Player.selectedPlayer)
-        end
-    end)
 
     NextSpectateButton.MouseEnter:Connect(function()
         NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
@@ -1672,13 +1627,6 @@ local function initUI()
     end)
     TeleportSpectateButton.MouseLeave:Connect(function()
         TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-    end)
-
-    FollowSpectateButton.MouseEnter:Connect(function()
-        FollowSpectateButton.BackgroundColor3 = Player.followTarget == Player.selectedPlayer and Color3.fromRGB(100, 80, 60) or Color3.fromRGB(80, 60, 100)
-    end)
-    FollowSpectateButton.MouseLeave:Connect(function()
-        FollowSpectateButton.BackgroundColor3 = Player.followTarget == Player.selectedPlayer and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
     end)
 
     ClosePlayerListButton.MouseButton1Click:Connect(function()
