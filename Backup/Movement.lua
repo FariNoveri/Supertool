@@ -809,15 +809,22 @@ local function toggleWalkOnWater(enabled)
 end
 
 -- Player NoClip with better handling
+-- Enhanced Player NoClip with Anti-Fling Protection
 local function togglePlayerNoclip(enabled)
     Movement.playerNoclipEnabled = enabled
     
+    -- Disconnect existing connections
     if connections.playerNoclip then
         connections.playerNoclip:Disconnect()
         connections.playerNoclip = nil
     end
+    if connections.antiFling then
+        connections.antiFling:Disconnect()
+        connections.antiFling = nil
+    end
     
     if enabled then
+        -- Main noclip function - makes other players non-solid
         connections.playerNoclip = RunService.Heartbeat:Connect(function()
             if not Movement.playerNoclipEnabled then return end
             if not refreshReferences() or not player.Character then return end
@@ -832,7 +839,52 @@ local function togglePlayerNoclip(enabled)
                 end
             end
         end)
+        
+        -- Anti-fling protection
+        connections.antiFling = RunService.Heartbeat:Connect(function()
+            if not Movement.playerNoclipEnabled then return end
+            if not refreshReferences() or not rootPart then return end
+            
+            -- Detect abnormal velocity (potential fling)
+            local currentVelocity = rootPart.Velocity
+            local maxNormalVelocity = 200 -- Adjust this value as needed
+            
+            -- Check if velocity is too high (indicates fling attempt)
+            if currentVelocity.Magnitude > maxNormalVelocity then
+                -- Reset velocity to prevent fling
+                rootPart.Velocity = Vector3.new(0, 0, 0)
+                
+                -- Optional: Also reset angular velocity if rootPart has BodyAngularVelocity
+                local bodyAngularVelocity = rootPart:FindFirstChild("BodyAngularVelocity")
+                if bodyAngularVelocity then
+                    bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+            
+            -- Additional protection: Remove any suspicious BodyMovers from other players that might affect us
+            for _, otherPlayer in pairs(Players:GetPlayers()) do
+                if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local otherRoot = otherPlayer.Character.HumanoidRootPart
+                    
+                    -- Remove any BodyVelocity, BodyPosition, or other BodyMovers that might be used for flinging
+                    for _, obj in pairs(otherRoot:GetChildren()) do
+                        if obj:IsA("BodyVelocity") or obj:IsA("BodyPosition") or obj:IsA("BodyAngularVelocity") then
+                            -- Check if it's creating abnormal forces
+                            if obj:IsA("BodyVelocity") and obj.Velocity.Magnitude > maxNormalVelocity then
+                                obj:Destroy()
+                            elseif obj:IsA("BodyPosition") and (obj.Position - rootPart.Position).Magnitude > 1000 then
+                                obj:Destroy()
+                            elseif obj:IsA("BodyAngularVelocity") and obj.AngularVelocity.Magnitude > 50 then
+                                obj:Destroy()
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+        
     else
+        -- Restore collision for other players when disabled
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player and otherPlayer.Character then
                 for _, part in pairs(otherPlayer.Character:GetChildren()) do
