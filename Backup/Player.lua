@@ -35,7 +35,7 @@ Player.magnetPlayerPositions = {}
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
-local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
+local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton, FollowSpectateButton
 local EmoteGuiFrame
 
 -- Force Field (God Mode replacement)
@@ -340,7 +340,7 @@ local function toggleMagnetPlayers(enabled)
                 end)
                 if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     task.wait(0.5)
-                    Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart
+                    Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart
                     print("Magnet applied to existing player: " .. newPlayer.Name)
                 end
             end
@@ -552,6 +552,7 @@ local function stopFollowing()
     end
     
     print("Stopped following player")
+    updateSpectateButtons()
 end
 
 -- Follow Player
@@ -712,21 +713,21 @@ local function followPlayer(targetPlayer)
             stopFollowing()
         end
     end)
+    
+    updateSpectateButtons()
 end
 
 -- Toggle Follow Player
-local function toggleFollowPlayer(enabled)
-    if enabled then
-        if Player.selectedPlayer then
-            followPlayer(Player.selectedPlayer)
-        else
-            print("No player selected to follow")
-            return false
-        end
-    else
-        stopFollowing()
+local function toggleFollowPlayer(targetPlayer)
+    if not targetPlayer then
+        print("No player selected to follow")
+        return
     end
-    return true
+    if Player.followTarget == targetPlayer then
+        stopFollowing()
+    else
+        followPlayer(targetPlayer)
+    end
 end
 
 -- Freeze Players
@@ -827,6 +828,11 @@ local function updateSpectateButtons()
     if PrevSpectateButton then PrevSpectateButton.Visible = isSpectating end
     if StopSpectateButton then StopSpectateButton.Visible = isSpectating end
     if TeleportSpectateButton then TeleportSpectateButton.Visible = isSpectating end
+    if FollowSpectateButton then
+        FollowSpectateButton.Visible = isSpectating
+        FollowSpectateButton.Text = Player.followTarget == Player.selectedPlayer and "STOP FOLLOW" or "FOLLOW"
+        FollowSpectateButton.BackgroundColor3 = Player.followTarget == Player.selectedPlayer and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
+    end
 end
 
 -- Stop Spectating
@@ -1147,7 +1153,8 @@ function Player.updatePlayerList()
                 teleportButton.MouseButton1Click:Connect(function()
                     if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
                         local targetPosition = p.Character.HumanoidRootPart.CFrame
-                        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 5) -- Adjusted to 5 studs
+                        local newPosition = targetPosition * CFrame.new(0, 0, 5)
+                        Player.rootPart.CFrame = newPosition
                         print("Teleported to: " .. p.Name)
                     else
                         print("Cannot teleport: No valid target player or missing rootPart")
@@ -1155,12 +1162,8 @@ function Player.updatePlayerList()
                 end)
                 
                 followButton.MouseButton1Click:Connect(function()
-                    if Player.followTarget == p then
-                        print("Already following this player")
-                    else
-                        followPlayer(p)
-                        Player.updatePlayerList()
-                    end
+                    toggleFollowPlayer(p)
+                    Player.updatePlayerList()
                 end)
                 
                 stopFollowButton.MouseButton1Click:Connect(function()
@@ -1291,7 +1294,8 @@ end
 local function teleportToSpectatedPlayer()
     if Player.selectedPlayer and Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
         local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
-        Player.rootPart.CFrame = targetPosition * CFrame.new(0, 0, 5) -- Adjusted to 5 studs
+        local newPosition = targetPosition * CFrame.new(0, 0, 5)
+        Player.rootPart.CFrame = newPosition
         print("Teleported to spectated player: " .. Player.selectedPlayer.Name)
     else
         print("Cannot teleport: No valid spectated player or missing rootPart")
@@ -1325,7 +1329,6 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Force Field", toggleForceField, "Player")
     createToggleButton("Anti AFK", toggleAntiAFK, "Player")
     createToggleButton("Freeze Players", toggleFreezePlayers, "Player")
-    createToggleButton("Follow Player", toggleFollowPlayer, "Player")
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
     createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
     createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
@@ -1459,14 +1462,29 @@ local function initUI()
     PrevSpectateButton.Visible = false
     PrevSpectateButton.Active = true
 
+    FollowSpectateButton = Instance.new("TextButton")
+    FollowSpectateButton.Name = "FollowSpectateButton"
+    FollowSpectateButton.Parent = ScreenGui
+    FollowSpectateButton.BackgroundColor3 = Color3.fromRGB(60, 40, 80)
+    FollowSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    FollowSpectateButton.BorderSizePixel = 1
+    FollowSpectateButton.Position = UDim2.new(0.5, -80, 0.5, 40)
+    FollowSpectateButton.Size = UDim2.new(0, 60, 0, 30)
+    FollowSpectateButton.Font = Enum.Font.Gotham
+    FollowSpectateButton.Text = "FOLLOW"
+    FollowSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    FollowSpectateButton.TextSize = 10
+    FollowSpectateButton.Visible = false
+    FollowSpectateButton.Active = true
+
     StopSpectateButton = Instance.new("TextButton")
     StopSpectateButton.Name = "StopSpectateButton"
     StopSpectateButton.Parent = ScreenGui
     StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
     StopSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     StopSpectateButton.BorderSizePixel = 1
-    StopSpectateButton.Position = UDim2.new(0.5, -30, 0.5, 40)
-    StopSpectateButton.Size = UDIM2.new(0, 60, 0, 30)
+    StopSpectateButton.Position = UDim2.new(0.5, -10, 0.5, 40)
+    StopSpectateButton.Size = UDim2.new(0, 60, 0, 30)
     StopSpectateButton.Font = Enum.Font.Gotham
     StopSpectateButton.Text = "STOP"
     StopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1480,7 +1498,7 @@ local function initUI()
     TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
     TeleportSpectateButton.BorderColor3 = Color3.fromRGB(45, 45, 45)
     TeleportSpectateButton.BorderSizePixel = 1
-    TeleportSpectateButton.Position = UDim2.new(0.5, 40, 0.5, 40)
+    TeleportSpectateButton.Position = UDim2.new(0.5, 60, 0.5, 40)
     TeleportSpectateButton.Size = UDim2.new(0, 60, 0, 30)
     TeleportSpectateButton.Font = Enum.Font.Gotham
     TeleportSpectateButton.Text = "TP"
@@ -1622,6 +1640,11 @@ local function initUI()
     PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
     StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
     TeleportSpectateButton.MouseButton1Click:Connect(teleportToSpectatedPlayer)
+    FollowSpectateButton.MouseButton1Click:Connect(function()
+        if Player.selectedPlayer then
+            toggleFollowPlayer(Player.selectedPlayer)
+        end
+    end)
 
     NextSpectateButton.MouseEnter:Connect(function()
         NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
@@ -1649,6 +1672,13 @@ local function initUI()
     end)
     TeleportSpectateButton.MouseLeave:Connect(function()
         TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+    end)
+
+    FollowSpectateButton.MouseEnter:Connect(function()
+        FollowSpectateButton.BackgroundColor3 = Player.followTarget == Player.selectedPlayer and Color3.fromRGB(100, 80, 60) or Color3.fromRGB(80, 60, 100)
+    end)
+    FollowSpectateButton.MouseLeave:Connect(function()
+        FollowSpectateButton.BackgroundColor3 = Player.followTarget == Player.selectedPlayer and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
     end)
 
     ClosePlayerListButton.MouseButton1Click:Connect(function()
