@@ -20,7 +20,7 @@ local function initUI()
     WatermarkLabel.Position = UDim2.new(0, 10, 0, 10)
     WatermarkLabel.Size = UDim2.new(0, 200, 0, 20)
     WatermarkLabel.Font = Enum.Font.GothamBold
-    WatermarkLabel.Text = "MinimalHackGUI by Fari Noveri"
+    -- WatermarkLabel.Text = "MinimalHackGUI by Fari Noveri"
     WatermarkLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     WatermarkLabel.TextSize = 14
     WatermarkLabel.TextXAlignment = Enum.TextXAlignment.Left
