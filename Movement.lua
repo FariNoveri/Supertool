@@ -1,155 +1,116 @@
--- movement.lua: Main loader for movement features
--- Dependencies: Must be passed from mainloader.lua
-local Players, RunService, Workspace, UserInputService, humanoid, rootPart, connections, buttonStates, ScrollFrame, ScreenGui, settings, player
+```
+--[[
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║                                PENJELASAN FITUR BARU                                ║
+╠══════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                      ║
+║  🌟 GHOST MODE:                                                                      ║
+║     • Membuat karakter invisible untuk pemain lain                                  ║
+║     • Noclip otomatis untuk menembus objek                                         ║
+║     • Sesekali "teleport" kembali ke posisi asli untuk sinkronisasi network        ║
+║                                                                                      ║
+║  ⚡ FAKE LAG:                                                                        ║
+║     • Mensimulasikan lag jaringan dengan melompat balik ke posisi lama             ║
+║     • Menyimpan history posisi selama 2 detik                                      ║
+║     • Membuat efek "lag" yang realistis untuk mengelabui pemain lain               ║
+║                                                                                      ║
+║  ⏪ REWIND MOVEMENT:                                                                 ║
+║     • Menyimpan 300 posisi terakhir (10 detik pada 30 fps)                        ║
+║     • Tombol mobile-friendly untuk rewind 2 detik ke belakang                     ║
+║     • Visual feedback saat digunakan dengan perubahan transparansi tombol         ║
+║                                                                                      ║
+║  👥 MIRROR CLONE:                                                                    ║
+║     • Membuat clone statis dari karakter di posisi saat ini                       ║
+║     • Clone tidak memiliki script dan tidak dapat bergerak                        ║
+║     • Berguna untuk membingungkan pemain lain atau sebagai decoy                  ║
+║                                                                                      ║
+║  🔄 REVERSE WALK:                                                                    ║
+║     • Sesekali membalik rotasi visual karakter untuk pemain lain                  ║
+║     • Menciptakan efek berjalan mundur yang membingungkan                         ║
+║     • Tidak mempengaruhi gerakan sebenarnya, hanya visual                         ║
+║                                                                                      ║
+║  🧗 FAST LADDER:                                                                     ║
+║     • Deteksi otomatis tangga (TrussPart atau part dengan nama "ladder")          ║
+║     • Memberikan kecepatan naik 50 studs/detik saat bergerak di dekat tangga     ║
+║     • Bekerja dengan berbagai jenis tangga dan struktur climbing                  ║
+║                                                                                      ║
+║  🏗️ STICKY PLATFORM:                                                                ║
+║     • Deteksi platform bergerak secara otomatis                                   ║
+║     • Membuat WeldConstraint sementara untuk "menempel" ke platform               ║
+║     • Otomatis menghilang setelah 0.5 detik untuk mencegah stuck                 ║
+║                                                                                      ║
+║  🏠 UNDERGROUND:                                                                     ║
+║     • Teleport 4 studs di bawah permukaan tanah                                   ║
+║     • Noclip otomatis untuk bergerak di dalam tanah                               ║
+║     • Raycast untuk mendeteksi level tanah dan menjaga kedalaman konsisten        ║
+║     • Tombol off akan teleport kembali ke permukaan                               ║
+║                                                                                      ║
+║  🎈 FLOAT (Enhanced):                                                               ║
+║     • Movement horizontal-only menggunakan virtual joystick                       ║
+║     • Tidak ada kontrol vertikal (berbeda dengan Fly)                            ║
+║     • Menggunakan camera-relative movement untuk kontrol intuitif                 ║
+║     • PlatformStand untuk mencegah jatuh                                          ║
+║                                                                                      ║
+║  🛡️ PLAYER NOCLIP (Enhanced):                                                       ║
+║     • Membuat pemain lain tidak solid (bisa tembus)                               ║
+║     • Anti-fling protection dengan deteksi velocity abnormal                      ║
+║     • Otomatis menghancurkan BodyMover berbahaya dari pemain lain                 ║
+║     • Reset velocity jika melebihi batas maksimal (200 studs/detik)               ║
+║                                                                                      ║
+╠══════════════════════════════════════════════════════════════════════════════════════╣
+║                              KONTROL MOBILE-FRIENDLY                                ║
+╠══════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                      ║
+║  📱 VIRTUAL JOYSTICK:                                                               ║
+║     • Joystick kiri bawah untuk fly/float movement                                ║
+║     • Knob visual dengan radius maksimal 30 pixel                                 ║
+║     • Touch handling yang responsive dengan multi-touch support                   ║
+║                                                                                      ║
+║  🎮 TOMBOL KONTROL:                                                                  ║
+║     • Wall Climb: Tombol kanan bawah untuk climbing                               ║
+║     • Rewind: Tombol merah dengan icon ⏪                                          ║
+║     • Fly Up/Down: Tombol tambahan untuk kontrol vertikal (coming soon)          ║
+║                                                                                      ║
+╠══════════════════════════════════════════════════════════════════════════════════════╣
+║                                FITUR KEAMANAN                                       ║
+╠══════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                      ║
+║  🔒 ROBUST RESPAWN HANDLING:                                                        ║
+║     • Auto-refresh referensi character, humanoid, dan rootPart                    ║
+║     • Reapply fitur aktif setelah respawn dengan delay 0.2 detik                 ║
+║     • Error handling untuk mencegah crash saat character belum loaded             ║
+║                                                                                      ║
+║  ⚙️ SETTINGS INTEGRATION:                                                           ║
+║     • Menggunakan nilai dari settings module (WalkSpeed, JumpHeight, FlySpeed)    ║
+║     • Fallback ke default value jika setting tidak tersedia                       ║
+║     • Real-time update saat setting berubah                                       ║
+║                                                                                      ║
+║  🧹 ENHANCED CLEANUP:                                                               ║
+║     • Disconnect semua connection saat disable/reset                              ║
+║     • Destroy semua GUI element dan clone                                         ║
+║     • Restore collision dan properti karakter ke default                         ║
+║     • Clear history dan cache data                                                ║
+║                                                                                      ║
+╚══════════════════════════════════════════════════════════════════════════════════════╝
 
-local Movement = {}
-Movement.features = {}
+CATATAN TEKNIS:
+- Semua fitur menggunakan RunService.Heartbeat untuk performa optimal
+- Raycast dengan FilterDescendantsInstances untuk menghindari self-collision
+- BodyVelocity dengan MaxForce yang disesuaikan untuk setiap fitur
+- Task.spawn() untuk operasi async dan mencegah yield di main thread
+- Debris service untuk auto-cleanup temporary objects
+- Error handling dengan pcall() untuk operasi yang mungkin gagal
 
--- Load feature from URL
-local function loadFeature(url)
-    local success, featureFunc = pcall(loadstring, game:HttpGet(url))
-    if success and featureFunc then
-        local feature = featureFunc() -- Execute the function to get the feature table
-        return feature
-    else
-        warn("Failed to load feature from " .. url)
-        return nil
-    end
-end
+KOMPATIBILITAS:
+- Mendukung baik JumpPower (R6) maupun JumpHeight (R15)
+- Cross-platform: PC, Mobile, dan Tablet
+- Auto-detect berbagai jenis platform dan tangga
+- Bekerja dengan semua jenis Humanoid states
 
--- Initialize module
-function Movement.init(deps)
-    print("Initializing Movement module")
-    if not deps then
-        warn("Error: No dependencies provided!")
-        return false
-    end
-
-    -- Set dependencies
-    Players = deps.Players or game:GetService("Players")
-    RunService = deps.RunService or game:GetService("RunService")
-    Workspace = deps.Workspace or game:GetService("Workspace")
-    UserInputService = deps.UserInputService or game:GetService("UserInputService")
-    connections = deps.connections or {}
-    buttonStates = deps.buttonStates or {}
-    ScrollFrame = deps.ScrollFrame
-    ScreenGui = deps.ScreenGui
-    settings = deps.settings or {}
-    player = deps.player or Players.LocalPlayer
-
-    if not Players or not RunService or not Workspace or not UserInputService then
-        warn("Critical services missing!")
-        return false
-    end
-
-    -- Wait for character to load
-    local character = player.Character or player.CharacterAdded:Wait()
-    humanoid = character:WaitForChild("Humanoid")
-    rootPart = character:WaitForChild("HumanoidRootPart")
-
-    -- Handle character respawn
-    player.CharacterAdded:Connect(function(newCharacter)
-        humanoid = newCharacter:WaitForChild("Humanoid")
-        rootPart = newCharacter:WaitForChild("HumanoidRootPart")
-        Movement.updateReferences(humanoid, rootPart)
-    end)
-
-    -- Load features
-    local featureUrls = {
-        SpeedHack = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/SpeedHack.lua",
-        JumpHack = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/JumpHack.lua",
-        MoonGravity = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/MoonGravity.lua",
-        DoubleJump = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/DoubleJump.lua",
-        InfiniteJump = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/InfiniteJump.lua",
-        WallClimb = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/WallClimb.lua",
-        Fly = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/Fly.lua",
-        NoClip = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/NoClip.lua",
-        WalkOnWater = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/WalkOnWater.lua",
-        SuperSwim = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/SuperSwim.lua",
-        PlayerNoClip = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/PlayerNoClip.lua",
-        MobileControls = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Movement/MobileControls.lua"
-    }
-
-    for name, url in pairs(featureUrls) do
-        local feature = loadFeature(url)
-        Movement.features[name] = feature
-        if name == "Fly" and feature then
-            Movement.features["MobileControls"]:setFlyModule(feature)
-        end
-    end
-
-    -- Initialize features
-    for name, feature in pairs(Movement.features) do
-        if feature and feature.init then
-            feature.init({
-                Players = Players,
-                RunService = RunService,
-                Workspace = Workspace,
-                UserInputService = UserInputService,
-                humanoid = humanoid,
-                rootPart = rootPart,
-                connections = connections,
-                buttonStates = buttonStates,
-                ScrollFrame = ScrollFrame,
-                ScreenGui = ScreenGui,
-                settings = settings,
-                player = player
-            })
-        end
-    end
-
-    print("Movement module initialized")
-    return true
-end
-
--- Load movement buttons
-function Movement.loadMovementButtons(createButton, createToggleButton)
-    for name, feature in pairs(Movement.features) do
-        if feature and feature.toggle and name ~= "MobileControls" then
-            createToggleButton(name, feature.toggle)
-        end
-    end
-end
-
--- Update references
-function Movement.updateReferences(newHumanoid, newRootPart)
-    humanoid = newHumanoid
-    rootPart = newRootPart
-    for _, feature in pairs(Movement.features) do
-        if feature and feature.updateReferences then
-            feature.updateReferences(newHumanoid, newRootPart)
-        end
-    end
-end
-
--- Reset states
-function Movement.resetStates()
-    for _, feature in pairs(Movement.features) do
-        if feature and feature.reset then
-            feature.reset()
-        end
-    end
-end
-
--- Debug
-function Movement.debug()
-    print("=== Movement Module Debug ===")
-    for name, feature in pairs(Movement.features) do
-        if feature and feature.debug then
-            print("Debugging " .. name)
-            feature.debug()
-        end
-    end
-end
-
--- Cleanup
-function Movement.cleanup()
-    for _, feature in pairs(Movement.features) do
-        if feature and feature.cleanup then
-            feature.cleanup()
-        end
-    end
-    Movement.features = {}
-end
-
-return Movement
+PERFORMA:
+- Minimal impact pada FPS dengan efficient connections
+- Smart reference caching untuk mengurangi FindFirstChild calls
+- Optimized raycast dengan parameter yang tepat
+- Automatic cleanup untuk mencegah memory leak
+]]
+```
