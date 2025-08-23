@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri with Anti-Cheat Bypass
+-- MinimalHackGUI by Fari Noveri with Anti-Cheat Bypass
 
 -- Anti-Detection Bypasses
 local function createBypass()
@@ -26,8 +26,8 @@ local function createBypass()
                 local success, result = pcall(originalGetGC, ...)
                 if not success then return {} end
                 local filtered = {}
-                for i, v in pairs(result) do
-                    if not (typeof(v) == "Instance" and string.find(tostring(v.Name), "MinimalHack")) then
+                for _, v in ipairs(result) do
+                    if not (typeof(v) == "Instance" and tostring(v.Name):find("MinimalHack")) then
                         table.insert(filtered, v)
                     end
                 end
@@ -37,8 +37,7 @@ local function createBypass()
     end)
     
     local function hideFromDetection()
-        local randomSuffix = tostring(math.random(10000, 99999))
-        return "PlayerGUI_" .. randomSuffix
+        return "PlayerGUI_" .. tostring(math.random(10000, 99999))
     end
     
     local function cleanupMemory()
@@ -110,7 +109,7 @@ end
 hideFromCommonDetection()
 
 -- Clean up existing GUIs
-for _, gui in pairs(player.PlayerGui:GetChildren()) do
+for _, gui in ipairs(player.PlayerGui:GetChildren()) do
     if gui:IsA("ScreenGui") and (gui.Name:find("PlayerGUI_") or gui.Name == "MinimalHackGUI") and gui ~= ScreenGui then
         task.spawn(function()
             task.wait(math.random(100, 500) / 1000)
@@ -259,17 +258,98 @@ local moduleURLs = {
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua"
 }
 
+-- Local AntiAdmin Module (from provided code)
+local localModules = {
+    AntiAdmin = function()
+        local AntiAdmin = {}
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+        local connections = {}
+
+        local function isAdmin(player)
+            return player:GetRankInGroup(0) >= 250 or player:IsInGroup(1200769)
+        end
+
+        local function notifyAdmin(player)
+            local notification = Instance.new("ScreenGui")
+            notification.Name = "AntiAdminNotify"
+            notification.Parent = LocalPlayer:WaitForChild("PlayerGui")
+            local frame = Instance.new("Frame", notification)
+            frame.Size = UDim2.new(0, 200, 0, 50)
+            frame.Position = UDim2.new(0.5, -100, 0, 10)
+            frame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+            local text = Instance.new("TextLabel", frame)
+            text.Size = UDim2.new(1, 0, 1, 0)
+            text.BackgroundTransparency = 1
+            text.Text = "Admin Detected: " .. player.Name
+            text.TextColor3 = Color3.fromRGB(255, 255, 255)
+            text.TextScaled = true
+            task.spawn(function()
+                task.wait(5)
+                notification:Destroy()
+            end)
+        end
+
+        function AntiAdmin.init(dependencies)
+            connections.playerAdded = Players.PlayerAdded:Connect(function(player)
+                if isAdmin(player) then
+                    notifyAdmin(player)
+                end
+            end)
+
+            for _, player in ipairs(Players:GetPlayers()) do
+                if isAdmin(player) then
+                    notifyAdmin(player)
+                end
+            end
+        end
+
+        function AntiAdmin.loadAntiAdminButtons(createToggleButton, parent)
+            createToggleButton("AntiKick", function(state)
+                if state then
+                    connections.antiKick = RunService.Heartbeat:Connect(function()
+                        pcall(function()
+                            LocalPlayer.Kick = function() return false end
+                        end)
+                    end)
+                else
+                    if connections.antiKick then
+                        connections.antiKick:Disconnect()
+                        connections.antiKick = nil
+                    end
+                end
+            end, function()
+                if connections.antiKick then
+                    connections.antiKick:Disconnect()
+                    connections.antiKick = nil
+                end
+            end)
+        end
+
+        function AntiAdmin.resetStates()
+            for _, connection in pairs(connections) do
+                if connection and connection.Disconnect then
+                    connection:Disconnect()
+                end
+            end
+            connections = {}
+        end
+
+        return AntiAdmin
+    end
+}
+
 -- Modules
 local modules = {}
 local modulesLoaded = {}
 
 -- Load Module
 local function loadModule(moduleName)
-    -- Try local module first (if available in ReplicatedStorage)
-    local localModule = ReplicatedStorage:FindFirstChild(moduleName)
-    if localModule and localModule:IsA("ModuleScript") then
+    -- Try local module first
+    if localModules[moduleName] then
         local success, result = pcall(function()
-            return require(localModule)
+            return localModules[moduleName]()
         end)
         if success and result then
             modules[moduleName] = result
@@ -284,7 +364,26 @@ local function loadModule(moduleName)
         end
     end
 
-    -- Fallback to HTTP if no local module
+    -- Try ReplicatedStorage module
+    local localModule = ReplicatedStorage:FindFirstChild(moduleName)
+    if localModule and localModule:IsA("ModuleScript") then
+        local success, result = pcall(function()
+            return require(localModule)
+        end)
+        if success and result then
+            modules[moduleName] = result
+            modulesLoaded[moduleName] = true
+            print("Successfully loaded ReplicatedStorage module: " .. moduleName)
+            if selectedCategory == moduleName then
+                task.spawn(loadButtons)
+            end
+            return true
+        else
+            warn("Failed to load ReplicatedStorage module " .. moduleName .. ": " .. tostring(result))
+        end
+    end
+
+    -- Fallback to HTTP
     if not moduleURLs[moduleName] then
         warn("No URL defined for module: " .. moduleName)
         return false
@@ -317,13 +416,13 @@ local function loadModule(moduleName)
     if success and result then
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
-        print("Successfully loaded module: " .. moduleName)
+        print("Successfully loaded HTTP module: " .. moduleName)
         if selectedCategory == moduleName then
             task.spawn(loadButtons)
         end
         return true
     else
-        warn("Failed to load module " .. moduleName .. ": " .. tostring(result))
+        warn("Failed to load HTTP module " .. moduleName .. ": " .. tostring(result))
         return false
     end
 end
@@ -377,7 +476,7 @@ local function initializeModules()
             end
         end
     end
-    setupRemoteEventHandler() -- Set up RemoteEvent handler after module init
+    setupRemoteEventHandler()
 end
 
 -- Disable active feature
@@ -390,7 +489,7 @@ local function disableActiveFeature()
             categoryStates[categoryName][featureName] = false
         end
         
-        for _, child in pairs(FeatureContainer:GetChildren()) do
+        for _, child in ipairs(FeatureContainer:GetChildren()) do
             if child:IsA("TextButton") and child.Name:find(featureName) then
                 child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
                 break
@@ -409,8 +508,8 @@ dependencies.disableActiveFeature = disableActiveFeature
 
 -- Check if feature is exclusive
 local function isExclusiveFeature(featureName)
-    for _, exclusive in pairs(exclusiveFeatures) do
-        if string.find(featureName, exclusive) then
+    for _, exclusive in ipairs(exclusiveFeatures) do
+        if featureName:find(exclusive) then
             return true
         end
     end
@@ -510,7 +609,7 @@ end
 
 -- Load buttons
 local function loadButtons()
-    for _, child in pairs(FeatureContainer:GetChildren()) do
+    for _, child in ipairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
