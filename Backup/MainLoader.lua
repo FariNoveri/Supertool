@@ -2,28 +2,29 @@
 
 -- Anti-Detection Bypasses
 local function createBypass()
-    -- Spoof game services to avoid detection
     local spoofedServices = {}
     
-    -- Safe HTTP function wrapper instead of direct hooking
     local function safeHttpGet(url)
-        -- Add random delay to avoid pattern detection
         task.wait(math.random(50, 200) / 1000)
         local success, response = pcall(function()
             return game:GetService("HttpService"):GetAsync(url)
         end)
-        return success and response or nil
+        if not success then
+            warn("HTTP request failed for URL: " .. url .. " | Error: " .. tostring(response))
+            return nil
+        elseif not response or response == "" then
+            warn("Empty response for URL: " .. url)
+            return nil
+        end
+        return response
     end
     
-    -- Spoof getgc and getgenv functions if they exist (safer approach)
     pcall(function()
         if getgc then
             local originalGetGC = getgc
             getgc = function(...)
                 local success, result = pcall(originalGetGC, ...)
                 if not success then return {} end
-                
-                -- Filter out our GUI objects from garbage collection results
                 local filtered = {}
                 for i, v in pairs(result) do
                     if not (typeof(v) == "Instance" and string.find(tostring(v.Name), "MinimalHack")) then
@@ -35,17 +36,14 @@ local function createBypass()
         end
     end)
     
-    -- Hide from common anti-cheat detection methods
     local function hideFromDetection()
-        -- Randomize GUI names to avoid signature detection
         local randomSuffix = tostring(math.random(10000, 99999))
         return "PlayerGUI_" .. randomSuffix
     end
     
-    -- Memory cleanup to avoid detection
     local function cleanupMemory()
         pcall(function()
-            collectgarbage("count") -- Use count instead of collect
+            collectgarbage("collect")
             task.wait(0.1)
         end)
     end
@@ -55,9 +53,9 @@ end
 
 local hideFromDetection, cleanupMemory, safeHttpGet = createBypass()
 
--- Services (with anti-detection wrapping)
+-- Services
 local function getService(serviceName)
-    task.wait(math.random(1, 5) / 1000) -- Random micro-delay
+    task.wait(math.random(1, 5) / 1000)
     return game:GetService(serviceName)
 end
 
@@ -66,6 +64,7 @@ local UserInputService = getService("UserInputService")
 local RunService = getService("RunService")
 local Workspace = getService("Workspace")
 local Lighting = getService("Lighting")
+local ReplicatedStorage = getService("ReplicatedStorage")
 
 -- Local Player
 local player = Players.LocalPlayer
@@ -75,12 +74,10 @@ local character, humanoid, rootPart
 local connections = {}
 local buttonStates = {}
 local selectedCategory = "Movement"
-local categoryStates = {} -- Store feature states per category
-local activeFeature = nil -- Track currently active exclusive feature
-local exclusiveFeatures = {} -- List of features that should be exclusive
-
--- Anti-detection: Randomize update intervals
-local updateInterval = math.random(100, 300) / 1000
+local categoryStates = {}
+local activeFeature = nil
+local exclusiveFeatures = {"Fly", "Noclip", "Speed", "JumpHeight", "InfiniteJump", 
+                          "Freecam", "FullBright", "ESP", "Tracers", "AutoFarm"}
 
 -- Settings
 local settings = {
@@ -90,7 +87,7 @@ local settings = {
     WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
 }
 
--- ScreenGui with bypass naming
+-- ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = hideFromDetection()
 ScreenGui.Parent = player:WaitForChild("PlayerGui")
@@ -98,16 +95,12 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
 
--- Anti-detection: Hide from common detection methods
+-- Anti-detection
 local function hideFromCommonDetection()
-    -- Make GUI less visible to basic detection scripts
     ScreenGui.DisplayOrder = -1000
-    
-    -- Anti-detection heartbeat
     task.spawn(function()
         while ScreenGui.Parent do
-            task.wait(updateInterval)
-            -- Randomize some properties to avoid pattern detection
+            task.wait(math.random(100, 300) / 1000)
             ScreenGui.DisplayOrder = math.random(-1000, -500)
             cleanupMemory()
         end
@@ -116,7 +109,7 @@ end
 
 hideFromCommonDetection()
 
--- Check for existing script instances (improved bypass)
+-- Clean up existing GUIs
 for _, gui in pairs(player.PlayerGui:GetChildren()) do
     if gui:IsA("ScreenGui") and (gui.Name:find("PlayerGUI_") or gui.Name == "MinimalHackGUI") and gui ~= ScreenGui then
         task.spawn(function()
@@ -126,7 +119,7 @@ for _, gui in pairs(player.PlayerGui:GetChildren()) do
     end
 end
 
--- Main Frame with obfuscated properties
+-- Main Frame
 local Frame = Instance.new("Frame")
 Frame.Name = "MainContainer_" .. tostring(math.random(1000, 9999))
 Frame.Parent = ScreenGui
@@ -137,8 +130,6 @@ Frame.Position = UDim2.new(0.5, -250, 0.5, -150)
 Frame.Size = UDim2.new(0, 500, 0, 300)
 Frame.Active = true
 Frame.Draggable = true
-
--- Anti-detection: Make frame slightly transparent to avoid screenshot detection
 Frame.BackgroundTransparency = 0.01
 
 -- Title
@@ -197,7 +188,7 @@ MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 10
 
--- Category Container with Scrolling
+-- Category Container
 local CategoryContainer = Instance.new("ScrollingFrame")
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
@@ -215,7 +206,6 @@ CategoryLayout.Padding = UDim.new(0, 3)
 CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 CategoryLayout.FillDirection = Enum.FillDirection.Vertical
 
--- Update category canvas size when content changes
 CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     CategoryContainer.CanvasSize = UDim2.new(0, 0, 0, CategoryLayout.AbsoluteContentSize.Y + 10)
 end)
@@ -238,7 +228,6 @@ FeatureLayout.Parent = FeatureContainer
 FeatureLayout.Padding = UDim.new(0, 2)
 FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Update feature canvas size when content changes
 FeatureLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 10)
 end)
@@ -258,54 +247,7 @@ local categories = {
 local categoryFrames = {}
 local isMinimized = false
 
--- Define exclusive features (features that can't run together)
-exclusiveFeatures = {
-    "Fly", "Noclip", "Speed", "JumpHeight", "InfiniteJump", 
-    "Freecam", "FullBright", "ESP", "Tracers", "AutoFarm"
-}
-
--- Function to disable active feature
-local function disableActiveFeature()
-    if activeFeature then
-        local categoryName = activeFeature.category
-        local featureName = activeFeature.name
-        
-        -- Set state to false
-        if categoryStates[categoryName] and categoryStates[categoryName][featureName] ~= nil then
-            categoryStates[categoryName][featureName] = false
-        end
-        
-        -- Find and update button appearance
-        for _, child in pairs(FeatureContainer:GetChildren()) do
-            if child:IsA("TextButton") and child.Name == featureName then
-                child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                break
-            end
-        end
-        
-        -- Call disable callback if available
-        if activeFeature.disableCallback then
-            pcall(activeFeature.disableCallback)
-        end
-        
-        activeFeature = nil
-    end
-end
-
--- Function to check if feature is exclusive
-local function isExclusiveFeature(featureName)
-    for _, exclusive in pairs(exclusiveFeatures) do
-        if string.find(featureName, exclusive) then
-            return true
-        end
-    end
-    return false
-end
-
--- Load modules with bypass
-local modules = {}
-local modulesLoaded = {}
-
+-- Module URLs
 local moduleURLs = {
     Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Movement.lua",
     Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Player.lua",
@@ -317,23 +259,45 @@ local moduleURLs = {
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua"
 }
 
--- Anti-detection module loading
+-- Modules
+local modules = {}
+local modulesLoaded = {}
+
+-- Load Module
 local function loadModule(moduleName)
+    -- Try local module first (if available in ReplicatedStorage)
+    local localModule = ReplicatedStorage:FindFirstChild(moduleName)
+    if localModule and localModule:IsA("ModuleScript") then
+        local success, result = pcall(function()
+            return require(localModule)
+        end)
+        if success and result then
+            modules[moduleName] = result
+            modulesLoaded[moduleName] = true
+            print("Successfully loaded local module: " .. moduleName)
+            if selectedCategory == moduleName then
+                task.spawn(loadButtons)
+            end
+            return true
+        else
+            warn("Failed to load local module " .. moduleName .. ": " .. tostring(result))
+        end
+    end
+
+    -- Fallback to HTTP if no local module
     if not moduleURLs[moduleName] then
+        warn("No URL defined for module: " .. moduleName)
         return false
     end
     
-    -- Add random delay to avoid pattern detection
     task.wait(math.random(100, 500) / 1000)
     
     local success, result = pcall(function()
         local response = safeHttpGet(moduleURLs[moduleName])
         if not response or response == "" then
+            warn("No response for module: " .. moduleName)
             return nil
         end
-        
-        -- Anti-detection: Obfuscate the loading process
-        task.wait(math.random(50, 150) / 1000)
         
         local func, loadError = loadstring(response)
         if not func then
@@ -353,6 +317,7 @@ local function loadModule(moduleName)
     if success and result then
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
+        print("Successfully loaded module: " .. moduleName)
         if selectedCategory == moduleName then
             task.spawn(loadButtons)
         end
@@ -363,10 +328,10 @@ local function loadModule(moduleName)
     end
 end
 
--- Load all modules with staggered timing
+-- Load all modules
 for moduleName, _ in pairs(moduleURLs) do
     task.spawn(function() 
-        task.wait(math.random(100, 1000) / 1000) -- Random delay between module loads
+        task.wait(math.random(500, 2000) / 1000)
         loadModule(moduleName) 
     end)
 end
@@ -383,9 +348,19 @@ local dependencies = {
     connections = connections,
     buttonStates = buttonStates,
     player = player,
-    disableActiveFeature = disableActiveFeature,
-    isExclusiveFeature = isExclusiveFeature
+    disableActiveFeature = function() end, -- Defined below
+    isExclusiveFeature = function() return false end -- Defined below
 }
+
+-- Handle SendLikelySpeakingUsers RemoteEvent
+local function setupRemoteEventHandler()
+    local SendLikelySpeakingUsers = ReplicatedStorage:FindFirstChild("SendLikelySpeakingUsers")
+    if SendLikelySpeakingUsers and SendLikelySpeakingUsers:IsA("RemoteEvent") then
+        connections.SendLikelySpeakingUsers = SendLikelySpeakingUsers.OnClientEvent:Connect(function(...)
+            print("Received SendLikelySpeakingUsers event with args:", ...)
+        end)
+    end
+end
 
 -- Initialize modules
 local function initializeModules()
@@ -398,16 +373,56 @@ local function initializeModules()
                 return module.init(dependencies)
             end)
             if not success then
-                -- Silent failure to avoid detection
+                warn("Failed to initialize module " .. moduleName .. ": " .. tostring(result))
             end
         end
     end
+    setupRemoteEventHandler() -- Set up RemoteEvent handler after module init
 end
 
--- Create button with bypass
+-- Disable active feature
+local function disableActiveFeature()
+    if activeFeature then
+        local categoryName = activeFeature.category
+        local featureName = activeFeature.name
+        
+        if categoryStates[categoryName] and categoryStates[categoryName][featureName] ~= nil then
+            categoryStates[categoryName][featureName] = false
+        end
+        
+        for _, child in pairs(FeatureContainer:GetChildren()) do
+            if child:IsA("TextButton") and child.Name:find(featureName) then
+                child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                break
+            end
+        end
+        
+        if activeFeature.disableCallback then
+            pcall(activeFeature.disableCallback)
+        end
+        
+        activeFeature = nil
+    end
+end
+
+dependencies.disableActiveFeature = disableActiveFeature
+
+-- Check if feature is exclusive
+local function isExclusiveFeature(featureName)
+    for _, exclusive in pairs(exclusiveFeatures) do
+        if string.find(featureName, exclusive) then
+            return true
+        end
+    end
+    return false
+end
+
+dependencies.isExclusiveFeature = isExclusiveFeature
+
+-- Create button
 local function createButton(name, callback, categoryName)
     local button = Instance.new("TextButton")
-    button.Name = name .. "_" .. tostring(math.random(100, 999)) -- Randomize name
+    button.Name = name .. "_" .. tostring(math.random(100, 999))
     button.Parent = FeatureContainer
     button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.BorderSizePixel = 0
@@ -420,10 +435,7 @@ local function createButton(name, callback, categoryName)
     
     if type(callback) == "function" then
         button.MouseButton1Click:Connect(function()
-            -- Anti-detection delay
             task.wait(math.random(10, 50) / 1000)
-            
-            -- Check if this is an exclusive feature
             if isExclusiveFeature(name) then
                 disableActiveFeature()
                 activeFeature = {
@@ -432,7 +444,6 @@ local function createButton(name, callback, categoryName)
                     disableCallback = nil
                 }
             end
-            
             callback()
         end)
     end
@@ -446,7 +457,7 @@ local function createButton(name, callback, categoryName)
     end)
 end
 
--- Create toggle button with exclusive feature support and bypass
+-- Create toggle button
 local function createToggleButton(name, callback, categoryName, disableCallback)
     local button = Instance.new("TextButton")
     button.Name = name .. "_toggle_" .. tostring(math.random(100, 999))
@@ -466,12 +477,9 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     
     button.MouseButton1Click:Connect(function()
-        -- Anti-detection delay
         task.wait(math.random(10, 50) / 1000)
-        
         local newState = not categoryStates[categoryName][name]
         
-        -- If enabling an exclusive feature
         if newState and isExclusiveFeature(name) then
             disableActiveFeature()
             activeFeature = {
@@ -500,16 +508,14 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     end)
 end
 
--- Load buttons implementation with bypass
+-- Load buttons
 local function loadButtons()
-    -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
-    -- Update category button backgrounds
     for categoryName, categoryData in pairs(categoryFrames) do
         categoryData.button.BackgroundColor3 = categoryName == selectedCategory and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
     end
@@ -518,7 +524,6 @@ local function loadButtons()
         return
     end
     
-    -- Show loading label
     local loadingLabel = Instance.new("TextLabel")
     loadingLabel.Parent = FeatureContainer
     loadingLabel.BackgroundTransparency = 1
@@ -530,13 +535,11 @@ local function loadButtons()
     loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
 
     task.spawn(function()
-        -- Anti-detection delay
         task.wait(math.random(100, 300) / 1000)
         
         local success = false
         local errorMessage = nil
 
-        -- Load buttons based on selected category
         if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
             success, errorMessage = pcall(function()
                 modules.Movement.loadMovementButtons(
@@ -594,10 +597,9 @@ local function loadButtons()
             end)
         end
 
-        -- Update UI based on result
         if loadingLabel and loadingLabel.Parent then
             if not success then
-                loadingLabel.Text = "Failed to load " .. selectedCategory
+                loadingLabel.Text = "Failed to load " .. selectedCategory .. ": " .. tostring(errorMessage)
                 loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
             else
                 loadingLabel:Destroy()
@@ -621,7 +623,7 @@ for _, category in ipairs(categories) do
     categoryButton.TextSize = 8
 
     categoryButton.MouseButton1Click:Connect(function()
-        task.wait(math.random(10, 30) / 1000) -- Anti-detection delay
+        task.wait(math.random(10, 30) / 1000)
         selectedCategory = category.name
         task.spawn(loadButtons)
     end)
@@ -642,21 +644,18 @@ for _, category in ipairs(categories) do
     categoryStates[category.name] = {}
 end
 
--- Minimize/Maximize with bypass
+-- Minimize/Maximize
 local function toggleMinimize()
     isMinimized = not isMinimized
     Frame.Visible = not isMinimized
     MinimizedLogo.Visible = isMinimized
     MinimizeButton.Text = isMinimized and "+" or "-"
-    
-    -- Anti-detection: Clean memory after UI changes
     cleanupMemory()
 end
 
--- Reset states with bypass
+-- Reset states
 local function resetStates()
     activeFeature = nil
-    
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
             connection:Disconnect()
@@ -677,7 +676,7 @@ local function resetStates()
     cleanupMemory()
 end
 
--- Character setup with bypass
+-- Character setup
 local function onCharacterAdded(newCharacter)
     if not newCharacter then return end
     
@@ -690,7 +689,6 @@ local function onCharacterAdded(newCharacter)
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
         
-        -- Anti-detection delay before initializing
         task.wait(math.random(200, 500) / 1000)
         initializeModules()
         
@@ -698,15 +696,17 @@ local function onCharacterAdded(newCharacter)
             connections.humanoidDied = humanoid.Died:Connect(resetStates)
         end
     end)
+    if not success then
+        warn("Failed to set up character: " .. tostring(result))
+    end
 end
 
--- Initialize with bypass
+-- Initialize
 if player.Character then
     onCharacterAdded(player.Character)
 end
 connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 
--- Event connections with bypass
 MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
 LogoButton.MouseButton1Click:Connect(toggleMinimize)
 
@@ -716,32 +716,27 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
     end
 end)
 
--- Anti-detection: Periodic cleanup and randomization
+-- Periodic cleanup
 task.spawn(function()
     while ScreenGui.Parent do
-        task.wait(math.random(30000, 60000) / 1000) -- 30-60 seconds
+        task.wait(math.random(30000, 60000) / 1000)
         cleanupMemory()
-        
-        -- Randomize some GUI properties to avoid detection
         if Frame.Visible then
             Frame.BackgroundTransparency = math.random(1, 5) / 100
         end
     end
 end)
 
--- Start initialization with bypass
+-- Start initialization
 task.spawn(function()
-    local timeout = 20 -- Increased timeout
+    local timeout = 30
     local startTime = tick()
     
-    -- Wait for critical modules to load with random intervals
     while (not modules.Movement or not modules.Player or not modules.Teleport) and tick() - startTime < timeout do
         task.wait(math.random(100, 300) / 1000)
     end
-
-    -- Anti-detection delay before final initialization
-    task.wait(math.random(500, 1000) / 1000)
     
+    task.wait(math.random(500, 1000) / 1000)
     initializeModules()
     task.spawn(loadButtons)
 end)
