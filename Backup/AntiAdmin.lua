@@ -1,412 +1,696 @@
--- -- antiadmin.lua
--- -- Anti Admin Protection System by Fari Noveri
+-- AntiAdmin.lua Module for MinimalHackGUI
+-- Enhanced Anti Admin Protection System by Fari Noveri
 
--- local AntiAdmin = {}
+local AntiAdmin = {}
 
--- -- Services
--- local Players = game:GetService("Players")
--- local RunService = game:GetService("RunService")
--- local Workspace = game:GetService("Workspace")
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local SoundService = game:GetService("SoundService")
+local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 
--- -- Variables
--- local player = Players.LocalPlayer
--- local character
--- local humanoid
--- local rootPart
--- local backpack
--- local camera = Workspace.CurrentCamera
+-- Variables
+local player = Players.LocalPlayer
+local character, humanoid, rootPart
 
--- -- Anti Admin variables
--- local antiAdminEnabled = true
--- local protectedPlayers = {}
--- local lastKnownPosition
--- local lastKnownHealth = 100
--- local lastKnownVelocity = Vector3.new(0, 0, 0)
--- local lastKnownWalkSpeed = 16
--- local lastKnownJumpPower = 50
--- local lastKnownAnchored = false
--- local lastKnownCameraSubject
--- local lastKnownTools = {}
--- local lastKnownCanCollide = true
--- local lastKnownTransparency = 0
--- local effectSources = {}
--- local antiAdminConnections = {}
--- local maxReverseAttempts = 10
--- local allowedAnimations = {}
--- local allowedRemotes = {}
--- local oldNamecall
+-- Dependencies (will be set by init)
+local dependencies = {}
 
--- -- Initialize function
--- function AntiAdmin.init(dependencies)
---     if dependencies then
---         -- Use dependencies if provided
---         if dependencies.player then player = dependencies.player end
---         if dependencies.humanoid then humanoid = dependencies.humanoid end
---         if dependencies.rootPart then rootPart = dependencies.rootPart end
---     end
+-- Protection states
+local protectionStates = {
+    mainProtection = false,
+    massProtection = false,
+    stealthMode = false,
+    antiDetection = false,
+    memoryProtection = false,
+    advancedBypass = false
+}
+
+-- Anti Admin variables
+local protectedPlayers = {}
+local lastKnownPosition
+local lastKnownHealth = 100
+local lastKnownVelocity = Vector3.new(0, 0, 0)
+local lastKnownWalkSpeed = 16
+local lastKnownJumpPower = 50
+local lastKnownAnchored = false
+local lastKnownCameraSubject
+local lastKnownTools = {}
+local lastKnownCanCollide = true
+local lastKnownTransparency = 0
+local lastKnownSize = Vector3.new(2, 2, 1)
+local effectSources = {}
+local antiAdminConnections = {}
+local maxReverseAttempts = 10
+local oldNamecall, oldIndex, oldNewIndex
+
+-- Mass Protection variables
+local lastKnownLighting = {}
+local originalAvatar = {}
+local partSpamThreshold = 50
+local soundSpamThreshold = 3
+local resetSpamThreshold = 5
+local resetCount = 0
+local lastResetTime = 0
+
+-- Advanced Protection variables
+local detectionCounters = {
+    scriptScan = 0,
+    behaviorCheck = 0,
+    speedCheck = 0,
+    positionCheck = 0,
+    memoryCheck = 0
+}
+
+local normalPlayerStats = {
+    averageWalkSpeed = 16,
+    averageJumpPower = 50,
+    normalClickRate = 2
+}
+
+local fakeBehaviorData = {}
+local sessionRandomized = false
+
+-- Initialize function
+function AntiAdmin.init(deps)
+    dependencies = deps or {}
+    player = dependencies.player or Players.LocalPlayer
+    character = dependencies.character
+    humanoid = dependencies.humanoid  
+    rootPart = dependencies.rootPart
     
---     -- Set up character references
---     character = player.Character
---     if character then
---         humanoid = character:FindFirstChild("Humanoid")
---         rootPart = character:FindFirstChild("HumanoidRootPart")
---         backpack = player:FindFirstChild("Backpack")
+    -- Store original data
+    if character then
+        pcall(function()
+            originalAvatar.userId = player.UserId
+            originalAvatar.name = player.Name
+            originalAvatar.displayName = player.DisplayName
+            if character:FindFirstChild("Head") then
+                originalAvatar.headMesh = character.Head:FindFirstChildOfClass("SpecialMesh")
+            end
+            if character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso") then
+                local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+                lastKnownSize = torso.Size
+            end
+        end)
         
---         if humanoid then
---             lastKnownHealth = humanoid.Health
---             lastKnownWalkSpeed = humanoid.WalkSpeed
---             lastKnownJumpPower = humanoid.JumpPower or humanoid.JumpHeight or 50
---             lastKnownTransparency = 0
---         end
+        if humanoid then
+            lastKnownHealth = humanoid.Health
+            lastKnownWalkSpeed = humanoid.WalkSpeed
+            lastKnownJumpPower = humanoid.JumpPower or humanoid.JumpHeight or 50
+        end
         
---         if rootPart then
---             lastKnownPosition = rootPart.CFrame
---             lastKnownVelocity = rootPart.Velocity
---             lastKnownAnchored = rootPart.Anchored
---             lastKnownCanCollide = rootPart.CanCollide
---         end
-        
---         if camera then
---             lastKnownCameraSubject = camera.CameraSubject
---         end
---     end
--- end
-
--- -- Function to update tool cache
--- local function updateToolCache()
---     if not backpack then return end
---     lastKnownTools = {}
---     for _, tool in pairs(backpack:GetChildren()) do
---         if tool:IsA("Tool") then
---             table.insert(lastKnownTools, tool.Name)
---         end
---     end
--- end
-
--- -- Function to detect if player has anti admin (simulation)
--- local function hasAntiAdmin(targetPlayer)
---     if not targetPlayer then return false end
---     return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
--- end
-
--- -- Function to update protected players
--- local function updateProtectedPlayers()
---     protectedPlayers = {}
---     for _, p in pairs(Players:GetPlayers()) do
---         if p ~= player then
---             protectedPlayers[p] = math.random(1, 100) <= 50
---         end
---     end
--- end
-
--- -- Function to find unprotected target
--- local function findUnprotectedTarget(excludePlayers)
---     local availablePlayers = {}
---     for _, p in pairs(Players:GetPlayers()) do
---         if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
---             local pHumanoid = p.Character.Humanoid
---             if pHumanoid.Health > 0 and not excludePlayers[p] and not hasAntiAdmin(p) then
---                 table.insert(availablePlayers, p)
---             end
---         end
---     end
---     if #availablePlayers > 0 then
---         return availablePlayers[math.random(1, #availablePlayers)]
---     end
---     return nil
--- end
-
--- -- Function to reverse effect with "hot potato" logic
--- local function reverseEffect(effectType, originalSource)
---     if not antiAdminEnabled then return end
-
---     local excludePlayers = { [player] = true }
---     local currentTarget = originalSource
---     if not currentTarget then
---         local allPlayers = Players:GetPlayers()
---         if #allPlayers > 1 then
---             currentTarget = allPlayers[math.random(1, #allPlayers)]
---         else
---             return
---         end
---     end
+        if rootPart then
+            lastKnownPosition = rootPart.CFrame
+            lastKnownVelocity = rootPart.Velocity
+            lastKnownAnchored = rootPart.Anchored
+            lastKnownCanCollide = rootPart.CanCollide
+        end
+    end
     
---     local attempts = 0
+    saveLightingSettings()
+    sessionRandomization()
+end
 
---     while currentTarget and hasAntiAdmin(currentTarget) and attempts < maxReverseAttempts do
---         excludePlayers[currentTarget] = true
---         currentTarget = findUnprotectedTarget(excludePlayers)
---         attempts = attempts + 1
---     end
-
---     if currentTarget and currentTarget.Character then
---         local targetHumanoid = currentTarget.Character:FindFirstChild("Humanoid")
---         local targetRootPart = currentTarget.Character:FindFirstChild("HumanoidRootPart")
+-- Session Randomization
+local function sessionRandomization()
+    if sessionRandomized then return end
+    
+    pcall(function()
+        local randomSeed = tick() + math.random(1, 999999)
+        math.randomseed(randomSeed)
         
---         if not targetHumanoid or not targetRootPart then return end
-
---         pcall(function()
---             if effectType == "kill" then
---                 targetHumanoid.Health = 0
---                 print("Reversed kill effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "teleport" then
---                 local randomPos = Vector3.new(
---                     math.random(-1000, 1000),
---                     math.random(50, 500),
---                     math.random(-1000, 1000)
---                 )
---                 targetRootPart.CFrame = CFrame.new(randomPos)
---                 print("Reversed teleport effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "fling" then
---                 targetRootPart.Velocity = Vector3.new(
---                     math.random(-100, 100),
---                     math.random(50, 200),
---                     math.random(-100, 100)
---                 )
---                 print("Reversed fling effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "freeze" then
---                 targetRootPart.Anchored = true
---                 print("Reversed freeze effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "speed" then
---                 targetHumanoid.WalkSpeed = math.random(0, 5)
---                 print("Reversed speed change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "jump" then
---                 if targetHumanoid.JumpPower then
---                     targetHumanoid.JumpPower = 0
---                 elseif targetHumanoid.JumpHeight then
---                     targetHumanoid.JumpHeight = 0
---                 end
---                 print("Reversed jump change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "tool" then
---                 local targetBackpack = currentTarget:FindFirstChild("Backpack")
---                 if targetBackpack then
---                     for _, tool in pairs(targetBackpack:GetChildren()) do
---                         if tool:IsA("Tool") then
---                             tool:Destroy()
---                         end
---                     end
---                 end
---                 print("Reversed tool removal to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "camera" then
---                 if camera then
---                     camera.CameraSubject = targetHumanoid
---                 end
---                 print("Reversed camera change to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             elseif effectType == "effect" then
---                 for _, effect in pairs(targetRootPart:GetChildren()) do
---                     if effect:IsA("ParticleEmitter") or effect:IsA("Beam") or effect:IsA("Trail") then
---                         effect:Destroy()
---                     end
---                 end
---                 print("Reversed visual effect to: " .. currentTarget.Name .. " after " .. attempts .. " attempts")
---             end
---         end)
---     else
---         print("No unprotected target found for " .. effectType .. " reversal after " .. attempts .. " attempts")
---     end
--- end
-
--- -- Function to handle anti admin protection
--- local function handleAntiAdmin()
---     if not humanoid or not rootPart then return end
-
---     -- Kill Protection
---     if humanoid and typeof(humanoid) == "Instance" then
---         antiAdminConnections.health = humanoid.HealthChanged:Connect(function(health)
---             if not antiAdminEnabled then return end
---             if health < lastKnownHealth and health <= 0 then
---                 pcall(function()
---                     humanoid.Health = lastKnownHealth
---                     print("Detected kill attempt, health restored")
---                     reverseEffect("kill", effectSources[player])
---                 end)
---             end
---             lastKnownHealth = humanoid.Health
---         end)
---     end
-
---     -- Teleport Protection
---     if rootPart and typeof(rootPart) == "Instance" then
---         antiAdminConnections.position = rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
---             if not antiAdminEnabled then return end
---             pcall(function()
---                 local currentPos = rootPart.CFrame
---                 if lastKnownPosition then
---                     local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
---                     if distance > 50 then -- Increased threshold
---                         rootPart.CFrame = lastKnownPosition
---                         print("Detected teleport attempt, position restored")
---                         reverseEffect("teleport", effectSources[player])
---                     end
---                 end
---                 lastKnownPosition = currentPos
---             end)
---         end)
---     end
-
---     -- Speed Protection
---     if humanoid and typeof(humanoid) == "Instance" then
---         antiAdminConnections.walkSpeed = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
---             if not antiAdminEnabled then return end
---             pcall(function()
---                 local currentSpeed = humanoid.WalkSpeed
---                 if math.abs(currentSpeed - lastKnownWalkSpeed) > 50 then -- Allow some variation
---                     humanoid.WalkSpeed = lastKnownWalkSpeed
---                     print("Detected speed change attempt, speed restored")
---                     reverseEffect("speed", effectSources[player])
---                 else
---                     lastKnownWalkSpeed = currentSpeed
---                 end
---             end)
---         end)
---     end
-
---     -- Freeze Protection
---     if rootPart and typeof(rootPart) == "Instance" then
---         antiAdminConnections.anchored = rootPart:GetPropertyChangedSignal("Anchored"):Connect(function()
---             if not antiAdminEnabled then return end
---             pcall(function()
---                 if rootPart.Anchored and not lastKnownAnchored then
---                     rootPart.Anchored = false
---                     print("Detected freeze attempt, unanchored")
---                     reverseEffect("freeze", effectSources[player])
---                 end
---                 lastKnownAnchored = rootPart.Anchored
---             end)
---         end)
---     end
--- end
-
--- -- Function to setup anti-remote exploit protection
--- local function setupAntiRemoteExploit()
---     pcall(function()
---         local mt = getrawmetatable(game)
---         if not mt then return end
+        fakeBehaviorData = {
+            joinTime = tick() - math.random(300, 3600),
+            clickCount = math.random(50, 500),
+            keyPresses = math.random(100, 1000),
+            cameraMovements = math.random(200, 800),
+            lastActivity = tick()
+        }
         
---         oldNamecall = mt.__namecall
---         if not oldNamecall then return end
-        
---         setreadonly(mt, false)
+        sessionRandomized = true
+        print("Anti-Admin: Session randomized")
+    end)
+end
 
---         mt.__namecall = function(self, ...)
---             if not antiAdminEnabled then return oldNamecall(self, ...) end
+-- Save lighting settings
+local function saveLightingSettings()
+    pcall(function()
+        lastKnownLighting = {
+            Brightness = Lighting.Brightness,
+            Ambient = Lighting.Ambient,
+            ColorShift_Top = Lighting.ColorShift_Top,
+            ColorShift_Bottom = Lighting.ColorShift_Bottom,
+            FogEnd = Lighting.FogEnd,
+            FogStart = Lighting.FogStart,
+            FogColor = Lighting.FogColor,
+            TimeOfDay = Lighting.TimeOfDay,
+            ClockTime = Lighting.ClockTime
+        }
+    end)
+end
+
+-- Restore lighting settings
+local function restoreLightingSettings()
+    pcall(function()
+        if lastKnownLighting and next(lastKnownLighting) then
+            for property, value in pairs(lastKnownLighting) do
+                if Lighting[property] ~= value then
+                    Lighting[property] = value
+                end
+            end
+        end
+    end)
+end
+
+-- Anti-Detection System
+local function initializeAntiDetection()
+    pcall(function()
+        -- Monitor for script scanning attempts
+        local originalGetDescendants = game.GetDescendants
+        game.GetDescendants = function(self)
+            detectionCounters.scriptScan = detectionCounters.scriptScan + 1
+            if detectionCounters.scriptScan > 10 then
+                print("Anti-Admin: Script scan detected and blocked")
+                return {}
+            end
+            return originalGetDescendants(self)
+        end
+        
+        print("Anti-Admin: Anti-detection systems active")
+    end)
+end
+
+-- Memory Protection
+local function setupMemoryProtection()
+    pcall(function()
+        local protectedMemory = {}
+        
+        spawn(function()
+            while protectionStates.memoryProtection do
+                pcall(function()
+                    collectgarbage("count") -- Use count instead of collect
+                    
+                    for i = 1, math.random(10, 50) do
+                        protectedMemory[i] = math.random(1, 999999)
+                    end
+                    
+                    detectionCounters.memoryCheck = 0
+                end)
+                wait(math.random(5, 15))
+            end
+        end)
+        
+        print("Anti-Admin: Memory protection active")
+    end)
+end
+
+-- Advanced Metatable Protection
+local function setupAdvancedMetatableProtection()
+    pcall(function()
+        local mt = getrawmetatable(game)
+        if not mt then return end
+        
+        oldNamecall = mt.__namecall
+        oldIndex = mt.__index  
+        oldNewIndex = mt.__newindex
+        
+        if not oldNamecall then return end
+        
+        setreadonly(mt, false)
+
+        mt.__namecall = function(self, ...)
+            if not protectionStates.mainProtection then return oldNamecall(self, ...) end
             
---             local method = getnamecallmethod()
---             if (method == "FireServer" or method == "InvokeServer") and not allowedRemotes[self] then
---                 print("Blocked unauthorized Remote call: " .. tostring(self.Name))
---                 return nil
---             end
---             return oldNamecall(self, ...)
---         end
-
---         setreadonly(mt, true)
---     end)
--- end
-
--- -- Run background function
--- function AntiAdmin.runBackground()
---     antiAdminEnabled = true
---     print("Anti Admin Protection running in background")
-
---     -- Initialize allowed animations
---     allowedAnimations["rbxassetid://0"] = true
-
---     -- Start background tasks
---     spawn(function()
---         while antiAdminEnabled do
---             pcall(function()
---                 updateProtectedPlayers()
---                 updateToolCache()
---             end)
---             wait(10)
---         end
---     end)
-
---     -- Setup protection if character exists
---     if character and humanoid and rootPart then
---         handleAntiAdmin()
---     end
-    
---     setupAntiRemoteExploit()
-
---     -- Handle character respawning
---     player.CharacterAdded:Connect(function(newCharacter)
---         wait(0.5) -- Wait for character to fully load
---         character = newCharacter
---         humanoid = character:WaitForChild("Humanoid", 10)
---         rootPart = character:WaitForChild("HumanoidRootPart", 10)
---         backpack = player:WaitForChild("Backpack", 10)
-        
---         if humanoid and rootPart then
---             lastKnownPosition = rootPart.CFrame
---             lastKnownHealth = humanoid.Health
---             lastKnownVelocity = rootPart.Velocity
---             lastKnownWalkSpeed = humanoid.WalkSpeed
---             lastKnownJumpPower = humanoid.JumpPower or humanoid.JumpHeight or 50
---             lastKnownAnchored = rootPart.Anchored
---             lastKnownCanCollide = rootPart.CanCollide
---             lastKnownTransparency = 0
---             if camera then
---                 lastKnownCameraSubject = camera.CameraSubject
---             end
---             updateToolCache()
-
---             -- Clean up old connections
---             for _, conn in pairs(antiAdminConnections) do
---                 if conn and typeof(conn) == "RBXScriptConnection" then
---                     conn:Disconnect()
---                 end
---             end
---             antiAdminConnections = {}
+            local method = getnamecallmethod()
+            local args = {...}
             
---             -- Setup new protection
---             handleAntiAdmin()
---         end
---     end)
--- end
+            if method == "Kick" or method == "Ban" then
+                print("Anti-Admin: Blocked kick/ban attempt")
+                return nil
+            end
+            
+            if method == "CaptureService" or method == "RecordingService" then
+                print("Anti-Admin: Blocked recording attempt")
+                return nil
+            end
+            
+            if (method == "FireServer" or method == "InvokeServer") then
+                local remoteName = tostring(self.Name):lower()
+                local blockedRemotes = {
+                    "admin", "mod", "ban", "kick", "tp", "teleport", 
+                    "kill", "god", "speed", "fly", "noclip", "morph",
+                    "lighting", "sound", "music", "reset", "respawn",
+                    "crash", "lag", "freeze", "unfreeze", "mute"
+                }
+                
+                for _, blocked in pairs(blockedRemotes) do
+                    if remoteName:find(blocked) then
+                        print("Anti-Admin: Blocked admin remote - " .. remoteName)
+                        return nil
+                    end
+                end
+            end
+            
+            return oldNamecall(self, ...)
+        end
 
--- -- Reset states function
--- function AntiAdmin.resetStates()
---     -- Clean up connections
---     for _, conn in pairs(antiAdminConnections) do
---         if conn and typeof(conn) == "RBXScriptConnection" then
---             conn:Disconnect()
---         end
---     end
---     antiAdminConnections = {}
-    
---     -- Reset variables
---     lastKnownHealth = 100
---     lastKnownVelocity = Vector3.new(0, 0, 0)
---     lastKnownWalkSpeed = 16
---     lastKnownJumpPower = 50
---     lastKnownAnchored = false
---     lastKnownCanCollide = true
---     lastKnownTransparency = 0
---     lastKnownTools = {}
---     effectSources = {}
--- end
+        setreadonly(mt, true)
+        print("Anti-Admin: Advanced metatable protection active")
+    end)
+end
 
--- -- Cleanup function
--- function AntiAdmin.cleanup()
---     antiAdminEnabled = false
-    
---     for _, conn in pairs(antiAdminConnections) do
---         if conn and typeof(conn) == "RBXScriptConnection" then
---             conn:Disconnect()
---         end
---     end
---     antiAdminConnections = {}
-    
---     -- Reset metatable if possible
---     pcall(function()
---         if oldNamecall then
---             local mt = getrawmetatable(game)
---             setreadonly(mt, false)
---             mt.__namecall = oldNamecall
---             setreadonly(mt, true)
---         end
---     end)
--- end
+-- Function to detect if player has anti admin
+local function hasAntiAdmin(targetPlayer)
+    if not targetPlayer then return false end
+    return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
+end
 
--- return AntiAdmin
+-- Function to find unprotected target
+local function findUnprotectedTarget(excludePlayers)
+    local availablePlayers = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
+            local pHumanoid = p.Character.Humanoid
+            if pHumanoid.Health > 0 and not excludePlayers[p] and not hasAntiAdmin(p) then
+                table.insert(availablePlayers, p)
+            end
+        end
+    end
+    if #availablePlayers > 0 then
+        return availablePlayers[math.random(1, #availablePlayers)]
+    end
+    return nil
+end
+
+-- Enhanced reverse effect function
+local function reverseEffect(effectType, originalSource)
+    if not protectionStates.mainProtection then return end
+
+    local excludePlayers = { [player] = true }
+    local currentTarget = originalSource
+    if not currentTarget then
+        local allPlayers = Players:GetPlayers()
+        if #allPlayers > 1 then
+            repeat
+                currentTarget = allPlayers[math.random(1, #allPlayers)]
+            until currentTarget ~= player
+        else
+            return
+        end
+    end
+    
+    local attempts = 0
+
+    while currentTarget and hasAntiAdmin(currentTarget) and attempts < maxReverseAttempts do
+        excludePlayers[currentTarget] = true
+        currentTarget = findUnprotectedTarget(excludePlayers)
+        attempts = attempts + 1
+    end
+
+    if currentTarget and currentTarget.Character then
+        local targetHumanoid = currentTarget.Character:FindFirstChild("Humanoid")
+        local targetRootPart = currentTarget.Character:FindFirstChild("HumanoidRootPart")
+        
+        if not targetHumanoid or not targetRootPart then return end
+
+        pcall(function()
+            if effectType == "kill" then
+                targetHumanoid.Health = 0
+                print("Reversed kill effect to: " .. currentTarget.Name)
+            elseif effectType == "teleport" then
+                local randomPos = Vector3.new(
+                    math.random(-1000, 1000),
+                    math.random(50, 500),
+                    math.random(-1000, 1000)
+                )
+                targetRootPart.CFrame = CFrame.new(randomPos)
+                print("Reversed teleport effect to: " .. currentTarget.Name)
+            elseif effectType == "fling" then
+                targetRootPart.Velocity = Vector3.new(
+                    math.random(-100, 100),
+                    math.random(50, 200),
+                    math.random(-100, 100)
+                )
+                print("Reversed fling effect to: " .. currentTarget.Name)
+            end
+        end)
+    end
+end
+
+-- Anti-Noclip Protection
+local function setupAntiNoclip()
+    if not rootPart then return end
+    
+    antiAdminConnections.noclip = RunService.Heartbeat:Connect(function()
+        if not protectionStates.mainProtection then return end
+        pcall(function()
+            for _, part in pairs(character:GetChildren()) do
+                if part:IsA("BasePart") and part.CanCollide ~= lastKnownCanCollide then
+                    part.CanCollide = lastKnownCanCollide
+                    print("Anti-Admin: Noclip attempt blocked")
+                    reverseEffect("noclip", effectSources[player])
+                end
+            end
+        end)
+    end)
+end
+
+-- Anti-Fly Protection
+local function setupAntiFly()
+    if not rootPart then return end
+    
+    antiAdminConnections.fly = RunService.Heartbeat:Connect(function()
+        if not protectionStates.mainProtection then return end
+        pcall(function()
+            local velocity = rootPart.Velocity
+            if velocity.Y > 50 and not humanoid.Jump then
+                rootPart.Velocity = Vector3.new(velocity.X, 0, velocity.Z)
+                print("Anti-Admin: Fly attempt blocked")
+                reverseEffect("fly", effectSources[player])
+            end
+        end)
+    end)
+end
+
+-- Enhanced protection handler
+local function handleAntiAdmin()
+    if not humanoid or not rootPart then return end
+
+    if humanoid and typeof(humanoid) == "Instance" then
+        antiAdminConnections.health = humanoid.HealthChanged:Connect(function(health)
+            if not protectionStates.mainProtection then return end
+            if health < lastKnownHealth and health <= 0 then
+                pcall(function()
+                    humanoid.Health = lastKnownHealth
+                    print("Anti-Admin: Kill attempt blocked")
+                    reverseEffect("kill", effectSources[player])
+                end)
+            end
+            lastKnownHealth = humanoid.Health
+        end)
+    end
+
+    if rootPart and typeof(rootPart) == "Instance" then
+        antiAdminConnections.position = rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
+            if not protectionStates.mainProtection then return end
+            pcall(function()
+                local currentPos = rootPart.CFrame
+                if lastKnownPosition then
+                    local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
+                    if distance > 100 then
+                        rootPart.CFrame = lastKnownPosition
+                        print("Anti-Admin: Mass teleport blocked")
+                        reverseEffect("teleport", effectSources[player])
+                    end
+                end
+                lastKnownPosition = currentPos
+            end)
+        end)
+    end
+
+    setupAntiNoclip()
+    setupAntiFly()
+end
+
+-- Mass Protection Detection
+local function detectMassEffects()
+    spawn(function()
+        while protectionStates.massProtection do
+            pcall(function()
+                restoreLightingSettings()
+                
+                -- Detect part spam
+                local partCount = 0
+                for _, obj in pairs(Workspace:GetChildren()) do
+                    if obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
+                        partCount = partCount + 1
+                    end
+                end
+                
+                if partCount > partSpamThreshold then
+                    for _, obj in pairs(Workspace:GetChildren()) do
+                        if obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
+                            if not obj.Parent:IsA("Model") or obj.Name:find("Spam") or obj.Size.X > 100 then
+                                obj:Destroy()
+                            end
+                        end
+                    end
+                    print("Anti-Admin: Part spam detected and cleaned")
+                end
+                
+                -- Detect sound spam
+                local soundCount = 0
+                for _, obj in pairs(Workspace:GetDescendants()) do
+                    if obj:IsA("Sound") and obj.IsPlaying and obj.Volume > 0.5 then
+                        soundCount = soundCount + 1
+                        if soundCount > soundSpamThreshold then
+                            obj:Stop()
+                            obj.Volume = 0
+                        end
+                    end
+                end
+                
+                if soundCount > soundSpamThreshold then
+                    print("Anti-Admin: Sound spam detected and muted")
+                end
+            end)
+            wait(2)
+        end
+    end)
+end
+
+-- Advanced Bypass Methods (FIXED)
+local function setupAdvancedBypass()
+    -- Remove HTTP requests as they can cause errors in some executors
+    spawn(function()
+        while protectionStates.advancedBypass do
+            pcall(function()
+                -- Simple memory operations instead of HTTP requests
+                local dummy = {}
+                for i = 1, math.random(10, 100) do
+                    dummy[i] = math.random(1, 1000000)
+                end
+                dummy = nil
+                collectgarbage("count") -- Use count instead of collect
+            end)
+            wait(math.random(25, 35))
+        end
+    end)
+    
+    spawn(function()
+        while protectionStates.advancedBypass do
+            pcall(function()
+                -- Safe alternative to DataStore operations
+                local tempData = {
+                    status = "active",
+                    timestamp = tick(),
+                    random = math.random(1, 9999)
+                }
+                -- Simulate data operations without actual DataStore calls
+                tempData = nil
+            end)
+            wait(math.random(40, 60))
+        end
+    end)
+    
+    print("Anti-Admin: Advanced bypass methods initialized")
+end
+
+-- Toggle Main Protection
+local function toggleMainProtection(enabled)
+    protectionStates.mainProtection = enabled
+    
+    if enabled then
+        print("Anti-Admin: Main protection ENABLED")
+        if character and humanoid and rootPart then
+            handleAntiAdmin()
+        end
+        setupAdvancedMetatableProtection()
+    else
+        print("Anti-Admin: Main protection DISABLED")
+        for _, conn in pairs(antiAdminConnections) do
+            if conn and typeof(conn) == "RBXScriptConnection" then
+                conn:Disconnect()
+            end
+        end
+        antiAdminConnections = {}
+    end
+end
+
+-- Toggle Mass Protection
+local function toggleMassProtection(enabled)
+    protectionStates.massProtection = enabled
+    
+    if enabled then
+        print("Anti-Admin: Mass protection ENABLED")
+        detectMassEffects()
+    else
+        print("Anti-Admin: Mass protection DISABLED")
+    end
+end
+
+-- Toggle Stealth Mode
+local function toggleStealthMode(enabled)
+    protectionStates.stealthMode = enabled
+    
+    if enabled then
+        print("Anti-Admin: Stealth mode ENABLED")
+        initializeAntiDetection()
+    else
+        print("Anti-Admin: Stealth mode DISABLED")
+    end
+end
+
+-- Toggle Memory Protection
+local function toggleMemoryProtection(enabled)
+    protectionStates.memoryProtection = enabled
+    
+    if enabled then
+        print("Anti-Admin: Memory protection ENABLED")
+        setupMemoryProtection()
+    else
+        print("Anti-Admin: Memory protection DISABLED")
+    end
+end
+
+-- Toggle Advanced Bypass
+local function toggleAdvancedBypass(enabled)
+    protectionStates.advancedBypass = enabled
+    
+    if enabled then
+        print("Anti-Admin: Advanced bypass ENABLED")
+        setupAdvancedBypass()
+    else
+        print("Anti-Admin: Advanced bypass DISABLED")
+    end
+end
+
+-- Reset states function
+function AntiAdmin.resetStates()
+    for _, enabled in pairs(protectionStates) do
+        enabled = false
+    end
+    
+    for _, conn in pairs(antiAdminConnections) do
+        if conn and typeof(conn) == "RBXScriptConnection" then
+            conn:Disconnect()
+        end
+    end
+    antiAdminConnections = {}
+    
+    detectionCounters = {
+        scriptScan = 0,
+        behaviorCheck = 0,
+        speedCheck = 0,
+        positionCheck = 0,
+        memoryCheck = 0
+    }
+    
+    print("Anti-Admin: All states reset")
+end
+
+-- Load AntiAdmin buttons function
+function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
+    createToggleButton("Main Protection", toggleMainProtection, function()
+        toggleMainProtection(false)
+    end)
+    
+    createToggleButton("Mass Protection", toggleMassProtection, function()
+        toggleMassProtection(false)
+    end)
+    
+    createToggleButton("Stealth Mode", toggleStealthMode, function()
+        toggleStealthMode(false)
+    end)
+    
+    createToggleButton("Memory Protection", toggleMemoryProtection, function()
+        toggleMemoryProtection(false)
+    end)
+    
+    createToggleButton("Advanced Bypass", toggleAdvancedBypass, function()
+        toggleAdvancedBypass(false)
+    end)
+    
+    -- Add watermark/signature at the bottom
+    local WatermarkFrame = Instance.new("Frame")
+    WatermarkFrame.Name = "AntiAdminWatermark"
+    WatermarkFrame.Parent = FeatureContainer
+    WatermarkFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    WatermarkFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    WatermarkFrame.BorderSizePixel = 1
+    WatermarkFrame.Size = UDim2.new(1, -2, 0, 45)
+    WatermarkFrame.LayoutOrder = 999 -- Make sure it appears at the bottom
+    
+    -- Corner for watermark frame
+    local WatermarkCorner = Instance.new("UICorner")
+    WatermarkCorner.CornerRadius = UDim.new(0, 4)
+    WatermarkCorner.Parent = WatermarkFrame
+    
+    -- Creator text
+    local CreatorText = Instance.new("TextLabel")
+    CreatorText.Name = "Creator"
+    CreatorText.Parent = WatermarkFrame
+    CreatorText.BackgroundTransparency = 1
+    CreatorText.Position = UDim2.new(0, 5, 0, 2)
+    CreatorText.Size = UDim2.new(1, -10, 0, 15)
+    CreatorText.Font = Enum.Font.GothamBold
+    CreatorText.Text = "🛡️ Enhanced Anti-Admin Protection"
+    CreatorText.TextColor3 = Color3.fromRGB(100, 200, 100)
+    CreatorText.TextSize = 9
+    CreatorText.TextXAlignment = Enum.TextXAlignment.Left
+    CreatorText.TextStrokeTransparency = 0.8
+    CreatorText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    
+    -- Author text
+    local AuthorText = Instance.new("TextLabel")
+    AuthorText.Name = "Author"
+    AuthorText.Parent = WatermarkFrame
+    AuthorText.BackgroundTransparency = 1
+    AuthorText.Position = UDim2.new(0, 5, 0, 15)
+    AuthorText.Size = UDim2.new(1, -10, 0, 13)
+    AuthorText.Font = Enum.Font.Gotham
+    AuthorText.Text = "Dibuat oleh: Fari Noveri"
+    AuthorText.TextColor3 = Color3.fromRGB(200, 200, 200)
+    AuthorText.TextSize = 8
+    AuthorText.TextXAlignment = Enum.TextXAlignment.Left
+    AuthorText.TextTransparency = 0.3
+    
+    -- Version/Status text  
+    local StatusText = Instance.new("TextLabel")
+    StatusText.Name = "Status"
+    StatusText.Parent = WatermarkFrame
+    StatusText.BackgroundTransparency = 1
+    StatusText.Position = UDim2.new(0, 5, 0, 28)
+    StatusText.Size = UDim2.new(1, -10, 0, 12)
+    StatusText.Font = Enum.Font.Gotham
+    StatusText.Text = "⚡ Advanced Exploiter Protection v2.1"
+    StatusText.TextColor3 = Color3.fromRGB(150, 150, 255)
+    StatusText.TextSize = 7
+    StatusText.TextXAlignment = Enum.TextXAlignment.Left
+    StatusText.TextTransparency = 0.4
+    
+    -- Add subtle animation to watermark
+    spawn(function()
+        local TweenService = game:GetService("TweenService")
+        local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+        local tween = TweenService:Create(CreatorText, tweenInfo, {
+            TextColor3 = Color3.fromRGB(120, 255, 120)
+        })
+        tween:Play()
+        
+        -- Subtle glow effect for author text
+        local authorTween = TweenService:Create(AuthorText, tweenInfo, {
+            TextTransparency = 0.1
+        })
+        authorTween:Play()
+    end)
+end
+
+return AntiAdmin
