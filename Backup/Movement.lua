@@ -1,4 +1,4 @@
--- Movement.lua - Enhanced version with bug fixes
+-- Movement.lua - Enhanced version with new features
 -- Movement-related features for MinimalHackGUI by Fari Noveri, mobile-friendly with robust respawn handling
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -51,10 +51,9 @@ local joystickTouchId = nil
 local positionHistory = {}
 local maxHistorySize = 300 -- 10 seconds at 30 fps
 local mirrorClone = nil
-local originalPosition = nil -- Changed from originalCFrame
+local originalCFrame = nil
 local fakeLagPositions = {}
 local lastNetworkUpdate = 0
-local ghostStartPosition = nil
 
 -- Scroll frame for UI
 local function setupScrollFrame()
@@ -92,7 +91,7 @@ local function getSettingValue(settingName, defaultValue)
     return defaultValue
 end
 
--- Create virtual controls with better positioning and WHITE STYLING
+-- Create virtual controls with better positioning
 local function createMobileControls()
     print("Creating mobile controls")
     
@@ -101,53 +100,12 @@ local function createMobileControls()
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
 
-    -- FLY UP BUTTON
-    flyUpButton = Instance.new("TextButton")
-    flyUpButton.Name = "FlyUpButton"
-    flyUpButton.Size = UDim2.new(0, 60, 0, 60)
-    flyUpButton.Position = UDim2.new(1, -80, 1, -260)
-    flyUpButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- WHITE
-    flyUpButton.BackgroundTransparency = 0.1
-    flyUpButton.BorderSizePixel = 0
-    flyUpButton.Text = "▲"
-    flyUpButton.Font = Enum.Font.GothamBold
-    flyUpButton.TextColor3 = Color3.fromRGB(0, 0, 0) -- BLACK TEXT
-    flyUpButton.TextSize = 20
-    flyUpButton.Visible = false
-    flyUpButton.ZIndex = 10
-    flyUpButton.Parent = ScreenGui or player.PlayerGui
-
-    local upCorner = Instance.new("UICorner")
-    upCorner.CornerRadius = UDim.new(0.2, 0)
-    upCorner.Parent = flyUpButton
-
-    -- FLY DOWN BUTTON
-    flyDownButton = Instance.new("TextButton")
-    flyDownButton.Name = "FlyDownButton"
-    flyDownButton.Size = UDim2.new(0, 60, 0, 60)
-    flyDownButton.Position = UDim2.new(1, -80, 1, -60)
-    flyDownButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- WHITE
-    flyDownButton.BackgroundTransparency = 0.1
-    flyDownButton.BorderSizePixel = 0
-    flyDownButton.Text = "▼"
-    flyDownButton.Font = Enum.Font.GothamBold
-    flyDownButton.TextColor3 = Color3.fromRGB(0, 0, 0) -- BLACK TEXT
-    flyDownButton.TextSize = 20
-    flyDownButton.Visible = false
-    flyDownButton.ZIndex = 10
-    flyDownButton.Parent = ScreenGui or player.PlayerGui
-
-    local downCorner = Instance.new("UICorner")
-    downCorner.CornerRadius = UDim.new(0.2, 0)
-    downCorner.Parent = flyDownButton
-
-    -- JOYSTICK
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
     flyJoystickFrame.Size = UDim2.new(0, 100, 0, 100)
     flyJoystickFrame.Position = UDim2.new(0, 20, 1, -130)
-    flyJoystickFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- WHITE
-    flyJoystickFrame.BackgroundTransparency = 0.1
+    flyJoystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    flyJoystickFrame.BackgroundTransparency = 0.3
     flyJoystickFrame.BorderSizePixel = 0
     flyJoystickFrame.Visible = false
     flyJoystickFrame.ZIndex = 10
@@ -161,7 +119,7 @@ local function createMobileControls()
     flyJoystickKnob.Name = "Knob"
     flyJoystickKnob.Size = UDim2.new(0, 40, 0, 40)
     flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-    flyJoystickKnob.BackgroundColor3 = Color3.fromRGB(200, 200, 200) -- LIGHT GRAY
+    flyJoystickKnob.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
     flyJoystickKnob.BackgroundTransparency = 0.1
     flyJoystickKnob.BorderSizePixel = 0
     flyJoystickKnob.ZIndex = 11
@@ -171,17 +129,16 @@ local function createMobileControls()
     knobCorner.CornerRadius = UDim.new(0.5, 0)
     knobCorner.Parent = flyJoystickKnob
 
-    -- WALL CLIMB BUTTON
     wallClimbButton = Instance.new("TextButton")
     wallClimbButton.Name = "WallClimbButton"
     wallClimbButton.Size = UDim2.new(0, 60, 0, 60)
     wallClimbButton.Position = UDim2.new(1, -80, 1, -130)
-    wallClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- WHITE
-    wallClimbButton.BackgroundTransparency = 0.1
+    wallClimbButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    wallClimbButton.BackgroundTransparency = 0.3
     wallClimbButton.BorderSizePixel = 0
     wallClimbButton.Text = "Climb"
     wallClimbButton.Font = Enum.Font.GothamBold
-    wallClimbButton.TextColor3 = Color3.fromRGB(0, 0, 0) -- BLACK TEXT
+    wallClimbButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     wallClimbButton.TextSize = 12
     wallClimbButton.Visible = false
     wallClimbButton.ZIndex = 10
@@ -422,7 +379,7 @@ local function toggleFloat(enabled)
     end
 end
 
--- FIXED Underground walking - langsung ke bawah
+-- Fixed Underground walking
 local function toggleUnderground(enabled)
     Movement.undergroundEnabled = enabled
     
@@ -442,8 +399,21 @@ local function toggleUnderground(enabled)
                 end
             end
             
-            -- LANGSUNG TURUN 20 STUD KE BAWAH
-            rootPart.CFrame = rootPart.CFrame - Vector3.new(0, 20, 0)
+            -- Find ground level and position player underground
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -1000, 0), raycastParams)
+            if raycast and raycast.Instance then
+                -- Position player 4 studs below ground surface
+                local undergroundPosition = Vector3.new(
+                    rootPart.Position.X, 
+                    raycast.Position.Y - 4, 
+                    rootPart.Position.Z
+                )
+                rootPart.CFrame = CFrame.new(undergroundPosition, rootPart.CFrame.LookVector)
+            end
         end)
         
         connections.underground = RunService.Heartbeat:Connect(function()
@@ -454,6 +424,29 @@ local function toggleUnderground(enabled)
             for _, part in pairs(player.Character:GetChildren()) do
                 if part:IsA("BasePart") and part.CanCollide then
                     part.CanCollide = false
+                end
+            end
+            
+            -- Keep player at consistent underground depth
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local downRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -50, 0), raycastParams)
+            local upRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 50, 0), raycastParams)
+            
+            if upRaycast and upRaycast.Instance then
+                local groundLevel = upRaycast.Position.Y
+                local playerLevel = rootPart.Position.Y
+                
+                -- Maintain 4 studs below ground
+                local targetY = groundLevel - 4
+                if math.abs(playerLevel - targetY) > 1 then
+                    rootPart.CFrame = CFrame.new(
+                        rootPart.Position.X,
+                        targetY,
+                        rootPart.Position.Z
+                    ) * CFrame.Angles(0, rootPart.CFrame.Rotation.Y, 0)
                 end
             end
         end)
@@ -467,13 +460,26 @@ local function toggleUnderground(enabled)
                 end
             end
             
-            -- LANGSUNG NAIK 25 STUD KE ATAS
-            rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 25, 0)
+            -- Find surface and teleport up
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local upRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 1000, 0), raycastParams)
+            if upRaycast and upRaycast.Instance then
+                rootPart.CFrame = CFrame.new(
+                    rootPart.Position.X,
+                    upRaycast.Position.Y + 3,
+                    rootPart.Position.Z
+                )
+            else
+                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 20, 0)
+            end
         end
     end
 end
 
--- FIXED Ghost Mode - Stay at start position for others
+-- NEW FEATURE: Ghost Mode
 local function toggleGhost(enabled)
     Movement.ghostEnabled = enabled
     
@@ -483,28 +489,27 @@ local function toggleGhost(enabled)
     end
     
     if enabled then
-        -- Store starting position when ghost is enabled
+        -- Store original position
         if refreshReferences() and rootPart then
-            ghostStartPosition = rootPart.Position
+            originalCFrame = rootPart.CFrame
         end
         
         connections.ghost = RunService.Heartbeat:Connect(function()
             if not Movement.ghostEnabled then return end
             if not refreshReferences() or not rootPart then return end
             
-            -- Make character non-collidable
+            -- Make character invisible to others but visible to self
             for _, part in pairs(player.Character:GetChildren()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
+                    -- Create illusion of being at original position for others
+                    if math.random() > 0.9 then -- Occasionally "teleport" back for network sync
+                        local currentPos = rootPart.Position
+                        rootPart.CFrame = originalCFrame
+                        task.wait(0.03)
+                        rootPart.CFrame = CFrame.new(currentPos)
+                    end
                 end
-            end
-            
-            -- Occasionally "teleport" back to start position for network sync (others see player at start)
-            if math.random() > 0.85 then -- More frequent updates
-                local currentPos = rootPart.Position
-                rootPart.CFrame = CFrame.new(ghostStartPosition) -- Go back to start for others
-                task.wait(0.03)
-                rootPart.CFrame = CFrame.new(currentPos) -- Return to real position
             end
         end)
     else
@@ -516,11 +521,11 @@ local function toggleGhost(enabled)
                 end
             end
         end
-        ghostStartPosition = nil
+        originalCFrame = nil
     end
 end
 
--- FIXED Fake Lag - Smooth walking for self, stuttering for others
+-- NEW FEATURE: Fake Lag
 local function toggleFakeLag(enabled)
     Movement.fakeLagEnabled = enabled
     
@@ -545,19 +550,17 @@ local function toggleFakeLag(enabled)
                 time = currentTime
             })
             
-            -- Remove old positions (keep 1.5 seconds worth)
-            while #fakeLagPositions > 0 and currentTime - fakeLagPositions[1].time > 1.5 do
+            -- Remove old positions (keep 2 seconds worth)
+            while #fakeLagPositions > 0 and currentTime - fakeLagPositions[1].time > 2 do
                 table.remove(fakeLagPositions, 1)
             end
             
-            -- Create stuttering effect for others by rapidly jumping between positions
-            if currentTime - lastNetworkUpdate > 0.1 + math.random() * 0.2 then -- More frequent stutters
-                if #fakeLagPositions > 10 then
-                    -- Jump to an old position briefly
-                    local oldPos = fakeLagPositions[math.max(1, #fakeLagPositions - math.random(5, 15))].position
+            -- Simulate network lag by occasionally jumping back
+            if currentTime - lastNetworkUpdate > 0.5 + math.random() * 0.5 then
+                if #fakeLagPositions > 30 then
+                    local oldPos = fakeLagPositions[#fakeLagPositions - 30].position
                     rootPart.CFrame = CFrame.new(oldPos)
-                    task.wait(0.05) -- Brief stutter
-                    -- Jump back to current
+                    task.wait(0.05)
                     rootPart.CFrame = CFrame.new(fakeLagPositions[#fakeLagPositions].position)
                 end
                 lastNetworkUpdate = currentTime
@@ -566,7 +569,7 @@ local function toggleFakeLag(enabled)
     end
 end
 
--- FIXED Rewind Movement - SMOOTH REWIND
+-- NEW FEATURE: Rewind Movement (Mobile-Friendly)
 local rewindButton
 
 local function createRewindButton()
@@ -576,12 +579,12 @@ local function createRewindButton()
     rewindButton.Name = "RewindButton"
     rewindButton.Size = UDim2.new(0, 60, 0, 60)
     rewindButton.Position = UDim2.new(1, -80, 1, -200)
-    rewindButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- WHITE
-    rewindButton.BackgroundTransparency = 0.1
+    rewindButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    rewindButton.BackgroundTransparency = 0.3
     rewindButton.BorderSizePixel = 0
     rewindButton.Text = "⏪"
     rewindButton.Font = Enum.Font.GothamBold
-    rewindButton.TextColor3 = Color3.fromRGB(0, 0, 0) -- BLACK TEXT
+    rewindButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     rewindButton.TextSize = 20
     rewindButton.Visible = false
     rewindButton.ZIndex = 10
@@ -626,31 +629,17 @@ local function toggleRewind(enabled)
             end
         end)
         
-        -- SMOOTH REWIND on button tap
+        -- Rewind on button tap (Mobile-friendly)
         if rewindButton then
             connections.rewindInput = rewindButton.MouseButton1Click:Connect(function()
                 if #positionHistory > 60 then
-                    -- SMOOTH REWIND ANIMATION
-                    rewindButton.BackgroundTransparency = 0.05
+                    local rewindIndex = math.max(1, #positionHistory - 60) -- 2 seconds back
+                    rootPart.CFrame = positionHistory[rewindIndex].cframe
                     
-                    local targetIndex = math.max(1, #positionHistory - 90) -- 3 seconds back
-                    local currentIndex = #positionHistory
-                    local smoothSteps = 30 -- Number of smooth steps
-                    
-                    task.spawn(function()
-                        for i = 1, smoothSteps do
-                            local progress = i / smoothSteps
-                            local lerpIndex = math.floor(currentIndex - (currentIndex - targetIndex) * progress)
-                            lerpIndex = math.max(1, math.min(lerpIndex, #positionHistory))
-                            
-                            if positionHistory[lerpIndex] then
-                                rootPart.CFrame = positionHistory[lerpIndex].cframe
-                                task.wait(0.02) -- Smooth animation
-                            end
-                        end
-                        
-                        rewindButton.BackgroundTransparency = 0.1
-                    end)
+                    -- Visual feedback
+                    rewindButton.BackgroundTransparency = 0.1
+                    task.wait(0.1)
+                    rewindButton.BackgroundTransparency = 0.3
                 end
             end)
         end
@@ -662,7 +651,7 @@ local function toggleRewind(enabled)
     end
 end
 
--- FIXED Mirror Clone - Error handling
+-- NEW FEATURE: Mirror Clone
 local function toggleMirrorClone(enabled)
     Movement.mirrorCloneEnabled = enabled
     
@@ -672,10 +661,10 @@ local function toggleMirrorClone(enabled)
     end
     
     if enabled then
-        if refreshReferences() and rootPart and player.Character and player then -- ADDED PLAYER CHECK
+        if refreshReferences() and rootPart and player.Character then
             -- Create clone at current position
             mirrorClone = player.Character:Clone()
-            mirrorClone.Name = player.Name .. "_Clone" -- NOW SAFE TO USE player.Name
+            mirrorClone.Name = player.Name .. "_Clone"
             mirrorClone.Parent = Workspace
             
             -- Make clone static
@@ -696,7 +685,7 @@ local function toggleMirrorClone(enabled)
     end
 end
 
--- FIXED Reverse Walk - No flicker for self
+-- NEW FEATURE: Reverse Walk
 local function toggleReverseWalk(enabled)
     Movement.reverseWalkEnabled = enabled
     
@@ -710,19 +699,18 @@ local function toggleReverseWalk(enabled)
             if not Movement.reverseWalkEnabled then return end
             if not refreshReferences() or not rootPart then return end
             
-            -- Only send reversed rotation to network occasionally (for other players to see)
-            if math.random() > 0.9 then -- Less frequent to reduce flicker
+            -- Reverse the visual rotation occasionally for other players
+            if math.random() > 0.95 then
                 local currentCFrame = rootPart.CFrame
-                -- Brief network update with reversed rotation
                 rootPart.CFrame = currentCFrame * CFrame.Angles(0, math.pi, 0)
-                RunService.Heartbeat:Wait() -- Wait one frame
-                rootPart.CFrame = currentCFrame -- Restore immediately for self
+                task.wait(0.03)
+                rootPart.CFrame = currentCFrame
             end
         end)
     end
 end
 
--- FIXED Fast Ladder - Better detection
+-- NEW FEATURE: Fast Ladder
 local function toggleFastLadder(enabled)
     Movement.fastLadderEnabled = enabled
     
@@ -736,46 +724,35 @@ local function toggleFastLadder(enabled)
             if not Movement.fastLadderEnabled then return end
             if not refreshReferences() or not rootPart or not humanoid then return end
             
-            -- Only activate when player is trying to move up
-            if humanoid.MoveDirection.Magnitude > 0 then
-                -- Detect if near ladder (TrussPart or parts with "Ladder" in name)
-                local raycastParams = RaycastParams.new()
-                raycastParams.FilterDescendantsInstances = {player.Character}
-                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-                
-                local directions = {
-                    rootPart.CFrame.RightVector,
-                    -rootPart.CFrame.RightVector,
-                    rootPart.CFrame.LookVector,
-                    -rootPart.CFrame.LookVector
-                }
-                
-                local isNearLadder = false
-                for _, direction in ipairs(directions) do
-                    local raycast = Workspace:Raycast(rootPart.Position, direction * 3, raycastParams)
-                    if raycast and raycast.Instance then
-                        local part = raycast.Instance
-                        -- Better ladder detection
-                        if part:IsA("TrussPart") or 
-                           part.Name:lower():find("ladder") or 
-                           part.Name:lower():find("climb") or
-                           part.Name:lower():find("stair") then
-                            isNearLadder = true
-                            break
+            -- Detect if near ladder (TrussPart or parts with "Ladder" in name)
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local directions = {
+                rootPart.CFrame.RightVector,
+                -rootPart.CFrame.RightVector,
+                rootPart.CFrame.LookVector,
+                -rootPart.CFrame.LookVector
+            }
+            
+            for _, direction in ipairs(directions) do
+                local raycast = Workspace:Raycast(rootPart.Position, direction * 2, raycastParams)
+                if raycast and raycast.Instance then
+                    local part = raycast.Instance
+                    if part:IsA("TrussPart") or part.Name:lower():find("ladder") or part.Name:lower():find("climb") then
+                        if humanoid.MoveDirection.Magnitude > 0 then
+                            rootPart.Velocity = Vector3.new(rootPart.Velocity.X, 50, rootPart.Velocity.Z)
                         end
+                        break
                     end
-                end
-                
-                if isNearLadder then
-                    -- Apply upward velocity for fast climbing
-                    rootPart.Velocity = Vector3.new(rootPart.Velocity.X, 35, rootPart.Velocity.Z)
                 end
             end
         end)
     end
 end
 
--- FIXED Sticky Platform - Only stick when standing still
+-- NEW FEATURE: Sticky Platform
 local function toggleStickyPlatform(enabled)
     Movement.stickyPlatformEnabled = enabled
     
@@ -787,51 +764,34 @@ local function toggleStickyPlatform(enabled)
     if enabled then
         connections.stickyPlatform = RunService.Heartbeat:Connect(function()
             if not Movement.stickyPlatformEnabled then return end
-            if not refreshReferences() or not rootPart or not humanoid then return end
+            if not refreshReferences() or not rootPart then return end
             
-            -- Only stick when player is NOT moving (standing still)
-            if humanoid.MoveDirection.Magnitude < 0.1 then
-                -- Detect moving platforms
-                local raycastParams = RaycastParams.new()
-                raycastParams.FilterDescendantsInstances = {player.Character}
-                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            -- Detect moving platforms
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -5, 0), raycastParams)
+            if raycast and raycast.Instance then
+                local platform = raycast.Instance
                 
-                local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -6, 0), raycastParams)
-                if raycast and raycast.Instance then
-                    local platform = raycast.Instance
-                    
-                    -- Check if platform is moving
-                    if platform.AssemblyLinearVelocity.Magnitude > 2 then
-                        -- Create temporary weld to stick to platform
-                        local existingWeld = rootPart:FindFirstChild("PlatformWeld")
-                        if not existingWeld then
-                            local weld = Instance.new("WeldConstraint")
-                            weld.Name = "PlatformWeld"
-                            weld.Part0 = rootPart
-                            weld.Part1 = platform
-                            weld.Parent = rootPart
-                            
-                            -- Remove weld after short time or when player moves
-                            game:GetService("Debris"):AddItem(weld, 1.0)
-                        end
+                -- Check if platform is moving
+                if platform.AssemblyLinearVelocity.Magnitude > 1 then
+                    -- Stick to platform
+                    local weld = rootPart:FindFirstChild("PlatformWeld")
+                    if not weld then
+                        weld = Instance.new("WeldConstraint")
+                        weld.Name = "PlatformWeld"
+                        weld.Part0 = rootPart
+                        weld.Part1 = platform
+                        weld.Parent = rootPart
+                        
+                        -- Remove weld after a short time
+                        game:GetService("Debris"):AddItem(weld, 0.5)
                     end
-                end
-            else
-                -- Remove weld when player starts moving
-                local existingWeld = rootPart:FindFirstChild("PlatformWeld")
-                if existingWeld then
-                    existingWeld:Destroy()
                 end
             end
         end)
-    else
-        -- Clean up any existing welds
-        if refreshReferences() and rootPart then
-            local existingWeld = rootPart:FindFirstChild("PlatformWeld")
-            if existingWeld then
-                existingWeld:Destroy()
-            end
-        end
     end
 end
 
@@ -946,7 +906,7 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- FIXED Fly Hack - Proper UP/DOWN movement
+-- Improved Fly Hack with settings integration
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     print("Fly toggle:", enabled)
@@ -999,10 +959,9 @@ local function toggleFly(enabled)
                 if not camera then return end
                 
                 local flyDirection = Vector3.new(0, 0, 0)
-                local verticalInput = 0
+                local floatVerticalInput = 0
                 flySpeed = getSettingValue("FlySpeed", 50)
                 
-                -- Horizontal movement from joystick
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
                     local right = camera.CFrame.RightVector
@@ -1013,15 +972,16 @@ local function toggleFly(enabled)
                     flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
                 end
                 
-                -- FIXED: Check fly up/down buttons properly
-                if flyUpButton and flyUpButton.BackgroundTransparency < 0.2 then
-                    verticalInput = 1
-                elseif flyDownButton and flyDownButton.BackgroundTransparency < 0.2 then
-                    verticalInput = -1
+                -- Check fly up/down buttons
+                if flyUpButton and flyUpButton.BackgroundTransparency == 0.1 then
+                    floatVerticalInput = 1
+                elseif flyDownButton and flyDownButton.BackgroundTransparency == 0.1 then
+                    floatVerticalInput = -1
                 end
                 
-                -- Add vertical movement
-                flyDirection = flyDirection + Vector3.new(0, verticalInput, 0)
+                if floatVerticalInput ~= 0 then
+                    flyDirection = flyDirection + Vector3.new(0, floatVerticalInput, 0)
+                end
                 
                 if flyDirection.Magnitude > 0 then
                     flyBodyVelocity.Velocity = flyDirection.Unit * flySpeed
@@ -1034,22 +994,21 @@ local function toggleFly(enabled)
             connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
             connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
             
-            -- FIXED: Proper button handling
             if flyUpButton then
                 connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
-                    flyUpButton.BackgroundTransparency = 0.05
+                    flyUpButton.BackgroundTransparency = 0.1
                 end)
                 connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
-                    flyUpButton.BackgroundTransparency = 0.1
+                    flyUpButton.BackgroundTransparency = 0.3
                 end)
             end
             
             if flyDownButton then
                 connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
-                    flyDownButton.BackgroundTransparency = 0.05
+                    flyDownButton.BackgroundTransparency = 0.1
                 end)
                 connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
-                    flyDownButton.BackgroundTransparency = 0.1
+                    flyDownButton.BackgroundTransparency = 0.3
                 end)
             end
         end)
@@ -1063,11 +1022,11 @@ local function toggleFly(enabled)
         end
         if flyUpButton then 
             flyUpButton.Visible = false
-            flyUpButton.BackgroundTransparency = 0.1
+            flyUpButton.BackgroundTransparency = 0.3
         end
         if flyDownButton then 
             flyDownButton.Visible = false
-            flyDownButton.BackgroundTransparency = 0.1
+            flyDownButton.BackgroundTransparency = 0.3
         end
         
         joystickDelta = Vector2.new(0, 0)
@@ -1107,7 +1066,7 @@ local function toggleNoclip(enabled)
     end
 end
 
--- FIXED Walk on Water - Better water detection
+-- Walk on Water with better respawn handling
 local function toggleWalkOnWater(enabled)
     Movement.walkOnWaterEnabled = enabled
     
@@ -1125,71 +1084,18 @@ local function toggleWalkOnWater(enabled)
             raycastParams.FilterDescendantsInstances = {player.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
             
-            -- Check multiple points around the player for water
-            local waterDetected = false
-            local checkPositions = {
-                rootPart.Position,
-                rootPart.Position + Vector3.new(2, 0, 0),
-                rootPart.Position + Vector3.new(-2, 0, 0),
-                rootPart.Position + Vector3.new(0, 0, 2),
-                rootPart.Position + Vector3.new(0, 0, -2)
-            }
-            
-            for _, pos in ipairs(checkPositions) do
-                local raycast = Workspace:Raycast(pos, Vector3.new(0, -8, 0), raycastParams)
-                if raycast and raycast.Instance then
-                    local part = raycast.Instance
-                    if part.Material == Enum.Material.Water or 
-                       part.Name:lower():find("water") or
-                       part.Name:lower():find("ocean") or
-                       part.Name:lower():find("sea") or
-                       part.BrickColor == BrickColor.new("Bright blue") then
-                        waterDetected = true
-                        
-                        -- Create invisible platform above water
-                        if not rootPart:FindFirstChild("WaterWalkPart") then
-                            local waterWalkPart = Instance.new("Part")
-                            waterWalkPart.Name = "WaterWalkPart"
-                            waterWalkPart.Anchored = true
-                            waterWalkPart.CanCollide = true
-                            waterWalkPart.Transparency = 1
-                            waterWalkPart.Size = Vector3.new(8, 0.2, 8)
-                            waterWalkPart.Position = Vector3.new(rootPart.Position.X, raycast.Position.Y + 0.5, rootPart.Position.Z)
-                            waterWalkPart.Parent = Workspace
-                            game:GetService("Debris"):AddItem(waterWalkPart, 1.0)
-                        end
-                        break
-                    end
-                end
-            end
-            
-            -- Also check if player is in Terrain water
-            local region = Region3.new(
-                rootPart.Position - Vector3.new(4, 4, 4),
-                rootPart.Position + Vector3.new(4, 4, 4)
-            )
-            local materials, occupancies = Workspace.Terrain:ReadVoxels(region, 16)
-            
-            for x = 1, materials.Size.X do
-                for y = 1, materials.Size.Y do
-                    for z = 1, materials.Size.Z do
-                        if materials[x][y][z] == Enum.Material.Water and occupancies[x][y][z] > 0 then
-                            waterDetected = true
-                            
-                            if not rootPart:FindFirstChild("WaterWalkPart") then
-                                local waterWalkPart = Instance.new("Part")
-                                waterWalkPart.Name = "WaterWalkPart"
-                                waterWalkPart.Anchored = true
-                                waterWalkPart.CanCollide = true
-                                waterWalkPart.Transparency = 1
-                                waterWalkPart.Size = Vector3.new(8, 0.2, 8)
-                                waterWalkPart.Position = Vector3.new(rootPart.Position.X, rootPart.Position.Y - 2, rootPart.Position.Z)
-                                waterWalkPart.Parent = Workspace
-                                game:GetService("Debris"):AddItem(waterWalkPart, 1.0)
-                            end
-                            break
-                        end
-                    end
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -10, 0), raycastParams)
+            if raycast and raycast.Instance and (raycast.Instance.Material == Enum.Material.Water or raycast.Instance.Name:lower():find("water")) then
+                if not rootPart:FindFirstChild("WaterWalkPart") then
+                    local waterWalkPart = Instance.new("Part")
+                    waterWalkPart.Name = "WaterWalkPart"
+                    waterWalkPart.Anchored = true
+                    waterWalkPart.CanCollide = true
+                    waterWalkPart.Transparency = 1
+                    waterWalkPart.Size = Vector3.new(10, 0.2, 10)
+                    waterWalkPart.Position = Vector3.new(rootPart.Position.X, raycast.Position.Y + 0.1, rootPart.Position.Z)
+                    waterWalkPart.Parent = Workspace
+                    game:GetService("Debris"):AddItem(waterWalkPart, 0.5)
                 end
             end
         end)
@@ -1284,57 +1190,33 @@ local function togglePlayerNoclip(enabled)
     end
 end
 
--- FIXED Super Swim - Only when in water
+-- Super Swim with better reference handling
 local function toggleSwim(enabled)
     Movement.swimEnabled = enabled
     
-    if connections.swim then
-        connections.swim:Disconnect()
-        connections.swim = nil
+    local function applySwim()
+        if refreshReferences() and humanoid then
+            if enabled then
+                pcall(function()
+                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+                    humanoid.WalkSpeed = 50
+                end)
+            else
+                pcall(function()
+                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+                    humanoid.WalkSpeed = Movement.defaultWalkSpeed
+                end)
+            end
+            return true
+        end
+        return false
     end
     
-    if enabled then
-        connections.swim = RunService.Heartbeat:Connect(function()
-            if not Movement.swimEnabled then return end
-            if not refreshReferences() or not humanoid then return end
-            
-            -- Check if player is actually in water/swimming
-            if humanoid:GetState() == Enum.HumanoidStateType.Swimming then
-                humanoid.WalkSpeed = 75 -- Fast swim speed
-            else
-                -- Check for terrain water around player
-                local inWater = false
-                if rootPart then
-                    local region = Region3.new(
-                        rootPart.Position - Vector3.new(2, 2, 2),
-                        rootPart.Position + Vector3.new(2, 2, 2)
-                    )
-                    local materials, occupancies = Workspace.Terrain:ReadVoxels(region, 16)
-                    
-                    for x = 1, materials.Size.X do
-                        for y = 1, materials.Size.Y do
-                            for z = 1, materials.Size.Z do
-                                if materials[x][y][z] == Enum.Material.Water and occupancies[x][y][z] > 0 then
-                                    inWater = true
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
-                
-                -- Apply fast speed only in water
-                if inWater then
-                    humanoid.WalkSpeed = 75
-                else
-                    humanoid.WalkSpeed = Movement.defaultWalkSpeed
-                end
-            end
+    if not applySwim() then
+        task.spawn(function()
+            task.wait(0.1)
+            applySwim()
         end)
-    else
-        if refreshReferences() and humanoid then
-            humanoid.WalkSpeed = Movement.defaultWalkSpeed
-        end
     end
 end
 
@@ -1429,15 +1311,14 @@ function Movement.resetStates()
         mirrorClone:Destroy()
         mirrorClone = nil
     end
-    originalPosition = nil
-    ghostStartPosition = nil
+    originalCFrame = nil
     
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
         "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", 
         "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatInput", 
         "floatBegan", "floatEnded", "underground", "antiFling", "ghost", "fakeLag",
-        "rewind", "rewindInput", "reverseWalk", "fastLadder", "stickyPlatform", "swim"
+        "rewind", "rewindInput", "reverseWalk", "fastLadder", "stickyPlatform"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1472,14 +1353,6 @@ function Movement.resetStates()
                 end
             end
         end
-        
-        -- Clean up any platform welds
-        if rootPart then
-            local existingWeld = rootPart:FindFirstChild("PlatformWeld")
-            if existingWeld then
-                existingWeld:Destroy()
-            end
-        end
     end
     
     Workspace.Gravity = Movement.defaultGravity
@@ -1505,14 +1378,11 @@ function Movement.resetStates()
     end
     if flyUpButton then
         flyUpButton.Visible = false
-        flyUpButton.BackgroundTransparency = 0.1
+        flyUpButton.BackgroundTransparency = 0.3
     end
     if flyDownButton then
         flyDownButton.Visible = false
-        flyDownButton.BackgroundTransparency = 0.1
-    end
-    if rewindButton then
-        rewindButton.Visible = false
+        flyDownButton.BackgroundTransparency = 0.3
     end
 end
 
@@ -1637,8 +1507,7 @@ function Movement.init(deps)
     fakeLagPositions = {}
     lastNetworkUpdate = 0
     mirrorClone = nil
-    originalPosition = nil
-    ghostStartPosition = nil
+    originalCFrame = nil
     
     createMobileControls()
     setupScrollFrame()
@@ -1678,8 +1547,7 @@ function Movement.debug()
     print("  positionHistory entries:", #positionHistory)
     print("  fakeLagPositions entries:", #fakeLagPositions)
     print("  mirrorClone exists:", mirrorClone ~= nil)
-    print("  originalPosition stored:", originalPosition ~= nil)
-    print("  ghostStartPosition stored:", ghostStartPosition ~= nil)
+    print("  originalCFrame stored:", originalCFrame ~= nil)
     
     print("References:")
     print("  player:", player ~= nil)
@@ -1706,7 +1574,6 @@ function Movement.debug()
     print("  wallClimbButton:", wallClimbButton ~= nil)
     print("  flyUpButton:", flyUpButton ~= nil)
     print("  flyDownButton:", flyDownButton ~= nil)
-    print("  rewindButton:", rewindButton ~= nil)
     
     print("Active Connections:")
     local activeConnections = 0
@@ -1750,11 +1617,11 @@ function Movement.cleanup()
     
     positionHistory = {}
     fakeLagPositions = {}
-    originalPosition = nil
-    ghostStartPosition = nil
+    originalCFrame = nil
     lastNetworkUpdate = 0
     
     print("Movement module cleaned up")
 end
 
 return Movement
+
