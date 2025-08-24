@@ -1,3 +1,4 @@
+-- Movement.lua - Enhanced version with new features
 -- Movement-related features for MinimalHackGUI by Fari Noveri, mobile-friendly with robust respawn handling
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -19,6 +20,7 @@ Movement.doubleJumpEnabled = false
 Movement.wallClimbEnabled = false
 Movement.playerNoclipEnabled = false
 Movement.floatEnabled = false
+Movement.undergroundEnabled = false
 Movement.rewindEnabled = false
 Movement.boostEnabled = false
 
@@ -37,28 +39,22 @@ local flyJoystickFrame, flyJoystickKnob
 local wallClimbButton
 local flyUpButton, flyDownButton
 local joystickDelta = Vector2.new(0, 0)
-local floatVerticalInput = 0
 local isTouchingJoystick = false
 local joystickTouchId = nil
 
--- Rewind system
-local rewindHistory = {}
-local maxRewindTime = 6 -- seconds
-local rewindUpdateRate = 0.1 -- seconds between position saves
-local rewindActive = false
-local rewindButton
-
--- Boost system
-local boostActive = false
+-- New features variables
+local positionHistory = {}
+local maxHistorySize = 180 -- 6 seconds at 30 fps
 local boostButton
-local originalWalkSpeed = 16
+local isBoostActive = false
+local boostEndTime = 0
 
 -- Scroll frame for UI
 local function setupScrollFrame()
     if ScrollFrame then
         ScrollFrame.ScrollingEnabled = true
         ScrollFrame.ScrollBarThickness = 8
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 450) -- Increased for new features
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500) -- Adjusted for removed features
     end
 end
 
@@ -81,7 +77,15 @@ local function refreshReferences()
     return humanoid ~= nil and rootPart ~= nil
 end
 
--- Create virtual controls with better positioning
+-- Helper function to get setting value safely
+local function getSettingValue(settingName, defaultValue)
+    if settings and settings[settingName] and settings[settingName].value then
+        return settings[settingName].value
+    end
+    return defaultValue
+end
+
+-- Create virtual controls with better positioning and white style
 local function createMobileControls()
     print("Creating mobile controls")
     
@@ -89,15 +93,13 @@ local function createMobileControls()
     if wallClimbButton then wallClimbButton:Destroy() end
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
-    if rewindButton then rewindButton:Destroy() end
-    if boostButton then boostButton:Destroy() end
 
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
     flyJoystickFrame.Size = UDim2.new(0, 100, 0, 100)
     flyJoystickFrame.Position = UDim2.new(0, 20, 1, -130)
-    flyJoystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    flyJoystickFrame.BackgroundTransparency = 0.3
+    flyJoystickFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    flyJoystickFrame.BackgroundTransparency = 0.5
     flyJoystickFrame.BorderSizePixel = 0
     flyJoystickFrame.Visible = false
     flyJoystickFrame.ZIndex = 10
@@ -111,7 +113,7 @@ local function createMobileControls()
     flyJoystickKnob.Name = "Knob"
     flyJoystickKnob.Size = UDim2.new(0, 40, 0, 40)
     flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-    flyJoystickKnob.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    flyJoystickKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     flyJoystickKnob.BackgroundTransparency = 0.1
     flyJoystickKnob.BorderSizePixel = 0
     flyJoystickKnob.ZIndex = 11
@@ -125,12 +127,12 @@ local function createMobileControls()
     wallClimbButton.Name = "WallClimbButton"
     wallClimbButton.Size = UDim2.new(0, 60, 0, 60)
     wallClimbButton.Position = UDim2.new(1, -80, 1, -130)
-    wallClimbButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    wallClimbButton.BackgroundTransparency = 0.3
+    wallClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    wallClimbButton.BackgroundTransparency = 0.5
     wallClimbButton.BorderSizePixel = 0
     wallClimbButton.Text = "Climb"
     wallClimbButton.Font = Enum.Font.GothamBold
-    wallClimbButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    wallClimbButton.TextColor3 = Color3.fromRGB(0, 0, 0)
     wallClimbButton.TextSize = 12
     wallClimbButton.Visible = false
     wallClimbButton.ZIndex = 10
@@ -140,90 +142,86 @@ local function createMobileControls()
     buttonCorner.CornerRadius = UDim.new(0.2, 0)
     buttonCorner.Parent = wallClimbButton
 
+    -- Create fly up/down buttons with white style
     flyUpButton = Instance.new("TextButton")
     flyUpButton.Name = "FlyUpButton"
     flyUpButton.Size = UDim2.new(0, 50, 0, 50)
-    flyUpButton.Position = UDim2.new(1, -70, 1, -200)
-    flyUpButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    flyUpButton.BackgroundTransparency = 0.3
+    flyUpButton.Position = UDim2.new(0, 130, 1, -180)
+    flyUpButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    flyUpButton.BackgroundTransparency = 0.5
     flyUpButton.BorderSizePixel = 0
-    flyUpButton.Text = "▲"
+    flyUpButton.Text = "↑"
     flyUpButton.Font = Enum.Font.GothamBold
-    flyUpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    flyUpButton.TextSize = 16
+    flyUpButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    flyUpButton.TextSize = 20
     flyUpButton.Visible = false
     flyUpButton.ZIndex = 10
     flyUpButton.Parent = ScreenGui or player.PlayerGui
 
     local upCorner = Instance.new("UICorner")
-    upCorner.CornerRadius = UDim.new(0.3, 0)
+    upCorner.CornerRadius = UDim.new(0.2, 0)
     upCorner.Parent = flyUpButton
 
     flyDownButton = Instance.new("TextButton")
     flyDownButton.Name = "FlyDownButton"
     flyDownButton.Size = UDim2.new(0, 50, 0, 50)
-    flyDownButton.Position = UDim2.new(1, -70, 1, -140)
-    flyDownButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    flyDownButton.BackgroundTransparency = 0.3
+    flyDownButton.Position = UDim2.new(0, 130, 1, -120)
+    flyDownButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    flyDownButton.BackgroundTransparency = 0.5
     flyDownButton.BorderSizePixel = 0
-    flyDownButton.Text = "▼"
+    flyDownButton.Text = "↓"
     flyDownButton.Font = Enum.Font.GothamBold
-    flyDownButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    flyDownButton.TextSize = 16
+    flyDownButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    flyDownButton.TextSize = 20
     flyDownButton.Visible = false
     flyDownButton.ZIndex = 10
     flyDownButton.Parent = ScreenGui or player.PlayerGui
 
     local downCorner = Instance.new("UICorner")
-    downCorner.CornerRadius = UDim.new(0.3, 0)
+    downCorner.CornerRadius = UDim.new(0.2, 0)
     downCorner.Parent = flyDownButton
-
-    -- Rewind Button (positioned on left side)
-    rewindButton = Instance.new("TextButton")
-    rewindButton.Name = "RewindButton"
-    rewindButton.Size = UDim2.new(0, 70, 0, 50)
-    rewindButton.Position = UDim2.new(0, 20, 0.5, -100)
-    rewindButton.BackgroundColor3 = Color3.fromRGB(100, 50, 200)
-    rewindButton.BackgroundTransparency = 0.3
-    rewindButton.BorderSizePixel = 0
-    rewindButton.Text = "REWIND"
-    rewindButton.Font = Enum.Font.GothamBold
-    rewindButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rewindButton.TextSize = 12
-    rewindButton.Visible = false
-    rewindButton.ZIndex = 10
-    rewindButton.Parent = ScreenGui or player.PlayerGui
-
-    local rewindCorner = Instance.new("UICorner")
-    rewindCorner.CornerRadius = UDim.new(0.2, 0)
-    rewindCorner.Parent = rewindButton
-
-    -- Boost Button (positioned on right side)
-    boostButton = Instance.new("TextButton")
-    boostButton.Name = "BoostButton"
-    boostButton.Size = UDim2.new(0, 70, 0, 50)
-    boostButton.Position = UDim2.new(1, -90, 0.5, -100)
-    boostButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
-    boostButton.BackgroundTransparency = 0.3
-    boostButton.BorderSizePixel = 0
-    boostButton.Text = "BOOST"
-    boostButton.Font = Enum.Font.GothamBold
-    boostButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    boostButton.TextSize = 12
-    boostButton.Visible = false
-    boostButton.ZIndex = 10
-    boostButton.Parent = ScreenGui or player.PlayerGui
-
-    local boostCorner = Instance.new("UICorner")
-    boostCorner.CornerRadius = UDim.new(0.2, 0)
-    boostCorner.Parent = boostButton
-
-    print("Mobile controls created successfully")
 end
 
--- Improved joystick handling
+-- Improved joystick handling for float (horizontal only)
+local function handleFloatJoystick(input, gameProcessed)
+    if not Movement.floatEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
+        return 
+    end
+    
+    if input.UserInputType == Enum.UserInputType.Touch then
+        local joystickCenter = flyJoystickFrame.AbsolutePosition + flyJoystickFrame.AbsoluteSize * 0.5
+        local inputPos = Vector2.new(input.Position.X, input.Position.Y)
+        local distanceFromCenter = (inputPos - joystickCenter).Magnitude
+        
+        if input.UserInputState == Enum.UserInputState.Begin then
+            if distanceFromCenter <= 50 and not isTouchingJoystick then
+                isTouchingJoystick = true
+                joystickTouchId = input
+            end
+        elseif input.UserInputState == Enum.UserInputState.Change and isTouchingJoystick and input == joystickTouchId then
+            local delta = inputPos - joystickCenter
+            local magnitude = delta.Magnitude
+            local maxRadius = 30
+            
+            if magnitude > maxRadius then
+                delta = delta * (maxRadius / magnitude)
+            end
+            
+            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, 0 - 20) -- Only horizontal movement
+            joystickDelta = Vector2.new(delta.X / maxRadius, 0) -- Only X axis
+            
+        elseif input.UserInputState == Enum.UserInputState.End and input == joystickTouchId then
+            isTouchingJoystick = false
+            joystickTouchId = nil
+            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
+            joystickDelta = Vector2.new(0, 0)
+        end
+    end
+end
+
+-- Regular joystick handling for fly (with vertical movement)
 local function handleFlyJoystick(input, gameProcessed)
-    if not (Movement.flyEnabled or Movement.floatEnabled) or not flyJoystickFrame or not flyJoystickFrame.Visible then 
+    if not Movement.flyEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
         return 
     end
     
@@ -258,245 +256,17 @@ local function handleFlyJoystick(input, gameProcessed)
     end
 end
 
--- Rewind System
-local function savePosition()
-    if not refreshReferences() or not rootPart then return end
-    
-    local currentTime = tick()
-    local positionData = {
-        position = rootPart.Position,
-        rotation = rootPart.CFrame.Rotation,
-        time = currentTime
-    }
-    
-    -- Add to history
-    table.insert(rewindHistory, positionData)
-    
-    -- Remove old entries (older than maxRewindTime)
-    while #rewindHistory > 0 and (currentTime - rewindHistory[1].time) > maxRewindTime do
-        table.remove(rewindHistory, 1)
-    end
-end
-
-local function executeRewind()
-    if #rewindHistory == 0 or not refreshReferences() or not rootPart then return end
-    
-    rewindActive = true
-    local targetData = rewindHistory[1] -- Get oldest position (6 seconds ago)
-    local startPosition = rootPart.Position
-    local startRotation = rootPart.CFrame.Rotation
-    
-    -- Clear history to prevent multiple rewinds
-    rewindHistory = {}
-    
-    -- Smooth interpolation to target position
-    local tweenTime = 0.8 -- Smooth rewind in 0.8 seconds
-    local startTime = tick()
-    
-    local rewindConnection
-    rewindConnection = RunService.Heartbeat:Connect(function()
-        if not refreshReferences() or not rootPart then 
-            rewindConnection:Disconnect()
-            rewindActive = false
-            return 
-        end
-        
-        local elapsed = tick() - startTime
-        local progress = math.min(elapsed / tweenTime, 1)
-        
-        -- Smooth easing function
-        local easedProgress = 1 - math.pow(1 - progress, 3)
-        
-        -- Interpolate position
-        local newPosition = startPosition:Lerp(targetData.position, easedProgress)
-        local newRotation = startRotation:Lerp(targetData.rotation, easedProgress)
-        
-        rootPart.CFrame = CFrame.new(newPosition) * newRotation
-        
-        if progress >= 1 then
-            rewindConnection:Disconnect()
-            rewindActive = false
-            print("Rewind completed")
-        end
-    end)
-end
-
-local function toggleRewind(enabled)
-    Movement.rewindEnabled = enabled
-    
-    -- Disconnect existing connections
-    if connections.rewindSave then
-        connections.rewindSave:Disconnect()
-        connections.rewindSave = nil
-    end
-    if connections.rewindButton then
-        connections.rewindButton:Disconnect()
-        connections.rewindButton = nil
-    end
-    
-    if enabled then
-        -- Show rewind button
-        if rewindButton then
-            rewindButton.Visible = true
-        end
-        
-        -- Start saving positions
-        connections.rewindSave = RunService.Heartbeat:Connect(function()
-            if not Movement.rewindEnabled then return end
-            
-            -- Save position every rewindUpdateRate seconds
-            if not connections.rewindSave.lastSave then
-                connections.rewindSave.lastSave = tick()
-            end
-            
-            if tick() - connections.rewindSave.lastSave >= rewindUpdateRate then
-                savePosition()
-                connections.rewindSave.lastSave = tick()
-            end
-        end)
-        
-        -- Connect rewind button
-        if rewindButton then
-            connections.rewindButton = rewindButton.MouseButton1Click:Connect(function()
-                if not rewindActive and #rewindHistory > 0 then
-                    executeRewind()
-                end
-            end)
-        end
-        
-    else
-        -- Hide rewind button and clear history
-        if rewindButton then
-            rewindButton.Visible = false
-        end
-        rewindHistory = {}
-    end
-end
-
--- Boost System
-local function toggleBoost(enabled)
-    Movement.boostEnabled = enabled
-    
-    -- Disconnect existing connections
-    if connections.boostButton then
-        connections.boostButton:Disconnect()
-        connections.boostButton = nil
-    end
-    if connections.boostButtonUp then
-        connections.boostButtonUp:Disconnect()
-        connections.boostButtonUp = nil
-    end
-    
-    if enabled then
-        -- Show boost button
-        if boostButton then
-            boostButton.Visible = true
-        end
-        
-        -- Store original walk speed
-        if refreshReferences() and humanoid then
-            originalWalkSpeed = humanoid.WalkSpeed
-        end
-        
-        -- Connect boost button (hold to boost)
-        if boostButton then
-            connections.boostButton = boostButton.MouseButton1Down:Connect(function()
-                if not refreshReferences() or not humanoid then return end
-                
-                boostActive = true
-                boostButton.BackgroundTransparency = 0.1
-                boostButton.TextColor3 = Color3.fromRGB(255, 255, 0)
-                
-                -- Apply boost speed with smooth transition
-                local targetSpeed = originalWalkSpeed * 3 -- 3x speed boost
-                local currentSpeed = humanoid.WalkSpeed
-                
-                -- Smooth speed increase
-                local boostTweenTime = 0.2
-                local startTime = tick()
-                
-                local speedBoostConnection
-                speedBoostConnection = RunService.Heartbeat:Connect(function()
-                    if not boostActive or not refreshReferences() or not humanoid then
-                        if speedBoostConnection then speedBoostConnection:Disconnect() end
-                        return
-                    end
-                    
-                    local elapsed = tick() - startTime
-                    local progress = math.min(elapsed / boostTweenTime, 1)
-                    
-                    local easedProgress = 1 - math.pow(1 - progress, 2)
-                    local newSpeed = currentSpeed + (targetSpeed - currentSpeed) * easedProgress
-                    
-                    humanoid.WalkSpeed = newSpeed
-                    
-                    if progress >= 1 then
-                        speedBoostConnection:Disconnect()
-                    end
-                end)
-            end)
-            
-            connections.boostButtonUp = boostButton.MouseButton1Up:Connect(function()
-                if not refreshReferences() or not humanoid then return end
-                
-                boostActive = false
-                boostButton.BackgroundTransparency = 0.3
-                boostButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                
-                -- Smooth speed decrease back to original
-                local currentSpeed = humanoid.WalkSpeed
-                local targetSpeed = originalWalkSpeed
-                
-                local boostTweenTime = 0.3
-                local startTime = tick()
-                
-                local speedDecreaseConnection
-                speedDecreaseConnection = RunService.Heartbeat:Connect(function()
-                    if not refreshReferences() or not humanoid then
-                        if speedDecreaseConnection then speedDecreaseConnection:Disconnect() end
-                        return
-                    end
-                    
-                    local elapsed = tick() - startTime
-                    local progress = math.min(elapsed / boostTweenTime, 1)
-                    
-                    local easedProgress = 1 - math.pow(1 - progress, 2)
-                    local newSpeed = currentSpeed - (currentSpeed - targetSpeed) * easedProgress
-                    
-                    humanoid.WalkSpeed = newSpeed
-                    
-                    if progress >= 1 then
-                        humanoid.WalkSpeed = targetSpeed
-                        speedDecreaseConnection:Disconnect()
-                    end
-                end)
-            end)
-        end
-        
-    else
-        -- Hide boost button and reset speed
-        if boostButton then
-            boostButton.Visible = false
-            boostButton.BackgroundTransparency = 0.3
-            boostButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        end
-        
-        if refreshReferences() and humanoid then
-            humanoid.WalkSpeed = originalWalkSpeed
-        end
-        
-        boostActive = false
-    end
-end
-
--- Speed Hack with better reference handling
+-- Speed Hack with settings integration
 local function toggleSpeed(enabled)
     Movement.speedEnabled = enabled
+    print("Speed Hack:", enabled)
     
     if enabled then
         local function applySpeed()
             if refreshReferences() and humanoid then
-                humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 50
+                local speedValue = getSettingValue("WalkSpeed", 50)
+                humanoid.WalkSpeed = speedValue
+                print("Applied speed:", speedValue)
                 return true
             end
             return false
@@ -515,18 +285,21 @@ local function toggleSpeed(enabled)
     end
 end
 
--- Jump Hack with better reference handling
+-- Jump Hack with settings integration
 local function toggleJump(enabled)
     Movement.jumpEnabled = enabled
+    print("Jump Hack:", enabled)
     
     if enabled then
         local function applyJump()
             if refreshReferences() and humanoid then
+                local jumpValue = getSettingValue("JumpHeight", 50)
                 if humanoid:FindFirstChild("JumpHeight") then
-                    humanoid.JumpHeight = settings.JumpHeight and settings.JumpHeight.value or 50
+                    humanoid.JumpHeight = jumpValue
                 else
-                    humanoid.JumpPower = (settings.JumpHeight and settings.JumpHeight.value * 2.4) or 150
+                    humanoid.JumpPower = jumpValue * 2.4
                 end
+                print("Applied jump:", jumpValue)
                 return true
             end
             return false
@@ -549,12 +322,12 @@ local function toggleJump(enabled)
     end
 end
 
--- Float Hack
+-- Fixed Float Hack (horizontal movement only)
 local function toggleFloat(enabled)
     Movement.floatEnabled = enabled
     print("Float toggle:", enabled)
     
-    local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded", "floatUp", "floatUpEnd", "floatDown", "floatDownEnd"}
+    local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded"}
     for _, connName in ipairs(floatConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
@@ -578,13 +351,11 @@ local function toggleFloat(enabled)
             
             humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000) -- No Y force for floating
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
             
             if flyJoystickFrame then flyJoystickFrame.Visible = true end
-            if flyUpButton then flyUpButton.Visible = true end
-            if flyDownButton then flyDownButton.Visible = true end
             
             connections.float = RunService.Heartbeat:Connect(function()
                 if not Movement.floatEnabled then return end
@@ -593,7 +364,7 @@ local function toggleFloat(enabled)
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                    flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000) -- No Y force
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
@@ -602,54 +373,29 @@ local function toggleFloat(enabled)
                 if not camera then return end
                 
                 local floatDirection = Vector3.new(0, 0, 0)
-                flySpeed = settings.FlySpeed and settings.FlySpeed.value or 50
+                flySpeed = getSettingValue("FlySpeed", 50)
                 
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
                     local right = camera.CFrame.RightVector
                     
+                    -- Only horizontal movement
                     forward = Vector3.new(forward.X, 0, forward.Z).Unit
                     right = Vector3.new(right.X, 0, right.Z).Unit
                     
-                    floatDirection = floatDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
-                end
-                
-                if floatVerticalInput ~= 0 then
-                    floatDirection = floatDirection + Vector3.new(0, floatVerticalInput, 0)
+                    floatDirection = right * joystickDelta.X -- Only horizontal
                 end
                 
                 if floatDirection.Magnitude > 0 then
-                    flyBodyVelocity.Velocity = floatDirection.Unit * flySpeed
+                    flyBodyVelocity.Velocity = Vector3.new(floatDirection.X * flySpeed, 0, floatDirection.Z * flySpeed)
                 else
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                 end
             end)
             
-            connections.floatInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
-            connections.floatBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
-            connections.floatEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
-            
-            if flyUpButton then
-                connections.floatUp = flyUpButton.MouseButton1Down:Connect(function()
-                    floatVerticalInput = 1
-                    flyUpButton.BackgroundTransparency = 0.1
-                end)
-                connections.floatUpEnd = flyUpButton.MouseButton1Up:Connect(function()
-                    floatVerticalInput = 0
-                    flyUpButton.BackgroundTransparency = 0.3
-                end)
-            end
-            
-            if flyDownButton then
-                connections.floatDown = flyDownButton.MouseButton1Down:Connect(function()
-                    floatVerticalInput = -1
-                    flyDownButton.BackgroundTransparency = 0.1
-                end)
-                connections.floatDownEnd = flyDownButton.MouseButton1Up:Connect(function()
-                    floatVerticalInput = 0
-                    flyDownButton.BackgroundTransparency = 0.3
-                end)
-            end
+            connections.floatInput = UserInputService.InputChanged:Connect(handleFloatJoystick)
+            connections.floatBegan = UserInputService.InputBegan:Connect(handleFloatJoystick)
+            connections.floatEnded = UserInputService.InputEnded:Connect(handleFloatJoystick)
         end)
     else
         if humanoid then
@@ -659,23 +405,309 @@ local function toggleFloat(enabled)
             flyJoystickFrame.Visible = false
             flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
         end
-        if flyUpButton then 
-            flyUpButton.Visible = false
-            flyUpButton.BackgroundTransparency = 0.3
-        end
-        if flyDownButton then 
-            flyDownButton.Visible = false
-            flyDownButton.BackgroundTransparency = 0.3
-        end
         
-        floatVerticalInput = 0
         joystickDelta = Vector2.new(0, 0)
         isTouchingJoystick = false
         joystickTouchId = nil
     end
 end
 
--- Moon Gravity
+-- Fixed Underground walking
+local function toggleUnderground(enabled)
+    Movement.undergroundEnabled = enabled
+    
+    if connections.underground then
+        connections.underground:Disconnect()
+        connections.underground = nil
+    end
+    
+    if enabled then
+        task.spawn(function()
+            if not refreshReferences() or not rootPart or not player.Character then return end
+            
+            -- Enable noclip for underground movement
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+            
+            -- Find ground level and position player underground
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -1000, 0), raycastParams)
+            if raycast and raycast.Instance then
+                -- Position player 4 studs below ground surface
+                local undergroundPosition = Vector3.new(
+                    rootPart.Position.X, 
+                    raycast.Position.Y - 4, 
+                    rootPart.Position.Z
+                )
+                rootPart.CFrame = CFrame.new(undergroundPosition, rootPart.CFrame.LookVector)
+            end
+        end)
+        
+        connections.underground = RunService.Heartbeat:Connect(function()
+            if not Movement.undergroundEnabled then return end
+            if not refreshReferences() or not rootPart or not player.Character then return end
+            
+            -- Keep parts non-collidable
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+            
+            -- Keep player at consistent underground depth
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local downRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -50, 0), raycastParams)
+            local upRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 50, 0), raycastParams)
+            
+            if upRaycast and upRaycast.Instance then
+                local groundLevel = upRaycast.Position.Y
+                local playerLevel = rootPart.Position.Y
+                
+                -- Maintain 4 studs below ground
+                local targetY = groundLevel - 4
+                if math.abs(playerLevel - targetY) > 1 then
+                    rootPart.CFrame = CFrame.new(
+                        rootPart.Position.X,
+                        targetY,
+                        rootPart.Position.Z
+                    ) * CFrame.Angles(0, rootPart.CFrame.Rotation.Y, 0)
+                end
+            end
+        end)
+    else
+        -- Teleport back to surface
+        if refreshReferences() and rootPart and player.Character then
+            -- Restore collision
+            for _, part in pairs(player.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
+            end
+            
+            -- Find surface and teleport up
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local upRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 1000, 0), raycastParams)
+            if upRaycast and upRaycast.Instance then
+                rootPart.CFrame = CFrame.new(
+                    rootPart.Position.X,
+                    upRaycast.Position.Y + 3,
+                    rootPart.Position.Z
+                )
+            else
+                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 20, 0)
+            end
+        end
+    end
+end
+
+-- NEW FEATURE: Boost (NOS-like effect)
+local function createBoostButton()
+    if boostButton then boostButton:Destroy() end
+    
+    boostButton = Instance.new("TextButton")
+    boostButton.Name = "BoostButton"
+    boostButton.Size = UDim2.new(0, 80, 0, 80)
+    boostButton.Position = UDim2.new(1, -100, 1, -280)
+    boostButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    boostButton.BackgroundTransparency = 0.5
+    boostButton.BorderSizePixel = 0
+    boostButton.Text = "BOOST"
+    boostButton.Font = Enum.Font.GothamBold
+    boostButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    boostButton.TextSize = 16
+    boostButton.Visible = false
+    boostButton.ZIndex = 10
+    boostButton.Parent = ScreenGui or player.PlayerGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.2, 0)
+    corner.Parent = boostButton
+end
+
+local function toggleBoost(enabled)
+    Movement.boostEnabled = enabled
+    
+    if connections.boost then
+        connections.boost:Disconnect()
+        connections.boost = nil
+    end
+    if connections.boostInput then
+        connections.boostInput:Disconnect()
+        connections.boostInput = nil
+    end
+    
+    if enabled then
+        createBoostButton()
+        if boostButton then
+            boostButton.Visible = true
+        end
+        
+        -- Boost button tap handler
+        if boostButton then
+            connections.boostInput = boostButton.MouseButton1Click:Connect(function()
+                if not isBoostActive and refreshReferences() and humanoid and rootPart then
+                    isBoostActive = true
+                    boostEndTime = tick() + 2 -- 2 seconds boost duration
+                    
+                    -- Visual feedback
+                    boostButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                    boostButton.BackgroundTransparency = 0.2
+                    boostButton.Text = "BOOSTING!"
+                    
+                    -- Apply boost effect
+                    local camera = Workspace.CurrentCamera
+                    if camera then
+                        local boostDirection = camera.CFrame.LookVector
+                        local boostForce = Instance.new("BodyVelocity")
+                        boostForce.MaxForce = Vector3.new(4000, 0, 4000)
+                        boostForce.Velocity = Vector3.new(boostDirection.X * 100, 0, boostDirection.Z * 100)
+                        boostForce.Parent = rootPart
+                        
+                        -- Remove boost force after duration
+                        game:GetService("Debris"):AddItem(boostForce, 0.5)
+                    end
+                end
+            end)
+        end
+        
+        connections.boost = RunService.Heartbeat:Connect(function()
+            if not Movement.boostEnabled then return end
+            
+            -- Check if boost duration is over
+            if isBoostActive and tick() >= boostEndTime then
+                isBoostActive = false
+                if boostButton then
+                    boostButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                    boostButton.BackgroundTransparency = 0.5
+                    boostButton.Text = "BOOST"
+                end
+            end
+        end)
+    else
+        if boostButton then
+            boostButton.Visible = false
+        end
+        isBoostActive = false
+    end
+end
+
+-- ENHANCED FEATURE: Smooth Rewind Movement (6 seconds)
+local rewindButton
+
+local function createRewindButton()
+    if rewindButton then rewindButton:Destroy() end
+    
+    rewindButton = Instance.new("TextButton")
+    rewindButton.Name = "RewindButton"
+    rewindButton.Size = UDim2.new(0, 80, 0, 80)
+    rewindButton.Position = UDim2.new(1, -100, 1, -190)
+    rewindButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    rewindButton.BackgroundTransparency = 0.5
+    rewindButton.BorderSizePixel = 0
+    rewindButton.Text = "⏪"
+    rewindButton.Font = Enum.Font.GothamBold
+    rewindButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    rewindButton.TextSize = 24
+    rewindButton.Visible = false
+    rewindButton.ZIndex = 10
+    rewindButton.Parent = ScreenGui or player.PlayerGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.2, 0)
+    corner.Parent = rewindButton
+end
+
+local function toggleRewind(enabled)
+    Movement.rewindEnabled = enabled
+    
+    if connections.rewind then
+        connections.rewind:Disconnect()
+        connections.rewind = nil
+    end
+    if connections.rewindInput then
+        connections.rewindInput:Disconnect()
+        connections.rewindInput = nil
+    end
+    
+    if enabled then
+        createRewindButton()
+        if rewindButton then
+            rewindButton.Visible = true
+        end
+        
+        -- Store position history
+        connections.rewind = RunService.Heartbeat:Connect(function()
+            if not Movement.rewindEnabled then return end
+            if not refreshReferences() or not rootPart then return end
+            
+            table.insert(positionHistory, {
+                cframe = rootPart.CFrame,
+                time = tick()
+            })
+            
+            -- Keep only recent history (6 seconds)
+            while #positionHistory > maxHistorySize do
+                table.remove(positionHistory, 1)
+            end
+        end)
+        
+        -- Smooth rewind on button tap
+        if rewindButton then
+            connections.rewindInput = rewindButton.MouseButton1Click:Connect(function()
+                if #positionHistory > 60 then
+                    -- Visual feedback
+                    rewindButton.BackgroundTransparency = 0.1
+                    rewindButton.Text = "REWINDING"
+                    
+                    -- Start smooth rewind animation
+                    local rewindIndex = math.max(1, #positionHistory - 180) -- 6 seconds back
+                    local targetCFrame = positionHistory[rewindIndex].cframe
+                    local startCFrame = rootPart.CFrame
+                    local startTime = tick()
+                    local rewindDuration = 0.8 -- Smooth rewind over 0.8 seconds
+                    
+                    local rewindConnection
+                    rewindConnection = RunService.Heartbeat:Connect(function()
+                        local elapsed = tick() - startTime
+                        local progress = math.min(elapsed / rewindDuration, 1)
+                        
+                        -- Smooth interpolation
+                        local smoothProgress = 1 - math.pow(1 - progress, 3) -- Ease out cubic
+                        rootPart.CFrame = startCFrame:Lerp(targetCFrame, smoothProgress)
+                        
+                        if progress >= 1 then
+                            rewindConnection:Disconnect()
+                            -- Restore button appearance
+                            if rewindButton then
+                                rewindButton.BackgroundTransparency = 0.5
+                                rewindButton.Text = "⏪"
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
+    else
+        if rewindButton then
+            rewindButton.Visible = false
+        end
+        positionHistory = {}
+    end
+end
+
+-- Continue with existing functions (Moon Gravity, Double Jump, etc.)
 local function toggleMoonGravity(enabled)
     Movement.moonGravityEnabled = enabled
     if enabled then
@@ -786,7 +818,7 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Improved Fly Hack
+-- Improved Fly Hack with settings integration
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     print("Fly toggle:", enabled)
@@ -839,7 +871,8 @@ local function toggleFly(enabled)
                 if not camera then return end
                 
                 local flyDirection = Vector3.new(0, 0, 0)
-                flySpeed = settings.FlySpeed and settings.FlySpeed.value or 50
+                local floatVerticalInput = 0
+                flySpeed = getSettingValue("FlySpeed", 50)
                 
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
@@ -849,6 +882,13 @@ local function toggleFly(enabled)
                     right = Vector3.new(right.X, 0, right.Z).Unit
                     
                     flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
+                end
+                
+                -- Check fly up/down buttons
+                if flyUpButton and flyUpButton.BackgroundTransparency == 0.1 then
+                    floatVerticalInput = 1
+                elseif flyDownButton and flyDownButton.BackgroundTransparency == 0.1 then
+                    floatVerticalInput = -1
                 end
                 
                 if floatVerticalInput ~= 0 then
@@ -868,23 +908,19 @@ local function toggleFly(enabled)
             
             if flyUpButton then
                 connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
-                    floatVerticalInput = 1
                     flyUpButton.BackgroundTransparency = 0.1
                 end)
                 connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
-                    floatVerticalInput = 0
-                    flyUpButton.BackgroundTransparency = 0.3
+                    flyUpButton.BackgroundTransparency = 0.5
                 end)
             end
             
             if flyDownButton then
                 connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
-                    floatVerticalInput = -1
                     flyDownButton.BackgroundTransparency = 0.1
                 end)
                 connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
-                    floatVerticalInput = 0
-                    flyDownButton.BackgroundTransparency = 0.3
+                    flyDownButton.BackgroundTransparency = 0.5
                 end)
             end
         end)
@@ -898,14 +934,13 @@ local function toggleFly(enabled)
         end
         if flyUpButton then 
             flyUpButton.Visible = false
-            flyUpButton.BackgroundTransparency = 0.3
+            flyUpButton.BackgroundTransparency = 0.5
         end
         if flyDownButton then 
             flyDownButton.Visible = false
-            flyDownButton.BackgroundTransparency = 0.3
+            flyDownButton.BackgroundTransparency = 0.5
         end
         
-        floatVerticalInput = 0
         joystickDelta = Vector2.new(0, 0)
         isTouchingJoystick = false
         joystickTouchId = nil
@@ -1097,6 +1132,23 @@ local function toggleSwim(enabled)
     end
 end
 
+-- Function to apply current settings to active features
+function Movement.applySettings()
+    print("Applying Movement settings")
+    
+    -- Apply speed setting if speed hack is enabled
+    if Movement.speedEnabled then
+        toggleSpeed(true)
+    end
+    
+    -- Apply jump setting if jump hack is enabled
+    if Movement.jumpEnabled then
+        toggleJump(true)
+    end
+    
+    -- Note: Fly speed is applied in real-time during fly/float loops
+end
+
 -- Function to create buttons for Movement features
 function Movement.loadMovementButtons(createButton, createToggleButton)
     print("Loading movement buttons")
@@ -1106,6 +1158,8 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     end
     
     setupScrollFrame()
+    
+    -- Original features (removed unwanted features)
     createToggleButton("Speed Hack", toggleSpeed)
     createToggleButton("Jump Hack", toggleJump)
     createToggleButton("Moon Gravity", toggleMoonGravity)
@@ -1118,14 +1172,18 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Walk on Water", toggleWalkOnWater)
     createToggleButton("Super Swim", toggleSwim)
     createToggleButton("Float", toggleFloat)
-    createToggleButton("Rewind", toggleRewind)
-    createToggleButton("Boost", toggleBoost)
+    createToggleButton("Underground", toggleUnderground)
+    
+    -- New enhanced features
+    createToggleButton("Smooth Rewind", toggleRewind)
+    createToggleButton("Boost (NOS)", toggleBoost)
 end
 
--- Improved reset function
+-- Enhanced reset function
 function Movement.resetStates()
     print("Resetting Movement states")
     
+    -- Reset all states
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -1138,26 +1196,28 @@ function Movement.resetStates()
     Movement.wallClimbEnabled = false
     Movement.playerNoclipEnabled = false
     Movement.floatEnabled = false
+    Movement.undergroundEnabled = false
     Movement.rewindEnabled = false
     Movement.boostEnabled = false
+    
     Movement.jumpCount = 0
-    floatVerticalInput = 0
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
-    rewindHistory = {}
-    rewindActive = false
-    boostActive = false
     
-    local movementConnections = {
+    -- Clear history and boost states
+    positionHistory = {}
+    isBoostActive = false
+    boostEndTime = 0
+    
+    local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
         "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", 
         "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatInput", 
-        "floatBegan", "floatEnded", "floatUp", "floatUpEnd", "floatDown", 
-        "floatDownEnd", "rewindSave", "rewindButton", "boostButton", "boostButtonUp",
-        "antiFling"
+        "floatBegan", "floatEnded", "underground", "antiFling", "rewind", 
+        "rewindInput", "boost", "boostInput"
     }
-    for _, connName in ipairs(movementConnections) do
+    for _, connName in ipairs(allConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
             connections[connName] = nil
@@ -1194,6 +1254,17 @@ function Movement.resetStates()
     
     Workspace.Gravity = Movement.defaultGravity
     
+    -- Restore collision for other players
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            for _, part in pairs(otherPlayer.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+    
     if flyJoystickFrame then
         flyJoystickFrame.Visible = false
         flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
@@ -1204,23 +1275,21 @@ function Movement.resetStates()
     end
     if flyUpButton then
         flyUpButton.Visible = false
-        flyUpButton.BackgroundTransparency = 0.3
+        flyUpButton.BackgroundTransparency = 0.5
     end
     if flyDownButton then
         flyDownButton.Visible = false
-        flyDownButton.BackgroundTransparency = 0.3
+        flyDownButton.BackgroundTransparency = 0.5
     end
     if rewindButton then
         rewindButton.Visible = false
     end
     if boostButton then
         boostButton.Visible = false
-        boostButton.BackgroundTransparency = 0.3
-        boostButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     end
 end
 
--- Improved reference update function
+-- Enhanced reference update function
 function Movement.updateReferences(newHumanoid, newRootPart)
     print("Updating Movement references")
     humanoid = newHumanoid
@@ -1228,7 +1297,6 @@ function Movement.updateReferences(newHumanoid, newRootPart)
     
     if humanoid then
         Movement.defaultWalkSpeed = humanoid.WalkSpeed or 16
-        originalWalkSpeed = Movement.defaultWalkSpeed
         if humanoid:FindFirstChild("JumpHeight") then
             Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
         else
@@ -1254,9 +1322,10 @@ function Movement.updateReferences(newHumanoid, newRootPart)
             {Movement.walkOnWaterEnabled, toggleWalkOnWater, "Walk on Water"},
             {Movement.swimEnabled, toggleSwim, "Super Swim"},
             {Movement.floatEnabled, toggleFloat, "Float"},
-            {Movement.rewindEnabled, toggleRewind, "Rewind"},
-            {Movement.boostEnabled, toggleBoost, "Boost"},
-            {Movement.flyEnabled, toggleFly, "Fly"}
+            {Movement.undergroundEnabled, toggleUnderground, "Underground"},
+            {Movement.flyEnabled, toggleFly, "Fly"},
+            {Movement.rewindEnabled, toggleRewind, "Smooth Rewind"},
+            {Movement.boostEnabled, toggleBoost, "Boost"}
         }
         
         for _, state in ipairs(statesToReapply) do
@@ -1296,7 +1365,6 @@ function Movement.init(deps)
     
     if humanoid then
         Movement.defaultWalkSpeed = humanoid.WalkSpeed or 16
-        originalWalkSpeed = Movement.defaultWalkSpeed
         if humanoid:FindFirstChild("JumpHeight") then
             Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
         else
@@ -1305,6 +1373,7 @@ function Movement.init(deps)
     end
     Movement.defaultGravity = Workspace.Gravity or 196.2
     
+    -- Initialize all states to false
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -1317,16 +1386,19 @@ function Movement.init(deps)
     Movement.wallClimbEnabled = false
     Movement.playerNoclipEnabled = false
     Movement.floatEnabled = false
+    Movement.undergroundEnabled = false
     Movement.rewindEnabled = false
     Movement.boostEnabled = false
+    
     Movement.jumpCount = 0
-    floatVerticalInput = 0
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
-    rewindHistory = {}
-    rewindActive = false
-    boostActive = false
+    
+    -- Initialize new feature variables
+    positionHistory = {}
+    isBoostActive = false
+    boostEndTime = 0
     
     createMobileControls()
     setupScrollFrame()
@@ -1337,8 +1409,8 @@ end
 
 -- Enhanced debug function
 function Movement.debug()
-    print("=== Movement Module Debug Info ===")
-    print("Module States:")
+    print("=== Enhanced Movement Module Debug Info ===")
+    print("Movement Features:")
     print("  speedEnabled:", Movement.speedEnabled)
     print("  jumpEnabled:", Movement.jumpEnabled)
     print("  flyEnabled:", Movement.flyEnabled)
@@ -1351,8 +1423,14 @@ function Movement.debug()
     print("  wallClimbEnabled:", Movement.wallClimbEnabled)
     print("  playerNoclipEnabled:", Movement.playerNoclipEnabled)
     print("  floatEnabled:", Movement.floatEnabled)
+    print("  undergroundEnabled:", Movement.undergroundEnabled)
     print("  rewindEnabled:", Movement.rewindEnabled)
     print("  boostEnabled:", Movement.boostEnabled)
+    
+    print("New Feature Data:")
+    print("  positionHistory entries:", #positionHistory)
+    print("  isBoostActive:", isBoostActive)
+    print("  boostEndTime:", boostEndTime)
     
     print("References:")
     print("  player:", player ~= nil)
@@ -1360,20 +1438,14 @@ function Movement.debug()
     print("  rootPart:", rootPart ~= nil)
     print("  player.Character:", player and player.Character ~= nil)
     
-    print("Fly/Float System:")
-    print("  flyBodyVelocity:", flyBodyVelocity ~= nil)
-    print("  joystickDelta:", joystickDelta)
-    print("  floatVerticalInput:", floatVerticalInput)
-    print("  isTouchingJoystick:", isTouchingJoystick)
-    
-    print("Rewind System:")
-    print("  rewindHistory entries:", #rewindHistory)
-    print("  rewindActive:", rewindActive)
-    print("  maxRewindTime:", maxRewindTime)
-    
-    print("Boost System:")
-    print("  boostActive:", boostActive)
-    print("  originalWalkSpeed:", originalWalkSpeed)
+    print("Settings Integration:")
+    if settings then
+        print("  WalkSpeed setting:", getSettingValue("WalkSpeed", "not found"))
+        print("  JumpHeight setting:", getSettingValue("JumpHeight", "not found"))
+        print("  FlySpeed setting:", getSettingValue("FlySpeed", "not found"))
+    else
+        print("  settings: nil")
+    end
     
     print("UI Elements:")
     print("  flyJoystickFrame:", flyJoystickFrame ~= nil)
@@ -1392,13 +1464,7 @@ function Movement.debug()
         end
     end
     print("  Total active:", activeConnections)
-    
-    print("Default Values:")
-    print("  defaultWalkSpeed:", Movement.defaultWalkSpeed)
-    print("  defaultJumpPower:", Movement.defaultJumpPower)
-    print("  defaultJumpHeight:", Movement.defaultJumpHeight)
-    print("  defaultGravity:", Movement.defaultGravity)
-    print("===================================")
+    print("===============================================")
 end
 
 -- Add cleanup function for when module is unloaded
@@ -1422,6 +1488,10 @@ function Movement.cleanup()
     flyBodyVelocity = nil
     rewindButton = nil
     boostButton = nil
+    
+    positionHistory = {}
+    isBoostActive = false
+    boostEndTime = 0
     
     print("Movement module cleaned up")
 end
