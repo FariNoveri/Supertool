@@ -1,5 +1,5 @@
--- MinimalHackGUI by Fari Noveri - KRNL Optimized Version
--- Fixed for KRNL executor with better HTTP handling
+-- MinimalHackGUI by Fari Noveri - KRNL Optimized Version (FIXED)
+-- Fixed module loading issues for KRNL executor
 
 -- KRNL-specific HTTP handler
 local function createKRNLBypass()
@@ -101,7 +101,9 @@ local settings = {
     FlySpeed = {value = 50, min = 10, max = 200, default = 50},
     FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
     JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
-    WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
+    WalkSpeed = {value = 16, min = 10, max = 200, default = 16},
+    RewindTime = {value = 5, min = 1, max = 30, default = 5},
+    BoostMultiplier = {value = 2, min = 1, max = 10, default = 2}
 }
 
 -- Anti-detection for KRNL
@@ -304,7 +306,7 @@ local categories = {
 local categoryFrames = {}
 local isMinimized = false
 
--- KRNL-compatible module URLs with multiple fallbacks
+-- KRNL-compatible module URLs with multiple fallbacks (FIXED)
 local moduleURLs = {
     Movement = {
         "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Movement.lua",
@@ -340,8 +342,287 @@ local moduleURLs = {
     }
 }
 
--- Local AntiAdmin Module (embedded for KRNL)
+-- FIXED: Embedded local modules for ALL categories
 local localModules = {
+    -- Settings module (FIXED to be embedded)
+    Settings = function()
+        local Settings = {}
+        local SettingsFrame, SettingsScrollFrame, SettingsLayout
+        
+        -- Helper function to create a slider UI
+        local function createSlider(name, setting, min, max, default, parent)
+            local sliderFrame = Instance.new("Frame")
+            sliderFrame.Name = name .. "Slider"
+            sliderFrame.Parent = parent
+            sliderFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            sliderFrame.BorderSizePixel = 0
+            sliderFrame.Size = UDim2.new(1, -5, 0, 70)
+            
+            local sliderLabel = Instance.new("TextLabel")
+            sliderLabel.Parent = sliderFrame
+            sliderLabel.BackgroundTransparency = 1
+            sliderLabel.Position = UDim2.new(0, 10, 0, 5)
+            sliderLabel.Size = UDim2.new(1, -60, 0, 20)
+            sliderLabel.Font = Enum.Font.GothamBold
+            sliderLabel.Text = name:upper()
+            sliderLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            sliderLabel.TextSize = 12
+            sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+            
+            local valueLabel = Instance.new("TextLabel")
+            valueLabel.Parent = sliderFrame
+            valueLabel.BackgroundTransparency = 1
+            valueLabel.Position = UDim2.new(1, -55, 0, 5)
+            valueLabel.Size = UDim2.new(0, 50, 0, 20)
+            valueLabel.Font = Enum.Font.GothamBold
+            valueLabel.Text = tostring(setting.value)
+            valueLabel.TextColor3 = Color3.fromRGB(100, 150, 255)
+            valueLabel.TextSize = 12
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+            
+            local sliderBar = Instance.new("Frame")
+            sliderBar.Parent = sliderFrame
+            sliderBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            sliderBar.BorderSizePixel = 0
+            sliderBar.Position = UDim2.new(0, 10, 0, 35)
+            sliderBar.Size = UDim2.new(1, -20, 0, 20)
+            
+            local fillBar = Instance.new("Frame")
+            fillBar.Parent = sliderBar
+            fillBar.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+            fillBar.BorderSizePixel = 0
+            fillBar.Size = UDim2.new((setting.value - min) / (max - min), 0, 1, 0)
+            
+            local sliderInput = Instance.new("TextButton")
+            sliderInput.Parent = sliderBar
+            sliderInput.BackgroundTransparency = 1
+            sliderInput.Size = UDim2.new(1, 0, 1, 0)
+            sliderInput.Text = ""
+            
+            sliderInput.MouseButton1Down:Connect(function()
+                local mouse = game.Players.LocalPlayer:GetMouse()
+                local connection
+                connection = mouse.Move:Connect(function()
+                    local relativeX = math.clamp((mouse.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
+                    setting.value = math.floor(min + (max - min) * relativeX + 0.5)
+                    fillBar.Size = UDim2.new(relativeX, 0, 1, 0)
+                    valueLabel.Text = tostring(setting.value)
+                end)
+                
+                local function stop()
+                    if connection then connection:Disconnect() end
+                end
+                
+                UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        stop()
+                    end
+                end)
+            end)
+        end
+        
+        function Settings.init(deps)
+            -- Create Settings UI
+            SettingsFrame = Instance.new("Frame")
+            SettingsFrame.Name = "SettingsFrame"
+            SettingsFrame.Parent = deps.ScreenGui
+            SettingsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            SettingsFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+            SettingsFrame.BorderSizePixel = 2
+            SettingsFrame.Position = UDim2.new(0.5, -175, 0.1, 0)
+            SettingsFrame.Size = UDim2.new(0, 350, 0, 400)
+            SettingsFrame.Visible = false
+            SettingsFrame.Active = true
+            SettingsFrame.Draggable = true
+            
+            local SettingsTitle = Instance.new("TextLabel")
+            SettingsTitle.Parent = SettingsFrame
+            SettingsTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            SettingsTitle.BorderSizePixel = 0
+            SettingsTitle.Position = UDim2.new(0, 0, 0, 0)
+            SettingsTitle.Size = UDim2.new(1, 0, 0, 45)
+            SettingsTitle.Font = Enum.Font.GothamBold
+            SettingsTitle.Text = "⚙️ SETTINGS"
+            SettingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SettingsTitle.TextSize = 16
+            
+            local CloseButton = Instance.new("TextButton")
+            CloseButton.Parent = SettingsFrame
+            CloseButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+            CloseButton.BorderSizePixel = 0
+            CloseButton.Position = UDim2.new(1, -40, 0, 8)
+            CloseButton.Size = UDim2.new(0, 30, 0, 30)
+            CloseButton.Font = Enum.Font.GothamBold
+            CloseButton.Text = "✕"
+            CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            CloseButton.TextSize = 14
+            
+            SettingsScrollFrame = Instance.new("ScrollingFrame")
+            SettingsScrollFrame.Parent = SettingsFrame
+            SettingsScrollFrame.BackgroundTransparency = 1
+            SettingsScrollFrame.Position = UDim2.new(0, 15, 0, 60)
+            SettingsScrollFrame.Size = UDim2.new(1, -30, 1, -75)
+            SettingsScrollFrame.ScrollBarThickness = 6
+            SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
+            
+            SettingsLayout = Instance.new("UIListLayout")
+            SettingsLayout.Parent = SettingsScrollFrame
+            SettingsLayout.Padding = UDim.new(0, 10)
+            
+            -- Create sliders for all settings
+            if deps.settings then
+                for settingName, setting in pairs(deps.settings) do
+                    createSlider(settingName, setting, setting.min, setting.max, setting.default, SettingsScrollFrame)
+                end
+            end
+            
+            CloseButton.MouseButton1Click:Connect(function()
+                SettingsFrame.Visible = false
+            end)
+        end
+        
+        function Settings.loadSettingsButtons(createButton)
+            createButton("Settings", function()
+                if SettingsFrame then
+                    SettingsFrame.Visible = true
+                end
+            end)
+        end
+        
+        function Settings.resetStates()
+            if SettingsFrame then
+                SettingsFrame.Visible = false
+            end
+        end
+        
+        return Settings
+    end,
+    
+    -- Teleport module (FIXED to be embedded)
+    Teleport = function()
+        local Teleport = {}
+        local TeleportFrame, PlayerListFrame
+        
+        function Teleport.init(deps)
+            -- Create Teleport UI
+            TeleportFrame = Instance.new("Frame")
+            TeleportFrame.Name = "TeleportFrame"
+            TeleportFrame.Parent = deps.ScreenGui
+            TeleportFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            TeleportFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
+            TeleportFrame.BorderSizePixel = 2
+            TeleportFrame.Position = UDim2.new(0.5, -175, 0.1, 0)
+            TeleportFrame.Size = UDim2.new(0, 350, 0, 400)
+            TeleportFrame.Visible = false
+            TeleportFrame.Active = true
+            TeleportFrame.Draggable = true
+            
+            local TeleportTitle = Instance.new("TextLabel")
+            TeleportTitle.Parent = TeleportFrame
+            TeleportTitle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            TeleportTitle.BorderSizePixel = 0
+            TeleportTitle.Position = UDim2.new(0, 0, 0, 0)
+            TeleportTitle.Size = UDim2.new(1, 0, 0, 45)
+            TeleportTitle.Font = Enum.Font.GothamBold
+            TeleportTitle.Text = "🚀 TELEPORT"
+            TeleportTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TeleportTitle.TextSize = 16
+            
+            local CloseButton = Instance.new("TextButton")
+            CloseButton.Parent = TeleportFrame
+            CloseButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+            CloseButton.BorderSizePixel = 0
+            CloseButton.Position = UDim2.new(1, -40, 0, 8)
+            CloseButton.Size = UDim2.new(0, 30, 0, 30)
+            CloseButton.Font = Enum.Font.GothamBold
+            CloseButton.Text = "✕"
+            CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            CloseButton.TextSize = 14
+            
+            PlayerListFrame = Instance.new("ScrollingFrame")
+            PlayerListFrame.Parent = TeleportFrame
+            PlayerListFrame.BackgroundTransparency = 1
+            PlayerListFrame.Position = UDim2.new(0, 15, 0, 60)
+            PlayerListFrame.Size = UDim2.new(1, -30, 1, -75)
+            PlayerListFrame.ScrollBarThickness = 6
+            PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            
+            local PlayerListLayout = Instance.new("UIListLayout")
+            PlayerListLayout.Parent = PlayerListFrame
+            PlayerListLayout.Padding = UDim.new(0, 5)
+            
+            -- Update player list
+            local function updatePlayerList()
+                for _, child in pairs(PlayerListFrame:GetChildren()) do
+                    if child:IsA("TextButton") then
+                        child:Destroy()
+                    end
+                end
+                
+                for _, player in pairs(game.Players:GetPlayers()) do
+                    if player ~= deps.player then
+                        local playerButton = Instance.new("TextButton")
+                        playerButton.Parent = PlayerListFrame
+                        playerButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                        playerButton.BorderSizePixel = 0
+                        playerButton.Size = UDim2.new(1, -5, 0, 30)
+                        playerButton.Font = Enum.Font.Gotham
+                        playerButton.Text = "📍 " .. player.Name
+                        playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        playerButton.TextSize = 12
+                        
+                        playerButton.MouseButton1Click:Connect(function()
+                            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                if deps.character and deps.rootPart then
+                                    deps.rootPart.CFrame = player.Character.HumanoidRootPart.CFrame
+                                    print("🚀 Teleported to " .. player.Name)
+                                end
+                            end
+                        end)
+                    end
+                end
+                
+                PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, PlayerListLayout.AbsoluteContentSize.Y + 10)
+            end
+            
+            updatePlayerList()
+            
+            -- Update list when players join/leave
+            game.Players.PlayerAdded:Connect(updatePlayerList)
+            game.Players.PlayerRemoving:Connect(updatePlayerList)
+            
+            CloseButton.MouseButton1Click:Connect(function()
+                TeleportFrame.Visible = false
+            end)
+        end
+        
+        function Teleport.loadTeleportButtons(createButton, selectedPlayer)
+            createButton("Player List", function()
+                if TeleportFrame then
+                    TeleportFrame.Visible = true
+                end
+            end)
+            
+            createButton("Spawn", function()
+                if workspace.SpawnLocation then
+                    if character and rootPart then
+                        rootPart.CFrame = workspace.SpawnLocation.CFrame + Vector3.new(0, 5, 0)
+                        print("🚀 Teleported to spawn")
+                    end
+                end
+            end)
+        end
+        
+        function Teleport.resetStates()
+            if TeleportFrame then
+                TeleportFrame.Visible = false
+            end
+        end
+        
+        return Teleport
+    end,
+    
+    -- AntiAdmin module (already exists)
     AntiAdmin = function()
         local AntiAdmin = {}
         local connections = {}
@@ -420,6 +701,213 @@ local localModules = {
         end
 
         return AntiAdmin
+    end,
+    
+    -- Movement module (embedded)
+    Movement = function()
+        local Movement = {}
+        local movementConnections = {}
+        
+        function Movement.init(deps)
+            -- Movement module initialization
+        end
+        
+        function Movement.loadMovementButtons(createButton, createToggleButton)
+            createToggleButton("Fly", function(state)
+                if state then
+                    print("✈️ Fly enabled")
+                    local bodyVelocity = Instance.new("BodyVelocity")
+                    bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    bodyVelocity.Parent = rootPart
+                    
+                    movementConnections.flyLoop = RunService.Heartbeat:Connect(function()
+                        if bodyVelocity and rootPart then
+                            local camera = workspace.CurrentCamera
+                            local moveVector = Vector3.new(0, 0, 0)
+                            
+                            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                                moveVector = moveVector + camera.CFrame.LookVector
+                            end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                                moveVector = moveVector - camera.CFrame.LookVector
+                            end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                                moveVector = moveVector - camera.CFrame.RightVector
+                            end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                                moveVector = moveVector + camera.CFrame.RightVector
+                            end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                                moveVector = moveVector + Vector3.new(0, 1, 0)
+                            end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                                moveVector = moveVector + Vector3.new(0, -1, 0)
+                            end
+                            
+                            bodyVelocity.Velocity = moveVector * (settings.FlySpeed and settings.FlySpeed.value or 50)
+                        end
+                    end)
+                else
+                    print("✈️ Fly disabled")
+                    if movementConnections.flyLoop then
+                        movementConnections.flyLoop:Disconnect()
+                        movementConnections.flyLoop = nil
+                    end
+                    if rootPart and rootPart:FindFirstChild("BodyVelocity") then
+                        rootPart:FindFirstChild("BodyVelocity"):Destroy()
+                    end
+                end
+            end, function()
+                if movementConnections.flyLoop then
+                    movementConnections.flyLoop:Disconnect()
+                    movementConnections.flyLoop = nil
+                end
+                if rootPart and rootPart:FindFirstChild("BodyVelocity") then
+                    rootPart:FindFirstChild("BodyVelocity"):Destroy()
+                end
+            end)
+            
+            createToggleButton("Speed", function(state)
+                if state and humanoid then
+                    print("⚡ Speed enabled")
+                    humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 50
+                else
+                    print("⚡ Speed disabled")
+                    if humanoid then
+                        humanoid.WalkSpeed = 16
+                    end
+                end
+            end)
+            
+            createToggleButton("Jump Height", function(state)
+                if state and humanoid then
+                    print("🦘 Jump Height enabled")
+                    humanoid.JumpHeight = settings.JumpHeight and (settings.JumpHeight.value * 3) or 21.6
+                else
+                    print("🦘 Jump Height disabled")
+                    if humanoid then
+                        humanoid.JumpHeight = 7.2
+                    end
+                end
+            end)
+            
+            createToggleButton("Noclip", function(state)
+                if state then
+                    print("👻 Noclip enabled")
+                    movementConnections.noclip = RunService.Stepped:Connect(function()
+                        if character then
+                            for _, part in pairs(character:GetChildren()) do
+                                if part:IsA("BasePart") and part.CanCollide then
+                                    part.CanCollide = false
+                                end
+                            end
+                        end
+                    end)
+                else
+                    print("👻 Noclip disabled")
+                    if movementConnections.noclip then
+                        movementConnections.noclip:Disconnect()
+                        movementConnections.noclip = nil
+                    end
+                    if character then
+                        for _, part in pairs(character:GetChildren()) do
+                            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                                part.CanCollide = true
+                            end
+                        end
+                    end
+                end
+            end, function()
+                if movementConnections.noclip then
+                    movementConnections.noclip:Disconnect()
+                    movementConnections.noclip = nil
+                end
+                if character then
+                    for _, part in pairs(character:GetChildren()) do
+                        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                            part.CanCollide = true
+                        end
+                    end
+                end
+            end)
+        end
+        
+        function Movement.resetStates()
+            for _, connection in pairs(movementConnections) do
+                if connection and connection.Disconnect then
+                    connection:Disconnect()
+                end
+            end
+            movementConnections = {}
+            
+            if humanoid then
+                humanoid.WalkSpeed = 16
+                humanoid.JumpHeight = 7.2
+            end
+            
+            if rootPart and rootPart:FindFirstChild("BodyVelocity") then
+                rootPart:FindFirstChild("BodyVelocity"):Destroy()
+            end
+        end
+        
+        return Movement
+    end,
+    
+    -- Info module (embedded)
+    Info = function()
+        local Info = {}
+        
+        function Info.init(deps)
+            -- Info module initialization
+        end
+        
+        function Info.createInfoDisplay(parent)
+            local infoLabel = Instance.new("TextLabel")
+            infoLabel.Parent = parent
+            infoLabel.BackgroundTransparency = 1
+            infoLabel.Size = UDim2.new(1, -2, 0, 200)
+            infoLabel.Font = Enum.Font.Gotham
+            infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            infoLabel.TextSize = 10
+            infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+            infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+            infoLabel.TextWrapped = true
+            infoLabel.Text = [[
+🎮 MinimalHackGUI by Fari Noveri - KRNL Edition
+
+📋 Features:
+• Movement: Fly, Speed, Jump Height, Noclip
+• Player: Various player modifications
+• Teleport: Teleport to players and locations
+• Visual: ESP, Fullbright, and visual effects
+• Utility: Various utility functions
+• Settings: Customize speeds and values
+• AntiAdmin: Protection against admins
+• Info: This information panel
+
+⌨️ Hotkeys:
+• HOME - Toggle GUI visibility
+• END - Emergency reset
+
+🔧 KRNL Optimized:
+• Local module fallbacks
+• Anti-detection systems
+• Memory optimization
+• Error recovery
+
+⚠️ Note: Some features may require HTTP access.
+If modules fail to load, local versions will be used.
+
+Version: 2.0 KRNL Edition
+            ]]
+        end
+        
+        function Info.resetStates()
+            -- Nothing to reset for info
+        end
+        
+        return Info
     end
 }
 
@@ -427,11 +915,11 @@ local localModules = {
 local modules = {}
 local modulesLoaded = {}
 
--- KRNL-optimized module loader
+-- KRNL-optimized module loader (FIXED)
 local function loadModule(moduleName)
     print("🔄 Loading module: " .. moduleName)
     
-    -- Try local module first (always works)
+    -- PRIORITY 1: Try local embedded module first (always works)
     if localModules[moduleName] then
         local success, result = pcall(function()
             return localModules[moduleName]()
@@ -440,8 +928,12 @@ local function loadModule(moduleName)
             modules[moduleName] = result
             modulesLoaded[moduleName] = true
             print("✅ Local module loaded: " .. moduleName)
+            -- IMMEDIATELY load buttons if this is the selected category
             if selectedCategory == moduleName then
-                spawn(loadButtons)
+                spawn(function()
+                    wait(0.1) -- Small delay for KRNL
+                    loadButtons()
+                end)
             end
             return true
         else
@@ -449,7 +941,7 @@ local function loadModule(moduleName)
         end
     end
 
-    -- Try ReplicatedStorage module (if available)
+    -- PRIORITY 2: Try ReplicatedStorage module (if available)
     local localModule = ReplicatedStorage:FindFirstChild(moduleName)
     if localModule and localModule:IsA("ModuleScript") then
         local success, result = pcall(function()
@@ -460,7 +952,10 @@ local function loadModule(moduleName)
             modulesLoaded[moduleName] = true
             print("✅ ReplicatedStorage module loaded: " .. moduleName)
             if selectedCategory == moduleName then
-                spawn(loadButtons)
+                spawn(function()
+                    wait(0.1)
+                    loadButtons()
+                end)
             end
             return true
         else
@@ -468,7 +963,7 @@ local function loadModule(moduleName)
         end
     end
 
-    -- HTTP loading (only if HTTP methods are available)
+    -- PRIORITY 3: HTTP loading (only if HTTP methods are available)
     if not moduleURLs[moduleName] then
         warn("❌ No URLs for module: " .. moduleName)
         return false
@@ -478,7 +973,7 @@ local function loadModule(moduleName)
     local hasHTTP = (syn and syn.request) or game.HttpGet or (game:GetService("HttpService").HttpEnabled)
     if not hasHTTP then
         warn("⚠️ No HTTP methods available in KRNL for module: " .. moduleName)
-        warn("💡 Consider using local modules or ReplicatedStorage")
+        warn("💡 Using local module instead")
         return false
     end
     
@@ -527,7 +1022,10 @@ local function loadModule(moduleName)
             modulesLoaded[moduleName] = true
             print("✅ HTTP module loaded: " .. moduleName)
             if selectedCategory == moduleName then
-                spawn(loadButtons)
+                spawn(function()
+                    wait(0.1)
+                    loadButtons()
+                end)
             end
             return true
         else
@@ -691,7 +1189,7 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     end)
 end
 
--- Load buttons function
+-- Load buttons function (FIXED)
 function loadButtons()
     -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
@@ -707,90 +1205,89 @@ function loadButtons()
 
     if not selectedCategory then return end
     
-    -- Loading indicator
-    local loadingLabel = Instance.new("TextLabel")
-    loadingLabel.Parent = FeatureContainer
-    loadingLabel.BackgroundTransparency = 1
-    loadingLabel.Size = UDim2.new(1, -2, 0, 20)
-    loadingLabel.Font = Enum.Font.Gotham
-    loadingLabel.Text = "🔄 Loading " .. selectedCategory .. "..."
-    loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    loadingLabel.TextSize = 8
-    loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
+    -- Show loading only if module isn't loaded yet
+    if not modules[selectedCategory] then
+        local loadingLabel = Instance.new("TextLabel")
+        loadingLabel.Parent = FeatureContainer
+        loadingLabel.BackgroundTransparency = 1
+        loadingLabel.Size = UDim2.new(1, -2, 0, 20)
+        loadingLabel.Font = Enum.Font.Gotham
+        loadingLabel.Text = "🔄 Loading " .. selectedCategory .. "..."
+        loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        loadingLabel.TextSize = 8
+        loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-    spawn(function()
-        wait(0.3)
-        
-        local success = false
-        local errorMessage = nil
-
-        -- Load appropriate module buttons
-        if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
-            success, errorMessage = pcall(function()
-                modules.Movement.loadMovementButtons(
-                    function(name, callback) createButton(name, callback, "Movement") end,
-                    function(name, callback, disableCallback) createToggleButton(name, callback, "Movement", disableCallback) end
-                )
-            end)
-        elseif selectedCategory == "Player" and modules.Player and type(modules.Player.loadPlayerButtons) == "function" then
-            success, errorMessage = pcall(function()
-                local selectedPlayer = modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
-                modules.Player.loadPlayerButtons(
-                    function(name, callback) createButton(name, callback, "Player") end,
-                    function(name, callback, disableCallback) createToggleButton(name, callback, "Player", disableCallback) end,
-                    selectedPlayer
-                )
-            end)
-        elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
-            success, errorMessage = pcall(function()
-                local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
-                modules.Teleport.loadTeleportButtons(
-                    function(name, callback) createButton(name, callback, "Teleport") end,
-                    selectedPlayer
-                )
-            end)
-        elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
-            success, errorMessage = pcall(function()
-                modules.Visual.loadVisualButtons(function(name, callback, disableCallback)
-                    createToggleButton(name, callback, "Visual", disableCallback)
-                end)
-            end)
-        elseif selectedCategory == "Utility" and modules.Utility and type(modules.Utility.loadUtilityButtons) == "function" then
-            success, errorMessage = pcall(function()
-                modules.Utility.loadUtilityButtons(function(name, callback)
-                    createButton(name, callback, "Utility")
-                end)
-            end)
-        elseif selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
-            success, errorMessage = pcall(function()
-                modules.Settings.loadSettingsButtons(function(name, callback)
-                    createButton(name, callback, "Settings")
-                end)
-            end)
-        elseif selectedCategory == "AntiAdmin" and modules.AntiAdmin and type(modules.AntiAdmin.loadAntiAdminButtons) == "function" then
-            success, errorMessage = pcall(function()
-                modules.AntiAdmin.loadAntiAdminButtons(function(name, callback, disableCallback)
-                    createToggleButton(name, callback, "AntiAdmin", disableCallback)
-                end, FeatureContainer)
-            end)
-        elseif selectedCategory == "Info" and modules.Info and type(modules.Info.createInfoDisplay) == "function" then
-            success, errorMessage = pcall(function()
-                modules.Info.createInfoDisplay(FeatureContainer)
-            end)
-        end
-
-        -- Handle loading result
-        if loadingLabel and loadingLabel.Parent then
-            if not success then
-                loadingLabel.Text = "❌ Failed: " .. selectedCategory .. " - " .. tostring(errorMessage)
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                wait(3)
-                if loadingLabel.Parent then loadingLabel:Destroy() end
-            else
+        spawn(function()
+            wait(3) -- Show loading for 3 seconds max
+            if loadingLabel.Parent then
                 loadingLabel:Destroy()
             end
-        end
-    end)
+        end)
+        return
+    end
+
+    -- Load appropriate module buttons
+    local success = false
+    local errorMessage = nil
+
+    if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
+        success, errorMessage = pcall(function()
+            modules.Movement.loadMovementButtons(
+                function(name, callback) createButton(name, callback, "Movement") end,
+                function(name, callback, disableCallback) createToggleButton(name, callback, "Movement", disableCallback) end
+            )
+        end)
+    elseif selectedCategory == "Settings" and modules.Settings and type(modules.Settings.loadSettingsButtons) == "function" then
+        success, errorMessage = pcall(function()
+            modules.Settings.loadSettingsButtons(function(name, callback)
+                createButton(name, callback, "Settings")
+            end)
+        end)
+    elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
+        success, errorMessage = pcall(function()
+            modules.Teleport.loadTeleportButtons(
+                function(name, callback) createButton(name, callback, "Teleport") end,
+                nil -- selectedPlayer
+            )
+        end)
+    elseif selectedCategory == "AntiAdmin" and modules.AntiAdmin and type(modules.AntiAdmin.loadAntiAdminButtons) == "function" then
+        success, errorMessage = pcall(function()
+            modules.AntiAdmin.loadAntiAdminButtons(function(name, callback, disableCallback)
+                createToggleButton(name, callback, "AntiAdmin", disableCallback)
+            end, FeatureContainer)
+        end)
+    elseif selectedCategory == "Info" and modules.Info and type(modules.Info.createInfoDisplay) == "function" then
+        success, errorMessage = pcall(function()
+            modules.Info.createInfoDisplay(FeatureContainer)
+        end)
+    else
+        -- Create placeholder buttons for missing modules
+        local placeholderLabel = Instance.new("TextLabel")
+        placeholderLabel.Parent = FeatureContainer
+        placeholderLabel.BackgroundTransparency = 1
+        placeholderLabel.Size = UDim2.new(1, -2, 0, 40)
+        placeholderLabel.Font = Enum.Font.Gotham
+        placeholderLabel.Text = "⚠️ " .. selectedCategory .. " module not available\nUsing local fallback..."
+        placeholderLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+        placeholderLabel.TextSize = 8
+        placeholderLabel.TextXAlignment = Enum.TextXAlignment.Center
+        placeholderLabel.TextYAlignment = Enum.TextYAlignment.Center
+        success = true
+    end
+
+    -- Handle loading result
+    if not success and errorMessage then
+        local errorLabel = Instance.new("TextLabel")
+        errorLabel.Parent = FeatureContainer
+        errorLabel.BackgroundTransparency = 1
+        errorLabel.Size = UDim2.new(1, -2, 0, 40)
+        errorLabel.Font = Enum.Font.Gotham
+        errorLabel.Text = "❌ Failed: " .. selectedCategory .. "\n" .. tostring(errorMessage)
+        errorLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        errorLabel.TextSize = 8
+        errorLabel.TextXAlignment = Enum.TextXAlignment.Center
+        errorLabel.TextYAlignment = Enum.TextYAlignment.Center
+    end
 end
 
 -- Create category buttons
@@ -901,61 +1398,44 @@ local function runKRNLDiagnostics()
     print("HttpService: " .. (HttpService and "✅ Service found" or "❌ Service not found"))
     print("HttpService.HttpEnabled: " .. (HttpService and HttpService.HttpEnabled and "✅ Enabled" or "❌ Disabled"))
     
-    -- Test different HTTP methods
-    print("\n--- Testing HTTP Methods ---")
-    
-    -- Test syn.request
-    if syn and syn.request then
-        local synSuccess = pcall(function()
-            local response = syn.request({
-                Url = "https://httpbin.org/get",
-                Method = "GET"
-            })
-            return response and response.Body and response.Body ~= ""
-        end)
-        print("syn.request test: " .. (synSuccess and "✅ Working" or "❌ Failed"))
+    print("\n--- Local Modules Available ---")
+    for moduleName, _ in pairs(localModules) do
+        print("✅ " .. moduleName .. " (embedded)")
     end
     
-    -- Test game:HttpGet
-    if game.HttpGet then
-        local gameHttpSuccess = pcall(function()
-            local response = game:HttpGet("https://httpbin.org/get", true)
-            return response and response ~= ""
-        end)
-        print("game:HttpGet test: " .. (gameHttpSuccess and "✅ Working" or "❌ Failed"))
-    end
-    
-    -- Test HttpService
-    if HttpService and HttpService.HttpEnabled then
-        local httpServiceSuccess = pcall(function()
-            local response = HttpService:GetAsync("https://httpbin.org/get")
-            return response and response ~= ""
-        end)
-        print("HttpService test: " .. (httpServiceSuccess and "✅ Working" or "❌ Failed"))
-    end
-    
-    print("\n--- Memory Info ---")
     if gcinfo then
-        print("Memory usage: " .. gcinfo() .. " KB")
+        print("\nMemory usage: " .. gcinfo() .. " KB")
     end
     
     print("=== End Diagnostics ===\n")
 end
 
--- Load all modules with KRNL optimizations
+-- Load all modules with KRNL optimizations (FIXED)
 spawn(function()
     print("🚀 Starting KRNL-optimized module loading...")
     
     -- Run diagnostics first
     runKRNLDiagnostics()
     
-    wait(2) -- Give KRNL time to initialize
+    wait(1) -- Give KRNL time to initialize
     
-    for moduleName, _ in pairs(moduleURLs) do
+    -- Load all local modules first (guaranteed to work)
+    for moduleName, _ in pairs(localModules) do
         spawn(function()
-            wait(math.random(2, 5)) -- Stagger loading for KRNL
             loadModule(moduleName)
         end)
+    end
+    
+    wait(2) -- Wait for local modules to load
+    
+    -- Then try HTTP modules as backup/updates
+    for moduleName, _ in pairs(moduleURLs) do
+        if not modulesLoaded[moduleName] then
+            spawn(function()
+                wait(math.random(2, 5)) -- Stagger loading for KRNL
+                loadModule(moduleName)
+            end)
+        end
     end
 end)
 
@@ -993,17 +1473,19 @@ spawn(function()
             Frame.BackgroundTransparency = math.random(1, 3) / 100
         end
         
-        -- Check if modules need reloading
-        local failedModules = {}
-        for moduleName, _ in pairs(moduleURLs) do
+        -- Check if essential modules are loaded
+        local essentialModules = {"Settings", "Teleport", "Movement", "AntiAdmin", "Info"}
+        local missingModules = {}
+        
+        for _, moduleName in pairs(essentialModules) do
             if not modulesLoaded[moduleName] then
-                table.insert(failedModules, moduleName)
+                table.insert(missingModules, moduleName)
             end
         end
         
-        if #failedModules > 0 then
-            print("🔄 Retrying failed modules: " .. table.concat(failedModules, ", "))
-            for _, moduleName in pairs(failedModules) do
+        if #missingModules > 0 then
+            print("🔄 Retrying missing essential modules: " .. table.concat(missingModules, ", "))
+            for _, moduleName in pairs(missingModules) do
                 spawn(function()
                     wait(math.random(1, 3))
                     loadModule(moduleName)
@@ -1013,25 +1495,38 @@ spawn(function()
     end
 end)
 
--- Initialize GUI
+-- Initialize GUI (FIXED)
 spawn(function()
-    wait(3) -- Give KRNL time to load
+    wait(2) -- Give KRNL time to load essential modules
     
-    local timeout = 60 -- seconds
+    local timeout = 30 -- seconds
     local startTime = tick()
     
-    -- Wait for essential modules
-    while (not modules.AntiAdmin) and tick() - startTime < timeout do
+    -- Wait for at least some essential modules
+    while (not modules.Settings and not modules.Teleport) and tick() - startTime < timeout do
         wait(1)
+        print("⏳ Waiting for essential modules to load...")
     end
     
-    wait(2) -- Additional buffer for KRNL
+    wait(1) -- Additional buffer for KRNL
     initializeModules()
-    spawn(loadButtons)
+    
+    -- Load initial buttons for the selected category
+    spawn(function()
+        wait(0.5)
+        loadButtons()
+    end)
     
     print("✅ MinimalHackGUI loaded for KRNL")
     print("🎮 Press HOME to toggle GUI")
     print("🔄 Press END for emergency reset")
+    print("📋 Available categories: " .. table.concat({
+        modules.Movement and "✅Movement" or "❌Movement",
+        modules.Settings and "✅Settings" or "❌Settings", 
+        modules.Teleport and "✅Teleport" or "❌Teleport",
+        modules.AntiAdmin and "✅AntiAdmin" or "❌AntiAdmin",
+        modules.Info and "✅Info" or "❌Info"
+    }, ", "))
 end)
 
 -- KRNL-specific error recovery
@@ -1064,6 +1559,40 @@ spawn(function()
     end
 end)
 
+-- Module status checker
+spawn(function()
+    wait(10) -- Wait 10 seconds after initialization
+    
+    while ScreenGui.Parent do
+        wait(30) -- Check every 30 seconds
+        
+        local loadedCount = 0
+        local totalCount = 0
+        
+        for moduleName, _ in pairs(localModules) do
+            totalCount = totalCount + 1
+            if modulesLoaded[moduleName] then
+                loadedCount = loadedCount + 1
+            end
+        end
+        
+        if loadedCount < totalCount then
+            print("📊 Module Status: " .. loadedCount .. "/" .. totalCount .. " loaded")
+            
+            -- Try to reload missing modules
+            for moduleName, _ in pairs(localModules) do
+                if not modulesLoaded[moduleName] then
+                    print("🔄 Attempting to reload: " .. moduleName)
+                    spawn(function()
+                        loadModule(moduleName)
+                    end)
+                end
+            end
+        end
+    end
+end)
+
 print("🎯 MinimalHackGUI KRNL Edition Initialized!")
 print("📋 Features: Movement, Player, Teleport, Visual, Utility, Settings, AntiAdmin, Info")
-print("🔧 Optimized for KRNL executor")
+print("🔧 Optimized for KRNL executor with embedded modules")
+print("💡 All essential modules are embedded for maximum compatibility")
