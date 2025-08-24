@@ -19,36 +19,45 @@ local function createKRNLBypass()
             end
             
             local success, response = pcall(function()
-                -- KRNL sometimes needs this check
-                if not HttpService or not HttpService.HttpEnabled then
-                    error("HttpService not available or disabled")
+                -- Try multiple HTTP methods for KRNL
+                
+                -- Method 1: syn.request (KRNL-specific)
+                if syn and syn.request then
+                    local result = syn.request({
+                        Url = url,
+                        Method = "GET"
+                    })
+                    if result and result.Body then
+                        return result.Body
+                    end
                 end
                 
-                -- KRNL-specific: Use game:HttpGet if available
+                -- Method 2: game:HttpGet (some KRNL versions)
                 if game.HttpGet then
                     return game:HttpGet(url, true)
-                else
+                end
+                
+                -- Method 3: HttpService (if available)
+                if HttpService and HttpService.HttpEnabled then
                     return HttpService:GetAsync(url)
                 end
+                
+                -- If none work, throw error
+                error("No HTTP method available in KRNL")
             end)
             
             if success and response and response ~= "" and not response:match("^%s*$") then
-                print("✓ Loaded from: " .. url)
+                print("✓ KRNL HTTP success: " .. url:sub(1, 50) .. "...")
                 return response
             else
                 local errorMsg = success and "Empty response" or tostring(response)
-                warn("✗ Attempt " .. attempt .. " failed: " .. errorMsg)
+                warn("✗ KRNL HTTP attempt " .. attempt .. " failed: " .. errorMsg)
                 
                 -- KRNL-specific error handling
-                if errorMsg:find("HttpService") then
-                    warn("HttpService issue - trying alternative method")
-                    -- Try alternative HTTP method for KRNL
-                    local altSuccess, altResponse = pcall(function()
-                        return syn and syn.request and syn.request({Url = url, Method = "GET"}).Body or nil
-                    end)
-                    if altSuccess and altResponse then
-                        return altResponse
-                    end
+                if errorMsg:find("HttpService") or errorMsg:find("No HTTP method") then
+                    warn("⚠️ HTTP methods not available in KRNL")
+                    -- Try loading from a different source or use local modules
+                    break
                 end
             end
         end
@@ -106,8 +115,12 @@ local function createKRNLAntiDetection()
     -- KRNL-specific memory cleanup
     local function cleanupMemory()
         spawn(function()
-            if collectgarbage then
-                collectgarbage("collect")
+            -- KRNL uses gcinfo() instead of collectgarbage
+            if gcinfo then
+                gcinfo()
+            elseif collectgarbage then
+                -- Some KRNL versions might support this
+                pcall(function() collectgarbage("collect") end)
             end
             wait(0.1)
         end)
@@ -418,7 +431,7 @@ local modulesLoaded = {}
 local function loadModule(moduleName)
     print("🔄 Loading module: " .. moduleName)
     
-    -- Try local module first
+    -- Try local module first (always works)
     if localModules[moduleName] then
         local success, result = pcall(function()
             return localModules[moduleName]()
@@ -436,7 +449,7 @@ local function loadModule(moduleName)
         end
     end
 
-    -- Try ReplicatedStorage module
+    -- Try ReplicatedStorage module (if available)
     local localModule = ReplicatedStorage:FindFirstChild(moduleName)
     if localModule and localModule:IsA("ModuleScript") then
         local success, result = pcall(function()
@@ -455,9 +468,17 @@ local function loadModule(moduleName)
         end
     end
 
-    -- HTTP loading with KRNL optimizations
+    -- HTTP loading (only if HTTP methods are available)
     if not moduleURLs[moduleName] then
         warn("❌ No URLs for module: " .. moduleName)
+        return false
+    end
+    
+    -- Check if any HTTP method is available
+    local hasHTTP = (syn and syn.request) or game.HttpGet or (game:GetService("HttpService").HttpEnabled)
+    if not hasHTTP then
+        warn("⚠️ No HTTP methods available in KRNL for module: " .. moduleName)
+        warn("💡 Consider using local modules or ReplicatedStorage")
         return false
     end
     
@@ -475,6 +496,11 @@ local function loadModule(moduleName)
             local response = safeHttpGet(url)
             if not response or response == "" then
                 error("Empty response")
+            end
+            
+            -- Check if response looks like an error page
+            if response:lower():find("404") or response:lower():find("not found") then
+                error("404 - File not found")
             end
             
             -- Validate Lua code
@@ -509,7 +535,7 @@ local function loadModule(moduleName)
         end
     end
     
-    warn("❌ All URLs failed for: " .. moduleName)
+    warn("❌ All methods failed for: " .. moduleName)
     return false
 end
 
@@ -867,24 +893,53 @@ local function runKRNLDiagnostics()
     print("=== KRNL Diagnostics ===")
     
     -- Check KRNL-specific functions
-    print("KRNL Environment: " .. (syn and "✅ Detected" or "❌ Not detected"))
-    print("HttpService: " .. (game:GetService("HttpService").HttpEnabled and "✅ Enabled" or "❌ Disabled"))
+    print("KRNL syn: " .. (syn and "✅ Available" or "❌ Not available"))
+    print("KRNL syn.request: " .. (syn and syn.request and "✅ Available" or "❌ Not available"))
+    print("game:HttpGet: " .. (game.HttpGet and "✅ Available" or "❌ Not available"))
     
-    -- Test HTTP
-    local testSuccess = pcall(function()
-        local response = safeHttpGet("https://httpbin.org/get")
-        return response and response ~= ""
-    end)
-    print("HTTP Test: " .. (testSuccess and "✅ Working" or "❌ Failed"))
+    local HttpService = game:GetService("HttpService")
+    print("HttpService: " .. (HttpService and "✅ Service found" or "❌ Service not found"))
+    print("HttpService.HttpEnabled: " .. (HttpService and HttpService.HttpEnabled and "✅ Enabled" or "❌ Disabled"))
     
-    -- Test GitHub
-    local githubSuccess = pcall(function()
-        local response = safeHttpGet("https://raw.githubusercontent.com/octocat/Hello-World/master/README")
-        return response and response ~= ""
-    end)
-    print("GitHub Access: " .. (githubSuccess and "✅ Working" or "❌ Failed"))
+    -- Test different HTTP methods
+    print("\n--- Testing HTTP Methods ---")
     
-    print("=== End Diagnostics ===")
+    -- Test syn.request
+    if syn and syn.request then
+        local synSuccess = pcall(function()
+            local response = syn.request({
+                Url = "https://httpbin.org/get",
+                Method = "GET"
+            })
+            return response and response.Body and response.Body ~= ""
+        end)
+        print("syn.request test: " .. (synSuccess and "✅ Working" or "❌ Failed"))
+    end
+    
+    -- Test game:HttpGet
+    if game.HttpGet then
+        local gameHttpSuccess = pcall(function()
+            local response = game:HttpGet("https://httpbin.org/get", true)
+            return response and response ~= ""
+        end)
+        print("game:HttpGet test: " .. (gameHttpSuccess and "✅ Working" or "❌ Failed"))
+    end
+    
+    -- Test HttpService
+    if HttpService and HttpService.HttpEnabled then
+        local httpServiceSuccess = pcall(function()
+            local response = HttpService:GetAsync("https://httpbin.org/get")
+            return response and response ~= ""
+        end)
+        print("HttpService test: " .. (httpServiceSuccess and "✅ Working" or "❌ Failed"))
+    end
+    
+    print("\n--- Memory Info ---")
+    if gcinfo then
+        print("Memory usage: " .. gcinfo() .. " KB")
+    end
+    
+    print("=== End Diagnostics ===\n")
 end
 
 -- Load all modules with KRNL optimizations
