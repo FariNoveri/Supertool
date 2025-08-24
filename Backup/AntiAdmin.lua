@@ -597,6 +597,7 @@ function AntiAdmin.resetStates()
 end
 
 -- Load AntiAdmin buttons function
+-- Load AntiAdmin buttons function (FIXED - No persistent watermark)
 function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
     createToggleButton("Main Protection", toggleMainProtection, function()
         toggleMainProtection(false)
@@ -618,78 +619,37 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         toggleAdvancedBypass(false)
     end)
     
-    -- Add watermark/signature at the bottom
-    local WatermarkFrame = Instance.new("Frame")
-    WatermarkFrame.Name = "AntiAdminWatermark"
-    WatermarkFrame.Parent = FeatureContainer
-    WatermarkFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    WatermarkFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    WatermarkFrame.BorderSizePixel = 1
-    WatermarkFrame.Size = UDim2.new(1, -2, 0, 45)
-    WatermarkFrame.LayoutOrder = 999 -- Make sure it appears at the bottom
+    -- Add info label instead of persistent frame (will be cleared when switching categories)
+    local InfoLabel = Instance.new("TextLabel")
+    InfoLabel.Name = "AntiAdminInfo"
+    InfoLabel.Parent = FeatureContainer
+    InfoLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    InfoLabel.BorderColor3 = Color3.fromRGB(60, 60, 60)
+    InfoLabel.BorderSizePixel = 1
+    InfoLabel.Size = UDim2.new(1, -2, 0, 45)
+    InfoLabel.LayoutOrder = 999 -- Make sure it appears at the bottom
+    InfoLabel.Font = Enum.Font.Gotham
+    InfoLabel.Text = "🛡️ Enhanced Anti-Admin Protection\nDibuat oleh: Fari Noveri\n⚡ Advanced Exploiter Protection v2.1"
+    InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 100)
+    InfoLabel.TextSize = 8
+    InfoLabel.TextYAlignment = Enum.TextYAlignment.Center
+    InfoLabel.TextWrapped = true
+    InfoLabel.TextStrokeTransparency = 0.8
+    InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     
-    -- Corner for watermark frame
-    local WatermarkCorner = Instance.new("UICorner")
-    WatermarkCorner.CornerRadius = UDim.new(0, 4)
-    WatermarkCorner.Parent = WatermarkFrame
+    -- Corner for info label
+    local InfoCorner = Instance.new("UICorner")
+    InfoCorner.CornerRadius = UDim.new(0, 4)
+    InfoCorner.Parent = InfoLabel
     
-    -- Creator text
-    local CreatorText = Instance.new("TextLabel")
-    CreatorText.Name = "Creator"
-    CreatorText.Parent = WatermarkFrame
-    CreatorText.BackgroundTransparency = 1
-    CreatorText.Position = UDim2.new(0, 5, 0, 2)
-    CreatorText.Size = UDim2.new(1, -10, 0, 15)
-    CreatorText.Font = Enum.Font.GothamBold
-    CreatorText.Text = "🛡️ Enhanced Anti-Admin Protection"
-    CreatorText.TextColor3 = Color3.fromRGB(100, 200, 100)
-    CreatorText.TextSize = 9
-    CreatorText.TextXAlignment = Enum.TextXAlignment.Left
-    CreatorText.TextStrokeTransparency = 0.8
-    CreatorText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    
-    -- Author text
-    local AuthorText = Instance.new("TextLabel")
-    AuthorText.Name = "Author"
-    AuthorText.Parent = WatermarkFrame
-    AuthorText.BackgroundTransparency = 1
-    AuthorText.Position = UDim2.new(0, 5, 0, 15)
-    AuthorText.Size = UDim2.new(1, -10, 0, 13)
-    AuthorText.Font = Enum.Font.Gotham
-    AuthorText.Text = "Dibuat oleh: Fari Noveri"
-    AuthorText.TextColor3 = Color3.fromRGB(200, 200, 200)
-    AuthorText.TextSize = 8
-    AuthorText.TextXAlignment = Enum.TextXAlignment.Left
-    AuthorText.TextTransparency = 0.3
-    
-    -- Version/Status text  
-    local StatusText = Instance.new("TextLabel")
-    StatusText.Name = "Status"
-    StatusText.Parent = WatermarkFrame
-    StatusText.BackgroundTransparency = 1
-    StatusText.Position = UDim2.new(0, 5, 0, 28)
-    StatusText.Size = UDim2.new(1, -10, 0, 12)
-    StatusText.Font = Enum.Font.Gotham
-    StatusText.Text = "⚡ Advanced Exploiter Protection v2.1"
-    StatusText.TextColor3 = Color3.fromRGB(150, 150, 255)
-    StatusText.TextSize = 7
-    StatusText.TextXAlignment = Enum.TextXAlignment.Left
-    StatusText.TextTransparency = 0.4
-    
-    -- Add subtle animation to watermark
+    -- Add subtle animation
     spawn(function()
         local TweenService = game:GetService("TweenService")
         local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-        local tween = TweenService:Create(CreatorText, tweenInfo, {
+        local tween = TweenService:Create(InfoLabel, tweenInfo, {
             TextColor3 = Color3.fromRGB(120, 255, 120)
         })
         tween:Play()
-        
-        -- Subtle glow effect for author text
-        local authorTween = TweenService:Create(AuthorText, tweenInfo, {
-            TextTransparency = 0.1
-        })
-        authorTween:Play()
     end)
 end
 
