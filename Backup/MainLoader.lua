@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - FIXED VERSION
+-- Main entry point for MinimalHackGUI by Fari Noveri - FIXED MODULE LOADER
 
 -- Services
 local Players = game:GetService("Players")
@@ -7,17 +7,8 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 
--- Safety checks
-if not Players or not UserInputService or not RunService or not Workspace or not Lighting then
-    error("Required services not available")
-end
-
 -- Local Player
 local player = Players.LocalPlayer
-if not player then
-    error("LocalPlayer not found")
-end
-
 local character, humanoid, rootPart
 
 -- Connections and states
@@ -71,7 +62,7 @@ Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.BorderSizePixel = 0
 Title.Size = UDim2.new(1, 0, 0, 25)
 Title.Font = Enum.Font.Gotham
-Title.Text = "MinimalHackGUI by Fari Noveri [Backup] - FIXED"
+Title.Text = "MinimalHackGUI by Fari Noveri [Fixed Loader]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
@@ -180,7 +171,7 @@ local categories = {
 local categoryFrames = {}
 local isMinimized = false
 
--- Load modules
+-- Load modules - FIXED VERSION
 local modules = {}
 local modulesLoaded = {}
 
@@ -195,105 +186,75 @@ local moduleURLs = {
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua"
 }
 
--- Fallback AntiAdmin module (basic implementation)
-local AntiAdminModule = {
-    init = function(deps)
-        print("AntiAdmin module initialized (fallback)")
-        return true
-    end,
-    loadAntiAdminButtons = function(createToggleButton, container)
-        createToggleButton("Anti-Kick", function(enabled)
-            print("Anti-Kick toggled:", enabled)
-        end)
-        createToggleButton("Anti-Ban", function(enabled)
-            print("Anti-Ban toggled:", enabled)
-        end)
-    end,
-    resetStates = function()
-        print("AntiAdmin states reset")
-    end
-}
-
--- Enhanced module loading with better error handling
+-- PROPER MODULE LOADING FUNCTION
 local function loadModule(moduleName)
+    print("Attempting to load module: " .. moduleName)
+    
     if not moduleURLs[moduleName] then
         warn("No URL defined for module: " .. moduleName)
         return false
     end
     
-    -- Check if game supports HttpGet
-    if not game.HttpGet then
-        warn("HttpGet not available - using fallback modules")
-        if moduleName == "AntiAdmin" then
-            modules[moduleName] = AntiAdminModule
-            modulesLoaded[moduleName] = true
-            print("Using fallback AntiAdmin module")
-            if selectedCategory == moduleName then
-                task.spawn(loadButtons)
-            end
-            return true
-        end
-        return false
-    end
-    
     local success, result = pcall(function()
+        -- Try to get the module content
         local response = game:HttpGet(moduleURLs[moduleName])
-        if not response or response == "" then
-            error("Empty or invalid response")
+        
+        if not response or response == "" or response:find("404") then
+            error("Failed to fetch module or got 404")
         end
         
-        -- Add safety check for loadstring
-        local func, err = loadstring(response)
-        if not func then
-            error("Failed to compile: " .. tostring(err))
+        print("Got response for " .. moduleName .. " (length: " .. #response .. ")")
+        
+        -- Try to load the string as Lua code
+        local moduleFunc, loadError = loadstring(response)
+        if not moduleFunc then
+            error("Failed to compile module: " .. tostring(loadError))
         end
         
-        local module = func()
-        if not module or type(module) ~= "table" then
-            error("Module returned invalid value: " .. tostring(module))
+        -- Execute the module code to get the module table
+        local moduleTable = moduleFunc()
+        
+        if not moduleTable then
+            error("Module function returned nil")
         end
         
-        return module
+        if type(moduleTable) ~= "table" then
+            error("Module must return a table, got: " .. type(moduleTable))
+        end
+        
+        print("Successfully compiled and executed module: " .. moduleName)
+        return moduleTable
     end)
     
     if success and result then
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
-        print("Loaded module: " .. moduleName)
+        print("✓ Module loaded successfully: " .. moduleName)
+        
+        -- If this is the currently selected category, reload buttons
         if selectedCategory == moduleName then
-            task.spawn(loadButtons)
+            task.wait(0.1) -- Small delay to ensure everything is ready
+            loadButtons()
         end
         return true
     else
-        warn("Failed to load module: " .. moduleName .. " Error: " .. tostring(result))
-        
-        -- Use fallback for AntiAdmin
-        if moduleName == "AntiAdmin" then
-            modules[moduleName] = AntiAdminModule
-            modulesLoaded[moduleName] = true
-            print("Using fallback AntiAdmin module")
-            if selectedCategory == moduleName then
-                task.spawn(loadButtons)
-            end
-            return true
-        end
+        warn("✗ Failed to load module " .. moduleName .. ": " .. tostring(result))
         return false
     end
 end
 
--- Load all modules with error handling
+-- Load all modules asynchronously
+print("Starting module loading...")
 for moduleName, _ in pairs(moduleURLs) do
-    task.spawn(function() 
-        local success = pcall(function()
-            loadModule(moduleName)
-        end)
-        if not success then
-            warn("Critical error loading " .. moduleName)
-        end
+    task.spawn(function()
+        local startTime = tick()
+        local success = loadModule(moduleName)
+        local loadTime = tick() - startTime
+        print(string.format("Module %s: %s (%.2fs)", moduleName, success and "SUCCESS" or "FAILED", loadTime))
     end)
 end
 
--- Dependencies
+-- Dependencies for modules
 local dependencies = {
     Players = Players,
     UserInputService = UserInputService,
@@ -307,8 +268,9 @@ local dependencies = {
     player = player
 }
 
--- Initialize modules with error handling
+-- Initialize modules
 local function initializeModules()
+    print("Initializing loaded modules...")
     for moduleName, module in pairs(modules) do
         if module and type(module.init) == "function" then
             local success, result = pcall(function()
@@ -320,8 +282,10 @@ local function initializeModules()
             if not success then
                 warn("Failed to initialize module " .. moduleName .. ": " .. tostring(result))
             else
-                print("Initialized module: " .. moduleName)
+                print("✓ Initialized module: " .. moduleName)
             end
+        else
+            print("Module " .. moduleName .. " has no init function or is invalid")
         end
     end
 end
@@ -330,7 +294,7 @@ end
 local function isExclusiveFeature(featureName)
     local exclusives = {"Fly", "Noclip", "Freecam", "Speed Hack", "Jump Hack"}
     for _, exclusive in ipairs(exclusives) do
-        if featureName == exclusive then
+        if featureName:find(exclusive) then
             return true
         end
     end
@@ -338,7 +302,7 @@ local function isExclusiveFeature(featureName)
 end
 
 local function disableActiveFeature()
-    if activeFeature and activeFeature.disableCallback then
+    if activeFeature and activeFeature.disableCallback and type(activeFeature.disableCallback) == "function" then
         pcall(activeFeature.disableCallback, false)
         if categoryStates[activeFeature.category] then
             categoryStates[activeFeature.category][activeFeature.name] = false
@@ -363,7 +327,10 @@ local function createButton(name, callback, categoryName)
     
     if type(callback) == "function" then
         button.MouseButton1Click:Connect(function()
-            pcall(callback)
+            local success, errorMsg = pcall(callback)
+            if not success then
+                warn("Error executing callback for " .. name .. ": " .. tostring(errorMsg))
+            end
         end)
     end
     
@@ -374,7 +341,8 @@ local function createButton(name, callback, categoryName)
     button.MouseLeave:Connect(function()
         button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     end)
-    print("Created button: " .. name .. " for category: " .. categoryName)
+    
+    return button
 end
 
 -- Create toggle button with exclusive feature support
@@ -391,6 +359,7 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     button.TextSize = 8
     button.LayoutOrder = #FeatureContainer:GetChildren()
     
+    -- Ensure category state exists
     if not categoryStates[categoryName] then
         categoryStates[categoryName] = {}
     end
@@ -398,12 +367,13 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     if categoryStates[categoryName][name] == nil then
         categoryStates[categoryName][name] = false
     end
+    
     button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     
     button.MouseButton1Click:Connect(function()
         local newState = not categoryStates[categoryName][name]
         
-        -- If enabling an exclusive feature
+        -- Handle exclusive features
         if newState and isExclusiveFeature(name) then
             disableActiveFeature()
             activeFeature = {
@@ -419,7 +389,10 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
         button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
         
         if type(callback) == "function" then
-            pcall(callback, newState)
+            local success, errorMsg = pcall(callback, newState)
+            if not success then
+                warn("Error executing toggle callback for " .. name .. ": " .. tostring(errorMsg))
+            end
         end
     end)
     
@@ -430,13 +403,17 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     button.MouseLeave:Connect(function()
         button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     end)
+    
+    return button
 end
 
--- Load buttons implementation with better error handling
+-- PROPER LOAD BUTTONS FUNCTION
 local function loadButtons()
+    print("Loading buttons for category: " .. selectedCategory)
+    
     -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
-        if child:IsA("TextButton") or child:IsA("TextLabel") then
+        if child:IsA("TextButton") or (child:IsA("TextLabel") and child.Name ~= "FeatureLayout") then
             child:Destroy()
         end
     end
@@ -453,68 +430,125 @@ local function loadButtons()
         return
     end
     
-    -- Show loading label
-    local loadingLabel = Instance.new("TextLabel")
-    loadingLabel.Parent = FeatureContainer
-    loadingLabel.BackgroundTransparency = 1
-    loadingLabel.Size = UDim2.new(1, -2, 0, 20)
-    loadingLabel.Font = Enum.Font.Gotham
-    loadingLabel.Text = "Loading " .. selectedCategory .. "..."
-    loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    loadingLabel.TextSize = 8
-    loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    task.spawn(function()
-        task.wait(0.2)
+    -- Check if module is loaded
+    if not modules[selectedCategory] then
+        local loadingLabel = Instance.new("TextLabel")
+        loadingLabel.Parent = FeatureContainer
+        loadingLabel.BackgroundTransparency = 1
+        loadingLabel.Size = UDim2.new(1, -2, 0, 20)
+        loadingLabel.Font = Enum.Font.Gotham
+        loadingLabel.Text = "Loading " .. selectedCategory .. " module..."
+        loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        loadingLabel.TextSize = 8
+        loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
         
-        local success = false
-        local errorMessage = nil
-
-        -- Load buttons based on selected category with fallbacks
-        if selectedCategory == "Movement" then
-            if modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
-                success, errorMessage = pcall(function()
-                    modules.Movement.loadMovementButtons(
-                        function(name, callback) createButton(name, callback, "Movement") end,
-                        function(name, callback, disableCallback) createToggleButton(name, callback, "Movement", disableCallback) end
-                    )
-                end)
-            else
-                -- Fallback buttons for Movement
-                createButton("Basic Walk Speed", function() print("Basic walk speed activated") end, "Movement")
-                createButton("Basic Jump Height", function() print("Basic jump height activated") end, "Movement")
-                success = true
-            end
-        elseif selectedCategory == "AntiAdmin" then
-            if modules.AntiAdmin and type(modules.AntiAdmin.loadAntiAdminButtons) == "function" then
-                success, errorMessage = pcall(function()
-                    modules.AntiAdmin.loadAntiAdminButtons(function(name, callback, disableCallback)
-                        createToggleButton(name, callback, "AntiAdmin", disableCallback)
-                    end, FeatureContainer)
-                end)
-            else
-                -- This should not happen since we have a fallback, but just in case
-                createButton("Module Loading...", function() print("AntiAdmin module not ready") end, "AntiAdmin")
-                success = true
-            end
-        else
-            -- Basic fallback for other categories
-            createButton("Module Loading...", function() 
-                print(selectedCategory .. " module not loaded yet") 
-            end, selectedCategory)
-            success = true
+        -- Try to load the module if not already loading
+        if not modulesLoaded[selectedCategory] then
+            task.spawn(function()
+                loadModule(selectedCategory)
+            end)
         end
+        return
+    end
+    
+    local module = modules[selectedCategory]
+    local success = false
+    local errorMessage = nil
 
-        -- Update UI based on result
-        if loadingLabel and loadingLabel.Parent then
-            if not success and errorMessage then
-                loadingLabel.Text = "Error: " .. tostring(errorMessage)
-                loadingLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-            elseif success then
-                loadingLabel:Destroy()
-            end
-        end
-    end)
+    -- Load buttons based on selected category
+    if selectedCategory == "Movement" and module.loadMovementButtons then
+        success, errorMessage = pcall(function()
+            print("Calling Movement.loadMovementButtons")
+            module.loadMovementButtons(
+                function(name, callback) return createButton(name, callback, "Movement") end,
+                function(name, callback, disableCallback) return createToggleButton(name, callback, "Movement", disableCallback) end
+            )
+        end)
+        
+    elseif selectedCategory == "Player" and module.loadPlayerButtons then
+        success, errorMessage = pcall(function()
+            local selectedPlayer = module.getSelectedPlayer and module.getSelectedPlayer() or nil
+            print("Calling Player.loadPlayerButtons with selectedPlayer: " .. tostring(selectedPlayer))
+            module.loadPlayerButtons(
+                function(name, callback) return createButton(name, callback, "Player") end,
+                function(name, callback, disableCallback) return createToggleButton(name, callback, "Player", disableCallback) end,
+                selectedPlayer
+            )
+        end)
+        
+    elseif selectedCategory == "Teleport" and module.loadTeleportButtons then
+        success, errorMessage = pcall(function()
+            local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
+            local freecamEnabled = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false
+            local freecamPosition = freecamEnabled and select(2, modules.Visual.getFreecamState()) or nil
+            local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
+            print("Calling Teleport.loadTeleportButtons")
+            module.loadTeleportButtons(
+                function(name, callback) return createButton(name, callback, "Teleport") end,
+                selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
+            )
+        end)
+        
+    elseif selectedCategory == "Visual" and module.loadVisualButtons then
+        success, errorMessage = pcall(function()
+            print("Calling Visual.loadVisualButtons")
+            module.loadVisualButtons(function(name, callback, disableCallback)
+                return createToggleButton(name, callback, "Visual", disableCallback)
+            end)
+        end)
+        
+    elseif selectedCategory == "Utility" and module.loadUtilityButtons then
+        success, errorMessage = pcall(function()
+            print("Calling Utility.loadUtilityButtons")
+            module.loadUtilityButtons(function(name, callback)
+                return createButton(name, callback, "Utility")
+            end)
+        end)
+        
+    elseif selectedCategory == "AntiAdmin" and module.loadAntiAdminButtons then
+        success, errorMessage = pcall(function()
+            print("Calling AntiAdmin.loadAntiAdminButtons")
+            module.loadAntiAdminButtons(function(name, callback, disableCallback)
+                return createToggleButton(name, callback, "AntiAdmin", disableCallback)
+            end, FeatureContainer)
+        end)
+        
+    elseif selectedCategory == "Settings" and module.loadSettingsButtons then
+        success, errorMessage = pcall(function()
+            print("Calling Settings.loadSettingsButtons")
+            module.loadSettingsButtons(function(name, callback)
+                return createButton(name, callback, "Settings")
+            end)
+        end)
+        
+    elseif selectedCategory == "Info" and module.createInfoDisplay then
+        success, errorMessage = pcall(function()
+            print("Calling Info.createInfoDisplay")
+            module.createInfoDisplay(FeatureContainer)
+        end)
+        
+    else
+        errorMessage = "Module " .. selectedCategory .. " doesn't have the required function!"
+        warn(errorMessage)
+    end
+
+    -- Show error if loading failed
+    if not success and errorMessage then
+        local errorLabel = Instance.new("TextLabel")
+        errorLabel.Parent = FeatureContainer
+        errorLabel.BackgroundTransparency = 1
+        errorLabel.Size = UDim2.new(1, -2, 0, 40)
+        errorLabel.Font = Enum.Font.Gotham
+        errorLabel.Text = "Error loading " .. selectedCategory .. ":\n" .. tostring(errorMessage)
+        errorLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        errorLabel.TextSize = 8
+        errorLabel.TextXAlignment = Enum.TextXAlignment.Left
+        errorLabel.TextYAlignment = Enum.TextYAlignment.Top
+        errorLabel.TextWrapped = true
+        print("Error: " .. tostring(errorMessage))
+    elseif success then
+        print("✓ Successfully loaded buttons for " .. selectedCategory)
+    end
 end
 
 -- Create category buttons
@@ -533,7 +567,7 @@ for _, category in ipairs(categories) do
 
     categoryButton.MouseButton1Click:Connect(function()
         selectedCategory = category.name
-        task.spawn(loadButtons)
+        loadButtons()
     end)
 
     categoryButton.MouseEnter:Connect(function()
@@ -582,7 +616,7 @@ local function resetStates()
     end
 end
 
--- Character setup with error handling
+-- Character setup
 local function onCharacterAdded(newCharacter)
     if not newCharacter then return end
     
@@ -610,7 +644,7 @@ local function onCharacterAdded(newCharacter)
     end
 end
 
--- Initialize
+-- Initialize character
 if player.Character then
     onCharacterAdded(player.Character)
 end
@@ -626,40 +660,48 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
     end
 end)
 
--- Start initialization with timeout and fallbacks
+-- Start initialization
 task.spawn(function()
-    local timeout = 10
+    local timeout = 30 -- Increased timeout
     local startTime = tick()
     
-    -- Wait for some modules to load, but don't hang forever
+    -- Wait for at least one module to load
     while tick() - startTime < timeout do
         local loadedCount = 0
         for _ in pairs(modulesLoaded) do
             loadedCount = loadedCount + 1
         end
         
-        if loadedCount >= 2 then -- At least 2 modules loaded
+        if loadedCount > 0 then
+            print("At least one module loaded, proceeding...")
             break
         end
+        
         task.wait(0.5)
     end
 
-    -- Check what loaded
+    -- Report loading results
     local loadedModules = {}
-    for moduleName, loaded in pairs(modulesLoaded) do
-        if loaded then
+    local failedModules = {}
+    
+    for moduleName, _ in pairs(moduleURLs) do
+        if modulesLoaded[moduleName] then
             table.insert(loadedModules, moduleName)
+        else
+            table.insert(failedModules, moduleName)
         end
     end
     
     if #loadedModules > 0 then
-        print("Loaded modules: " .. table.concat(loadedModules, ", "))
-    else
-        warn("No modules loaded successfully - using basic fallbacks")
+        print("✓ Successfully loaded modules: " .. table.concat(loadedModules, ", "))
+    end
+    
+    if #failedModules > 0 then
+        print("✗ Failed to load modules: " .. table.concat(failedModules, ", "))
     end
 
     initializeModules()
-    task.spawn(loadButtons)
+    loadButtons()
+    
+    print("MinimalHackGUI initialization complete!")
 end)
-
-print("MinimalHackGUI loaded successfully!")
