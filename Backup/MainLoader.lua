@@ -1,60 +1,78 @@
--- MinimalHackGUI by Fari Noveri with Anti-Cheat Bypass
+-- MinimalHackGUI by Fari Noveri - KRNL Optimized Version
+-- Fixed for KRNL executor with better HTTP handling
 
--- Anti-Detection Bypasses
-local function createBypass()
-    local spoofedServices = {}
+-- KRNL-specific HTTP handler
+local function createKRNLBypass()
+    local HttpService = game:GetService("HttpService")
     
-    local function safeHttpGet(url)
-        task.wait(math.random(50, 200) / 1000)
-        local success, response = pcall(function()
-            return game:GetService("HttpService"):GetAsync(url)
-        end)
-        if not success then
-            warn("HTTP request failed for URL: " .. url .. " | Error: " .. tostring(response))
-            return nil
-        elseif not response or response == "" then
-            warn("Empty response for URL: " .. url)
+    local function safeHttpGet(url, retries)
+        retries = retries or 2
+        
+        if not url or type(url) ~= "string" or url == "" then
+            warn("Invalid URL: " .. tostring(url))
             return nil
         end
-        return response
-    end
-    
-    pcall(function()
-        if getgc then
-            local originalGetGC = getgc
-            getgc = function(...)
-                local success, result = pcall(originalGetGC, ...)
-                if not success then return {} end
-                local filtered = {}
-                for _, v in ipairs(result) do
-                    if not (typeof(v) == "Instance" and tostring(v.Name):find("MinimalHack")) then
-                        table.insert(filtered, v)
+        
+        for attempt = 1, retries do
+            if attempt > 1 then
+                wait(math.random(2, 5)) -- KRNL needs longer delays
+            end
+            
+            local success, response = pcall(function()
+                -- Try multiple HTTP methods for KRNL
+                
+                -- Method 1: syn.request (KRNL-specific)
+                if syn and syn.request then
+                    local result = syn.request({
+                        Url = url,
+                        Method = "GET"
+                    })
+                    if result and result.Body then
+                        return result.Body
                     end
                 end
-                return filtered
+                
+                -- Method 2: game:HttpGet (some KRNL versions)
+                if game.HttpGet then
+                    return game:HttpGet(url, true)
+                end
+                
+                -- Method 3: HttpService (if available)
+                if HttpService and HttpService.HttpEnabled then
+                    return HttpService:GetAsync(url)
+                end
+                
+                -- If none work, throw error
+                error("No HTTP method available in KRNL")
+            end)
+            
+            if success and response and response ~= "" and not response:match("^%s*$") then
+                print("✓ KRNL HTTP success: " .. url:sub(1, 50) .. "...")
+                return response
+            else
+                local errorMsg = success and "Empty response" or tostring(response)
+                warn("✗ KRNL HTTP attempt " .. attempt .. " failed: " .. errorMsg)
+                
+                -- KRNL-specific error handling
+                if errorMsg:find("HttpService") or errorMsg:find("No HTTP method") then
+                    warn("⚠️ HTTP methods not available in KRNL")
+                    -- Try loading from a different source or use local modules
+                    break
+                end
             end
         end
-    end)
-    
-    local function hideFromDetection()
-        return "PlayerGUI_" .. tostring(math.random(10000, 99999))
+        
+        return nil
     end
     
-    local function cleanupMemory()
-        pcall(function()
-            collectgarbage("collect")
-            task.wait(0.1)
-        end)
-    end
-    
-    return hideFromDetection, cleanupMemory, safeHttpGet
+    return safeHttpGet
 end
 
-local hideFromDetection, cleanupMemory, safeHttpGet = createBypass()
+local safeHttpGet = createKRNLBypass()
 
--- Services
+-- Services with KRNL compatibility
 local function getService(serviceName)
-    task.wait(math.random(1, 5) / 1000)
+    wait(0.01) -- Small delay for KRNL
     return game:GetService(serviceName)
 end
 
@@ -69,7 +87,7 @@ local ReplicatedStorage = getService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local character, humanoid, rootPart
 
--- Connections and states
+-- State management
 local connections = {}
 local buttonStates = {}
 local selectedCategory = "Movement"
@@ -86,7 +104,52 @@ local settings = {
     WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
 }
 
--- ScreenGui
+-- Anti-detection for KRNL
+local function createKRNLAntiDetection()
+    local spoofedServices = {}
+    
+    local function hideFromDetection()
+        return "PlayerGUI_" .. tostring(math.random(10000, 99999))
+    end
+    
+    -- KRNL-specific memory cleanup
+    local function cleanupMemory()
+        spawn(function()
+            -- KRNL uses gcinfo() instead of collectgarbage
+            if gcinfo then
+                gcinfo()
+            elseif collectgarbage then
+                -- Some KRNL versions might support this
+                pcall(function() collectgarbage("collect") end)
+            end
+            wait(0.1)
+        end)
+    end
+    
+    -- Hide from common KRNL detectors
+    spawn(function()
+        if getgc and typeof(getgc) == "function" then
+            local originalGetGC = getgc
+            getgc = function(...)
+                local success, result = pcall(originalGetGC, ...)
+                if not success then return {} end
+                local filtered = {}
+                for _, v in pairs(result) do
+                    if not (typeof(v) == "Instance" and tostring(v.Name):find("MinimalHack")) then
+                        table.insert(filtered, v)
+                    end
+                end
+                return filtered
+            end
+        end
+    end)
+    
+    return hideFromDetection, cleanupMemory
+end
+
+local hideFromDetection, cleanupMemory = createKRNLAntiDetection()
+
+-- GUI Setup
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = hideFromDetection()
 ScreenGui.Parent = player:WaitForChild("PlayerGui")
@@ -94,25 +157,20 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
 
--- Anti-detection
-local function hideFromCommonDetection()
-    ScreenGui.DisplayOrder = -1000
-    task.spawn(function()
-        while ScreenGui.Parent do
-            task.wait(math.random(100, 300) / 1000)
-            ScreenGui.DisplayOrder = math.random(-1000, -500)
-            cleanupMemory()
-        end
-    end)
-end
-
-hideFromCommonDetection()
+-- KRNL-specific GUI protection
+spawn(function()
+    while ScreenGui.Parent do
+        wait(30)
+        ScreenGui.DisplayOrder = math.random(-1000, -500)
+        cleanupMemory()
+    end
+end)
 
 -- Clean up existing GUIs
-for _, gui in ipairs(player.PlayerGui:GetChildren()) do
+for _, gui in pairs(player.PlayerGui:GetChildren()) do
     if gui:IsA("ScreenGui") and (gui.Name:find("PlayerGUI_") or gui.Name == "MinimalHackGUI") and gui ~= ScreenGui then
-        task.spawn(function()
-            task.wait(math.random(100, 500) / 1000)
+        spawn(function()
+            wait(0.5)
             gui:Destroy()
         end)
     end
@@ -139,7 +197,7 @@ Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.BorderSizePixel = 0
 Title.Size = UDim2.new(1, 0, 0, 25)
 Title.Font = Enum.Font.Gotham
-Title.Text = "MinimalHackGUI by Fari Noveri [Backup]"
+Title.Text = "MinimalHackGUI by Fari Noveri [KRNL]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
@@ -164,7 +222,7 @@ LogoText.Parent = MinimizedLogo
 LogoText.BackgroundTransparency = 1
 LogoText.Size = UDim2.new(1, 0, 1, 0)
 LogoText.Font = Enum.Font.GothamBold
-LogoText.Text = "H"
+LogoText.Text = "K"
 LogoText.TextColor3 = Color3.fromRGB(255, 255, 255)
 LogoText.TextSize = 12
 LogoText.TextStrokeTransparency = 0.5
@@ -205,7 +263,7 @@ CategoryLayout.Padding = UDim.new(0, 3)
 CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 CategoryLayout.FillDirection = Enum.FillDirection.Vertical
 
-CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+CategoryLayout.Changed:Connect(function()
     CategoryContainer.CanvasSize = UDim2.new(0, 0, 0, CategoryLayout.AbsoluteContentSize.Y + 10)
 end)
 
@@ -227,7 +285,7 @@ FeatureLayout.Parent = FeatureContainer
 FeatureLayout.Padding = UDim.new(0, 2)
 FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-FeatureLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+FeatureLayout.Changed:Connect(function()
     FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 10)
 end)
 
@@ -246,25 +304,46 @@ local categories = {
 local categoryFrames = {}
 local isMinimized = false
 
--- Module URLs
+-- KRNL-compatible module URLs with multiple fallbacks
 local moduleURLs = {
-    Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Movement.lua",
-    Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Player.lua",
-    Teleport = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Teleport.lua",
-    Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Visual.lua",
-    Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Utility.lua",
-    Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Settings.lua",
-    AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/AntiAdmin.lua",
-    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua"
+    Movement = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Movement.lua",
+        "https://pastebin.com/raw/YourMovementPaste", -- Add your pastebin as backup
+    },
+    Player = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Player.lua",
+        "https://pastebin.com/raw/YourPlayerPaste",
+    },
+    Teleport = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Teleport.lua",
+        "https://pastebin.com/raw/YourTeleportPaste",
+    },
+    Visual = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Visual.lua",
+        "https://pastebin.com/raw/YourVisualPaste",
+    },
+    Utility = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Utility.lua",
+        "https://pastebin.com/raw/YourUtilityPaste",
+    },
+    Settings = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Settings.lua",
+        "https://pastebin.com/raw/YourSettingsPaste",
+    },
+    AntiAdmin = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/AntiAdmin.lua",
+        "https://pastebin.com/raw/YourAntiAdminPaste",
+    },
+    Info = {
+        "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua",
+        "https://pastebin.com/raw/YourInfoPaste",
+    }
 }
 
--- Local AntiAdmin Module (from provided code)
+-- Local AntiAdmin Module (embedded for KRNL)
 local localModules = {
     AntiAdmin = function()
         local AntiAdmin = {}
-        local Players = game:GetService("Players")
-        local RunService = game:GetService("RunService")
-        local LocalPlayer = Players.LocalPlayer
         local connections = {}
 
         local function isAdmin(player)
@@ -274,7 +353,7 @@ local localModules = {
         local function notifyAdmin(player)
             local notification = Instance.new("ScreenGui")
             notification.Name = "AntiAdminNotify"
-            notification.Parent = LocalPlayer:WaitForChild("PlayerGui")
+            notification.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
             local frame = Instance.new("Frame", notification)
             frame.Size = UDim2.new(0, 200, 0, 50)
             frame.Position = UDim2.new(0.5, -100, 0, 10)
@@ -282,12 +361,12 @@ local localModules = {
             local text = Instance.new("TextLabel", frame)
             text.Size = UDim2.new(1, 0, 1, 0)
             text.BackgroundTransparency = 1
-            text.Text = "Admin Detected: " .. player.Name
+            text.Text = "⚠️ Admin Detected: " .. player.Name
             text.TextColor3 = Color3.fromRGB(255, 255, 255)
             text.TextScaled = true
-            task.spawn(function()
-                task.wait(5)
-                notification:Destroy()
+            spawn(function()
+                wait(5)
+                if notification then notification:Destroy() end
             end)
         end
 
@@ -298,7 +377,7 @@ local localModules = {
                 end
             end)
 
-            for _, player in ipairs(Players:GetPlayers()) do
+            for _, player in pairs(Players:GetPlayers()) do
                 if isAdmin(player) then
                     notifyAdmin(player)
                 end
@@ -308,12 +387,16 @@ local localModules = {
         function AntiAdmin.loadAntiAdminButtons(createToggleButton, parent)
             createToggleButton("AntiKick", function(state)
                 if state then
+                    print("🛡️ AntiKick enabled")
                     connections.antiKick = RunService.Heartbeat:Connect(function()
                         pcall(function()
-                            LocalPlayer.Kick = function() return false end
+                            if Players.LocalPlayer then
+                                Players.LocalPlayer.Kick = function() return false end
+                            end
                         end)
                     end)
                 else
+                    print("🛡️ AntiKick disabled")
                     if connections.antiKick then
                         connections.antiKick:Disconnect()
                         connections.antiKick = nil
@@ -344,9 +427,11 @@ local localModules = {
 local modules = {}
 local modulesLoaded = {}
 
--- Load Module
+-- KRNL-optimized module loader
 local function loadModule(moduleName)
-    -- Try local module first
+    print("🔄 Loading module: " .. moduleName)
+    
+    -- Try local module first (always works)
     if localModules[moduleName] then
         local success, result = pcall(function()
             return localModules[moduleName]()
@@ -354,17 +439,17 @@ local function loadModule(moduleName)
         if success and result then
             modules[moduleName] = result
             modulesLoaded[moduleName] = true
-            print("Successfully loaded local module: " .. moduleName)
+            print("✅ Local module loaded: " .. moduleName)
             if selectedCategory == moduleName then
-                task.spawn(loadButtons)
+                spawn(loadButtons)
             end
             return true
         else
-            warn("Failed to load local module " .. moduleName .. ": " .. tostring(result))
+            warn("❌ Local module failed: " .. moduleName .. " - " .. tostring(result))
         end
     end
 
-    -- Try ReplicatedStorage module
+    -- Try ReplicatedStorage module (if available)
     local localModule = ReplicatedStorage:FindFirstChild(moduleName)
     if localModule and localModule:IsA("ModuleScript") then
         local success, result = pcall(function()
@@ -373,66 +458,85 @@ local function loadModule(moduleName)
         if success and result then
             modules[moduleName] = result
             modulesLoaded[moduleName] = true
-            print("Successfully loaded ReplicatedStorage module: " .. moduleName)
+            print("✅ ReplicatedStorage module loaded: " .. moduleName)
             if selectedCategory == moduleName then
-                task.spawn(loadButtons)
+                spawn(loadButtons)
             end
             return true
         else
-            warn("Failed to load ReplicatedStorage module " .. moduleName .. ": " .. tostring(result))
+            warn("❌ ReplicatedStorage module failed: " .. moduleName)
         end
     end
 
-    -- Fallback to HTTP
+    -- HTTP loading (only if HTTP methods are available)
     if not moduleURLs[moduleName] then
-        warn("No URL defined for module: " .. moduleName)
+        warn("❌ No URLs for module: " .. moduleName)
         return false
     end
     
-    task.wait(math.random(100, 500) / 1000)
-    
-    local success, result = pcall(function()
-        local response = safeHttpGet(moduleURLs[moduleName])
-        if not response or response == "" then
-            warn("No response for module: " .. moduleName)
-            return nil
-        end
-        
-        local func, loadError = loadstring(response)
-        if not func then
-            warn("Failed to compile module " .. moduleName .. ": " .. tostring(loadError))
-            return nil
-        end
-        
-        local moduleResult = func()
-        if not moduleResult then
-            warn("Module " .. moduleName .. " returned nil")
-            return nil
-        end
-        
-        return moduleResult
-    end)
-    
-    if success and result then
-        modules[moduleName] = result
-        modulesLoaded[moduleName] = true
-        print("Successfully loaded HTTP module: " .. moduleName)
-        if selectedCategory == moduleName then
-            task.spawn(loadButtons)
-        end
-        return true
-    else
-        warn("Failed to load HTTP module " .. moduleName .. ": " .. tostring(result))
+    -- Check if any HTTP method is available
+    local hasHTTP = (syn and syn.request) or game.HttpGet or (game:GetService("HttpService").HttpEnabled)
+    if not hasHTTP then
+        warn("⚠️ No HTTP methods available in KRNL for module: " .. moduleName)
+        warn("💡 Consider using local modules or ReplicatedStorage")
         return false
     end
-end
-
--- Load all modules
-for moduleName, _ in pairs(moduleURLs) do
-    task.spawn(function() 
-        task.wait(math.random(500, 2000) / 1000)
-        loadModule(moduleName) 
-    end)
+    
+    local urls = moduleURLs[moduleName]
+    if type(urls) == "string" then
+        urls = {urls}
+    end
+    
+    for urlIndex, url in pairs(urls) do
+        print("🌐 Trying URL " .. urlIndex .. " for " .. moduleName)
+        
+        wait(math.random(1, 3)) -- KRNL needs delays
+        
+        local success, result = pcall(function()
+            local response = safeHttpGet(url)
+            if not response or response == "" then
+                error("Empty response")
+            end
+            
+            -- Check if response looks like an error page
+            if response:lower():find("404") or response:lower():find("not found") then
+                error("404 - File not found")
+            end
+            
+            -- Validate Lua code
+            local func, loadError = loadstring(response)
+            if not func then
+                error("Compile error: " .. tostring(loadError))
+            end
+            
+            -- Execute module
+            local moduleResult = func()
+            if not moduleResult then
+                error("Module returned nil")
+            end
+            
+            if type(moduleResult) ~= "table" then
+                error("Module must return table")
+            end
+            
+            return moduleResult
+        end)
+        
+        if success and result then
+            modules[moduleName] = result
+            modulesLoaded[moduleName] = true
+            print("✅ HTTP module loaded: " .. moduleName)
+            if selectedCategory == moduleName then
+                spawn(loadButtons)
+            end
+            return true
+        else
+            warn("❌ URL " .. urlIndex .. " failed: " .. tostring(result))
+        end
+    end
+    
+    warn("❌ All methods failed for: " .. moduleName)
+    return false
 end
 
 -- Dependencies
@@ -447,39 +551,30 @@ local dependencies = {
     connections = connections,
     buttonStates = buttonStates,
     player = player,
-    disableActiveFeature = function() end, -- Defined below
-    isExclusiveFeature = function() return false end -- Defined below
+    disableActiveFeature = function() end,
+    isExclusiveFeature = function() return false end
 }
-
--- Handle SendLikelySpeakingUsers RemoteEvent
-local function setupRemoteEventHandler()
-    local SendLikelySpeakingUsers = ReplicatedStorage:FindFirstChild("SendLikelySpeakingUsers")
-    if SendLikelySpeakingUsers and SendLikelySpeakingUsers:IsA("RemoteEvent") then
-        connections.SendLikelySpeakingUsers = SendLikelySpeakingUsers.OnClientEvent:Connect(function(...)
-            print("Received SendLikelySpeakingUsers event with args:", ...)
-        end)
-    end
-end
 
 -- Initialize modules
 local function initializeModules()
     for moduleName, module in pairs(modules) do
         if module and type(module.init) == "function" then
-            local success, result = pcall(function()
+            spawn(function()
                 dependencies.character = character
                 dependencies.humanoid = humanoid
                 dependencies.rootPart = rootPart
-                return module.init(dependencies)
+                local success, result = pcall(function()
+                    return module.init(dependencies)
+                end)
+                if not success then
+                    warn("❌ Init failed for " .. moduleName .. ": " .. tostring(result))
+                end
             end)
-            if not success then
-                warn("Failed to initialize module " .. moduleName .. ": " .. tostring(result))
-            end
         end
     end
-    setupRemoteEventHandler()
 end
 
--- Disable active feature
+-- Feature management
 local function disableActiveFeature()
     if activeFeature then
         local categoryName = activeFeature.category
@@ -489,7 +584,7 @@ local function disableActiveFeature()
             categoryStates[categoryName][featureName] = false
         end
         
-        for _, child in ipairs(FeatureContainer:GetChildren()) do
+        for _, child in pairs(FeatureContainer:GetChildren()) do
             if child:IsA("TextButton") and child.Name:find(featureName) then
                 child.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
                 break
@@ -504,11 +599,8 @@ local function disableActiveFeature()
     end
 end
 
-dependencies.disableActiveFeature = disableActiveFeature
-
--- Check if feature is exclusive
 local function isExclusiveFeature(featureName)
-    for _, exclusive in ipairs(exclusiveFeatures) do
+    for _, exclusive in pairs(exclusiveFeatures) do
         if featureName:find(exclusive) then
             return true
         end
@@ -516,9 +608,10 @@ local function isExclusiveFeature(featureName)
     return false
 end
 
+dependencies.disableActiveFeature = disableActiveFeature
 dependencies.isExclusiveFeature = isExclusiveFeature
 
--- Create button
+-- Button creators
 local function createButton(name, callback, categoryName)
     local button = Instance.new("TextButton")
     button.Name = name .. "_" .. tostring(math.random(100, 999))
@@ -534,16 +627,12 @@ local function createButton(name, callback, categoryName)
     
     if type(callback) == "function" then
         button.MouseButton1Click:Connect(function()
-            task.wait(math.random(10, 50) / 1000)
+            wait(0.05)
             if isExclusiveFeature(name) then
                 disableActiveFeature()
-                activeFeature = {
-                    name = name,
-                    category = categoryName,
-                    disableCallback = nil
-                }
+                activeFeature = {name = name, category = categoryName, disableCallback = nil}
             end
-            callback()
+            spawn(callback)
         end)
     end
     
@@ -556,7 +645,6 @@ local function createButton(name, callback, categoryName)
     end)
 end
 
--- Create toggle button
 local function createToggleButton(name, callback, categoryName, disableCallback)
     local button = Instance.new("TextButton")
     button.Name = name .. "_toggle_" .. tostring(math.random(100, 999))
@@ -576,16 +664,12 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
     
     button.MouseButton1Click:Connect(function()
-        task.wait(math.random(10, 50) / 1000)
+        wait(0.05)
         local newState = not categoryStates[categoryName][name]
         
         if newState and isExclusiveFeature(name) then
             disableActiveFeature()
-            activeFeature = {
-                name = name,
-                category = categoryName,
-                disableCallback = disableCallback
-            }
+            activeFeature = {name = name, category = categoryName, disableCallback = disableCallback}
         elseif not newState and activeFeature and activeFeature.name == name then
             activeFeature = nil
         end
@@ -594,7 +678,7 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
         button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
         
         if type(callback) == "function" then
-            callback(newState)
+            spawn(function() callback(newState) end)
         end
     end)
     
@@ -607,38 +691,40 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     end)
 end
 
--- Load buttons
-local function loadButtons()
-    for _, child in ipairs(FeatureContainer:GetChildren()) do
+-- Load buttons function
+function loadButtons()
+    -- Clear existing buttons
+    for _, child in pairs(FeatureContainer:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
+    -- Update category button colors
     for categoryName, categoryData in pairs(categoryFrames) do
         categoryData.button.BackgroundColor3 = categoryName == selectedCategory and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
     end
 
-    if not selectedCategory then
-        return
-    end
+    if not selectedCategory then return end
     
+    -- Loading indicator
     local loadingLabel = Instance.new("TextLabel")
     loadingLabel.Parent = FeatureContainer
     loadingLabel.BackgroundTransparency = 1
     loadingLabel.Size = UDim2.new(1, -2, 0, 20)
     loadingLabel.Font = Enum.Font.Gotham
-    loadingLabel.Text = "Loading " .. selectedCategory .. "..."
+    loadingLabel.Text = "🔄 Loading " .. selectedCategory .. "..."
     loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     loadingLabel.TextSize = 8
     loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-    task.spawn(function()
-        task.wait(math.random(100, 300) / 1000)
+    spawn(function()
+        wait(0.3)
         
         local success = false
         local errorMessage = nil
 
+        -- Load appropriate module buttons
         if selectedCategory == "Movement" and modules.Movement and type(modules.Movement.loadMovementButtons) == "function" then
             success, errorMessage = pcall(function()
                 modules.Movement.loadMovementButtons(
@@ -658,12 +744,9 @@ local function loadButtons()
         elseif selectedCategory == "Teleport" and modules.Teleport and type(modules.Teleport.loadTeleportButtons) == "function" then
             success, errorMessage = pcall(function()
                 local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
-                local freecamEnabled = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false
-                local freecamPosition = modules.Visual and modules.Visual.getFreecamState and select(2, modules.Visual.getFreecamState()) or nil
-                local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
                 modules.Teleport.loadTeleportButtons(
                     function(name, callback) createButton(name, callback, "Teleport") end,
-                    selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
+                    selectedPlayer
                 )
             end)
         elseif selectedCategory == "Visual" and modules.Visual and type(modules.Visual.loadVisualButtons) == "function" then
@@ -696,10 +779,13 @@ local function loadButtons()
             end)
         end
 
+        -- Handle loading result
         if loadingLabel and loadingLabel.Parent then
             if not success then
-                loadingLabel.Text = "Failed to load " .. selectedCategory .. ": " .. tostring(errorMessage)
+                loadingLabel.Text = "❌ Failed: " .. selectedCategory .. " - " .. tostring(errorMessage)
                 loadingLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                wait(3)
+                if loadingLabel.Parent then loadingLabel:Destroy() end
             else
                 loadingLabel:Destroy()
             end
@@ -708,7 +794,7 @@ local function loadButtons()
 end
 
 -- Create category buttons
-for _, category in ipairs(categories) do
+for _, category in pairs(categories) do
     local categoryButton = Instance.new("TextButton")
     categoryButton.Name = category.name .. "Cat_" .. tostring(math.random(100, 999))
     categoryButton.Parent = CategoryContainer
@@ -722,9 +808,9 @@ for _, category in ipairs(categories) do
     categoryButton.TextSize = 8
 
     categoryButton.MouseButton1Click:Connect(function()
-        task.wait(math.random(10, 30) / 1000)
+        wait(0.02)
         selectedCategory = category.name
-        task.spawn(loadButtons)
+        spawn(loadButtons)
     end)
 
     categoryButton.MouseEnter:Connect(function()
@@ -743,7 +829,7 @@ for _, category in ipairs(categories) do
     categoryStates[category.name] = {}
 end
 
--- Minimize/Maximize
+-- Minimize/Maximize functionality
 local function toggleMinimize()
     isMinimized = not isMinimized
     Frame.Visible = not isMinimized
@@ -752,7 +838,7 @@ local function toggleMinimize()
     cleanupMemory()
 end
 
--- Reset states
+-- Reset all states
 local function resetStates()
     activeFeature = nil
     for _, connection in pairs(connections) do
@@ -764,78 +850,220 @@ local function resetStates()
     
     for _, module in pairs(modules) do
         if module and type(module.resetStates) == "function" then
-            pcall(function() module.resetStates() end)
+            spawn(function() module.resetStates() end)
         end
     end
     
     if selectedCategory then
-        task.spawn(loadButtons)
+        spawn(loadButtons)
     end
     
     cleanupMemory()
 end
 
--- Character setup
+-- Character management
 local function onCharacterAdded(newCharacter)
     if not newCharacter then return end
     
-    local success, result = pcall(function()
-        character = newCharacter
-        humanoid = character:WaitForChild("Humanoid", 30)
-        rootPart = character:WaitForChild("HumanoidRootPart", 30)
-        
-        dependencies.character = character
-        dependencies.humanoid = humanoid
-        dependencies.rootPart = rootPart
-        
-        task.wait(math.random(200, 500) / 1000)
-        initializeModules()
-        
-        if humanoid and humanoid.Died then
-            connections.humanoidDied = humanoid.Died:Connect(resetStates)
+    spawn(function()
+        local success, result = pcall(function()
+            character = newCharacter
+            humanoid = character:WaitForChild("Humanoid", 30)
+            rootPart = character:WaitForChild("HumanoidRootPart", 30)
+            
+            dependencies.character = character
+            dependencies.humanoid = humanoid
+            dependencies.rootPart = rootPart
+            
+            wait(1) -- KRNL needs time
+            initializeModules()
+            
+            if humanoid and humanoid.Died then
+                connections.humanoidDied = humanoid.Died:Connect(resetStates)
+            end
+        end)
+        if not success then
+            warn("❌ Character setup failed: " .. tostring(result))
         end
     end)
-    if not success then
-        warn("Failed to set up character: " .. tostring(result))
-    end
 end
 
--- Initialize
+-- KRNL-specific diagnostics
+local function runKRNLDiagnostics()
+    print("=== KRNL Diagnostics ===")
+    
+    -- Check KRNL-specific functions
+    print("KRNL syn: " .. (syn and "✅ Available" or "❌ Not available"))
+    print("KRNL syn.request: " .. (syn and syn.request and "✅ Available" or "❌ Not available"))
+    print("game:HttpGet: " .. (game.HttpGet and "✅ Available" or "❌ Not available"))
+    
+    local HttpService = game:GetService("HttpService")
+    print("HttpService: " .. (HttpService and "✅ Service found" or "❌ Service not found"))
+    print("HttpService.HttpEnabled: " .. (HttpService and HttpService.HttpEnabled and "✅ Enabled" or "❌ Disabled"))
+    
+    -- Test different HTTP methods
+    print("\n--- Testing HTTP Methods ---")
+    
+    -- Test syn.request
+    if syn and syn.request then
+        local synSuccess = pcall(function()
+            local response = syn.request({
+                Url = "https://httpbin.org/get",
+                Method = "GET"
+            })
+            return response and response.Body and response.Body ~= ""
+        end)
+        print("syn.request test: " .. (synSuccess and "✅ Working" or "❌ Failed"))
+    end
+    
+    -- Test game:HttpGet
+    if game.HttpGet then
+        local gameHttpSuccess = pcall(function()
+            local response = game:HttpGet("https://httpbin.org/get", true)
+            return response and response ~= ""
+        end)
+        print("game:HttpGet test: " .. (gameHttpSuccess and "✅ Working" or "❌ Failed"))
+    end
+    
+    -- Test HttpService
+    if HttpService and HttpService.HttpEnabled then
+        local httpServiceSuccess = pcall(function()
+            local response = HttpService:GetAsync("https://httpbin.org/get")
+            return response and response ~= ""
+        end)
+        print("HttpService test: " .. (httpServiceSuccess and "✅ Working" or "❌ Failed"))
+    end
+    
+    print("\n--- Memory Info ---")
+    if gcinfo then
+        print("Memory usage: " .. gcinfo() .. " KB")
+    end
+    
+    print("=== End Diagnostics ===\n")
+end
+
+-- Load all modules with KRNL optimizations
+spawn(function()
+    print("🚀 Starting KRNL-optimized module loading...")
+    
+    -- Run diagnostics first
+    runKRNLDiagnostics()
+    
+    wait(2) -- Give KRNL time to initialize
+    
+    for moduleName, _ in pairs(moduleURLs) do
+        spawn(function()
+            wait(math.random(2, 5)) -- Stagger loading for KRNL
+            loadModule(moduleName)
+        end)
+    end
+end)
+
+-- Initialize character
 if player.Character then
     onCharacterAdded(player.Character)
 end
 connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 
+-- GUI event connections
 MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
 LogoButton.MouseButton1Click:Connect(toggleMinimize)
 
-connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
-        toggleMinimize()
-    end
+-- Hotkey support (KRNL-compatible)
+spawn(function()
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
+            toggleMinimize()
+        elseif not gameProcessed and input.KeyCode == Enum.KeyCode.End then
+            -- Emergency reset hotkey for KRNL
+            resetStates()
+            print("🔄 Emergency reset triggered")
+        end
+    end)
 end)
 
--- Periodic cleanup
-task.spawn(function()
+-- KRNL-specific periodic maintenance
+spawn(function()
     while ScreenGui.Parent do
-        task.wait(math.random(30000, 60000) / 1000)
+        wait(60) -- Clean up every minute
         cleanupMemory()
+        
+        -- Randomize GUI position slightly for anti-detection
         if Frame.Visible then
-            Frame.BackgroundTransparency = math.random(1, 5) / 100
+            Frame.BackgroundTransparency = math.random(1, 3) / 100
+        end
+        
+        -- Check if modules need reloading
+        local failedModules = {}
+        for moduleName, _ in pairs(moduleURLs) do
+            if not modulesLoaded[moduleName] then
+                table.insert(failedModules, moduleName)
+            end
+        end
+        
+        if #failedModules > 0 then
+            print("🔄 Retrying failed modules: " .. table.concat(failedModules, ", "))
+            for _, moduleName in pairs(failedModules) do
+                spawn(function()
+                    wait(math.random(1, 3))
+                    loadModule(moduleName)
+                end)
+            end
         end
     end
 end)
 
--- Start initialization
-task.spawn(function()
-    local timeout = 30
+-- Initialize GUI
+spawn(function()
+    wait(3) -- Give KRNL time to load
+    
+    local timeout = 60 -- seconds
     local startTime = tick()
     
-    while (not modules.Movement or not modules.Player or not modules.Teleport) and tick() - startTime < timeout do
-        task.wait(math.random(100, 300) / 1000)
+    -- Wait for essential modules
+    while (not modules.AntiAdmin) and tick() - startTime < timeout do
+        wait(1)
     end
     
-    task.wait(math.random(500, 1000) / 1000)
+    wait(2) -- Additional buffer for KRNL
     initializeModules()
-    task.spawn(loadButtons)
+    spawn(loadButtons)
+    
+    print("✅ MinimalHackGUI loaded for KRNL")
+    print("🎮 Press HOME to toggle GUI")
+    print("🔄 Press END for emergency reset")
 end)
+
+-- KRNL-specific error recovery
+spawn(function()
+    local lastErrorTime = 0
+    local errorCount = 0
+    
+    local function onError(message)
+        local currentTime = tick()
+        if currentTime - lastErrorTime < 5 then
+            errorCount = errorCount + 1
+        else
+            errorCount = 1
+        end
+        lastErrorTime = currentTime
+        
+        warn("🚨 KRNL Error #" .. errorCount .. ": " .. tostring(message))
+        
+        if errorCount >= 3 then
+            warn("🔄 Multiple errors detected, attempting recovery...")
+            wait(2)
+            resetStates()
+            errorCount = 0
+        end
+    end
+    
+    -- Hook into KRNL error handling if available
+    if syn and syn.set_thread_context then
+        syn.set_thread_context(1)
+    end
+end)
+
+print("🎯 MinimalHackGUI KRNL Edition Initialized!")
+print("📋 Features: Movement, Player, Teleport, Visual, Utility, Settings, AntiAdmin, Info")
+print("🔧 Optimized for KRNL executor")
