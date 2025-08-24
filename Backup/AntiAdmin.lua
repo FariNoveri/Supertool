@@ -468,7 +468,6 @@ end
 
 -- Advanced Bypass Methods (FIXED)
 local function setupAdvancedBypass()
-    -- Remove HTTP requests as they can cause errors in some executors
     spawn(function()
         while protectionStates.advancedBypass do
             pcall(function()
@@ -596,8 +595,7 @@ function AntiAdmin.resetStates()
     print("Anti-Admin: All states reset")
 end
 
--- Load AntiAdmin buttons function
--- Load AntiAdmin buttons function (FIXED - No persistent watermark)
+-- Load AntiAdmin buttons function - FIXED (No persistent watermark)
 function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
     createToggleButton("Main Protection", toggleMainProtection, function()
         toggleMainProtection(false)
@@ -619,38 +617,8 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         toggleAdvancedBypass(false)
     end)
     
-    -- Add info label instead of persistent frame (will be cleared when switching categories)
-    local InfoLabel = Instance.new("TextLabel")
-    InfoLabel.Name = "AntiAdminInfo"
-    InfoLabel.Parent = FeatureContainer
-    InfoLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    InfoLabel.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    InfoLabel.BorderSizePixel = 1
-    InfoLabel.Size = UDim2.new(1, -2, 0, 45)
-    InfoLabel.LayoutOrder = 999 -- Make sure it appears at the bottom
-    InfoLabel.Font = Enum.Font.Gotham
-    InfoLabel.Text = "🛡️ Enhanced Anti-Admin Protection\nDibuat oleh: Fari Noveri\n⚡ Advanced Exploiter Protection v2.1"
-    InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 100)
-    InfoLabel.TextSize = 8
-    InfoLabel.TextYAlignment = Enum.TextYAlignment.Center
-    InfoLabel.TextWrapped = true
-    InfoLabel.TextStrokeTransparency = 0.8
-    InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    
-    -- Corner for info label
-    local InfoCorner = Instance.new("UICorner")
-    InfoCorner.CornerRadius = UDim.new(0, 4)
-    InfoCorner.Parent = InfoLabel
-    
-    -- Add subtle animation
-    spawn(function()
-        local TweenService = game:GetService("TweenService")
-        local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-        local tween = TweenService:Create(InfoLabel, tweenInfo, {
-            TextColor3 = Color3.fromRGB(120, 255, 120)
-        })
-        tween:Play()
-    end)
+    -- REMOVED PERSISTENT WATERMARK - Only show info when AntiAdmin category is selected
+    print("✓ AntiAdmin buttons loaded (watermark removed)")
 end
 
 return AntiAdmin
