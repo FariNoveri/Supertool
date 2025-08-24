@@ -316,7 +316,7 @@ local moduleURLs = {
     },
     Teleport = {
         "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Teleport.lua",
-        "https://pastebin.com/raw/YourTeleportPaste",
+        "https://pastebin.com/raw/McqpbQNh",
     },
     Visual = {
         "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Visual.lua",
@@ -328,7 +328,7 @@ local moduleURLs = {
     },
     Settings = {
         "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Settings.lua",
-        "https://pastebin.com/raw/YourSettingsPaste",
+        "https://pastebin.com/raw/sgzKNGZE",
     },
     AntiAdmin = {
         "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/AntiAdmin.lua",
