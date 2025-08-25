@@ -158,8 +158,6 @@ local function toggleHideCharacter(enabled)
     end
 end
 
--- Hide My Character (only local player)
-
 -- Hide My Character (only local player) - FIXED
 local function hideMyCharacter()
     if not player.Character then return end
@@ -1026,7 +1024,6 @@ local function spectatePrevPlayer()
     stopSpectating()
 end
 
--- Update Player List
 -- Update Player List - FIXED BUTTON EVENTS
 function Player.updatePlayerList()
     if not PlayerListScrollFrame then
@@ -1034,6 +1031,7 @@ function Player.updatePlayerList()
         return
     end
     
+    -- Clear existing items
     for _, child in pairs(PlayerListScrollFrame:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then
             child:Destroy()
@@ -1056,6 +1054,7 @@ function Player.updatePlayerList()
         noPlayersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         noPlayersLabel.TextSize = 11
         noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
+        noPlayersLabel.ZIndex = 1
     else
         for _, p in pairs(players) do
             if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
@@ -1069,6 +1068,7 @@ function Player.updatePlayerList()
                 playerItem.BorderSizePixel = 0
                 playerItem.Size = UDim2.new(1, -5, 0, 210)
                 playerItem.LayoutOrder = playerCount
+                playerItem.ZIndex = 1
                 
                 local nameLabel = Instance.new("TextLabel")
                 nameLabel.Name = "NameLabel"
@@ -1081,6 +1081,7 @@ function Player.updatePlayerList()
                 nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
                 nameLabel.TextSize = 12
                 nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.ZIndex = 2
                 
                 local selectButton = Instance.new("TextButton")
                 selectButton.Name = "SelectButton"
@@ -1093,6 +1094,9 @@ function Player.updatePlayerList()
                 selectButton.Text = Player.selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
                 selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 selectButton.TextSize = 10
+                selectButton.ZIndex = 2
+                selectButton.Active = true
+                selectButton.Selectable = true
                 
                 -- Add all the other buttons
                 local spectateButton = Instance.new("TextButton")
@@ -1106,6 +1110,8 @@ function Player.updatePlayerList()
                 spectateButton.Text = "SPECTATE"
                 spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 spectateButton.TextSize = 9
+                spectateButton.ZIndex = 2
+                spectateButton.Active = true
                 
                 local stopSpectateButton = Instance.new("TextButton")
                 stopSpectateButton.Name = "StopSpectateButton"
@@ -1118,6 +1124,8 @@ function Player.updatePlayerList()
                 stopSpectateButton.Text = "STOP"
                 stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 stopSpectateButton.TextSize = 9
+                stopSpectateButton.ZIndex = 2
+                stopSpectateButton.Active = true
                 
                 local teleportButton = Instance.new("TextButton")
                 teleportButton.Name = "TeleportButton"
@@ -1130,6 +1138,8 @@ function Player.updatePlayerList()
                 teleportButton.Text = "TELEPORT"
                 teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 teleportButton.TextSize = 9
+                teleportButton.ZIndex = 2
+                teleportButton.Active = true
                 
                 local followButton = Instance.new("TextButton")
                 followButton.Name = "FollowButton"
@@ -1142,6 +1152,8 @@ function Player.updatePlayerList()
                 followButton.Text = Player.followTarget == p and "FOLLOWING" or "FOLLOW"
                 followButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 followButton.TextSize = 9
+                followButton.ZIndex = 2
+                followButton.Active = true
                 
                 local stopFollowButton = Instance.new("TextButton")
                 stopFollowButton.Name = "StopFollowButton"
@@ -1154,6 +1166,8 @@ function Player.updatePlayerList()
                 stopFollowButton.Text = "STOP FOLLOW"
                 stopFollowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 stopFollowButton.TextSize = 8
+                stopFollowButton.ZIndex = 2
+                stopFollowButton.Active = true
                 
                 local bringButton = Instance.new("TextButton")
                 bringButton.Name = "BringButton"
@@ -1166,6 +1180,8 @@ function Player.updatePlayerList()
                 bringButton.Text = "BRING"
                 bringButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 bringButton.TextSize = 9
+                bringButton.ZIndex = 2
+                bringButton.Active = true
                 
                 local magnetButton = Instance.new("TextButton")
                 magnetButton.Name = "MagnetButton"
@@ -1178,6 +1194,8 @@ function Player.updatePlayerList()
                 magnetButton.Text = "MAGNET"
                 magnetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 magnetButton.TextSize = 9
+                magnetButton.ZIndex = 2
+                magnetButton.Active = true
                 
                 local hideButton = Instance.new("TextButton")
                 hideButton.Name = "HideButton"
@@ -1190,6 +1208,8 @@ function Player.updatePlayerList()
                 hideButton.Text = Player.hiddenPlayers[p] and "SHOW" or "HIDE"
                 hideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 hideButton.TextSize = 9
+                hideButton.ZIndex = 2
+                hideButton.Active = true
                 
                 local showButton = Instance.new("TextButton")
                 showButton.Name = "ShowButton"
@@ -1202,6 +1222,8 @@ function Player.updatePlayerList()
                 showButton.Text = "VISIBLE"
                 showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 showButton.TextSize = 8
+                showButton.ZIndex = 2
+                showButton.Active = true
                 
                 local freezeIndividualButton = Instance.new("TextButton")
                 freezeIndividualButton.Name = "FreezeIndividualButton"
@@ -1214,9 +1236,12 @@ function Player.updatePlayerList()
                 freezeIndividualButton.Text = Player.frozenPlayerPositions[p] and "UNFREEZE" or "FREEZE"
                 freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 freezeIndividualButton.TextSize = 8
+                freezeIndividualButton.ZIndex = 2
+                freezeIndividualButton.Active = true
                 
-                -- FIXED: Button Events - Properly connect each button
+                -- Button Events
                 selectButton.MouseButton1Click:Connect(function()
+                    print("Select button clicked for: " .. p.Name) -- Debug print
                     Player.selectedPlayer = p
                     Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
                     if SelectedPlayerLabel then
@@ -1226,13 +1251,8 @@ function Player.updatePlayerList()
                     for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
                         if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
                             local btn = item.SelectButton
-                            if item.Name == p.Name .. "Item" then
-                                btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                                btn.Text = "SELECTED"
-                            else
-                                btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                                btn.Text = "SELECT PLAYER"
-                            end
+                            btn.BackgroundColor3 = item.Name == p.Name .. "Item" and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
+                            btn.Text = item.Name == p.Name .. "Item" and "SELECTED" or "SELECT PLAYER"
                         end
                     end
                     updateSpectateButtons()
@@ -1240,15 +1260,18 @@ function Player.updatePlayerList()
                 end)
                 
                 spectateButton.MouseButton1Click:Connect(function()
+                    print("Spectate button clicked for: " .. p.Name) -- Debug print
                     Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
                     spectatePlayer(p)
                 end)
                 
                 stopSpectateButton.MouseButton1Click:Connect(function()
+                    print("Stop spectate button clicked for: " .. p.Name) -- Debug print
                     stopSpectating()
                 end)
                 
                 teleportButton.MouseButton1Click:Connect(function()
+                    print("Teleport button clicked for: " .. p.Name) -- Debug print
                     local success, result = pcall(function()
                         if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
                             local targetPosition = p.Character.HumanoidRootPart.CFrame
@@ -1265,8 +1288,8 @@ function Player.updatePlayerList()
                 end)
                 
                 followButton.MouseButton1Click:Connect(function()
+                    print("Follow button clicked for: " .. p.Name) -- Debug print
                     toggleFollowPlayer(p)
-                    -- Refresh the list to update button states
                     task.spawn(function()
                         task.wait(0.1)
                         Player.updatePlayerList()
@@ -1274,6 +1297,7 @@ function Player.updatePlayerList()
                 end)
                 
                 stopFollowButton.MouseButton1Click:Connect(function()
+                    print("Stop follow button clicked for: " .. p.Name) -- Debug print
                     if Player.followTarget == p then
                         stopFollowing()
                         task.spawn(function()
@@ -1284,10 +1308,12 @@ function Player.updatePlayerList()
                 end)
                 
                 bringButton.MouseButton1Click:Connect(function()
+                    print("Bring button clicked for: " .. p.Name) -- Debug print
                     bringPlayer(p)
                 end)
                 
                 magnetButton.MouseButton1Click:Connect(function()
+                    print("Magnet button clicked for: " .. p.Name) -- Debug print
                     if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
                         Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
                         toggleMagnetPlayers(true)
@@ -1297,6 +1323,7 @@ function Player.updatePlayerList()
                 end)
                 
                 hideButton.MouseButton1Click:Connect(function()
+                    print("Hide button clicked for: " .. p.Name) -- Debug print
                     if Player.hiddenPlayers[p] then
                         showPlayer(p)
                         hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
@@ -1309,6 +1336,7 @@ function Player.updatePlayerList()
                 end)
                 
                 showButton.MouseButton1Click:Connect(function()
+                    print("Show button clicked for: " .. p.Name) -- Debug print
                     if Player.hiddenPlayers[p] then
                         showPlayer(p)
                         hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
@@ -1317,6 +1345,7 @@ function Player.updatePlayerList()
                 end)
                 
                 freezeIndividualButton.MouseButton1Click:Connect(function()
+                    print("Freeze button clicked for: " .. p.Name) -- Debug print
                     if Player.frozenPlayerPositions[p] then
                         unfreezePlayer(p)
                         freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(40, 40, 100)
