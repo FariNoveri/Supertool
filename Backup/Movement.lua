@@ -20,9 +20,12 @@ Movement.doubleJumpEnabled = false
 Movement.wallClimbEnabled = false
 Movement.playerNoclipEnabled = false
 Movement.floatEnabled = false
-Movement.undergroundEnabled = false
 Movement.rewindEnabled = false
 Movement.boostEnabled = false
+Movement.slowFallEnabled = false
+Movement.fastFallEnabled = false
+Movement.instantJumpEnabled = false
+Movement.ladderClimbEnabled = false
 
 -- Default values
 Movement.defaultWalkSpeed = 16
@@ -31,6 +34,7 @@ Movement.defaultJumpHeight = 7.2
 Movement.defaultGravity = 196.2
 Movement.jumpCount = 0
 Movement.maxJumps = 2
+Movement.lastJumpTime = 0
 
 -- Fly controls
 local flySpeed = 50
@@ -38,6 +42,8 @@ local flyBodyVelocity = nil
 local flyJoystickFrame, flyJoystickKnob
 local wallClimbButton
 local flyUpButton, flyDownButton
+local boostButton
+local slowFallButton, fastFallButton, ladderClimbButton
 local joystickDelta = Vector2.new(0, 0)
 local isTouchingJoystick = false
 local joystickTouchId = nil
@@ -45,16 +51,18 @@ local joystickTouchId = nil
 -- New features variables
 local positionHistory = {}
 local maxHistorySize = 180 -- 6 seconds at 30 fps
-local boostButton
 local isBoostActive = false
 local boostEndTime = 0
+local isSlowFalling = false
+local isFastFalling = false
+local isLadderClimbing = false
 
 -- Scroll frame for UI
 local function setupScrollFrame()
     if ScrollFrame then
         ScrollFrame.ScrollingEnabled = true
         ScrollFrame.ScrollBarThickness = 8
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500) -- Adjusted for removed features
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
     end
 end
 
@@ -93,6 +101,10 @@ local function createMobileControls()
     if wallClimbButton then wallClimbButton:Destroy() end
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
+    if boostButton then boostButton:Destroy() end
+    if slowFallButton then slowFallButton:Destroy() end
+    if fastFallButton then fastFallButton:Destroy() end
+    if ladderClimbButton then ladderClimbButton:Destroy() end
 
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
@@ -142,7 +154,6 @@ local function createMobileControls()
     buttonCorner.CornerRadius = UDim.new(0.2, 0)
     buttonCorner.Parent = wallClimbButton
 
-    -- Create fly up/down buttons with white style
     flyUpButton = Instance.new("TextButton")
     flyUpButton.Name = "FlyUpButton"
     flyUpButton.Size = UDim2.new(0, 50, 0, 50)
@@ -180,6 +191,63 @@ local function createMobileControls()
     local downCorner = Instance.new("UICorner")
     downCorner.CornerRadius = UDim.new(0.2, 0)
     downCorner.Parent = flyDownButton
+
+    slowFallButton = Instance.new("TextButton")
+    slowFallButton.Name = "SlowFallButton"
+    slowFallButton.Size = UDim2.new(0, 80, 0, 80)
+    slowFallButton.Position = UDim2.new(1, -100, 1, -460)
+    slowFallButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    slowFallButton.BackgroundTransparency = 0.5
+    slowFallButton.BorderSizePixel = 0
+    slowFallButton.Text = "SLOW FALL"
+    slowFallButton.Font = Enum.Font.GothamBold
+    slowFallButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    slowFallButton.TextSize = 12
+    slowFallButton.Visible = false
+    slowFallButton.ZIndex = 10
+    slowFallButton.Parent = ScreenGui or player.PlayerGui
+
+    local slowFallCorner = Instance.new("UICorner")
+    slowFallCorner.CornerRadius = UDim.new(0.2, 0)
+    slowFallCorner.Parent = slowFallButton
+
+    fastFallButton = Instance.new("TextButton")
+    fastFallButton.Name = "FastFallButton"
+    fastFallButton.Size = UDim2.new(0, 80, 0, 80)
+    fastFallButton.Position = UDim2.new(1, -100, 1, -360)
+    fastFallButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    fastFallButton.BackgroundTransparency = 0.5
+    fastFallButton.BorderSizePixel = 0
+    fastFallButton.Text = "FAST FALL"
+    fastFallButton.Font = Enum.Font.GothamBold
+    fastFallButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    fastFallButton.TextSize = 12
+    fastFallButton.Visible = false
+    fastFallButton.ZIndex = 10
+    fastFallButton.Parent = ScreenGui or player.PlayerGui
+
+    local fastFallCorner = Instance.new("UICorner")
+    fastFallCorner.CornerRadius = UDim.new(0.2, 0)
+    fastFallCorner.Parent = fastFallButton
+
+    ladderClimbButton = Instance.new("TextButton")
+    ladderClimbButton.Name = "LadderClimbButton"
+    ladderClimbButton.Size = UDim2.new(0, 80, 0, 80)
+    ladderClimbButton.Position = UDim2.new(1, -100, 1, -260)
+    ladderClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    ladderClimbButton.BackgroundTransparency = 0.5
+    ladderClimbButton.BorderSizePixel = 0
+    ladderClimbButton.Text = "LADDER"
+    ladderClimbButton.Font = Enum.Font.GothamBold
+    ladderClimbButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    ladderClimbButton.TextSize = 12
+    ladderClimbButton.Visible = false
+    ladderClimbButton.ZIndex = 10
+    ladderClimbButton.Parent = ScreenGui or player.PlayerGui
+
+    local ladderCorner = Instance.new("UICorner")
+    ladderCorner.CornerRadius = UDim.new(0.2, 0)
+    ladderCorner.Parent = ladderClimbButton
 end
 
 -- Improved joystick handling for float (horizontal only)
@@ -207,8 +275,8 @@ local function handleFloatJoystick(input, gameProcessed)
                 delta = delta * (maxRadius / magnitude)
             end
             
-            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, 0 - 20) -- Only horizontal movement
-            joystickDelta = Vector2.new(delta.X / maxRadius, 0) -- Only X axis
+            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, 0 - 20)
+            joystickDelta = Vector2.new(delta.X / maxRadius, 0)
             
         elseif input.UserInputState == Enum.UserInputState.End and input == joystickTouchId then
             isTouchingJoystick = false
@@ -322,6 +390,290 @@ local function toggleJump(enabled)
     end
 end
 
+-- Slow Fall with no fall damage
+local function toggleSlowFall(enabled)
+    Movement.slowFallEnabled = enabled
+    print("Slow Fall:", enabled)
+    
+    if connections.slowFall then
+        connections.slowFall:Disconnect()
+        connections.slowFall = nil
+    end
+    if connections.slowFallInput then
+        connections.slowFallInput:Disconnect()
+        connections.slowFallInput = nil
+    end
+    if connections.slowFallToggle then
+        connections.slowFallToggle:Disconnect()
+        connections.slowFallToggle = nil
+    end
+    
+    if enabled then
+        if slowFallButton then
+            slowFallButton.Visible = true
+        end
+        
+        connections.slowFallInput = slowFallButton.MouseButton1Click:Connect(function()
+            if refreshReferences() and rootPart and humanoid then
+                isSlowFalling = true
+                slowFallButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                slowFallButton.BackgroundTransparency = 0.2
+                slowFallButton.Text = "SLOW FALLING"
+                
+                local slowFallVelocity = Instance.new("BodyVelocity")
+                slowFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
+                slowFallVelocity.Velocity = Vector3.new(0, -10, 0) -- Slow descent
+                slowFallVelocity.Parent = rootPart
+                game:GetService("Debris"):AddItem(slowFallVelocity, 0.5)
+                
+                humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            end
+        end)
+        
+        connections.slowFallToggle = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or not Movement.slowFallEnabled then return end
+            if input.KeyCode == Enum.KeyCode.Q then
+                if refreshReferences() and rootPart and humanoid then
+                    isSlowFalling = not isSlowFalling
+                    slowFallButton.BackgroundColor3 = isSlowFalling and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+                    slowFallButton.BackgroundTransparency = isSlowFalling and 0.2 or 0.5
+                    slowFallButton.Text = isSlowFalling and "SLOW FALLING" or "SLOW FALL"
+                    
+                    if isSlowFalling then
+                        local slowFallVelocity = Instance.new("BodyVelocity")
+                        slowFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
+                        slowFallVelocity.Velocity = Vector3.new(0, -10, 0)
+                        slowFallVelocity.Parent = rootPart
+                        game:GetService("Debris"):AddItem(slowFallVelocity, 0.5)
+                        humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                    end
+                end
+            end
+        end)
+        
+        connections.slowFall = RunService.Heartbeat:Connect(function()
+            if not Movement.slowFallEnabled or not isSlowFalling then return end
+            if refreshReferences() and rootPart and humanoid then
+                if rootPart.Velocity.Y < 0 then
+                    local slowFallVelocity = Instance.new("BodyVelocity")
+                    slowFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
+                    slowFallVelocity.Velocity = Vector3.new(0, -10, 0)
+                    slowFallVelocity.Parent = rootPart
+                    game:GetService("Debris"):AddItem(slowFallVelocity, 0.1)
+                    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                end
+            end
+        end)
+    else
+        if slowFallButton then
+            slowFallButton.Visible = false
+            slowFallButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            slowFallButton.BackgroundTransparency = 0.5
+            slowFallButton.Text = "SLOW FALL"
+        end
+        isSlowFalling = false
+        if humanoid then
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+        end
+    end
+end
+
+-- Fast Fall with no fall damage
+local function toggleFastFall(enabled)
+    Movement.fastFallEnabled = enabled
+    print("Fast Fall:", enabled)
+    
+    if connections.fastFall then
+        connections.fastFall:Disconnect()
+        connections.fastFall = nil
+    end
+    if connections.fastFallInput then
+        connections.fastFallInput:Disconnect()
+        connections.fastFallInput = nil
+    end
+    if connections.fastFallToggle then
+        connections.fastFallToggle:Disconnect()
+        connections.fastFallToggle = nil
+    end
+    
+    if enabled then
+        if fastFallButton then
+            fastFallButton.Visible = true
+        end
+        
+        connections.fastFallInput = fastFallButton.MouseButton1Click:Connect(function()
+            if refreshReferences() and rootPart and humanoid then
+                isFastFalling = true
+                fastFallButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                fastFallButton.BackgroundTransparency = 0.2
+                fastFallButton.Text = "FAST FALLING"
+                
+                local fastFallVelocity = Instance.new("BodyVelocity")
+                fastFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
+                fastFallVelocity.Velocity = Vector3.new(0, -100, 0) -- Fast descent
+                fastFallVelocity.Parent = rootPart
+                game:GetService("Debris"):AddItem(fastFallVelocity, 0.5)
+                
+                humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            end
+        end)
+        
+        connections.fastFallToggle = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or not Movement.fastFallEnabled then return end
+            if input.KeyCode == Enum.KeyCode.E then
+                if refreshReferences() and rootPart and humanoid then
+                    isFastFalling = not isFastFalling
+                    fastFallButton.BackgroundColor3 = isFastFalling and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+                    fastFallButton.BackgroundTransparency = isFastFalling and 0.2 or 0.5
+                    fastFallButton.Text = isFastFalling and "FAST FALLING" or "FAST FALL"
+                    
+                    if isFastFalling then
+                        local fastFallVelocity = Instance.new("BodyVelocity")
+                        fastFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
+                        fastFallVelocity.Velocity = Vector3.new(0, -100, 0)
+                        fastFallVelocity.Parent = rootPart
+                        game:GetService("Debris"):AddItem(fastFallVelocity, 0.5)
+                        humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                    end
+                end
+            end
+        end)
+        
+        connections.fastFall = RunService.Heartbeat:Connect(function()
+            if not Movement.fastFallEnabled or not isFastFalling then return end
+            if refreshReferences() and rootPart and humanoid then
+                if rootPart.Velocity.Y < 0 then
+                    local fastFallVelocity = Instance.new("BodyVelocity")
+                    fastFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
+                    fastFallVelocity.Velocity = Vector3.new(0, -100, 0)
+                    fastFallVelocity.Parent = rootPart
+                    game:GetService("Debris"):AddItem(fastFallVelocity, 0.1)
+                    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                end
+            end
+        end)
+    else
+        if fastFallButton then
+            fastFallButton.Visible = false
+            fastFallButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            fastFallButton.BackgroundTransparency = 0.5
+            fastFallButton.Text = "FAST FALL"
+        end
+        isFastFalling = false
+        if humanoid then
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+        end
+    end
+end
+
+-- Instant Jump (no delay)
+local function toggleInstantJump(enabled)
+    Movement.instantJumpEnabled = enabled
+    print("Instant Jump:", enabled)
+    
+    if connections.instantJump then
+        connections.instantJump:Disconnect()
+        connections.instantJump = nil
+    end
+    
+    if enabled then
+        connections.instantJump = UserInputService.JumpRequest:Connect(function()
+            if not Movement.instantJumpEnabled then return end
+            if not refreshReferences() or not humanoid then return end
+            
+            local currentTime = tick()
+            if currentTime - Movement.lastJumpTime >= 0.01 then -- Minimal delay
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                Movement.lastJumpTime = currentTime
+            end
+        end)
+    end
+end
+
+-- Ladder Climb (faster upward movement on ladders)
+local function toggleLadderClimb(enabled)
+    Movement.ladderClimbEnabled = enabled
+    print("Ladder Climb:", enabled)
+    
+    if connections.ladderClimb then
+        connections.ladderClimb:Disconnect()
+        connections.ladderClimb = nil
+    end
+    if connections.ladderClimbInput then
+        connections.ladderClimbInput:Disconnect()
+        connections.ladderClimbInput = nil
+    end
+    if connections.ladderClimbToggle then
+        connections.ladderClimbToggle:Disconnect()
+        connections.ladderClimbToggle = nil
+    end
+    
+    if enabled then
+        if ladderClimbButton then
+            ladderClimbButton.Visible = true
+        end
+        
+        connections.ladderClimbInput = ladderClimbButton.MouseButton1Click:Connect(function()
+            if refreshReferences() and rootPart and humanoid then
+                isLadderClimbing = true
+                ladderClimbButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                ladderClimbButton.BackgroundTransparency = 0.2
+                ladderClimbButton.Text = "CLIMBING"
+            end
+        end)
+        
+        connections.ladderClimbToggle = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or not Movement.ladderClimbEnabled then return end
+            if input.KeyCode == Enum.KeyCode.R then
+                if refreshReferences() and rootPart and humanoid then
+                    isLadderClimbing = not isLadderClimbing
+                    ladderClimbButton.BackgroundColor3 = isLadderClimbing and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+                    ladderClimbButton.BackgroundTransparency = isLadderClimbing and 0.2 or 0.5
+                    ladderClimbButton.Text = isLadderClimbing and "CLIMBING" or "LADDER"
+                end
+            end
+        end)
+        
+        connections.ladderClimb = RunService.Heartbeat:Connect(function()
+            if not Movement.ladderClimbEnabled or not isLadderClimbing then return end
+            if not refreshReferences() or not rootPart or not humanoid then return end
+            
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {player.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local directions = {
+                rootPart.CFrame.LookVector,
+                -rootPart.CFrame.LookVector,
+                rootPart.CFrame.RightVector,
+                -rootPart.CFrame.RightVector
+            }
+            
+            local nearLadder = false
+            for _, direction in ipairs(directions) do
+                local raycast = Workspace:Raycast(rootPart.Position, direction * 2, raycastParams)
+                if raycast and raycast.Instance and raycast.Instance.Name:lower():find("ladder") then
+                    nearLadder = true
+                    break
+                end
+            end
+            
+            if nearLadder then
+                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, 50, rootPart.Velocity.Z)
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    else
+        if ladderClimbButton then
+            ladderClimbButton.Visible = false
+            ladderClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            ladderClimbButton.BackgroundTransparency = 0.5
+            ladderClimbButton.Text = "LADDER"
+        end
+        isLadderClimbing = false
+    end
+end
+
 -- Fixed Float Hack (horizontal movement only)
 local function toggleFloat(enabled)
     Movement.floatEnabled = enabled
@@ -351,7 +703,7 @@ local function toggleFloat(enabled)
             
             humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000) -- No Y force for floating
+            flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
             
@@ -364,7 +716,7 @@ local function toggleFloat(enabled)
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000) -- No Y force
+                    flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
@@ -379,11 +731,10 @@ local function toggleFloat(enabled)
                     local forward = camera.CFrame.LookVector
                     local right = camera.CFrame.RightVector
                     
-                    -- Only horizontal movement
                     forward = Vector3.new(forward.X, 0, forward.Z).Unit
                     right = Vector3.new(right.X, 0, right.Z).Unit
                     
-                    floatDirection = right * joystickDelta.X -- Only horizontal
+                    floatDirection = right * joystickDelta.X
                 end
                 
                 if floatDirection.Magnitude > 0 then
@@ -412,107 +763,7 @@ local function toggleFloat(enabled)
     end
 end
 
--- Fixed Underground walking
-local function toggleUnderground(enabled)
-    Movement.undergroundEnabled = enabled
-    
-    if connections.underground then
-        connections.underground:Disconnect()
-        connections.underground = nil
-    end
-    
-    if enabled then
-        task.spawn(function()
-            if not refreshReferences() or not rootPart or not player.Character then return end
-            
-            -- Enable noclip for underground movement
-            for _, part in pairs(player.Character:GetChildren()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-            end
-            
-            -- Find ground level and position player underground
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {player.Character}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            
-            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -1000, 0), raycastParams)
-            if raycast and raycast.Instance then
-                -- Position player 4 studs below ground surface
-                local undergroundPosition = Vector3.new(
-                    rootPart.Position.X, 
-                    raycast.Position.Y - 4, 
-                    rootPart.Position.Z
-                )
-                rootPart.CFrame = CFrame.new(undergroundPosition, rootPart.CFrame.LookVector)
-            end
-        end)
-        
-        connections.underground = RunService.Heartbeat:Connect(function()
-            if not Movement.undergroundEnabled then return end
-            if not refreshReferences() or not rootPart or not player.Character then return end
-            
-            -- Keep parts non-collidable
-            for _, part in pairs(player.Character:GetChildren()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
-                end
-            end
-            
-            -- Keep player at consistent underground depth
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {player.Character}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            
-            local downRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -50, 0), raycastParams)
-            local upRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 50, 0), raycastParams)
-            
-            if upRaycast and upRaycast.Instance then
-                local groundLevel = upRaycast.Position.Y
-                local playerLevel = rootPart.Position.Y
-                
-                -- Maintain 4 studs below ground
-                local targetY = groundLevel - 4
-                if math.abs(playerLevel - targetY) > 1 then
-                    rootPart.CFrame = CFrame.new(
-                        rootPart.Position.X,
-                        targetY,
-                        rootPart.Position.Z
-                    ) * CFrame.Angles(0, rootPart.CFrame.Rotation.Y, 0)
-                end
-            end
-        end)
-    else
-        -- Teleport back to surface
-        if refreshReferences() and rootPart and player.Character then
-            -- Restore collision
-            for _, part in pairs(player.Character:GetChildren()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.CanCollide = true
-                end
-            end
-            
-            -- Find surface and teleport up
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {player.Character}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            
-            local upRaycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, 1000, 0), raycastParams)
-            if upRaycast and upRaycast.Instance then
-                rootPart.CFrame = CFrame.new(
-                    rootPart.Position.X,
-                    upRaycast.Position.Y + 3,
-                    rootPart.Position.Z
-                )
-            else
-                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 20, 0)
-            end
-        end
-    end
-end
-
--- NEW FEATURE: Boost (NOS-like effect)
+-- Boost (NOS-like effect)
 local function createBoostButton()
     if boostButton then boostButton:Destroy() end
     
@@ -547,6 +798,10 @@ local function toggleBoost(enabled)
         connections.boostInput:Disconnect()
         connections.boostInput = nil
     end
+    if connections.boostToggle then
+        connections.boostToggle:Disconnect()
+        connections.boostToggle = nil
+    end
     
     if enabled then
         createBoostButton()
@@ -554,19 +809,39 @@ local function toggleBoost(enabled)
             boostButton.Visible = true
         end
         
-        -- Boost button tap handler
-        if boostButton then
-            connections.boostInput = boostButton.MouseButton1Click:Connect(function()
+        connections.boostInput = boostButton.MouseButton1Click:Connect(function()
+            if not isBoostActive and refreshReferences() and humanoid and rootPart then
+                isBoostActive = true
+                boostEndTime = tick() + 2
+                
+                boostButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                boostButton.BackgroundTransparency = 0.2
+                boostButton.Text = "BOOSTING!"
+                
+                local camera = Workspace.CurrentCamera
+                if camera then
+                    local boostDirection = camera.CFrame.LookVector
+                    local boostForce = Instance.new("BodyVelocity")
+                    boostForce.MaxForce = Vector3.new(4000, 0, 4000)
+                    boostForce.Velocity = Vector3.new(boostDirection.X * 100, 0, boostDirection.Z * 100)
+                    boostForce.Parent = rootPart
+                    
+                    game:GetService("Debris"):AddItem(boostForce, 0.5)
+                end
+            end
+        end)
+        
+        connections.boostToggle = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or not Movement.boostEnabled then return end
+            if input.KeyCode == Enum.KeyCode.B then
                 if not isBoostActive and refreshReferences() and humanoid and rootPart then
                     isBoostActive = true
-                    boostEndTime = tick() + 2 -- 2 seconds boost duration
+                    boostEndTime = tick() + 2
                     
-                    -- Visual feedback
                     boostButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
                     boostButton.BackgroundTransparency = 0.2
                     boostButton.Text = "BOOSTING!"
                     
-                    -- Apply boost effect
                     local camera = Workspace.CurrentCamera
                     if camera then
                         local boostDirection = camera.CFrame.LookVector
@@ -575,17 +850,15 @@ local function toggleBoost(enabled)
                         boostForce.Velocity = Vector3.new(boostDirection.X * 100, 0, boostDirection.Z * 100)
                         boostForce.Parent = rootPart
                         
-                        -- Remove boost force after duration
                         game:GetService("Debris"):AddItem(boostForce, 0.5)
                     end
                 end
-            end)
-        end
+            end
+        end)
         
         connections.boost = RunService.Heartbeat:Connect(function()
             if not Movement.boostEnabled then return end
             
-            -- Check if boost duration is over
             if isBoostActive and tick() >= boostEndTime then
                 isBoostActive = false
                 if boostButton then
@@ -603,7 +876,7 @@ local function toggleBoost(enabled)
     end
 end
 
--- ENHANCED FEATURE: Smooth Rewind Movement (6 seconds)
+-- Smooth Rewind Movement (6 seconds)
 local rewindButton
 
 local function createRewindButton()
@@ -640,6 +913,10 @@ local function toggleRewind(enabled)
         connections.rewindInput:Disconnect()
         connections.rewindInput = nil
     end
+    if connections.rewindToggle then
+        connections.rewindToggle:Disconnect()
+        connections.rewindToggle = nil
+    end
     
     if enabled then
         createRewindButton()
@@ -647,7 +924,6 @@ local function toggleRewind(enabled)
             rewindButton.Visible = true
         end
         
-        -- Store position history
         connections.rewind = RunService.Heartbeat:Connect(function()
             if not Movement.rewindEnabled then return end
             if not refreshReferences() or not rootPart then return end
@@ -657,39 +933,64 @@ local function toggleRewind(enabled)
                 time = tick()
             })
             
-            -- Keep only recent history (6 seconds)
             while #positionHistory > maxHistorySize do
                 table.remove(positionHistory, 1)
             end
         end)
         
-        -- Smooth rewind on button tap
-        if rewindButton then
-            connections.rewindInput = rewindButton.MouseButton1Click:Connect(function()
+        connections.rewindInput = rewindButton.MouseButton1Click:Connect(function()
+            if #positionHistory > 60 then
+                rewindButton.BackgroundTransparency = 0.1
+                rewindButton.Text = "REWINDING"
+                
+                local rewindIndex = math.max(1, #positionHistory - 180)
+                local targetCFrame = positionHistory[rewindIndex].cframe
+                local startCFrame = rootPart.CFrame
+                local startTime = tick()
+                local rewindDuration = 0.8
+                
+                local rewindConnection
+                rewindConnection = RunService.Heartbeat:Connect(function()
+                    local elapsed = tick() - startTime
+                    local progress = math.min(elapsed / rewindDuration, 1)
+                    
+                    local smoothProgress = 1 - math.pow(1 - progress, 3)
+                    rootPart.CFrame = startCFrame:Lerp(targetCFrame, smoothProgress)
+                    
+                    if progress >= 1 then
+                        rewindConnection:Disconnect()
+                        if rewindButton then
+                            rewindButton.BackgroundTransparency = 0.5
+                            rewindButton.Text = "⏪"
+                        end
+                    end
+                end)
+            end
+        end)
+        
+        connections.rewindToggle = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or not Movement.rewindEnabled then return end
+            if input.KeyCode == Enum.KeyCode.T then
                 if #positionHistory > 60 then
-                    -- Visual feedback
                     rewindButton.BackgroundTransparency = 0.1
                     rewindButton.Text = "REWINDING"
                     
-                    -- Start smooth rewind animation
-                    local rewindIndex = math.max(1, #positionHistory - 180) -- 6 seconds back
+                    local rewindIndex = math.max(1, #positionHistory - 180)
                     local targetCFrame = positionHistory[rewindIndex].cframe
                     local startCFrame = rootPart.CFrame
                     local startTime = tick()
-                    local rewindDuration = 0.8 -- Smooth rewind over 0.8 seconds
+                    local rewindDuration = 0.8
                     
                     local rewindConnection
                     rewindConnection = RunService.Heartbeat:Connect(function()
                         local elapsed = tick() - startTime
                         local progress = math.min(elapsed / rewindDuration, 1)
                         
-                        -- Smooth interpolation
-                        local smoothProgress = 1 - math.pow(1 - progress, 3) -- Ease out cubic
+                        local smoothProgress = 1 - math.pow(1 - progress, 3)
                         rootPart.CFrame = startCFrame:Lerp(targetCFrame, smoothProgress)
                         
                         if progress >= 1 then
                             rewindConnection:Disconnect()
-                            -- Restore button appearance
                             if rewindButton then
                                 rewindButton.BackgroundTransparency = 0.5
                                 rewindButton.Text = "⏪"
@@ -697,8 +998,8 @@ local function toggleRewind(enabled)
                         end
                     end)
                 end
-            end)
-        end
+            end
+        end)
     else
         if rewindButton then
             rewindButton.Visible = false
@@ -707,7 +1008,7 @@ local function toggleRewind(enabled)
     end
 end
 
--- Continue with existing functions (Moon Gravity, Double Jump, etc.)
+-- Moon Gravity
 local function toggleMoonGravity(enabled)
     Movement.moonGravityEnabled = enabled
     if enabled then
@@ -818,7 +1119,7 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Improved Fly Hack with settings integration
+-- Fly Hack with settings integration
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     print("Fly toggle:", enabled)
@@ -884,7 +1185,6 @@ local function toggleFly(enabled)
                     flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
                 end
                 
-                -- Check fly up/down buttons
                 if flyUpButton and flyUpButton.BackgroundTransparency == 0.1 then
                     floatVerticalInput = 1
                 elseif flyDownButton and flyDownButton.BackgroundTransparency == 0.1 then
@@ -1018,7 +1318,6 @@ end
 local function togglePlayerNoclip(enabled)
     Movement.playerNoclipEnabled = enabled
     
-    -- Disconnect existing connections
     if connections.playerNoclip then
         connections.playerNoclip:Disconnect()
         connections.playerNoclip = nil
@@ -1029,7 +1328,6 @@ local function togglePlayerNoclip(enabled)
     end
     
     if enabled then
-        -- Main noclip function - makes other players non-solid
         connections.playerNoclip = RunService.Heartbeat:Connect(function()
             if not Movement.playerNoclipEnabled then return end
             if not refreshReferences() or not player.Character then return end
@@ -1045,36 +1343,28 @@ local function togglePlayerNoclip(enabled)
             end
         end)
         
-        -- Anti-fling protection
         connections.antiFling = RunService.Heartbeat:Connect(function()
             if not Movement.playerNoclipEnabled then return end
             if not refreshReferences() or not rootPart then return end
             
-            -- Detect abnormal velocity (potential fling)
             local currentVelocity = rootPart.Velocity
-            local maxNormalVelocity = 200 -- Adjust this value as needed
+            local maxNormalVelocity = 200
             
-            -- Check if velocity is too high (indicates fling attempt)
             if currentVelocity.Magnitude > maxNormalVelocity then
-                -- Reset velocity to prevent fling
                 rootPart.Velocity = Vector3.new(0, 0, 0)
                 
-                -- Optional: Also reset angular velocity if rootPart has BodyAngularVelocity
                 local bodyAngularVelocity = rootPart:FindFirstChild("BodyAngularVelocity")
                 if bodyAngularVelocity then
                     bodyAngularVelocity.AngularVelocity = Vector3.new(0, 0, 0)
                 end
             end
             
-            -- Additional protection: Remove any suspicious BodyMovers from other players that might affect us
             for _, otherPlayer in pairs(Players:GetPlayers()) do
                 if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     local otherRoot = otherPlayer.Character.HumanoidRootPart
                     
-                    -- Remove any BodyVelocity, BodyPosition, or other BodyMovers that might be used for flinging
                     for _, obj in pairs(otherRoot:GetChildren()) do
                         if obj:IsA("BodyVelocity") or obj:IsA("BodyPosition") or obj:IsA("BodyAngularVelocity") then
-                            -- Check if it's creating abnormal forces
                             if obj:IsA("BodyVelocity") and obj.Velocity.Magnitude > maxNormalVelocity then
                                 obj:Destroy()
                             elseif obj:IsA("BodyPosition") and (obj.Position - rootPart.Position).Magnitude > 1000 then
@@ -1087,9 +1377,7 @@ local function togglePlayerNoclip(enabled)
                 end
             end
         end)
-        
     else
-        -- Restore collision for other players when disabled
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player and otherPlayer.Character then
                 for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -1136,17 +1424,13 @@ end
 function Movement.applySettings()
     print("Applying Movement settings")
     
-    -- Apply speed setting if speed hack is enabled
     if Movement.speedEnabled then
         toggleSpeed(true)
     end
     
-    -- Apply jump setting if jump hack is enabled
     if Movement.jumpEnabled then
         toggleJump(true)
     end
-    
-    -- Note: Fly speed is applied in real-time during fly/float loops
 end
 
 -- Function to create buttons for Movement features
@@ -1159,7 +1443,6 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     
     setupScrollFrame()
     
-    -- Original features (removed unwanted features)
     createToggleButton("Speed Hack", toggleSpeed)
     createToggleButton("Jump Hack", toggleJump)
     createToggleButton("Moon Gravity", toggleMoonGravity)
@@ -1172,18 +1455,18 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Walk on Water", toggleWalkOnWater)
     createToggleButton("Super Swim", toggleSwim)
     createToggleButton("Float", toggleFloat)
-    createToggleButton("Underground", toggleUnderground)
-    
-    -- New enhanced features
     createToggleButton("Smooth Rewind", toggleRewind)
     createToggleButton("Boost (NOS)", toggleBoost)
+    createToggleButton("Slow Fall", toggleSlowFall)
+    createToggleButton("Fast Fall", toggleFastFall)
+    createToggleButton("Instant Jump", toggleInstantJump)
+    createToggleButton("Ladder Climb", toggleLadderClimb)
 end
 
 -- Enhanced reset function
 function Movement.resetStates()
     print("Resetting Movement states")
     
-    -- Reset all states
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -1196,26 +1479,34 @@ function Movement.resetStates()
     Movement.wallClimbEnabled = false
     Movement.playerNoclipEnabled = false
     Movement.floatEnabled = false
-    Movement.undergroundEnabled = false
     Movement.rewindEnabled = false
     Movement.boostEnabled = false
+    Movement.slowFallEnabled = false
+    Movement.fastFallEnabled = false
+    Movement.instantJumpEnabled = false
+    Movement.ladderClimbEnabled = false
     
     Movement.jumpCount = 0
+    Movement.lastJumpTime = 0
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
     
-    -- Clear history and boost states
     positionHistory = {}
     isBoostActive = false
     boostEndTime = 0
+    isSlowFalling = false
+    isFastFalling = false
+    isLadderClimbing = false
     
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
         "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", 
         "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatInput", 
-        "floatBegan", "floatEnded", "underground", "antiFling", "rewind", 
-        "rewindInput", "boost", "boostInput"
+        "floatBegan", "floatEnded", "antiFling", "rewind", "rewindInput", 
+        "boost", "boostInput", "boostToggle", "slowFall", "slowFallInput", 
+        "slowFallToggle", "fastFall", "fastFallInput", "fastFallToggle", 
+        "instantJump", "ladderClimb", "ladderClimbInput", "ladderClimbToggle"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1240,6 +1531,7 @@ function Movement.resetStates()
             end
             pcall(function()
                 humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+                humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
             end)
         end
         
@@ -1254,7 +1546,6 @@ function Movement.resetStates()
     
     Workspace.Gravity = Movement.defaultGravity
     
-    -- Restore collision for other players
     for _, otherPlayer in pairs(Players:GetPlayers()) do
         if otherPlayer ~= player and otherPlayer.Character then
             for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -1286,6 +1577,24 @@ function Movement.resetStates()
     end
     if boostButton then
         boostButton.Visible = false
+    end
+    if slowFallButton then
+        slowFallButton.Visible = false
+        slowFallButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        slowFallButton.BackgroundTransparency = 0.5
+        slowFallButton.Text = "SLOW FALL"
+    end
+    if fastFallButton then
+        fastFallButton.Visible = false
+        fastFallButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        fastFallButton.BackgroundTransparency = 0.5
+        fastFallButton.Text = "FAST FALL"
+    end
+    if ladderClimbButton then
+        ladderClimbButton.Visible = false
+        ladderClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        ladderClimbButton.BackgroundTransparency = 0.5
+        ladderClimbButton.Text = "LADDER"
     end
 end
 
@@ -1322,10 +1631,13 @@ function Movement.updateReferences(newHumanoid, newRootPart)
             {Movement.walkOnWaterEnabled, toggleWalkOnWater, "Walk on Water"},
             {Movement.swimEnabled, toggleSwim, "Super Swim"},
             {Movement.floatEnabled, toggleFloat, "Float"},
-            {Movement.undergroundEnabled, toggleUnderground, "Underground"},
             {Movement.flyEnabled, toggleFly, "Fly"},
             {Movement.rewindEnabled, toggleRewind, "Smooth Rewind"},
-            {Movement.boostEnabled, toggleBoost, "Boost"}
+            {Movement.boostEnabled, toggleBoost, "Boost"},
+            {Movement.slowFallEnabled, toggleSlowFall, "Slow Fall"},
+            {Movement.fastFallEnabled, toggleFastFall, "Fast Fall"},
+            {Movement.instantJumpEnabled, toggleInstantJump, "Instant Jump"},
+            {Movement.ladderClimbEnabled, toggleLadderClimb, "Ladder Climb"}
         }
         
         for _, state in ipairs(statesToReapply) do
@@ -1373,7 +1685,6 @@ function Movement.init(deps)
     end
     Movement.defaultGravity = Workspace.Gravity or 196.2
     
-    -- Initialize all states to false
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -1386,19 +1697,25 @@ function Movement.init(deps)
     Movement.wallClimbEnabled = false
     Movement.playerNoclipEnabled = false
     Movement.floatEnabled = false
-    Movement.undergroundEnabled = false
     Movement.rewindEnabled = false
     Movement.boostEnabled = false
+    Movement.slowFallEnabled = false
+    Movement.fastFallEnabled = false
+    Movement.instantJumpEnabled = false
+    Movement.ladderClimbEnabled = false
     
     Movement.jumpCount = 0
+    Movement.lastJumpTime = 0
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
     
-    -- Initialize new feature variables
     positionHistory = {}
     isBoostActive = false
     boostEndTime = 0
+    isSlowFalling = false
+    isFastFalling = false
+    isLadderClimbing = false
     
     createMobileControls()
     setupScrollFrame()
@@ -1423,14 +1740,20 @@ function Movement.debug()
     print("  wallClimbEnabled:", Movement.wallClimbEnabled)
     print("  playerNoclipEnabled:", Movement.playerNoclipEnabled)
     print("  floatEnabled:", Movement.floatEnabled)
-    print("  undergroundEnabled:", Movement.undergroundEnabled)
     print("  rewindEnabled:", Movement.rewindEnabled)
     print("  boostEnabled:", Movement.boostEnabled)
+    print("  slowFallEnabled:", Movement.slowFallEnabled)
+    print("  fastFallEnabled:", Movement.fastFallEnabled)
+    print("  instantJumpEnabled:", Movement.instantJumpEnabled)
+    print("  ladderClimbEnabled:", Movement.ladderClimbEnabled)
     
     print("New Feature Data:")
     print("  positionHistory entries:", #positionHistory)
     print("  isBoostActive:", isBoostActive)
     print("  boostEndTime:", boostEndTime)
+    print("  isSlowFalling:", isSlowFalling)
+    print("  isFastFalling:", isFastFalling)
+    print("  isLadderClimbing:", isLadderClimbing)
     
     print("References:")
     print("  player:", player ~= nil)
@@ -1454,6 +1777,9 @@ function Movement.debug()
     print("  flyDownButton:", flyDownButton ~= nil)
     print("  rewindButton:", rewindButton ~= nil)
     print("  boostButton:", boostButton ~= nil)
+    print("  slowFallButton:", slowFallButton ~= nil)
+    print("  fastFallButton:", fastFallButton ~= nil)
+    print("  ladderClimbButton:", ladderClimbButton ~= nil)
     
     print("Active Connections:")
     local activeConnections = 0
@@ -1479,6 +1805,9 @@ function Movement.cleanup()
     if flyDownButton then flyDownButton:Destroy() end
     if rewindButton then rewindButton:Destroy() end
     if boostButton then boostButton:Destroy() end
+    if slowFallButton then slowFallButton:Destroy() end
+    if fastFallButton then fastFallButton:Destroy() end
+    if ladderClimbButton then ladderClimbButton:Destroy() end
     
     flyJoystickFrame = nil
     flyJoystickKnob = nil
@@ -1488,10 +1817,16 @@ function Movement.cleanup()
     flyBodyVelocity = nil
     rewindButton = nil
     boostButton = nil
+    slowFallButton = nil
+    fastFallButton = nil
+    ladderClimbButton = nil
     
     positionHistory = {}
     isBoostActive = false
     boostEndTime = 0
+    isSlowFalling = false
+    isFastFalling = false
+    isLadderClimbing = false
     
     print("Movement module cleaned up")
 end
