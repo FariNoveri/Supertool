@@ -33,6 +33,7 @@ local touchStartPos
 local foliageStates = {}
 local processedObjects = {}
 local freecamSpeed = 50
+local mouseDelta = Vector2.new(0, 0)
 
 -- Function to get enemy health and determine color
 local function getHealthColor(enemy)
@@ -245,6 +246,15 @@ local function handleJoystickInput(input, processed)
     return Vector2.new(0, 0)
 end
 
+-- Handle mouse input for camera rotation
+local function handleMouseInput(input, processed)
+    if not (Visual.freecamEnabled or Visual.noClipCameraEnabled) or processed then return end
+    
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        mouseDelta = Vector2.new(input.Delta.X, input.Delta.Y)
+    end
+end
+
 -- FIXED: Hide All Nicknames - Hides all nicknames except player's own
 local function toggleHideAllNicknames(enabled)
     Visual.hideAllNicknames = enabled
@@ -280,13 +290,14 @@ local function toggleHideOwnNickname(enabled)
     end
 end
 
--- FIXED: NoClipCamera - Camera passes through objects, moves in look direction
+-- FIXED: NoClipCamera - Mimics regular camera but passes through objects
 local function toggleNoClipCamera(enabled)
     Visual.noClipCameraEnabled = enabled
     print("NoClipCamera:", enabled)
     
     local camera = Workspace.CurrentCamera
     local character = player.Character
+    local humanoid = character and character:FindFirstChild("Humanoid")
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     
     if enabled then
@@ -297,8 +308,8 @@ local function toggleNoClipCamera(enabled)
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
         
-        camera.CameraType = Enum.CameraType.Scriptable
-        camera.CameraSubject = nil
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = humanoid or camera.CameraSubject
         
         if rootPart then
             Visual.noClipCameraCFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 0))
@@ -315,7 +326,7 @@ local function toggleNoClipCamera(enabled)
         end
         
         Visual.noClipCameraConnection = RunService.RenderStepped:Connect(function(deltaTime)
-            if Visual.noClipCameraEnabled then
+            if Visual.noClipCameraEnabled and character and humanoid and rootPart then
                 local currentCFrame = Visual.noClipCameraCFrame or camera.CFrame
                 local moveSpeed = freecamSpeed * deltaTime
                 
@@ -351,8 +362,17 @@ local function toggleNoClipCamera(enabled)
                     Visual.noClipCameraCFrame = currentCFrame + movement
                 end
                 
+                -- Update camera position while maintaining normal camera behavior
                 camera.CFrame = Visual.noClipCameraCFrame
-                camera.CameraType = Enum.CameraType.Scriptable
+                camera.CameraType = Enum.CameraType.Custom
+                camera.CameraSubject = humanoid
+                
+                -- Disable collision for camera
+                for _, part in pairs(Workspace:GetDescendants()) do
+                    if part:IsA("BasePart") and part ~= rootPart then
+                        part.CanCollide = false
+                    end
+                end
             end
         end)
         
@@ -380,6 +400,12 @@ local function toggleNoClipCamera(enabled)
             end)
         end
         
+        if not connections.mouseInput then
+            connections.mouseInput = UserInputService.InputChanged:Connect(function(input, processed)
+                handleMouseInput(input, processed)
+            end)
+        end
+        
     else
         if Visual.noClipCameraConnection then
             Visual.noClipCameraConnection:Disconnect()
@@ -389,6 +415,13 @@ local function toggleNoClipCamera(enabled)
         if joystickFrame then
             joystickFrame.Visible = false
             joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+        end
+        
+        -- Restore collisions
+        for _, part in pairs(Workspace:GetDescendants()) do
+            if part:IsA("BasePart") and foliageStates[part] then
+                part.CanCollide = foliageStates[part].CanCollide ~= false
+            end
         end
         
         local camera = Workspace.CurrentCamera
@@ -409,6 +442,7 @@ local function toggleNoClipCamera(enabled)
         
         Visual.noClipCameraCFrame = nil
         Visual.joystickDelta = Vector2.new(0, 0)
+        mouseDelta = Vector2.new(0, 0)
     end
 end
 
@@ -579,7 +613,7 @@ local function toggleESP(enabled)
     end
 end
 
--- FIXED: Freecam - Smooth movement, character stays still
+-- FIXED: Freecam - Smooth movement with rotation, character stays still
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -683,8 +717,17 @@ local function toggleFreecam(enabled)
                     Visual.freecamCFrame = currentCFrame + movement
                 end
                 
+                -- Add camera rotation
+                local rotationSpeed = 0.1
+                local yaw = currentCFrame:ToEulerAnglesXYZ()
+                local newYaw = yaw - mouseDelta.X * rotationSpeed
+                local pitch = math.clamp(yaw - mouseDelta.Y * rotationSpeed, -math.pi/2, math.pi/2)
+                Visual.freecamCFrame = CFrame.new(Visual.freecamCFrame.Position) * CFrame.Angles(0, newYaw, 0) * CFrame.Angles(pitch, 0, 0)
+                
                 camera.CFrame = Visual.freecamCFrame
                 camera.CameraType = Enum.CameraType.Scriptable
+                
+                mouseDelta = Vector2.new(0, 0) -- Reset mouse delta after use
             end
         end)
         
@@ -709,6 +752,12 @@ local function toggleFreecam(enabled)
                 if input.UserInputType == Enum.UserInputType.Touch then
                     Visual.joystickDelta = handleJoystickInput(input, processed)
                 end
+            end)
+        end
+        
+        if not connections.mouseInput then
+            connections.mouseInput = UserInputService.InputChanged:Connect(function(input, processed)
+                handleMouseInput(input, processed)
             end)
         end
         
@@ -754,6 +803,7 @@ local function toggleFreecam(enabled)
         
         Visual.freecamCFrame = nil
         Visual.joystickDelta = Vector2.new(0, 0)
+        mouseDelta = Vector2.new(0, 0)
     end
 end
 

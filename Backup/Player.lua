@@ -21,8 +21,14 @@ Player.fastRespawnEnabled = false
 Player.noDeathAnimationEnabled = false
 Player.deathAnimationConnections = {}
 Player.magnetEnabled = false
-Player.magnetOffset = Vector3.new(2, 0, -5) -- Adjusted: 5 studs in front, 2 studs left
+Player.magnetOffset = Vector3.new(2, 0, -5)
 Player.magnetPlayerPositions = {}
+Player.followEnabled = false
+Player.followTarget = nil
+Player.followConnections = {}
+Player.followOffset = Vector3.new(0, 2, 5)
+Player.followSpeed = 1.2
+Player.followPathfinding = nil
 
 -- Variables for hide features
 Player.hideCharacterEnabled = false
@@ -452,28 +458,53 @@ local function toggleNoDeathAnimation(enabled)
     end
 end
 
--- Bring Player
+-- Bring Player (Fixed)
 local function bringPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot bring: Invalid target player")
         return
     end
     
-    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        print("Cannot bring: Target player has no character or HumanoidRootPart")
-        return
-    end
-    
     if not Player.rootPart then
-        print("Cannot bring: Missing rootPart")
+        print("Cannot bring: Local player missing HumanoidRootPart")
         return
     end
     
-    local targetRootPart = targetPlayer.Character.HumanoidRootPart
-    local ourPosition = Player.rootPart.CFrame
+    local success, result = pcall(function()
+        local targetCharacter = targetPlayer.Character
+        if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") then
+            print("Cannot bring: Target player has no character or HumanoidRootPart")
+            return
+        end
+        
+        local targetRootPart = targetCharacter.HumanoidRootPart
+        local ourPosition = Player.rootPart.CFrame
+        local newPosition = ourPosition * CFrame.new(0, 0, -5)
+        
+        -- Ensure the target player isn't anchored
+        targetRootPart.Anchored = false
+        
+        -- Set CFrame with proper orientation
+        targetRootPart.CFrame = CFrame.new(newPosition.Position, ourPosition.Position)
+        
+        -- Reset velocities
+        targetRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        targetRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        
+        -- Ensure humanoid is in a proper state
+        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+        if targetHumanoid then
+            targetHumanoid.PlatformStand = false
+            targetHumanoid.WalkSpeed = 16
+            targetHumanoid.JumpPower = 50
+        end
+        
+        print("Brought player: " .. targetPlayer.Name)
+    end)
     
-    targetRootPart.CFrame = ourPosition * CFrame.new(0, 0, -5) -- Adjusted to 5 studs
-    print("Brought player: " .. targetPlayer.Name)
+    if not success then
+        warn("Failed to bring player: " .. tostring(result))
+    end
 end
 
 -- Magnet Players
@@ -494,9 +525,9 @@ local function toggleMagnetPlayers(enabled)
             if not Player.magnetEnabled or not Player.rootPart then return end
             
             local ourCFrame = Player.rootPart.CFrame
-            for targetPlayer, _ in pairs(Player.magnetPlayerPositions) do
+            for targetPlayer, hrp in pairs(Player.magnetPlayerPositions) do
                 if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    local hrp = targetPlayer.Character.HumanoidRootPart
+                    hrp = targetPlayer.Character.HumanoidRootPart
                     local targetCFrame = ourCFrame * CFrame.new(Player.magnetOffset)
                     hrp.CFrame = CFrame.new(targetCFrame.Position, ourCFrame.Position)
                     hrp.Anchored = true
@@ -510,7 +541,7 @@ local function toggleMagnetPlayers(enabled)
                         hum.JumpPower = 0
                     end
                 else
-                    Player.magnetPlayerPositions[targetPlayer] = nil -- Remove invalid players
+                    Player.magnetPlayerPositions[targetPlayer] = nil
                 end
             end
         end)
@@ -526,7 +557,7 @@ local function toggleMagnetPlayers(enabled)
                 end)
                 if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     task.wait(0.5)
-                    Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart
+                    Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart
                     print("Magnet applied to existing player: " .. newPlayer.Name)
                 end
             end
@@ -853,8 +884,14 @@ local function stopSpectating()
     print("Stopped spectating")
 end
 
--- Spectate Player
+-- Spectate Player (Fixed)
 local function spectatePlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot spectate: Invalid target player")
+        stopSpectating()
+        return
+    end
+    
     for _, connection in pairs(Player.spectateConnections) do
         if connection then
             connection:Disconnect()
@@ -862,56 +899,66 @@ local function spectatePlayer(targetPlayer)
     end
     Player.spectateConnections = {}
     
-    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-        Workspace.CurrentCamera.CameraSubject = targetPlayer.Character.Humanoid
-        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        
-        Player.selectedPlayer = targetPlayer
-        Player.currentSpectateIndex = table.find(Player.spectatePlayerList, targetPlayer) or 0
-        if SelectedPlayerLabel then
-            SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
-        end
-        print("Spectating: " .. targetPlayer.Name)
-        
-        Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
-            if Player.selectedPlayer == targetPlayer then
-                local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
-                if newHumanoid then
-                    task.wait(0.5)
-                    Workspace.CurrentCamera.CameraSubject = newHumanoid
-                    Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-                    print("Spectated player respawned, continuing spectate: " .. targetPlayer.Name)
-                end
+    local success, result = pcall(function()
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            local targetHumanoid = targetPlayer.Character.Humanoid
+            Workspace.CurrentCamera.CameraSubject = targetHumanoid
+            Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+            
+            Player.selectedPlayer = targetPlayer
+            Player.currentSpectateIndex = table.find(Player.spectatePlayerList, targetPlayer) or 0
+            if SelectedPlayerLabel then
+                SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
             end
-        end)
-        
-        local targetHumanoid = targetPlayer.Character.Humanoid
-        Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
-            if Player.selectedPlayer == targetPlayer then
-                print("Spectated player died, waiting for respawn: " .. targetPlayer.Name)
-            end
-        end)
-        
-        if PlayerListScrollFrame then
-            for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
-                if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
-                    if item.Name == targetPlayer.Name .. "Item" then
-                        item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                        item.SelectButton.Text = "SELECTED"
+            print("Spectating: " .. targetPlayer.Name)
+            
+            Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
+                if Player.selectedPlayer == targetPlayer then
+                    local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+                    if newHumanoid then
+                        task.wait(0.5)
+                        Workspace.CurrentCamera.CameraSubject = newHumanoid
+                        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+                        print("Spectated player respawned, continuing spectate: " .. targetPlayer.Name)
                     else
-                        item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                        item.SelectButton.Text = "SELECT PLAYER"
+                        stopSpectating()
+                    end
+                end
+            end)
+            
+            Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
+                if Player.selectedPlayer == targetPlayer then
+                    print("Spectated player died, waiting for respawn: " .. targetPlayer.Name)
+                end
+            end)
+            
+            if PlayerListScrollFrame then
+                for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                    if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                        if item.Name == targetPlayer.Name .. "Item" then
+                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                            item.SelectButton.Text = "SELECTED"
+                        else
+                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                            item.SelectButton.Text = "SELECT PLAYER"
+                        end
                     end
                 end
             end
+        else
+            stopSpectating()
         end
-    else
+    end)
+    
+    if not success then
+        warn("Failed to spectate player: " .. tostring(result))
         stopSpectating()
     end
+    
     updateSpectateButtons()
 end
 
--- Spectate Next Player
+-- Spectate Next Player (Fixed)
 local function spectateNextPlayer()
     if #Player.spectatePlayerList == 0 then
         print("No players to spectate")
@@ -919,20 +966,26 @@ local function spectateNextPlayer()
         return
     end
     
-    Player.currentSpectateIndex = Player.currentSpectateIndex + 1
-    if Player.currentSpectateIndex > #Player.spectatePlayerList then
-        Player.currentSpectateIndex = 1
+    local attempts = 0
+    local maxAttempts = #Player.spectatePlayerList
+    
+    while attempts < maxAttempts do
+        Player.currentSpectateIndex = (Player.currentSpectateIndex % #Player.spectatePlayerList) + 1
+        local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
+        
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            spectatePlayer(targetPlayer)
+            return
+        end
+        
+        attempts = attempts + 1
     end
     
-    local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
-    if targetPlayer then
-        spectatePlayer(targetPlayer)
-    else
-        stopSpectating()
-    end
+    print("No valid players to spectate")
+    stopSpectating()
 end
 
--- Spectate Previous Player
+-- Spectate Previous Player (Fixed)
 local function spectatePrevPlayer()
     if #Player.spectatePlayerList == 0 then
         print("No players to spectate")
@@ -940,17 +993,27 @@ local function spectatePrevPlayer()
         return
     end
     
-    Player.currentSpectateIndex = Player.currentSpectateIndex - 1
-    if Player.currentSpectateIndex < 1 then
-        Player.currentSpectateIndex = #Player.spectatePlayerList
+    local attempts = 0
+    local maxAttempts = #Player.spectatePlayerList
+    
+    while attempts < maxAttempts do
+        Player.currentSpectateIndex = Player.currentSpectateIndex - 1
+        if Player.currentSpectateIndex < 1 then
+            Player.currentSpectateIndex = #Player.spectatePlayerList
+        end
+        
+        local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
+        
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            spectatePlayer(targetPlayer)
+            return
+        end
+        
+        attempts = attempts + 1
     end
     
-    local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
-    if targetPlayer then
-        spectatePlayer(targetPlayer)
-    else
-        stopSpectating()
-    end
+    print("No valid players to spectate")
+    stopSpectating()
 end
 
 -- Update Player List
@@ -993,7 +1056,7 @@ function Player.updatePlayerList()
                 playerItem.Parent = PlayerListScrollFrame
                 playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 210) -- Increased height for new buttons
+                playerItem.Size = UDim2.new(1, -5, 0, 210)
                 playerItem.LayoutOrder = playerCount
                 
                 local nameLabel = Instance.new("TextLabel")
@@ -1104,7 +1167,6 @@ function Player.updatePlayerList()
                 magnetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 magnetButton.TextSize = 9
                 
-                -- New Hide Button for individual players
                 local hideButton = Instance.new("TextButton")
                 hideButton.Name = "HideButton"
                 hideButton.Parent = playerItem
@@ -1117,7 +1179,6 @@ function Player.updatePlayerList()
                 hideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 hideButton.TextSize = 9
                 
-                -- New Show Button (opposite of hide)
                 local showButton = Instance.new("TextButton")
                 showButton.Name = "ShowButton"
                 showButton.Parent = playerItem
@@ -1130,7 +1191,6 @@ function Player.updatePlayerList()
                 showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 showButton.TextSize = 8
                 
-                -- New Freeze Individual Button
                 local freezeIndividualButton = Instance.new("TextButton")
                 freezeIndividualButton.Name = "FreezeIndividualButton"
                 freezeIndividualButton.Parent = playerItem
@@ -1174,13 +1234,18 @@ function Player.updatePlayerList()
                 end)
                 
                 teleportButton.MouseButton1Click:Connect(function()
-                    if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
-                        local targetPosition = p.Character.HumanoidRootPart.CFrame
-                        local newPosition = targetPosition * CFrame.new(0, 0, 5)
-                        Player.rootPart.CFrame = newPosition
-                        print("Teleported to: " .. p.Name)
-                    else
-                        print("Cannot teleport: No valid target player or missing rootPart")
+                    local success, result = pcall(function()
+                        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
+                            local targetPosition = p.Character.HumanoidRootPart.CFrame
+                            local newPosition = targetPosition * CFrame.new(0, 0, 5)
+                            Player.rootPart.CFrame = newPosition
+                            print("Teleported to: " .. p.Name)
+                        else
+                            print("Cannot teleport: No valid target player or missing rootPart")
+                        end
+                    end)
+                    if not success then
+                        warn("Teleport failed: " .. tostring(result))
                     end
                 end)
                 
@@ -1209,7 +1274,6 @@ function Player.updatePlayerList()
                     end
                 end)
                 
-                -- Hide button event
                 hideButton.MouseButton1Click:Connect(function()
                     if Player.hiddenPlayers[p] then
                         showPlayer(p)
@@ -1222,7 +1286,6 @@ function Player.updatePlayerList()
                     end
                 end)
                 
-                -- Show button event
                 showButton.MouseButton1Click:Connect(function()
                     if Player.hiddenPlayers[p] then
                         showPlayer(p)
@@ -1231,7 +1294,6 @@ function Player.updatePlayerList()
                     end
                 end)
                 
-                -- Freeze individual button event
                 freezeIndividualButton.MouseButton1Click:Connect(function()
                     if Player.frozenPlayerPositions[p] then
                         unfreezePlayer(p)
@@ -1389,15 +1451,26 @@ function Player.updatePlayerList()
     updateSpectateButtons()
 end
 
--- Teleport to Spectated Player
+-- Teleport to Spectated Player (Fixed)
 local function teleportToSpectatedPlayer()
-    if Player.selectedPlayer and Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
-        local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
-        local newPosition = targetPosition * CFrame.new(0, 0, 5)
-        Player.rootPart.CFrame = newPosition
-        print("Teleported to spectated player: " .. Player.selectedPlayer.Name)
-    else
-        print("Cannot teleport: No valid spectated player or missing rootPart")
+    if not Player.selectedPlayer then
+        print("Cannot teleport: No player selected")
+        return
+    end
+    
+    local success, result = pcall(function()
+        if Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
+            local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
+            local newPosition = targetPosition * CFrame.new(0, 0, 5)
+            Player.rootPart.CFrame = newPosition
+            print("Teleported to spectated player: " .. Player.selectedPlayer.Name)
+        else
+            print("Cannot teleport: No valid spectated player or missing rootPart")
+        end
+    end)
+    
+    if not success then
+        warn("Teleport failed: " .. tostring(result))
     end
 end
 
@@ -1437,7 +1510,7 @@ local function stopFollowing()
     Player.updatePlayerList()
 end
 
--- Follow Player
+-- Follow Player (Fixed)
 local function followPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot follow: Invalid target player")
@@ -1450,7 +1523,7 @@ local function followPlayer(targetPlayer)
     end
     
     if not Player.rootPart or not humanoid then
-        print("Cannot follow: Missing rootPart or humanoid")
+        print("Cannot follow: Missing local player's rootPart or humanoid")
         return
     end
     
@@ -1471,13 +1544,14 @@ local function followPlayer(targetPlayer)
     local pathUpdateTime = 0
     local lastTargetPos = targetRootPart.Position
     
-    Player.followConnections.heartbeat = RunService.Heartbeat:Connect(function()
+    local function updatePath()
         if not Player.followEnabled or not Player.followTarget then
             stopFollowing()
             return
         end
         
         if not Player.followTarget.Character or not Player.followTarget.Character:FindFirstChild("HumanoidRootPart") or not Player.followTarget.Character:FindFirstChild("Humanoid") then
+            stopFollowing()
             return
         end
         
@@ -1498,7 +1572,7 @@ local function followPlayer(targetPlayer)
             pathUpdateTime = currentTime
             lastTargetPos = targetPosition
             
-            pcall(function()
+            local success, result = pcall(function()
                 currentPath = PathfindingService:CreatePath({
                     AgentRadius = 2,
                     AgentHeight = 5,
@@ -1514,6 +1588,11 @@ local function followPlayer(targetPlayer)
                     currentPath = nil
                 end
             end)
+            
+            if not success then
+                warn("Pathfinding failed: " .. tostring(result))
+                currentPath = nil
+            end
         end
         
         if currentPath and currentPath.Status == Enum.PathStatus.Success then
@@ -1553,7 +1632,9 @@ local function followPlayer(targetPlayer)
         end
         
         Player.lastTargetPosition = targetPosition
-    end)
+    end
+    
+    Player.followConnections.heartbeat = RunService.Heartbeat:Connect(updatePath)
     
     Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
         if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
@@ -1566,6 +1647,8 @@ local function followPlayer(targetPlayer)
             currentPath = nil
             currentWaypoint = 0
             pathUpdateTime = 0
+            targetRootPart = newRootPart
+            targetHumanoid = newHumanoid
         else
             print("Failed to get new character parts for follow target")
             stopFollowing()
@@ -1628,7 +1711,6 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
     createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
     createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
-    -- New toggle buttons for hide features
     createToggleButton("Hide Character", toggleHideCharacter, "Player")
     createToggleButton("Hide My Character", toggleHideMyCharacter, "Player")
     print("Player buttons loaded successfully")
@@ -1676,7 +1758,7 @@ local function initUI()
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
     PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 450) -- Increased height for better scrolling
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 450)
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
@@ -1721,21 +1803,21 @@ local function initUI()
     PlayerListScrollFrame.Parent = PlayerListFrame
     PlayerListScrollFrame.BackgroundTransparency = 1
     PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 80)
-    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -90) -- Better size for scrolling
-    PlayerListScrollFrame.ScrollBarThickness = 8 -- Increased scroll bar thickness
-    PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100) -- Better visibility
+    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -90)
+    PlayerListScrollFrame.ScrollBarThickness = 8
+    PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
     PlayerListScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     PlayerListScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     PlayerListScrollFrame.BorderSizePixel = 0
-    PlayerListScrollFrame.ScrollingEnabled = true -- Ensure scrolling is enabled
-    PlayerListScrollFrame.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png" -- Custom scroll bar
+    PlayerListScrollFrame.ScrollingEnabled = true
+    PlayerListScrollFrame.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
     PlayerListScrollFrame.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
     PlayerListScrollFrame.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
 
     PlayerListLayout = Instance.new("UIListLayout")
     PlayerListLayout.Parent = PlayerListScrollFrame
-    PlayerListLayout.Padding = UDim.new(0, 5) -- Increased padding for better spacing
+    PlayerListLayout.Padding = UDim.new(0, 5)
     PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     PlayerListLayout.FillDirection = Enum.FillDirection.Vertical
 
@@ -1806,7 +1888,7 @@ local function initUI()
     EmoteGuiFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     EmoteGuiFrame.BorderSizePixel = 1
     EmoteGuiFrame.Position = UDim2.new(0.5, -100, 0.3, 0)
-    EmoteGuiFrame.Size = UDim2.new(0, 200, 0, 250) -- Increased height for better scrolling
+    EmoteGuiFrame.Size = UDim2.new(0, 200, 0, 250)
     EmoteGuiFrame.Visible = false
     EmoteGuiFrame.Active = true
     EmoteGuiFrame.Draggable = true
@@ -1823,6 +1905,7 @@ local function initUI()
     EmoteTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     EmoteTitle.TextSize = 12
 
+    -- Continuing from CloseEmoteButton definition
     local CloseEmoteButton = Instance.new("TextButton")
     CloseEmoteButton.Name = "CloseButton"
     CloseEmoteButton.Parent = EmoteGuiFrame
@@ -1838,260 +1921,256 @@ local function initUI()
     EmoteScrollFrame.Name = "EmoteScrollFrame"
     EmoteScrollFrame.Parent = EmoteGuiFrame
     EmoteScrollFrame.BackgroundTransparency = 1
-    EmoteScrollFrame.Position = UDim2.new(0, 10, 0, 40)
-    EmoteScrollFrame.Size = UDim2.new(1, -20, 1, -50)
-    EmoteScrollFrame.ScrollBarThickness = 6 -- Better scroll bar
+    EmoteScrollFrame.Position = UDim2.new(0, 10, 0, 45)
+    EmoteScrollFrame.Size = UDim2.new(1, -20, 1, -55)
+    EmoteScrollFrame.ScrollBarThickness = 8
     EmoteScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
     EmoteScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     EmoteScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     EmoteScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    EmoteScrollFrame.BorderSizePixel = 0
     EmoteScrollFrame.ScrollingEnabled = true
+    EmoteScrollFrame.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    EmoteScrollFrame.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+    EmoteScrollFrame.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
 
     local EmoteListLayout = Instance.new("UIListLayout")
     EmoteListLayout.Parent = EmoteScrollFrame
     EmoteListLayout.Padding = UDim.new(0, 5)
     EmoteListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    EmoteListLayout.FillDirection = Enum.FillDirection.Vertical
 
-    local emotes = {
-        {name = "Cuco - Levitate", id = "507765000", catalogId = "15698511500"},
-        {name = "Victory Royale Jump", id = "507771019", catalogId = "107425576246359"},
-        {name = "SODA POP | SAJABOYS", id = "5092650060", catalogId = "131337151013044"},
-        {name = "Orange Justice", id = "507771019", catalogId = "107425576246359"},
-        {name = "Default Dance", id = "507771019", catalogId = "107425576246359"},
-        {name = "Floss", id = "507771019", catalogId = "107425576246359"}
-    }
-
-    for i, emote in ipairs(emotes) do
-        local emoteButton = Instance.new("TextButton")
-        emoteButton.Name = "EmoteButton" .. i
-        emoteButton.Parent = EmoteScrollFrame
-        emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        emoteButton.BorderSizePixel = 0
-        emoteButton.Size = UDim2.new(1, -10, 0, 30)
-        emoteButton.Font = Enum.Font.Gotham
-        emoteButton.Text = emote.name
-        emoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        emoteButton.TextSize = 10
-        emoteButton.LayoutOrder = i
-
-        emoteButton.MouseButton1Click:Connect(function()
-            local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
-            if not humanoid then
-                warn("Cannot play emote: No humanoid found")
-                return
-            end
-
-            if not emote.id or emote.id == "" then
-                warn("Invalid or empty emote ID for: " .. emote.name)
-                return
-            end
-
-            local success, result = pcall(function()
-                local animation = Instance.new("Animation")
-                animation.AnimationId = "rbxassetid://" .. emote.id
-                local emoteTrack = humanoid:LoadAnimation(animation)
-                if emoteTrack:IsA("AnimationTrack") then
-                    emoteTrack:Play()
-                else
-                    error("Loaded animation is not valid for: " .. emote.name)
-                end
-                return emoteTrack
-            end)
-
-            if success then
-                print("Playing emote: " .. emote.name)
-            else
-                warn("Failed to play emote " .. emote.name .. " via LoadAnimation: " .. tostring(result))
-                local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                local emoteRemote = ReplicatedStorage:FindFirstChild("EmoteRemote") or
-                                    ReplicatedStorage:FindFirstChild("PlayEmote") or
-                                    ReplicatedStorage:FindFirstChild("Emote")
-                if emoteRemote and emoteRemote:IsA("RemoteEvent") then
-                    pcall(function()
-                        emoteRemote:FireServer(emote.name)
-                        print("Triggered emote " .. emote.name .. " via RemoteEvent")
-                    end)
-                else
-                    warn("No valid RemoteEvent found for emote: " .. emote.name)
-                end
-            end
-        end)
-
-        emoteButton.MouseEnter:Connect(function()
-            emoteButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        end)
-
-        emoteButton.MouseLeave:Connect(function()
-            emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        end)
-    end
-
-    task.spawn(function()
-        task.wait(0.1)
-        local contentSize = EmoteListLayout.AbsoluteContentSize
-        EmoteScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
-    end)
-
-    NextSpectateButton.MouseButton1Click:Connect(spectateNextPlayer)
-    PrevSpectateButton.MouseButton1Click:Connect(spectatePrevPlayer)
-    StopSpectateButton.MouseButton1Click:Connect(stopSpectating)
-    TeleportSpectateButton.MouseButton1Click:Connect(teleportToSpectatedPlayer)
-
-    NextSpectateButton.MouseEnter:Connect(function()
-        NextSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-    end)
-    NextSpectateButton.MouseLeave:Connect(function()
-        NextSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-    end)
-
-    PrevSpectateButton.MouseEnter:Connect(function()
-        PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-    end)
-    PrevSpectateButton.MouseLeave:Connect(function()
-        PrevSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-    end)
-
-    StopSpectateButton.MouseEnter:Connect(function()
-        StopSpectateButton.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
-    end)
-    StopSpectateButton.MouseLeave:Connect(function()
-        StopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-    end)
-
-    TeleportSpectateButton.MouseEnter:Connect(function()
-        TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
-    end)
-    TeleportSpectateButton.MouseLeave:Connect(function()
-        TeleportSpectateButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-    end)
-
+    -- Button Connections
     ClosePlayerListButton.MouseButton1Click:Connect(function()
-        Player.playerListVisible = false
         PlayerListFrame.Visible = false
+        Player.playerListVisible = false
+        print("Player list closed")
     end)
 
     CloseEmoteButton.MouseButton1Click:Connect(function()
         EmoteGuiFrame.Visible = false
+        print("Emote menu closed")
     end)
-    
-    print("Player UI initialized successfully")
-end
 
--- Initialize Module
-function Player.init(deps)
-    print("Initializing Player module...")
-    
-    Players = deps.Players
-    RunService = deps.RunService
-    Workspace = deps.Workspace
-    humanoid = deps.humanoid
-    connections = deps.connections
-    buttonStates = deps.buttonStates
-    ScrollFrame = deps.ScrollFrame
-    ScreenGui = deps.ScreenGui
-    player = deps.player
-    Player.rootPart = deps.rootPart
-    
-    if not Players or not RunService or not Workspace or not ScreenGui or not player then
-        warn("Critical dependencies missing for Player module!")
-        return false
+    NextSpectateButton.MouseButton1Click:Connect(function()
+        spectateNextPlayer()
+    end)
+
+    PrevSpectateButton.MouseButton1Click:Connect(function()
+        spectatePrevPlayer()
+    end)
+
+    StopSpectateButton.MouseButton1Click:Connect(function()
+        stopSpectating()
+    end)
+
+    TeleportSpectateButton.MouseButton1Click:Connect(function()
+        teleportToSpectatedPlayer()
+    end)
+
+    -- Initialize Player List
+    Player.updatePlayerList()
+
+    -- Populate Emote Menu
+    local function updateEmoteMenu()
+        for _, child in pairs(EmoteScrollFrame:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
+        end
+        
+        local emotes = {"wave", "point", "dance", "dance2", "dance3", "laugh", "cheer"}
+        for i, emote in ipairs(emotes) do
+            local emoteButton = Instance.new("TextButton")
+            emoteButton.Name = emote .. "Button"
+            emoteButton.Parent = EmoteScrollFrame
+            emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            emoteButton.BorderSizePixel = 0
+            emoteButton.Size = UDim2.new(1, -10, 0, 30)
+            emoteButton.Font = Enum.Font.Gotham
+            emoteButton.Text = emote:upper()
+            emoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            emoteButton.TextSize = 10
+            emoteButton.LayoutOrder = i
+            
+            emoteButton.MouseButton1Click:Connect(function()
+                if player.Character and player.Character:FindFirstChild("Humanoid") then
+                    local humanoid = player.Character.Humanoid
+                    local success, result = pcall(function()
+                        humanoid:PlayEmote(emote)
+                        print("Played emote: " .. emote)
+                    end)
+                    if not success then
+                        warn("Failed to play emote: " .. tostring(result))
+                    end
+                end
+            end)
+            
+            emoteButton.MouseEnter:Connect(function()
+                emoteButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            end)
+            
+            emoteButton.MouseLeave:Connect(function()
+                emoteButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            end)
+        end
+        
+        task.spawn(function()
+            task.wait(0.1)
+            local contentSize = EmoteListLayout.AbsoluteContentSize
+            EmoteScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
+        end)
     end
-    
-    Player.forceFieldEnabled = false
-    Player.antiAFKEnabled = false
-    Player.freezeEnabled = false
-    Player.followEnabled = false
-    Player.fastRespawnEnabled = false
-    Player.noDeathAnimationEnabled = false
-    Player.magnetEnabled = false
-    Player.hideCharacterEnabled = false
-    Player.hideMyCharacterEnabled = false
-    Player.selectedPlayer = nil
-    Player.spectatePlayerList = {}
-    Player.currentSpectateIndex = 0
-    Player.spectateConnections = {}
-    Player.playerListVisible = false
-    Player.frozenPlayerPositions = {}
-    Player.playerConnections = {}
-    Player.followTarget = nil
-    Player.followConnections = {}
-    Player.followOffset = Vector3.new(0, 0, 3)
-    Player.lastTargetPosition = nil
-    Player.followSpeed = 1.2
-    Player.followPathfinding = nil
-    Player.deathAnimationConnections = {}
-    Player.magnetPlayerPositions = {}
-    Player.hiddenPlayers = {}
-    Player.originalMyCharacterTransparency = {}
-    
-    pcall(initUI)
-    pcall(Player.setupPlayerEvents)
-    
-    -- Handle local player respawn for magnet and hide
-    connections.localPlayerRespawn = player.CharacterAdded:Connect(function(newCharacter)
-        task.wait(0.5)
-        if newCharacter:FindFirstChild("HumanoidRootPart") then
-            Player.rootPart = newCharacter.HumanoidRootPart
-            humanoid = newCharacter:FindFirstChild("Humanoid")
-            if Player.magnetEnabled then
-                print("Local player respawned, reapplying magnet...")
-                toggleMagnetPlayers(true)
+
+    -- Initialize Connections
+    local function initConnections()
+        connections.playerAdded = Players.PlayerAdded:Connect(function(newPlayer)
+            print("Player added: " .. newPlayer.Name)
+            Player.updatePlayerList()
+            setupPlayerMonitoring(newPlayer)
+        end)
+        
+        connections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            print("Player removing: " .. leavingPlayer.Name)
+            cleanupPlayerMonitoring(leavingPlayer)
+            if Player.selectedPlayer == leavingPlayer then
+                stopSpectating()
+            end
+            if Player.followTarget == leavingPlayer then
+                stopFollowing()
+            end
+            Player.updatePlayerList()
+        end)
+        
+        connections.characterAdded = player.CharacterAdded:Connect(function(character)
+            print("Local player character added")
+            Player.rootPart = character:WaitForChild("HumanoidRootPart", 5)
+            humanoid = character:WaitForChild("Humanoid", 5)
+            if not Player.rootPart or not humanoid then
+                warn("Failed to initialize local player character parts")
             end
             if Player.hideMyCharacterEnabled then
-                print("Local player respawned, reapplying hide my character...")
-                task.wait(0.5)
                 hideMyCharacter()
             end
-        end
-    end)
-    
-    print("Player module initialized successfully")
-    return true
-end
-
--- Setup Player Events
-function Player.setupPlayerEvents()
-    if not Players then
-        warn("Players service not available for setupPlayerEvents")
-        return
-    end
-    
-    print("Setting up Player events...")
-    
-    Players.PlayerAdded:Connect(function(p)
-        if p ~= player then
-            print("New player joined: " .. p.Name)
-            setupPlayerMonitoring(p)
+            if Player.forceFieldEnabled then
+                toggleForceField(true)
+            end
+            if Player.fastRespawnEnabled then
+                toggleFastRespawn(true)
+            end
             Player.updatePlayerList()
-        end
-    end)
-
-    Players.PlayerRemoving:Connect(function(p)
-        if p == Player.selectedPlayer then
-            stopSpectating()
-        end
-        if p == Player.followTarget then
-            stopFollowing()
-        end
-        cleanupPlayerMonitoring(p)
-        Player.updatePlayerList()
-        print("Player left: " .. p.Name)
-    end)
-
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player then
-            setupPlayerMonitoring(p)
-        end
+        end)
+        
+        connections.updatePlayerList = RunService.Heartbeat:Connect(function()
+            if Player.playerListVisible then
+                Player.updatePlayerList()
+            end
+        end)
+        
+        updateEmoteMenu()
     end
-    
-    task.spawn(function()
-        while true do
-            Player.updatePlayerList()
-            task.wait(5)
-        end
-    end)
-    
-    print("Player events set up successfully")
-end
 
-return Player
+    -- Initialize the Player module
+    function Player.init(deps)
+        print("Initializing Player module...")
+        Players = deps.Players or game:GetService("Players")
+        RunService = deps.RunService or game:GetService("RunService")
+        Workspace = deps.Workspace or game:GetService("Workspace")
+        player = deps.player or Players.LocalPlayer
+        humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+        Player.rootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        connections = deps.connections or {}
+        buttonStates = deps.buttonStates or {}
+        ScrollFrame = deps.ScrollFrame
+        ScreenGui = deps.ScreenGui
+        
+        if not Players or not RunService or not Workspace or not player then
+            warn("Missing critical dependencies for Player module")
+            return
+        end
+        
+        initUI()
+        initConnections()
+        
+        -- Ensure initial state
+        Player.resetStates()
+        
+        print("Player module initialized successfully")
+    end
+
+    -- Cleanup
+    function Player.cleanup()
+        print("Cleaning up Player module...")
+        Player.resetStates()
+        
+        for _, connection in pairs(connections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        connections = {}
+        
+        for _, connection in pairs(Player.spectateConnections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        Player.spectateConnections = {}
+        
+        for _, connection in pairs(Player.followConnections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+        Player.followConnections = {}
+        
+        for targetPlayer, playerConnections in pairs(Player.playerConnections) do
+            for _, connection in pairs(playerConnections) do
+                if connection then
+                    connection:Disconnect()
+                end
+            end
+        end
+        Player.playerConnections = {}
+        
+        for targetPlayer, playerConnections in pairs(Player.deathAnimationConnections) do
+            for _, connection in pairs(playerConnections) do
+                if connection then
+                    connection:Disconnect()
+                end
+            end
+        end
+        Player.deathAnimationConnections = {}
+        
+        if PlayerListFrame then
+            PlayerListFrame:Destroy()
+        end
+        if EmoteGuiFrame then
+            EmoteGuiFrame:Destroy()
+        end
+        if NextSpectateButton then
+            NextSpectateButton:Destroy()
+        end
+        if PrevSpectateButton then
+            PrevSpectateButton:Destroy()
+        end
+        if StopSpectateButton then
+            StopSpectateButton:Destroy()
+        end
+        if TeleportSpectateButton then
+            TeleportSpectateButton:Destroy()
+        end
+        
+        Player.selectedPlayer = nil
+        Player.spectatePlayerList = {}
+        Player.currentSpectateIndex = 0
+        Player.playerListVisible = false
+        Player.frozenPlayerPositions = {}
+        Player.magnetPlayerPositions = {}
+        Player.hiddenPlayers = {}
+        Player.originalMyCharacterTransparency = {}
+        
+        print("Player module cleaned up successfully")
+    end
+
+    return Player

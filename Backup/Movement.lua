@@ -1,4 +1,4 @@
--- Movement.lua - Enhanced version with updated Rewind, removed Instant Jump, and fixed syntax errors
+-- Movement.lua - Enhanced version with sprint feature, no cooldown boost, and removed ladder climb
 -- Movement-related features for MinimalHackGUI by Fari Noveri, mobile-friendly with robust respawn handling
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -24,7 +24,7 @@ Movement.rewindEnabled = false
 Movement.boostEnabled = false
 Movement.slowFallEnabled = false
 Movement.fastFallEnabled = false
-Movement.ladderClimbEnabled = false
+Movement.sprintEnabled = false
 
 -- Default values
 Movement.defaultWalkSpeed = 16
@@ -41,6 +41,7 @@ local flyJoystickFrame, flyJoystickKnob
 local flyUpButton, flyDownButton
 local boostButton
 local rewindButton
+local sprintButton
 local joystickDelta = Vector2.new(0, 0)
 local isTouchingJoystick = false
 local joystickTouchId = nil
@@ -49,7 +50,6 @@ local joystickTouchId = nil
 local positionHistory = {}
 local maxHistorySize = 180 -- 6 seconds at 30 fps
 local isBoostActive = false
-local boostEndTime = 0
 
 -- Scroll frame for UI
 local function setupScrollFrame()
@@ -96,6 +96,7 @@ local function createMobileControls()
     if flyDownButton then flyDownButton:Destroy() end
     if boostButton then boostButton:Destroy() end
     if rewindButton then rewindButton:Destroy() end
+    if sprintButton then sprintButton:Destroy() end
 
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
@@ -163,6 +164,25 @@ local function createMobileControls()
     local downCorner = Instance.new("UICorner")
     downCorner.CornerRadius = UDim.new(0.2, 0)
     downCorner.Parent = flyDownButton
+
+    sprintButton = Instance.new("TextButton")
+    sprintButton.Name = "SprintButton"
+    sprintButton.Size = UDim2.new(0, 80, 0, 80)
+    sprintButton.Position = UDim2.new(1, -100, 1, -370)
+    sprintButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    sprintButton.BackgroundTransparency = 0.5
+    sprintButton.BorderSizePixel = 0
+    sprintButton.Text = "SPRINT"
+    sprintButton.Font = Enum.Font.GothamBold
+    sprintButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    sprintButton.TextSize = 16
+    sprintButton.Visible = false
+    sprintButton.ZIndex = 10
+    sprintButton.Parent = ScreenGui or player.PlayerGui
+
+    local sprintCorner = Instance.new("UICorner")
+    sprintCorner.CornerRadius = UDim.new(0.2, 0)
+    sprintCorner.Parent = sprintButton
 end
 
 -- Improved joystick handling for float (horizontal only)
@@ -367,46 +387,65 @@ local function toggleFastFall(enabled)
     end
 end
 
--- Ladder Climb (automatic faster upward movement on ladders)
-local function toggleLadderClimb(enabled)
-    Movement.ladderClimbEnabled = enabled
-    print("Ladder Climb:", enabled)
+-- Sprint feature with toggle
+local function toggleSprint(enabled)
+    Movement.sprintEnabled = enabled
+    print("Sprint:", enabled)
     
-    if connections.ladderClimb then
-        connections.ladderClimb:Disconnect()
-        connections.ladderClimb = nil
+    if connections.sprint then
+        connections.sprint:Disconnect()
+        connections.sprint = nil
+    end
+    if connections.sprintInput then
+        connections.sprintInput:Disconnect()
+        connections.sprintInput = nil
+    end
+    if connections.sprintToggle then
+        connections.sprintToggle:Disconnect()
+        connections.sprintToggle = nil
     end
     
     if enabled then
-        connections.ladderClimb = RunService.Heartbeat:Connect(function()
-            if not Movement.ladderClimbEnabled then return end
-            if not refreshReferences() or not rootPart or not humanoid then return end
-            
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {player.Character}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            
-            local directions = {
-                rootPart.CFrame.LookVector,
-                -rootPart.CFrame.LookVector,
-                rootPart.CFrame.RightVector,
-                -rootPart.CFrame.RightVector
-            }
-            
-            local nearLadder = false
-            for _, direction in ipairs(directions) do
-                local raycast = Workspace:Raycast(rootPart.Position, direction * 2, raycastParams)
-                if raycast and raycast.Instance and raycast.Instance.Name:lower():find("ladder") then
-                    nearLadder = true
-                    break
-                end
-            end
-            
-            if nearLadder then
-                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, 50, rootPart.Velocity.Z)
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        if sprintButton then
+            sprintButton.Visible = true
+        end
+        
+        local isSprinting = false
+        
+        connections.sprintInput = sprintButton.MouseButton1Click:Connect(function()
+            if refreshReferences() and humanoid then
+                isSprinting = not isSprinting
+                sprintButton.BackgroundColor3 = isSprinting and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+                sprintButton.BackgroundTransparency = isSprinting and 0.2 or 0.5
+                sprintButton.Text = isSprinting and "SPRINTING!" or "SPRINT"
+                
+                humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or Movement.defaultWalkSpeed
             end
         end)
+        
+        connections.sprintToggle = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or not Movement.sprintEnabled then return end
+            if input.KeyCode == Enum.KeyCode.LeftShift then
+                if refreshReferences() and humanoid then
+                    isSprinting = not isSprinting
+                    sprintButton.BackgroundColor3 = isSprinting and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+                    sprintButton.BackgroundTransparency = isSprinting and 0.2 or 0.5
+                    sprintButton.Text = isSprinting and "SPRINTING!" or "SPRINT"
+                    
+                    humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or Movement.defaultWalkSpeed
+                end
+            end
+        end)
+    else
+        if sprintButton then
+            sprintButton.Visible = false
+            sprintButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            sprintButton.BackgroundTransparency = 0.5
+            sprintButton.Text = "SPRINT"
+        end
+        if refreshReferences() and humanoid then
+            humanoid.WalkSpeed = Movement.defaultWalkSpeed
+        end
     end
 end
 
@@ -499,7 +538,7 @@ local function toggleFloat(enabled)
     end
 end
 
--- Boost (NOS-like effect)
+-- Boost (NOS-like effect, no cooldown)
 local function createBoostButton()
     if boostButton then boostButton:Destroy() end
     
@@ -546,10 +585,8 @@ local function toggleBoost(enabled)
         end
         
         connections.boostInput = boostButton.MouseButton1Click:Connect(function()
-            if not isBoostActive and refreshReferences() and humanoid and rootPart then
+            if refreshReferences() and humanoid and rootPart then
                 isBoostActive = true
-                boostEndTime = tick() + 2
-                
                 boostButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
                 boostButton.BackgroundTransparency = 0.2
                 boostButton.Text = "BOOSTING!"
@@ -563,6 +600,16 @@ local function toggleBoost(enabled)
                     boostForce.Parent = rootPart
                     
                     game:GetService("Debris"):AddItem(boostForce, 0.5)
+                    
+                    task.spawn(function()
+                        task.wait(0.5)
+                        isBoostActive = false
+                        if boostButton then
+                            boostButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                            boostButton.BackgroundTransparency = 0.5
+                            boostButton.Text = "BOOST"
+                        end
+                    end)
                 end
             end
         end)
@@ -570,10 +617,8 @@ local function toggleBoost(enabled)
         connections.boostToggle = UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed or not Movement.boostEnabled then return end
             if input.KeyCode == Enum.KeyCode.B then
-                if not isBoostActive and refreshReferences() and humanoid and rootPart then
+                if refreshReferences() and humanoid and rootPart then
                     isBoostActive = true
-                    boostEndTime = tick() + 2
-                    
                     boostButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
                     boostButton.BackgroundTransparency = 0.2
                     boostButton.Text = "BOOSTING!"
@@ -587,20 +632,17 @@ local function toggleBoost(enabled)
                         boostForce.Parent = rootPart
                         
                         game:GetService("Debris"):AddItem(boostForce, 0.5)
+                        
+                        task.spawn(function()
+                            task.wait(0.5)
+                            isBoostActive = false
+                            if boostButton then
+                                boostButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                                boostButton.BackgroundTransparency = 0.5
+                                boostButton.Text = "BOOST"
+                            end
+                        end)
                     end
-                end
-            end
-        end)
-        
-        connections.boost = RunService.Heartbeat:Connect(function()
-            if not Movement.boostEnabled then return end
-            
-            if isBoostActive and tick() >= boostEndTime then
-                isBoostActive = false
-                if boostButton then
-                    boostButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                    boostButton.BackgroundTransparency = 0.5
-                    boostButton.Text = "BOOST"
                 end
             end
         end)
@@ -1166,6 +1208,10 @@ function Movement.applySettings()
     if Movement.jumpEnabled then
         toggleJump(true)
     end
+    
+    if Movement.sprintEnabled then
+        toggleSprint(true)
+    end
 end
 
 -- Function to create buttons for Movement features
@@ -1194,7 +1240,7 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Boost (NOS)", toggleBoost)
     createToggleButton("Slow Fall", toggleSlowFall)
     createToggleButton("Fast Fall", toggleFastFall)
-    createToggleButton("Ladder Climb", toggleLadderClimb)
+    createToggleButton("Sprint", toggleSprint)
 end
 
 -- Enhanced reset function
@@ -1217,7 +1263,7 @@ function Movement.resetStates()
     Movement.boostEnabled = false
     Movement.slowFallEnabled = false
     Movement.fastFallEnabled = false
-    Movement.ladderClimbEnabled = false
+    Movement.sprintEnabled = false
     
     Movement.jumpCount = 0
     joystickDelta = Vector2.new(0, 0)
@@ -1226,7 +1272,6 @@ function Movement.resetStates()
     
     positionHistory = {}
     isBoostActive = false
-    boostEndTime = 0
     
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
@@ -1234,7 +1279,7 @@ function Movement.resetStates()
         "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatInput", 
         "floatBegan", "floatEnded", "antiFling", "rewind", "rewindInput", 
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
-        "fastFall", "ladderClimb"
+        "fastFall", "sprint", "sprintInput", "sprintToggle"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1304,6 +1349,10 @@ function Movement.resetStates()
         boostButton.Visible = false
         boostButton.Text = "BOOST"
     end
+    if sprintButton then
+        sprintButton.Visible = false
+        sprintButton.Text = "SPRINT"
+    end
 end
 
 -- Enhanced reference update function
@@ -1344,7 +1393,7 @@ function Movement.updateReferences(newHumanoid, newRootPart)
             {Movement.boostEnabled, toggleBoost, "Boost"},
             {Movement.slowFallEnabled, toggleSlowFall, "Slow Fall"},
             {Movement.fastFallEnabled, toggleFastFall, "Fast Fall"},
-            {Movement.ladderClimbEnabled, toggleLadderClimb, "Ladder Climb"}
+            {Movement.sprintEnabled, toggleSprint, "Sprint"}
         }
         
         for _, state in ipairs(statesToReapply) do
@@ -1408,7 +1457,7 @@ function Movement.init(deps)
     Movement.boostEnabled = false
     Movement.slowFallEnabled = false
     Movement.fastFallEnabled = false
-    Movement.ladderClimbEnabled = false
+    Movement.sprintEnabled = false
     
     Movement.jumpCount = 0
     joystickDelta = Vector2.new(0, 0)
@@ -1417,7 +1466,6 @@ function Movement.init(deps)
     
     positionHistory = {}
     isBoostActive = false
-    boostEndTime = 0
     
     createMobileControls()
     setupScrollFrame()
@@ -1446,12 +1494,11 @@ function Movement.debug()
     print("  boostEnabled:", Movement.boostEnabled)
     print("  slowFallEnabled:", Movement.slowFallEnabled)
     print("  fastFallEnabled:", Movement.fastFallEnabled)
-    print("  ladderClimbEnabled:", Movement.ladderClimbEnabled)
+    print("  sprintEnabled:", Movement.sprintEnabled)
     
     print("New Feature Data:")
     print("  positionHistory entries:", #positionHistory)
     print("  isBoostActive:", isBoostActive)
-    print("  boostEndTime:", boostEndTime)
     
     print("References:")
     print("  player:", player ~= nil)
@@ -1464,6 +1511,7 @@ function Movement.debug()
         print("  WalkSpeed setting:", getSettingValue("WalkSpeed", "not found"))
         print("  JumpHeight setting:", getSettingValue("JumpHeight", "not found"))
         print("  FlySpeed setting:", getSettingValue("FlySpeed", "not found"))
+        print("  SprintSpeed setting:", getSettingValue("SprintSpeed", "not found"))
     else
         print("  settings: nil")
     end
@@ -1474,6 +1522,7 @@ function Movement.debug()
     print("  flyDownButton:", flyDownButton ~= nil)
     print("  rewindButton:", rewindButton ~= nil)
     print("  boostButton:", boostButton ~= nil)
+    print("  sprintButton:", sprintButton ~= nil)
     
     print("Active Connections:")
     local activeConnections = 0
@@ -1498,6 +1547,7 @@ function Movement.cleanup()
     if flyDownButton then flyDownButton:Destroy() end
     if rewindButton then rewindButton:Destroy() end
     if boostButton then boostButton:Destroy() end
+    if sprintButton then sprintButton:Destroy() end
     
     flyJoystickFrame = nil
     flyJoystickKnob = nil
@@ -1506,10 +1556,10 @@ function Movement.cleanup()
     flyBodyVelocity = nil
     rewindButton = nil
     boostButton = nil
+    sprintButton = nil
     
     positionHistory = {}
     isBoostActive = false
-    boostEndTime = 0
     
     print("Movement module cleaned up")
 end
