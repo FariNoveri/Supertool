@@ -159,6 +159,8 @@ local function toggleHideCharacter(enabled)
 end
 
 -- Hide My Character (only local player)
+
+-- Hide My Character (only local player) - FIXED
 local function hideMyCharacter()
     if not player.Character then return end
     
@@ -176,12 +178,16 @@ local function hideMyCharacter()
             if handle then
                 Player.originalMyCharacterTransparency[handle] = handle.Transparency
                 handle.Transparency = 1
+                -- Fix for accessory meshes
                 for _, mesh in pairs(handle:GetDescendants()) do
-                    if mesh:IsA("SpecialMesh") or mesh:IsA("MeshPart") then
-                        Player.originalMyCharacterTransparency[mesh] = mesh.Transparency or 0
-                        if mesh:IsA("MeshPart") then
-                            mesh.Transparency = 1
-                        end
+                    if mesh:IsA("SpecialMesh") then
+                        -- SpecialMesh doesn't have Transparency property, skip it
+                    elseif mesh:IsA("MeshPart") then
+                        Player.originalMyCharacterTransparency[mesh] = mesh.Transparency
+                        mesh.Transparency = 1
+                    elseif mesh:IsA("SurfaceGui") then
+                        Player.originalMyCharacterTransparency[mesh] = mesh.Enabled
+                        mesh.Enabled = false
                     end
                 end
             end
@@ -193,9 +199,13 @@ end
 local function showMyCharacter()
     if not player.Character then return end
     
-    for part, originalTransparency in pairs(Player.originalMyCharacterTransparency) do
+    for part, originalValue in pairs(Player.originalMyCharacterTransparency) do
         if part and part.Parent then
-            part.Transparency = originalTransparency
+            if part:IsA("SurfaceGui") then
+                part.Enabled = originalValue
+            else
+                part.Transparency = originalValue
+            end
         end
     end
     Player.originalMyCharacterTransparency = {}
@@ -1017,6 +1027,7 @@ local function spectatePrevPlayer()
 end
 
 -- Update Player List
+-- Update Player List - FIXED BUTTON EVENTS
 function Player.updatePlayerList()
     if not PlayerListScrollFrame then
         warn("PlayerListScrollFrame not initialized")
@@ -1083,7 +1094,7 @@ function Player.updatePlayerList()
                 selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 selectButton.TextSize = 10
                 
-                -- Add all the other buttons (spectate, teleport, etc.)
+                -- Add all the other buttons
                 local spectateButton = Instance.new("TextButton")
                 spectateButton.Name = "SpectateButton"
                 spectateButton.Parent = playerItem
@@ -1204,25 +1215,28 @@ function Player.updatePlayerList()
                 freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
                 freezeIndividualButton.TextSize = 8
                 
-                -- Button Events
+                -- FIXED: Button Events - Properly connect each button
                 selectButton.MouseButton1Click:Connect(function()
                     Player.selectedPlayer = p
                     Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
                     if SelectedPlayerLabel then
                         SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
                     end
+                    -- Update all select buttons
                     for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
                         if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                            local btn = item.SelectButton
                             if item.Name == p.Name .. "Item" then
-                                item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                                item.SelectButton.Text = "SELECTED"
+                                btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                                btn.Text = "SELECTED"
                             else
-                                item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                                item.SelectButton.Text = "SELECT PLAYER"
+                                btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                                btn.Text = "SELECT PLAYER"
                             end
                         end
                     end
                     updateSpectateButtons()
+                    print("Selected player: " .. p.Name)
                 end)
                 
                 spectateButton.MouseButton1Click:Connect(function()
@@ -1252,13 +1266,20 @@ function Player.updatePlayerList()
                 
                 followButton.MouseButton1Click:Connect(function()
                     toggleFollowPlayer(p)
-                    Player.updatePlayerList()
+                    -- Refresh the list to update button states
+                    task.spawn(function()
+                        task.wait(0.1)
+                        Player.updatePlayerList()
+                    end)
                 end)
                 
                 stopFollowButton.MouseButton1Click:Connect(function()
                     if Player.followTarget == p then
                         stopFollowing()
-                        Player.updatePlayerList()
+                        task.spawn(function()
+                            task.wait(0.1)
+                            Player.updatePlayerList()
+                        end)
                     end
                 end)
                 
@@ -1307,7 +1328,7 @@ function Player.updatePlayerList()
                     end
                 end)
                 
-                -- Add hover effects for buttons
+                -- Add hover effects for better UX
                 selectButton.MouseEnter:Connect(function()
                     if Player.selectedPlayer ~= p then
                         selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -1329,8 +1350,6 @@ function Player.updatePlayerList()
                 spectateButton.MouseLeave:Connect(function()
                     spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
                 end)
-                
-                -- Continue with other button hover effects...
             end
         end
     end
