@@ -1,4 +1,4 @@
--- Movement.lua - Enhanced version with updated Rewind and removed Instant Jump
+-- Movement.lua - Enhanced version with updated Rewind, removed Instant Jump, and fixed syntax errors
 -- Movement-related features for MinimalHackGUI by Fari Noveri, mobile-friendly with robust respawn handling
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -895,7 +895,7 @@ local function toggleFly(enabled)
                 if not Movement.flyEnabled then return end
                 if not refreshReferences() or not rootPart then return end
                 
-                if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
+                if not flyBodyVelocity or flyBodyVelocity.Parent != rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
                     flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
@@ -926,7 +926,7 @@ local function toggleFly(enabled)
                     floatVerticalInput = -1
                 end
                 
-                if floatVerticalInput ~= 0 then
+                if floatVerticalInput != 0 then
                     flyDirection = flyDirection + Vector3.new(0, floatVerticalInput, 0)
                 end
                 
@@ -969,7 +969,6 @@ local function toggleFly(enabled)
         end
         if flyUpButton then 
             flyUpButton.Visible = false
-            flyUpButton灰
             flyUpButton.BackgroundTransparency = 0.5
         end
         if flyDownButton then 
@@ -1006,7 +1005,7 @@ local function toggleNoclip(enabled)
     else
         if refreshReferences() and player.Character then
             for _, part in pairs(player.Character:GetChildren()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                if part:IsA("BasePart") and part.Name != "HumanoidRootPart" then
                     part.CanCollide = true
                 end
             end
@@ -1069,7 +1068,7 @@ local function togglePlayerNoclip(enabled)
             if not refreshReferences() or not player.Character then return end
             
             for _, otherPlayer in pairs(Players:GetPlayers()) do
-                if otherPlayer ~= player and otherPlayer.Character then
+                if otherPlayer != player and otherPlayer.Character then
                     for _, part in pairs(otherPlayer.Character:GetChildren()) do
                         if part:IsA("BasePart") then
                             part.CanCollide = false
@@ -1096,7 +1095,7 @@ local function togglePlayerNoclip(enabled)
             end
             
             for _, otherPlayer in pairs(Players:GetPlayers()) do
-                if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                if otherPlayer != player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     local otherRoot = otherPlayer.Character.HumanoidRootPart
                     
                     for _, obj in pairs(otherRoot:GetChildren()) do
@@ -1115,9 +1114,9 @@ local function togglePlayerNoclip(enabled)
         end)
     else
         for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character then
+            if otherPlayer != player and otherPlayer.Character then
                 for _, part in pairs(otherPlayer.Character:GetChildren()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    if part:IsA("BasePart") and part.Name != "HumanoidRootPart" then
                         part.CanCollide = true
                     end
                 end
@@ -1266,7 +1265,7 @@ function Movement.resetStates()
         
         if player.Character then
             for _, part in pairs(player.Character:GetChildren()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                if part:IsA("BasePart") and part.Name != "HumanoidRootPart" then
                     part.CanCollide = true
                 end
             end
@@ -1276,9 +1275,9 @@ function Movement.resetStates()
     Workspace.Gravity = Movement.defaultGravity
     
     for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= player and otherPlayer.Character then
+        if otherPlayer != player and otherPlayer.Character then
             for _, part in pairs(otherPlayer.Character:GetChildren()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                if part:IsA("BasePart") and part.Name != "HumanoidRootPart" then
                     part.CanCollide = true
                 end
             end
@@ -1455,10 +1454,10 @@ function Movement.debug()
     print("  boostEndTime:", boostEndTime)
     
     print("References:")
-    print("  player:", player ~= nil)
-    print("  humanoid:", humanoid ~= nil)
-    print("  rootPart:", rootPart ~= nil)
-    print("  player.Character:", player and player.Character ~= nil)
+    print("  player:", player != nil)
+    print("  humanoid:", humanoid != nil)
+    print("  rootPart:", rootPart != nil)
+    print("  player.Character:", player and player.Character != nil)
     
     print("Settings Integration:")
     if settings then
@@ -1470,11 +1469,11 @@ function Movement.debug()
     end
     
     print("UI Elements:")
-    print("  flyJoystickFrame:", flyJoystickFrame ~= nil)
-    print("  flyUpButton:", flyUpButton ~= nil)
-    print("  flyDownButton:", flyDownButton ~= nil)
-    print("  rewindButton:", rewindButton ~= nil)
-    print("  boostButton:", boostButton ~= nil)
+    print("  flyJoystickFrame:", flyJoystickFrame != nil)
+    print("  flyUpButton:", flyUpButton != nil)
+    print("  flyDownButton:", flyDownButton != nil)
+    print("  rewindButton:", rewindButton != nil)
+    print("  boostButton:", boostButton != nil)
     
     print("Active Connections:")
     local activeConnections = 0
