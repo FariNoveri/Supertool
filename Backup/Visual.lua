@@ -245,14 +245,13 @@ local function handleJoystickInput(input, processed)
     return Vector2.new(0, 0)
 end
 
--- FIXED: Function to hide all nicknames (including player's own)
+-- FIXED: Hide All Nicknames - Hides all nicknames except player's own
 local function toggleHideAllNicknames(enabled)
     Visual.hideAllNicknames = enabled
     print("Hide All Nicknames:", enabled)
     
-    -- Hide all players' nicknames including your own
     for _, targetPlayer in pairs(Players:GetPlayers()) do
-        if targetPlayer.Character then
+        if targetPlayer ~= player and targetPlayer.Character then
             local head = targetPlayer.Character:FindFirstChild("Head")
             if head then
                 local billboard = head:FindFirstChildOfClass("BillboardGui")
@@ -264,7 +263,7 @@ local function toggleHideAllNicknames(enabled)
     end
 end
 
--- Function to hide only the player's nickname
+-- FIXED: Hide Own Nickname - Hides only the player's nickname
 local function toggleHideOwnNickname(enabled)
     Visual.hideOwnNickname = enabled
     print("Hide Own Nickname:", enabled)
@@ -281,7 +280,7 @@ local function toggleHideOwnNickname(enabled)
     end
 end
 
--- FIXED: NoClip Camera - Camera passes through walls without collision detection
+-- FIXED: NoClipCamera - Camera passes through objects, moves in look direction
 local function toggleNoClipCamera(enabled)
     Visual.noClipCameraEnabled = enabled
     print("NoClipCamera:", enabled)
@@ -291,32 +290,26 @@ local function toggleNoClipCamera(enabled)
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     
     if enabled then
-        -- Ensure Freecam is disabled to avoid conflicts
         if Visual.freecamEnabled then
             Visual.toggleFreecam(false)
         end
         
-        -- Store original camera settings
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
         
-        -- Set camera to scriptable mode for full control
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
         
-        -- Initialize camera position
         if rootPart then
-            Visual.noClipCameraCFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 10), rootPart.Position)
+            Visual.noClipCameraCFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 0))
         else
             Visual.noClipCameraCFrame = camera.CFrame
         end
         
-        -- Show joystick for mobile
         if joystickFrame then
             joystickFrame.Visible = true
         end
         
-        -- Main no-clip camera loop - NO COLLISION DETECTION
         if Visual.noClipCameraConnection then
             Visual.noClipCameraConnection:Disconnect()
         end
@@ -326,25 +319,43 @@ local function toggleNoClipCamera(enabled)
                 local currentCFrame = Visual.noClipCameraCFrame or camera.CFrame
                 local moveSpeed = freecamSpeed * deltaTime
                 
-                -- Calculate movement directions
                 local forwardVector = currentCFrame.LookVector
                 local rightVector = currentCFrame.RightVector
+                local upVector = currentCFrame.UpVector
                 
-                -- Apply joystick input for movement
-                local horizontalMovement = rightVector * Visual.joystickDelta.X * moveSpeed
-                local verticalMovement = forwardVector * -Visual.joystickDelta.Y * moveSpeed
+                local movement = Vector3.new(0, 0, 0)
                 
-                -- Update camera position WITHOUT any collision checks - passes through everything
-                local newPosition = currentCFrame.Position + horizontalMovement + verticalMovement
-                Visual.noClipCameraCFrame = CFrame.lookAt(newPosition, newPosition + currentCFrame.LookVector, currentCFrame.UpVector)
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    movement = movement + forwardVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    movement = movement - forwardVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    movement = movement - rightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    movement = movement + rightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+                    movement = movement + upVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+                    movement = movement - upVector
+                end
+                
+                movement = movement + (rightVector * Visual.joystickDelta.X + forwardVector * -Visual.joystickDelta.Y)
+                
+                if movement.Magnitude > 0 then
+                    movement = movement.Unit * moveSpeed
+                    Visual.noClipCameraCFrame = currentCFrame + movement
+                end
+                
                 camera.CFrame = Visual.noClipCameraCFrame
-                
-                -- Force camera to stay in scriptable mode (no collision)
                 camera.CameraType = Enum.CameraType.Scriptable
             end
         end)
         
-        -- Set up touch input
         if not connections.touchInput then
             connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
                 if input.UserInputType == Enum.UserInputType.Touch then
@@ -370,19 +381,16 @@ local function toggleNoClipCamera(enabled)
         end
         
     else
-        -- Disable no-clip camera
         if Visual.noClipCameraConnection then
             Visual.noClipCameraConnection:Disconnect()
             Visual.noClipCameraConnection = nil
         end
         
-        -- Hide joystick
         if joystickFrame then
             joystickFrame.Visible = false
             joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
         end
         
-        -- Restore original camera settings
         local camera = Workspace.CurrentCamera
         if Visual.originalCameraType then
             camera.CameraType = Visual.originalCameraType
@@ -399,7 +407,6 @@ local function toggleNoClipCamera(enabled)
             end
         end
         
-        -- Clear no-clip camera state
         Visual.noClipCameraCFrame = nil
         Visual.joystickDelta = Vector2.new(0, 0)
     end
@@ -443,7 +450,6 @@ local function toggleESP(enabled)
             local highlight = Instance.new("Highlight")
             highlight.Name = "ESPHighlight"
             
-            -- Set color based on health
             local healthColor = getHealthColor(targetPlayer)
             highlight.FillColor = healthColor
             highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
@@ -455,14 +461,12 @@ local function toggleESP(enabled)
             espHighlights[targetPlayer] = highlight
         end
         
-        -- Create highlights for existing players
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player and otherPlayer.Character then
                 createESPForCharacter(otherPlayer.Character, otherPlayer)
             end
         end
         
-        -- Update ESP colors based on health continuously
         if connections.espHealthUpdate then
             connections.espHealthUpdate:Disconnect()
         end
@@ -477,7 +481,6 @@ local function toggleESP(enabled)
             end
         end)
         
-        -- Handle new players joining
         if connections.espPlayerAdded then
             connections.espPlayerAdded:Disconnect()
         end
@@ -492,7 +495,6 @@ local function toggleESP(enabled)
             end
         end)
         
-        -- Handle players leaving
         if connections.espPlayerLeaving then
             connections.espPlayerLeaving:Disconnect()
         end
@@ -503,7 +505,6 @@ local function toggleESP(enabled)
             end
         end)
         
-        -- Handle character respawning
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player then
                 if connections["espCharAdded" .. otherPlayer.UserId] then
@@ -529,7 +530,6 @@ local function toggleESP(enabled)
             end
         end
         
-        -- Backup check for missed characters
         if connections.espBackupCheck then
             connections.espBackupCheck:Disconnect()
         end
@@ -546,7 +546,6 @@ local function toggleESP(enabled)
         end)
         
     else
-        -- Clean up connections
         if connections.espHealthUpdate then
             connections.espHealthUpdate:Disconnect()
             connections.espHealthUpdate = nil
@@ -580,19 +579,17 @@ local function toggleESP(enabled)
     end
 end
 
--- FIXED: Freecam - Character stays still, camera moves smoothly with proper mobile support
+-- FIXED: Freecam - Smooth movement, character stays still
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
     
     if enabled then
-        -- Ensure NoClipCamera is disabled to avoid conflicts
         if Visual.noClipCameraEnabled then
             toggleNoClipCamera(false)
         end
         
         local camera = Workspace.CurrentCamera
-        
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
@@ -603,7 +600,6 @@ local function toggleFreecam(enabled)
             return
         end
         
-        -- Store original values
         Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
         Visual.originalJumpPower = currentHumanoid.JumpPower
         Visual.originalJumpHeight = currentHumanoid.JumpHeight
@@ -611,7 +607,6 @@ local function toggleFreecam(enabled)
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
         
-        -- Freeze character completely
         currentHumanoid.PlatformStand = true
         currentHumanoid.WalkSpeed = 0
         currentHumanoid.JumpPower = 0
@@ -620,21 +615,17 @@ local function toggleFreecam(enabled)
         currentRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         currentRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
         
-        -- Set camera to scriptable mode
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
         
-        -- Store initial camera position
         Visual.freecamCFrame = camera.CFrame
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
         
-        -- Show joystick for mobile
         if joystickFrame then
             joystickFrame.Visible = true
         end
         
-        -- Main freecam loop - FIXED for mobile
         if Visual.freecamConnection then
             Visual.freecamConnection:Disconnect()
         end
@@ -645,7 +636,6 @@ local function toggleFreecam(enabled)
                 local hum = char and char:FindFirstChild("Humanoid")
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 
-                -- Keep character frozen in place
                 if hum and root and Visual.originalPosition then
                     hum.PlatformStand = true
                     hum.WalkSpeed = 0
@@ -657,34 +647,47 @@ local function toggleFreecam(enabled)
                     root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
                 end
                 
-                -- Handle camera movement - FIXED for mobile
                 local camera = Workspace.CurrentCamera
                 local currentCFrame = Visual.freecamCFrame or camera.CFrame
+                local moveSpeed = freecamSpeed * deltaTime
                 
-                -- FIXED: Camera movement based on joystick input
-                if Visual.joystickDelta.Magnitude > 0.05 then
-                    local moveSpeed = freecamSpeed * deltaTime * 2 -- Increased speed for mobile
-                    
-                    -- Calculate movement directions relative to camera
-                    local forwardVector = currentCFrame.LookVector
-                    local rightVector = currentCFrame.RightVector
-                    
-                    -- Apply movement based on joystick delta
-                    local horizontalMovement = rightVector * Visual.joystickDelta.X * moveSpeed
-                    local forwardMovement = forwardVector * -Visual.joystickDelta.Y * moveSpeed
-                    
-                    -- Update camera position
-                    local newPosition = currentCFrame.Position + horizontalMovement + forwardMovement
-                    Visual.freecamCFrame = CFrame.lookAt(newPosition, newPosition + currentCFrame.LookVector, currentCFrame.UpVector)
+                local forwardVector = currentCFrame.LookVector
+                local rightVector = currentCFrame.RightVector
+                local upVector = currentCFrame.UpVector
+                
+                local movement = Vector3.new(0, 0, 0)
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    movement = movement + forwardVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    movement = movement - forwardVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    movement = movement - rightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    movement = movement + rightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+                    movement = movement + upVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+                    movement = movement - upVector
                 end
                 
-                -- Apply camera position
+                movement = movement + (rightVector * Visual.joystickDelta.X + forwardVector * -Visual.joystickDelta.Y)
+                
+                if movement.Magnitude > 0 then
+                    movement = movement.Unit * moveSpeed
+                    Visual.freecamCFrame = currentCFrame + movement
+                end
+                
                 camera.CFrame = Visual.freecamCFrame
                 camera.CameraType = Enum.CameraType.Scriptable
             end
         end)
         
-        -- Handle touch input for joystick - FIXED
         if not connections.touchInput then
             connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
                 if input.UserInputType == Enum.UserInputType.Touch then
@@ -710,19 +713,16 @@ local function toggleFreecam(enabled)
         end
         
     else
-        -- Disable freecam
         if Visual.freecamConnection then
             Visual.freecamConnection:Disconnect()
             Visual.freecamConnection = nil
         end
         
-        -- Hide joystick
         if joystickFrame then
             joystickFrame.Visible = false
             joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
         end
         
-        -- Restore camera
         local camera = Workspace.CurrentCamera
         if Visual.originalCameraType then
             camera.CameraType = Visual.originalCameraType
@@ -740,7 +740,6 @@ local function toggleFreecam(enabled)
             camera.CameraSubject = currentHumanoid
         end
         
-        -- Restore character movement
         if currentHumanoid and currentRootPart then
             currentHumanoid.PlatformStand = false
             currentRootPart.Anchored = false
@@ -749,12 +748,10 @@ local function toggleFreecam(enabled)
             currentHumanoid.JumpPower = Visual.originalJumpPower or ((settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50)
             currentHumanoid.JumpHeight = Visual.originalJumpHeight or (settings.JumpHeight and settings.JumpHeight.value) or 7.2
             
-            -- Reset camera to normal position
             task.wait(0.1)
             camera.CFrame = CFrame.lookAt(currentRootPart.Position + Vector3.new(0, 2, 10), currentRootPart.Position)
         end
         
-        -- Clear freecam state
         Visual.freecamCFrame = nil
         Visual.joystickDelta = Vector2.new(0, 0)
     end
@@ -867,7 +864,7 @@ local function toggleFullbright(enabled)
     end
 end
 
--- FIXED: Flashlight - No longer flies around, stays attached properly
+-- Flashlight
 local function toggleFlashlight(enabled)
     Visual.flashlightEnabled = enabled
     print("Flashlight:", enabled)
@@ -915,14 +912,12 @@ local function toggleFlashlight(enabled)
             connections.flashlight:Disconnect()
         end
         
-        -- FIXED: Flashlight no longer moves character's head erratically
         connections.flashlight = RunService.Heartbeat:Connect(function()
             if Visual.flashlightEnabled then
                 local character = player.Character
                 local head = character and character:FindFirstChild("Head")
                 
                 if head then
-                    -- Check if flashlights still exist and are attached
                     if not flashlight or flashlight.Parent ~= head then
                         setupFlashlight()
                     end
@@ -933,9 +928,6 @@ local function toggleFlashlight(enabled)
                     if pointLight then
                         pointLight.Enabled = true
                     end
-                    
-                    -- REMOVED: The problematic head rotation code that was causing the flying/erratic movement
-                    -- The flashlight now simply follows the head naturally without forced rotation
                 end
             end
         end)
@@ -973,7 +965,7 @@ local function toggleFlashlight(enabled)
     end
 end
 
--- FIXED: Low Detail Mode - Now properly removes fog and shaders
+-- FIXED: Low Detail Mode - Destroys trees, leaves, grass, clears sky, removes shaders and lights
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
@@ -981,12 +973,21 @@ local function toggleLowDetail(enabled)
     storeOriginalLightingSettings()
     
     if enabled then
-        -- FIXED: Remove fog completely and disable shaders
+        -- Remove fog completely
         Lighting.GlobalShadows = false
         Lighting.Brightness = 2
-        Lighting.FogEnd = 100000 -- Remove fog by setting it very far
-        Lighting.FogStart = 100000 -- Remove fog completely
-        Lighting.FogColor = Color3.fromRGB(255, 255, 255) -- Make fog invisible
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 100000
+        Lighting.FogColor = Color3.fromRGB(255, 255, 255)
+        
+        -- Clear sky
+        pcall(function()
+            local sky = Lighting:FindFirstChildOfClass("Sky")
+            if sky then
+                foliageStates.sky = { Parent = sky.Parent }
+                sky:Destroy()
+            end
+        end)
         
         -- Remove all post-processing effects (shaders)
         pcall(function()
@@ -1010,7 +1011,7 @@ local function toggleLowDetail(enabled)
             gameSettings.RenderDistance = 50
         end)
         
-        -- Remove terrain decorations (grass, etc.)
+        -- Remove terrain decorations (grass)
         pcall(function()
             local terrain = Workspace.Terrain
             if not foliageStates.terrainSettings then
@@ -1028,11 +1029,9 @@ local function toggleLowDetail(enabled)
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
             terrain.WaterTransparency = 0.9
-            
-            print("Terrain decorations (grass) disabled, fog removed, shaders disabled")
         end)
         
-        -- Optimize materials and remove heavy effects
+        -- Destroy trees, leaves, grass, and all lights except player's flashlight
         spawn(function()
             local processCount = 0
             local pixelMaterial = Enum.Material.SmoothPlastic
@@ -1044,93 +1043,62 @@ local function toggleLowDetail(enabled)
                     pcall(function()
                         local name = obj.Name:lower()
                         local parent = obj.Parent and obj.Parent.Name:lower() or ""
-                        local isGrassOrFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
-                                               name:find("grass") or name:find("tree") or name:find("plant") or 
-                                               name:find("flower") or name:find("bush") or name:find("shrub") or
-                                               name:find("fern") or name:find("moss") or name:find("vine") or
-                                               parent:find("grass") or parent:find("foliage") or parent:find("decoration") or
-                                               obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature") or
-                                               obj:GetAttribute("IsDecoration")
+                        local isFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
+                                         name:find("grass") or name:find("tree") or name:find("plant") or 
+                                         name:find("flower") or name:find("bush") or name:find("shrub") or
+                                         name:find("fern") or name:find("moss") or name:find("vine") or
+                                         parent:find("grass") or parent:find("foliage") or parent:find("decoration") or
+                                         obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature") or
+                                         obj:GetAttribute("IsDecoration")
                         
-                        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
-                           obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                        if isFoliage and (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Model")) then
+                            foliageStates[obj] = { Parent = obj.Parent }
+                            obj:Destroy()
+                        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                               obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                             foliageStates[obj] = { Enabled = obj.Enabled }
                             obj.Enabled = false
-                            
                         elseif obj:IsA("Decal") or obj:IsA("Texture") then
                             foliageStates[obj] = { Transparency = obj.Transparency, Texture = obj.Texture }
                             obj.Transparency = 1
                             obj.Texture = ""
-                            
                         elseif obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
                             foliageStates[obj] = { Enabled = obj.Enabled }
                             obj.Enabled = false
-                            
                         elseif obj:IsA("BasePart") then
-                            if isGrassOrFoliage then
-                                foliageStates[obj] = { 
-                                    Transparency = obj.Transparency,
-                                    Material = obj.Material,
-                                    Color = obj.Color,
-                                    CanCollide = obj.CanCollide,
-                                    Anchored = obj.Anchored
-                                }
-                                obj.Transparency = 1
-                                obj.CanCollide = false
-                                obj.Anchored = true
-                            else
-                                foliageStates[obj] = { 
-                                    Material = obj.Material, 
-                                    Reflectance = obj.Reflectance, 
-                                    CastShadow = obj.CastShadow,
-                                    Color = obj.Color
-                                }
-                                obj.Material = pixelMaterial
-                                obj.Reflectance = 0
-                                obj.CastShadow = false
-                                local r = math.floor(obj.Color.R * 4) / 4
-                                local g = math.floor(obj.Color.G * 4) / 4
-                                local b = math.floor(obj.Color.B * 4) / 4
-                                obj.Color = Color3.new(r, g, b)
-                            end
-                            
+                            foliageStates[obj] = { 
+                                Material = obj.Material, 
+                                Reflectance = obj.Reflectance, 
+                                CastShadow = obj.CastShadow,
+                                Color = obj.Color
+                            }
+                            obj.Material = pixelMaterial
+                            obj.Reflectance = 0
+                            obj.CastShadow = false
+                            local r = math.floor(obj.Color.R * 4) / 4
+                            local g = math.floor(obj.Color.G * 4) / 4
+                            local b = math.floor(obj.Color.B * 4) / 4
+                            obj.Color = Color3.new(r, g, b)
                         elseif obj:IsA("MeshPart") then
-                            if isGrassOrFoliage then
-                                foliageStates[obj] = { 
-                                    Transparency = obj.Transparency,
-                                    TextureID = obj.TextureID,
-                                    Material = obj.Material,
-                                    CanCollide = obj.CanCollide,
-                                    Anchored = obj.Anchored
-                                }
-                                obj.Transparency = 1
-                                obj.TextureID = ""
-                                obj.CanCollide = false
-                                obj.Anchored = true
-                            else
-                                foliageStates[obj] = { 
-                                    TextureID = obj.TextureID, 
-                                    Material = obj.Material,
-                                    Color = obj.Color
-                                }
-                                obj.TextureID = ""
-                                obj.Material = pixelMaterial
-                                local r = math.floor(obj.Color.R * 4) / 4
-                                local g = math.floor(obj.Color.G * 4) / 4
-                                local b = math.floor(obj.Color.B * 4) / 4
-                                obj.Color = Color3.new(r, g, b)
-                            end
-                            
+                            foliageStates[obj] = { 
+                                TextureID = obj.TextureID, 
+                                Material = obj.Material,
+                                Color = obj.Color
+                            }
+                            obj.TextureID = ""
+                            obj.Material = pixelMaterial
+                            local r = math.floor(obj.Color.R * 4) / 4
+                            local g = math.floor(obj.Color.G * 4) / 4
+                            local b = math.floor(obj.Color.B * 4) / 4
+                            obj.Color = Color3.new(r, g, b)
                         elseif obj:IsA("SpecialMesh") then
                             foliageStates[obj] = { TextureId = obj.TextureId }
                             obj.TextureId = ""
-                            
                         elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
                             if not (obj.Name == "Flashlight" or obj.Name == "FlashlightPoint") then
                                 foliageStates[obj] = { Enabled = obj.Enabled, Brightness = obj.Brightness }
-                                obj.Brightness = obj.Brightness * 0.3
+                                obj.Enabled = false
                             end
-                            
                         elseif obj:IsA("Sound") then
                             foliageStates[obj] = { Volume = obj.Volume }
                             obj.Volume = obj.Volume * 0.5
@@ -1161,10 +1129,14 @@ local function toggleLowDetail(enabled)
                     if terrain.Decoration == true then
                         terrain.Decoration = false
                     end
-                    -- Keep fog disabled
                     if Lighting.FogEnd < 50000 then
                         Lighting.FogEnd = 100000
                         Lighting.FogStart = 100000
+                    end
+                    local sky = Lighting:FindFirstChildOfClass("Sky")
+                    if sky then
+                        foliageStates.sky = { Parent = sky.Parent }
+                        sky:Destroy()
                     end
                 end)
             end
@@ -1210,59 +1182,33 @@ local function toggleLowDetail(enabled)
         spawn(function()
             local restoreCount = 0
             for obj, state in pairs(foliageStates) do
-                if obj ~= "terrainSettings" then
+                if obj ~= "terrainSettings" and obj ~= "sky" then
                     pcall(function()
                         if obj and obj.Parent then
                             if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
                                obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                                 obj.Enabled = state.Enabled ~= false
-                                
                             elseif obj:IsA("Decal") or obj:IsA("Texture") then
                                 obj.Transparency = state.Transparency or 0
                                 obj.Texture = state.Texture or ""
-                                
                             elseif obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
                                 obj.Enabled = state.Enabled ~= false
-                                
                             elseif obj:IsA("BasePart") then
                                 obj.Material = state.Material or Enum.Material.Plastic
                                 obj.Reflectance = state.Reflectance or 0
                                 obj.CastShadow = state.CastShadow ~= false
                                 obj.Color = state.Color or Color3.new(1, 1, 1)
-                                if state.Transparency then
-                                    obj.Transparency = state.Transparency
-                                end
-                                if state.CanCollide ~= nil then
-                                    obj.CanCollide = state.CanCollide
-                                end
-                                if state.Anchored ~= nil then
-                                    obj.Anchored = state.Anchored
-                                end
-                                
                             elseif obj:IsA("MeshPart") then
                                 obj.TextureID = state.TextureID or ""
                                 obj.Material = state.Material or Enum.Material.Plastic
                                 obj.Color = state.Color or Color3.new(1, 1, 1)
-                                if state.Transparency then
-                                    obj.Transparency = state.Transparency
-                                end
-                                if state.CanCollide ~= nil then
-                                    obj.CanCollide = state.CanCollide
-                                end
-                                if state.Anchored ~= nil then
-                                    obj.Anchored = state.Anchored
-                                end
-                                
                             elseif obj:IsA("SpecialMesh") then
                                 obj.TextureId = state.TextureId or ""
-                                
                             elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
                                 obj.Enabled = state.Enabled ~= false
                                 obj.Brightness = state.Brightness or 1
-                                
                             elseif obj:IsA("Sound") then
                                 obj.Volume = state.Volume or 0.5
-                                
                             elseif obj:IsA("PostEffect") then
                                 obj.Enabled = state.Enabled ~= false
                             end
@@ -1287,7 +1233,7 @@ local function toggleLowDetail(enabled)
     end
 end
 
--- NEW: Ultra Low Detail Mode - Makes map textures look unrendered (pixel-like)
+-- FIXED: Ultra Low Detail Mode - Makes objects invisible but not destroyed
 local function toggleUltraLowDetail(enabled)
     Visual.ultraLowDetailEnabled = enabled
     print("Ultra Low Detail Mode:", enabled)
@@ -1295,16 +1241,13 @@ local function toggleUltraLowDetail(enabled)
     storeOriginalLightingSettings()
     
     if enabled then
-        -- First apply regular low detail mode optimizations
         toggleLowDetail(true)
         
-        -- Additional ultra-low optimizations
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
             renderSettings.QualityLevel = Enum.QualityLevel.Level01
         end)
         
-        -- Make map textures look unrendered/pixelated (excluding character clothing)
         spawn(function()
             local processCount = 0
             
@@ -1315,8 +1258,16 @@ local function toggleUltraLowDetail(enabled)
                     pcall(function()
                         local name = obj.Name:lower()
                         local parent = obj.Parent and obj.Parent.Name:lower() or ""
+                        local isEnvironment = name:find("terrain") or name:find("tree") or name:find("wood") or
+                                            name:find("leaf") or name:find("leaves") or name:find("foliage") or 
+                                            name:find("grass") or name:find("plant") or name:find("flower") or 
+                                            name:find("bush") or name:find("shrub") or name:find("fern") or 
+                                            name:find("moss") or name:find("vine") or
+                                            parent:find("terrain") or parent:find("grass") or parent:find("foliage") or 
+                                            parent:find("decoration") or
+                                            obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature") or
+                                            obj:GetAttribute("IsDecoration")
                         
-                        -- Check if this is character clothing/accessories (exclude from ultra low detail)
                         local isCharacterPart = false
                         local currentParent = obj.Parent
                         while currentParent do
@@ -1327,51 +1278,34 @@ local function toggleUltraLowDetail(enabled)
                             currentParent = currentParent.Parent
                         end
                         
-                        -- Only apply ultra low detail to map objects, not character parts
-                        if not isCharacterPart then
-                            if obj:IsA("Decal") or obj:IsA("Texture") then
+                        if isEnvironment and not isCharacterPart then
+                            if obj:IsA("BasePart") or obj:IsA("MeshPart") then
+                                foliageStates[obj] = { 
+                                    Transparency = obj.Transparency,
+                                    Material = obj.Material,
+                                    Color = obj.Color,
+                                    CanCollide = obj.CanCollide,
+                                    Anchored = obj.Anchored,
+                                    TextureID = obj:IsA("MeshPart") and obj.TextureID or nil
+                                }
+                                obj.Transparency = 1
+                                obj.CanCollide = false
+                                obj.Material = Enum.Material.SmoothPlastic
+                                obj.Color = Color3.fromRGB(128, 128, 128)
+                                if obj:IsA("MeshPart") then
+                                    obj.TextureID = ""
+                                end
+                            elseif obj:IsA("Decal") or obj:IsA("Texture") then
                                 foliageStates[obj] = { 
                                     Transparency = obj.Transparency, 
                                     Texture = obj.Texture,
                                     Color3 = obj.Color3
                                 }
-                                obj.Transparency = 0.8 -- Make textures very faded
-                                obj.Texture = "" -- Remove texture completely
-                                obj.Color3 = Color3.fromRGB(128, 128, 128) -- Gray color
-                                
-                            elseif obj:IsA("MeshPart") then
-                                foliageStates[obj] = { 
-                                    TextureID = obj.TextureID, 
-                                    Material = obj.Material,
-                                    Color = obj.Color
-                                }
-                                obj.TextureID = "" -- Remove mesh texture
-                                obj.Material = Enum.Material.SmoothPlastic
-                                -- Make colors very pixelated (2-bit color depth)
-                                local r = math.floor(obj.Color.R * 2) / 2
-                                local g = math.floor(obj.Color.G * 2) / 2  
-                                local b = math.floor(obj.Color.B * 2) / 2
-                                obj.Color = Color3.new(r, g, b)
-                                
-                            elseif obj:IsA("BasePart") then
-                                foliageStates[obj] = { 
-                                    Material = obj.Material, 
-                                    Reflectance = obj.Reflectance, 
-                                    CastShadow = obj.CastShadow,
-                                    Color = obj.Color
-                                }
-                                obj.Material = Enum.Material.SmoothPlastic
-                                obj.Reflectance = 0
-                                obj.CastShadow = false
-                                -- Ultra pixelated colors (2-bit depth)
-                                local r = math.floor(obj.Color.R * 2) / 2
-                                local g = math.floor(obj.Color.G * 2) / 2
-                                local b = math.floor(obj.Color.B * 2) / 2
-                                obj.Color = Color3.new(r, g, b)
-                                
+                                obj.Transparency = 1
+                                obj.Texture = ""
                             elseif obj:IsA("SpecialMesh") then
                                 foliageStates[obj] = { TextureId = obj.TextureId }
-                                obj.TextureId = "" -- Remove all mesh textures
+                                obj.TextureId = ""
                             end
                         end
                     end)
@@ -1382,10 +1316,9 @@ local function toggleUltraLowDetail(enabled)
                     end
                 end
             end
-            print("Ultra Low Detail applied - Map textures now look unrendered")
+            print("Ultra Low Detail applied - Environment objects invisible but not destroyed")
         end)
         
-        -- Monitor to maintain ultra low settings
         if connections.ultraLowDetailMonitor then
             connections.ultraLowDetailMonitor:Disconnect()
         end
@@ -1400,6 +1333,11 @@ local function toggleUltraLowDetail(enabled)
                         Lighting.FogEnd = 100000
                         Lighting.FogStart = 100000
                     end
+                    local sky = Lighting:FindFirstChildOfClass("Sky")
+                    if sky then
+                        foliageStates.sky = { Parent = sky.Parent }
+                        sky:Destroy()
+                    end
                 end)
             end
         end)
@@ -1410,29 +1348,24 @@ local function toggleUltraLowDetail(enabled)
             connections.ultraLowDetailMonitor = nil
         end
         
-        -- Restore all objects
         spawn(function()
             local restoreCount = 0
             for obj, state in pairs(foliageStates) do
-                if obj ~= "terrainSettings" then
+                if obj ~= "terrainSettings" and obj ~= "sky" then
                     pcall(function()
                         if obj and obj.Parent then
-                            if obj:IsA("Decal") or obj:IsA("Texture") then
+                            if obj:IsA("BasePart") or obj:IsA("MeshPart") then
+                                obj.Transparency = state.Transparency or 0
+                                obj.Material = state.Material or Enum.Material.Plastic
+                                obj.Color = state.Color or Color3.new(1, 1, 1)
+                                obj.CanCollide = state.CanCollide ~= false
+                                if obj:IsA("MeshPart") then
+                                    obj.TextureID = state.TextureID or ""
+                                end
+                            elseif obj:IsA("Decal") or obj:IsA("Texture") then
                                 obj.Transparency = state.Transparency or 0
                                 obj.Texture = state.Texture or ""
                                 obj.Color3 = state.Color3 or Color3.fromRGB(255, 255, 255)
-                                
-                            elseif obj:IsA("MeshPart") then
-                                obj.TextureID = state.TextureID or ""
-                                obj.Material = state.Material or Enum.Material.Plastic
-                                obj.Color = state.Color or Color3.new(1, 1, 1)
-                                
-                            elseif obj:IsA("BasePart") then
-                                obj.Material = state.Material or Enum.Material.Plastic
-                                obj.Reflectance = state.Reflectance or 0
-                                obj.CastShadow = state.CastShadow ~= false
-                                obj.Color = state.Color or Color3.new(1, 1, 1)
-                                
                             elseif obj:IsA("SpecialMesh") then
                                 obj.TextureId = state.TextureId or ""
                             end
@@ -1447,7 +1380,6 @@ local function toggleUltraLowDetail(enabled)
             end
         end)
         
-        -- Also disable regular low detail mode
         toggleLowDetail(false)
     end
 end
@@ -1460,18 +1392,15 @@ function Visual.loadVisualButtons(createToggleButton)
         return
     end
     
-    -- Core visual features
     createToggleButton("Freecam", toggleFreecam)
     createToggleButton("NoClipCamera", toggleNoClipCamera)
     createToggleButton("Fullbright", toggleFullbright)
     createToggleButton("Flashlight", toggleFlashlight)
     createToggleButton("Low Detail Mode", toggleLowDetail)
-    createToggleButton("Ultra Low Detail Mode", toggleUltraLowDetail) -- NEW FEATURE
+    createToggleButton("Ultra Low Detail Mode", toggleUltraLowDetail)
     createToggleButton("ESP", toggleESP)
     createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
     createToggleButton("Hide Own Nickname", toggleHideOwnNickname)
-    
-    -- Time mode features
     createToggleButton("Morning Mode", toggleMorning)
     createToggleButton("Day Mode", toggleDay)
     createToggleButton("Evening Mode", toggleEvening)
@@ -1560,7 +1489,6 @@ function Visual.init(deps)
     player = deps.player
     Visual.character = deps.character or (player and player.Character)
     
-    -- Initialize states
     Visual.freecamEnabled = false
     Visual.freecamConnection = nil
     Visual.noClipCameraEnabled = false
@@ -1578,10 +1506,8 @@ function Visual.init(deps)
     foliageStates = {}
     processedObjects = {}
     
-    -- Store original lighting settings immediately
     storeOriginalLightingSettings()
     
-    -- Create joystick
     createJoystick()
     
     print("Visual module initialized successfully")
@@ -1596,7 +1522,6 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     
     print("Updating Visual module references for respawn")
     
-    -- Store current states
     local wasFreecamEnabled = Visual.freecamEnabled
     local wasNoClipCameraEnabled = Visual.noClipCameraEnabled
     local wasFullbrightEnabled = Visual.fullbrightEnabled
@@ -1608,7 +1533,6 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     local wasHideOwnNickname = Visual.hideOwnNickname
     local currentTimeMode = Visual.currentTimeMode
     
-    -- Temporarily disable features that need updating
     if wasFreecamEnabled then
         toggleFreecam(false)
     end
@@ -1619,10 +1543,8 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         toggleFlashlight(false)
     end
     
-    -- Wait a moment for character to fully load
     task.wait(0.5)
     
-    -- Re-enable features that were active
     if wasFreecamEnabled then
         print("Re-enabling Freecam after respawn")
         toggleFreecam(true)
