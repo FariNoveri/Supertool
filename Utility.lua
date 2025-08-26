@@ -1,4 +1,4 @@
--- Utility-related features for MinimalHackGUI by Fari Noveri
+-- Utility-old-related features for MinimalHackGUI by Fari Noveri
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
