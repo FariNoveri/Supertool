@@ -10,6 +10,7 @@ local Utility = {}
 local macroRecording = false
 local macroPlaying = false
 local autoPlaying = false
+local autoRespawning = false
 local currentMacro = {}
 local savedMacros = {}
 local macroFrameVisible = false
@@ -20,18 +21,25 @@ local currentMacroName = nil
 local recordingPaused = false
 local lastFrameTime = 0
 local playbackPaused = false
+local pausedIndex = nil
+local pausedTime = nil
+local pausedPosition = nil
+local pausePart = nil
 local pauseResumeTime = 5 -- Seconds to wait before resuming macro after death
+local pathVisuals = {}
+local PathVisualsFolder
+local UserInputService = game:GetService("UserInputService")
 
 -- File System Integration for KRNL
 local HttpService = game:GetService("HttpService")
-local MACRO_FOLDER_PATH = "Supertool/Macro/"
+local PATH_FOLDER_PATH = "Supertool/path/"
 
 -- Helper function untuk sanitize filename
 local function sanitizeFileName(name)
     local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
     sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
     if sanitized == "" then
-        sanitized = "unnamed_macro"
+        sanitized = "unnamed_path"
     end
     return sanitized
 end
@@ -145,12 +153,33 @@ local function validateFrame(frame)
     return validFrame
 end
 
+local function generateWaypoints(frames)
+    local wp = {}
+    local accDist = 0
+    local lastPos = nil
+    for _, frame in ipairs(frames) do
+        local pos = frame.cframe.Position
+        if lastPos then
+            local d = (pos - lastPos).Magnitude
+            accDist = accDist + d
+            if accDist >= 5 then
+                table.insert(wp, {x = pos.X, y = pos.Y, z = pos.Z})
+                accDist = accDist % 5
+            end
+        else
+            table.insert(wp, {x = pos.X, y = pos.Y, z = pos.Z})
+        end
+        lastPos = pos
+    end
+    return wp
+end
+
 -- Robust macro saving
 local function saveToJSONFile(macroName, macroData)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
-        local filePath = MACRO_FOLDER_PATH .. fileName
+        local filePath = PATH_FOLDER_PATH .. fileName
         
         if not macroData or not macroData.frames or type(macroData.frames) ~= "table" then
             warn("[SUPERTOOL] Invalid macro data for saving: " .. macroName)
@@ -190,6 +219,14 @@ local function saveToJSONFile(macroName, macroData)
             duration = serializedFrames[#serializedFrames].time
         }
         
+        if macroData.waypointPositions then
+            local swp = {}
+            for _, p in ipairs(macroData.waypointPositions) do
+                table.insert(swp, {x = p.X, y = p.Y, z = p.Z})
+            end
+            jsonData.waypoints = swp
+        end
+        
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
         
@@ -209,7 +246,7 @@ local function loadFromJSONFile(macroName)
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
-        local filePath = MACRO_FOLDER_PATH .. fileName
+        local filePath = PATH_FOLDER_PATH .. fileName
         
         if not isfile(filePath) then
             return nil
@@ -261,6 +298,14 @@ local function loadFromJSONFile(macroName)
             duration = validFrames[#validFrames].time
         }
         
+        if jsonData.waypoints then
+            local vwp = {}
+            for _, w in ipairs(jsonData.waypoints) do
+                table.insert(vwp, Vector3.new(w.x or 0, w.y or 0, w.z or 0))
+            end
+            macroData.waypointPositions = vwp
+        end
+        
         return macroData
     end)
     
@@ -279,7 +324,7 @@ local function deleteFromJSONFile(macroName)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
-        local filePath = MACRO_FOLDER_PATH .. fileName
+        local filePath = PATH_FOLDER_PATH .. fileName
         
         if isfile(filePath) then
             delfile(filePath)
@@ -327,14 +372,14 @@ end
 
 local function loadAllMacrosFromFolder()
     local success, result = pcall(function()
-        if not isfolder(MACRO_FOLDER_PATH) then
-            makefolder(MACRO_FOLDER_PATH)
-            print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
+        if not isfolder(PATH_FOLDER_PATH) then
+            makefolder(PATH_FOLDER_PATH)
+            print("[SUPERTOOL] Created path folder: " .. PATH_FOLDER_PATH)
             return {}
         end
         
         local loadedMacros = {}
-        local files = listfiles(MACRO_FOLDER_PATH)
+        local files = listfiles(PATH_FOLDER_PATH)
         local totalFiles = 0
         local loadedCount = 0
         local errorCount = 0
@@ -372,21 +417,21 @@ end
 
 -- Mock file system for backward compatibility
 local fileSystem = {
-    ["Supertool/Macro"] = {}
+    ["Supertool/path"] = {}
 }
 
 local function ensureFileSystem()
     if not fileSystem["Supertool"] then
         fileSystem["Supertool"] = {}
     end
-    if not fileSystem["Supertool/Macro"] then
-        fileSystem["Supertool/Macro"] = {}
+    if not fileSystem["Supertool/path"] then
+        fileSystem["Supertool/path"] = {}
     end
 end
 
 local function saveToFileSystem(macroName, macroData)
     ensureFileSystem()
-    fileSystem["Supertool/Macro"][macroName] = macroData
+    fileSystem["Supertool/path"][macroName] = macroData
     saveToJSONFile(macroName, macroData)
 end
 
@@ -397,14 +442,14 @@ local function loadFromFileSystem(macroName)
     end
     
     ensureFileSystem()
-    return fileSystem["Supertool/Macro"][macroName]
+    return fileSystem["Supertool/path"][macroName]
 end
 
 local function deleteFromFileSystem(macroName)
     ensureFileSystem()
     local memoryDeleted = false
-    if fileSystem["Supertool/Macro"][macroName] then
-        fileSystem["Supertool/Macro"][macroName] = nil
+    if fileSystem["Supertool/path"][macroName] then
+        fileSystem["Supertool/path"][macroName] = nil
         memoryDeleted = true
     end
     
@@ -417,9 +462,9 @@ local function renameInFileSystem(oldName, newName)
     ensureFileSystem()
     local memoryRenamed = false
     
-    if fileSystem["Supertool/Macro"][oldName] and newName ~= "" then
-        fileSystem["Supertool/Macro"][newName] = fileSystem["Supertool/Macro"][oldName]
-        fileSystem["Supertool/Macro"][oldName] = nil
+    if fileSystem["Supertool/path"][oldName] and newName ~= "" then
+        fileSystem["Supertool/path"][newName] = fileSystem["Supertool/path"][oldName]
+        fileSystem["Supertool/path"][oldName] = nil
         memoryRenamed = true
     end
     
@@ -436,7 +481,7 @@ local function syncMacrosFromJSON()
     for macroName, macroData in pairs(jsonMacros) do
         if macroData and macroData.frames and #macroData.frames > 0 then
             savedMacros[macroName] = macroData
-            fileSystem["Supertool/Macro"][macroName] = macroData
+            fileSystem["Supertool/path"][macroName] = macroData
             syncedCount = syncedCount + 1
         else
             warn("[SUPERTOOL] Skipped invalid macro during sync: " .. macroName)
@@ -445,6 +490,105 @@ local function syncMacrosFromJSON()
     
     print("[SUPERTOOL] Sync complete: " .. syncedCount .. " macros loaded from JSON files")
     return syncedCount
+end
+
+local function createPauseIndicator(position)
+    if pausePart then
+        pausePart:Destroy()
+    end
+    pausePart = Instance.new("Part")
+    pausePart.Anchored = true
+    pausePart.CanCollide = false
+    pausePart.Transparency = 1
+    pausePart.Position = position
+    pausePart.Parent = workspace
+    local bb = Instance.new("BillboardGui")
+    bb.Parent = pausePart
+    bb.Size = UDim2.new(0, 100, 0, 50)
+    bb.AlwaysOnTop = true
+    local text = Instance.new("TextLabel")
+    text.Parent = bb
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = "(paused here)"
+    text.TextColor3 = Color3.new(1, 1, 1)
+    text.TextSize = 20
+end
+
+local function drawPath(macroName)
+    local macro = savedMacros[macroName] or loadFromFileSystem(macroName)
+    if not macro or not macro.frames or #macro.frames == 0 then
+        return nil
+    end
+
+    if not macro.waypointPositions then
+        macro.waypointPositions = {}
+        local wp = generateWaypoints(macro.frames)
+        for _, w in ipairs(wp) do
+            table.insert(macro.waypointPositions, Vector3.new(w.x, w.y, w.z))
+        end
+        saveToFileSystem(macroName, macro)
+    end
+
+    local macroFolder = Instance.new("Folder")
+    macroFolder.Name = macroName
+    macroFolder.Parent = PathVisualsFolder
+
+    local lastPos = nil
+    local waypointIndex = 1
+
+    for i, frame in ipairs(macro.frames) do
+        local pos = frame.cframe.Position
+        if lastPos then
+            local dist = (pos - lastPos).Magnitude
+            local line = Instance.new("Part")
+            line.Anchored = true
+            line.CanCollide = false
+            line.Transparency = 0.5
+            line.Size = Vector3.new(0.2, 0.2, dist)
+            line.CFrame = CFrame.lookAt(lastPos, pos) * CFrame.new(0, 0, -dist / 2)
+            local color
+            if frame.state == Enum.HumanoidStateType.Running then
+                color = Color3.new(0, 1, 0) -- green
+            elseif frame.state == Enum.HumanoidStateType.Jumping then
+                color = Color3.new(1, 0, 0) -- red
+            elseif frame.state == Enum.HumanoidStateType.Freefall then
+                color = Color3.new(1, 1, 0) -- yellow
+            elseif frame.state == Enum.HumanoidStateType.Swimming then
+                color = Color3.new(0.5, 0, 1) -- purple
+            else
+                color = Color3.new(1, 1, 1) -- white
+            end
+            line.Color = color
+            line.Parent = macroFolder
+        end
+
+        if waypointIndex <= #macro.waypointPositions and (pos - macro.waypointPositions[waypointIndex]).Magnitude < 0.1 then
+            local sphere = Instance.new("Part")
+            sphere.Shape = Enum.PartType.Ball
+            sphere.Size = Vector3.new(1, 1, 1)
+            sphere.Anchored = true
+            sphere.CanCollide = false
+            sphere.Transparency = 0.3
+            sphere.Color = Color3.new(0, 0, 1) -- blue
+            sphere.Position = pos
+            sphere.Parent = macroFolder
+            waypointIndex = waypointIndex + 1
+        end
+
+        lastPos = pos
+    end
+
+    return macroFolder
+end
+
+local function togglePathVisual(macroName)
+    if pathVisuals[macroName] then
+        pathVisuals[macroName]:Destroy()
+        pathVisuals[macroName] = nil
+    else
+        pathVisuals[macroName] = drawPath(macroName)
+    end
 end
 
 -- Update macro status display
@@ -456,7 +600,8 @@ local function updateMacroStatus()
     elseif macroPlaying and currentMacroName then
         local macro = savedMacros[currentMacroName] or loadFromFileSystem(currentMacroName)
         local speed = macro and macro.speed or 1
-        MacroStatusLabel.Text = (playbackPaused and "Playback Paused: " or (autoPlaying and "Auto-Playing Macro: " or "Playing Macro: ")) .. currentMacroName .. " (Speed: " .. speed .. "x)"
+        local modeText = autoRespawning and "Auto-Respawning" or (autoPlaying and "Auto-Playing" or "Playing")
+        MacroStatusLabel.Text = (playbackPaused and "Paused: " or modeText .. ": ") .. currentMacroName .. " (Speed: " .. speed .. "x)"
         MacroStatusLabel.Visible = true
     else
         MacroStatusLabel.Visible = false
@@ -590,7 +735,15 @@ local function stopMacroPlayback()
     if not macroPlaying then return end
     macroPlaying = false
     autoPlaying = false
+    autoRespawning = false
     playbackPaused = false
+    pausedIndex = nil
+    pausedTime = nil
+    pausedPosition = nil
+    if pausePart then
+        pausePart:Destroy()
+        pausePart = nil
+    end
     if playbackConnection then
         playbackConnection:Disconnect()
         playbackConnection = nil
@@ -603,8 +756,10 @@ local function stopMacroPlayback()
     updateMacroStatus()
 end
 
-local function playMacro(macroName, autoPlay)
-    if macroRecording or macroPlaying then return end
+local function playMacro(macroName, autoPlay, respawn)
+    if macroRecording or macroPlaying then
+        stopMacroPlayback()
+    end
     
     if not player.Character or not player.Character:FindFirstChild("Humanoid") or not player.Character:FindFirstChild("HumanoidRootPart") then
         warn("[SUPERTOOL] Cannot play macro: Character not ready")
@@ -647,12 +802,13 @@ local function playMacro(macroName, autoPlay)
     
     macroPlaying = true
     autoPlaying = autoPlay or false
+    autoRespawning = respawn or false
     playbackPaused = false
     currentMacroName = macroName
     humanoid.WalkSpeed = 0
     updateMacroStatus()
     
-    print("[SUPERTOOL] Playing macro: " .. macroName .. " (Auto: " .. tostring(autoPlaying) .. ", Speed: " .. (macro.speed or 1) .. "x, Frames: " .. #validFrames .. ")")
+    print("[SUPERTOOL] Playing macro: " .. macroName .. " (Auto: " .. tostring(autoPlaying) .. ", Respawn: " .. tostring(autoRespawning) .. ", Speed: " .. (macro.speed or 1) .. "x, Frames: " .. #validFrames .. ")")
     
     local function playSingleMacro()
         local startTime = tick()
@@ -675,8 +831,12 @@ local function playMacro(macroName, autoPlay)
             
             if index > #validFrames then
                 if autoPlaying then
-                    index = 1
-                    startTime = tick()
+                    if autoRespawning then
+                        resetCharacter()
+                    else
+                        index = 1
+                        startTime = tick()
+                    end
                 else
                     stopMacroPlayback()
                     return
@@ -741,6 +901,9 @@ local function deleteMacro(macroName)
         if macroPlaying and currentMacroName == macroName then
             stopMacroPlayback()
         end
+        if pathVisuals[macroName] then
+            togglePathVisual(macroName)
+        end
         savedMacros[macroName] = nil
         deleteFromFileSystem(macroName)
         Utility.updateMacroList()
@@ -757,6 +920,10 @@ local function renameMacro(oldName, newName)
             end
             savedMacros[newName] = savedMacros[oldName]
             savedMacros[oldName] = nil
+            if pathVisuals[oldName] then
+                togglePathVisual(oldName)
+                togglePathVisual(newName)
+            end
             Utility.updateMacroList()
             print("[SUPERTOOL] Macro renamed: " .. oldName .. " -> " .. newName)
         end
@@ -801,7 +968,7 @@ function Utility.updateMacroList()
     infoLabel.BackgroundTransparency = 1
     infoLabel.Size = UDim2.new(1, 0, 1, 0)
     infoLabel.Font = Enum.Font.Gotham
-    infoLabel.Text = "JSON Sync: " .. MACRO_FOLDER_PATH .. " (" .. macroCount .. " macros)"
+    infoLabel.Text = "JSON Sync: " .. PATH_FOLDER_PATH .. " (" .. macroCount .. " macros)"
     infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
     infoLabel.TextSize = 7
     infoLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -921,10 +1088,12 @@ function Utility.updateMacroList()
         local canPlay = validFrameCount > 0
         local playButtonColor = canPlay and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(40, 40, 40)
         local autoButtonColor = canPlay and Color3.fromRGB(60, 80, 60) or Color3.fromRGB(40, 50, 40)
+        local autoRespColor = canPlay and Color3.fromRGB(60, 60, 80) or Color3.fromRGB(40, 40, 50)
         
         if macroPlaying and currentMacroName == macroName then
             playButtonColor = Color3.fromRGB(100, 100, 100)
             autoButtonColor = Color3.fromRGB(100, 100, 100)
+            autoRespColor = Color3.fromRGB(100, 100, 100)
         end
         
         local playButton = Instance.new("TextButton")
@@ -935,7 +1104,7 @@ function Utility.updateMacroList()
         playButton.Position = UDim2.new(0, 0, 0, 0)
         playButton.Size = UDim2.new(0, 40, 0, 15)
         playButton.Font = Enum.Font.Gotham
-        playButton.Text = (macroPlaying and currentMacroName == macroName and not autoPlaying) and "PLAYING" or (canPlay and "PLAY" or "INVALID")
+        playButton.Text = (macroPlaying and currentMacroName == macroName and not autoPlaying) and "STOP" or (canPlay and "PLAY" or "INVALID")
         playButton.TextColor3 = canPlay and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
         playButton.TextSize = 7
         
@@ -947,16 +1116,28 @@ function Utility.updateMacroList()
         autoPlayButton.Position = UDim2.new(0, 45, 0, 0)
         autoPlayButton.Size = UDim2.new(0, 40, 0, 15)
         autoPlayButton.Font = Enum.Font.Gotham
-        autoPlayButton.Text = (macroPlaying and currentMacroName == macroName and autoPlaying) and "STOP" or (canPlay and "AUTO" or "INVALID")
+        autoPlayButton.Text = (macroPlaying and currentMacroName == macroName and autoPlaying and not autoRespawning) and "STOP" or (canPlay and "AUTO" or "INVALID")
         autoPlayButton.TextColor3 = canPlay and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
         autoPlayButton.TextSize = 7
+        
+        local autoRespButton = Instance.new("TextButton")
+        autoRespButton.Name = "AutoRespButton"
+        autoRespButton.Parent = buttonFrame
+        autoRespButton.BackgroundColor3 = autoRespColor
+        autoRespButton.BorderSizePixel = 0
+        autoRespButton.Position = UDim2.new(0, 90, 0, 0)
+        autoRespButton.Size = UDim2.new(0, 40, 0, 15)
+        autoRespButton.Font = Enum.Font.Gotham
+        autoRespButton.Text = (macroPlaying and currentMacroName == macroName and autoPlaying and autoRespawning) and "STOP" or (canPlay and "A-RESP" or "INVALID")
+        autoRespButton.TextColor3 = canPlay and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
+        autoRespButton.TextSize = 7
         
         local deleteButton = Instance.new("TextButton")
         deleteButton.Name = "DeleteButton"
         deleteButton.Parent = buttonFrame
         deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
         deleteButton.BorderSizePixel = 0
-        deleteButton.Position = UDim2.new(0, 90, 0, 0)
+        deleteButton.Position = UDim2.new(0, 135, 0, 0)
         deleteButton.Size = UDim2.new(0, 40, 0, 15)
         deleteButton.Font = Enum.Font.Gotham
         deleteButton.Text = "DELETE"
@@ -968,7 +1149,7 @@ function Utility.updateMacroList()
         renameButton.Parent = buttonFrame
         renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
         renameButton.BorderSizePixel = 0
-        renameButton.Position = UDim2.new(0, 135, 0, 0)
+        renameButton.Position = UDim2.new(0, 180, 0, 0)
         renameButton.Size = UDim2.new(0, 40, 0, 15)
         renameButton.Font = Enum.Font.Gotham
         renameButton.Text = "RENAME"
@@ -1006,12 +1187,24 @@ function Utility.updateMacroList()
         exportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         exportButton.TextSize = 6
         
+        local showPathButton = Instance.new("TextButton")
+        showPathButton.Name = "ShowPathButton"
+        showPathButton.Parent = buttonFrame2
+        showPathButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
+        showPathButton.BorderSizePixel = 0
+        showPathButton.Position = UDim2.new(0, 100, 0, 0)
+        showPathButton.Size = UDim2.new(0, 60, 0, 15)
+        showPathButton.Font = Enum.Font.Gotham
+        showPathButton.Text = pathVisuals[macroName] and "Hide Path" or "Show Path"
+        showPathButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        showPathButton.TextSize = 6
+        
         local fileStatusLabel = Instance.new("TextLabel")
         fileStatusLabel.Name = "FileStatusLabel"
         fileStatusLabel.Parent = buttonFrame2
         fileStatusLabel.BackgroundTransparency = 1
-        fileStatusLabel.Position = UDim2.new(0, 100, 0, 0)
-        fileStatusLabel.Size = UDim2.new(1, -100, 0, 15)
+        fileStatusLabel.Position = UDim2.new(0, 165, 0, 0)
+        fileStatusLabel.Size = UDim2.new(1, -165, 0, 15)
         fileStatusLabel.Font = Enum.Font.Gotham
         fileStatusLabel.Text = "📁 " .. sanitizeFileName(macroName) .. ".json"
         fileStatusLabel.TextColor3 = canPlay and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 100)
@@ -1025,7 +1218,6 @@ function Utility.updateMacroList()
                     macro.speed = newSpeed
                     saveToFileSystem(macroName, macro)
                     if macroPlaying and currentMacroName == macroName then
-                        -- Update speed during playback
                         savedMacros[macroName].speed = newSpeed
                         updateMacroStatus()
                     end
@@ -1046,9 +1238,9 @@ function Utility.updateMacroList()
             if macroPlaying and currentMacroName == macroName and not autoPlaying then
                 stopMacroPlayback()
             else
-                playMacro(macroName, false)
-                Utility.updateMacroList()
+                playMacro(macroName, false, false)
             end
+            Utility.updateMacroList()
         end)
         
         autoPlayButton.MouseButton1Click:Connect(function()
@@ -1057,12 +1249,26 @@ function Utility.updateMacroList()
                 return 
             end
             
-            if macroPlaying and currentMacroName == macroName and autoPlaying then
+            if macroPlaying and currentMacroName == macroName and autoPlaying and not autoRespawning then
                 stopMacroPlayback()
             else
-                playMacro(macroName, true)
-                Utility.updateMacroList()
+                playMacro(macroName, true, false)
             end
+            Utility.updateMacroList()
+        end)
+        
+        autoRespButton.MouseButton1Click:Connect(function()
+            if not canPlay then 
+                warn("[SUPERTOOL] Cannot auto-respawn invalid macro: " .. macroName)
+                return 
+            end
+            
+            if macroPlaying and currentMacroName == macroName and autoPlaying and autoRespawning then
+                stopMacroPlayback()
+            else
+                playMacro(macroName, true, true)
+            end
+            Utility.updateMacroList()
         end)
         
         deleteButton.MouseButton1Click:Connect(function()
@@ -1115,6 +1321,11 @@ function Utility.updateMacroList()
             fileStatusLabel.TextColor3 = canPlay and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 100)
         end)
         
+        showPathButton.MouseButton1Click:Connect(function()
+            togglePathVisual(macroName)
+            showPathButton.Text = pathVisuals[macroName] and "Hide Path" or "Show Path"
+        end)
+        
         if canPlay then
             playButton.MouseEnter:Connect(function()
                 if not (macroPlaying and currentMacroName == macroName and not autoPlaying) then
@@ -1131,16 +1342,30 @@ function Utility.updateMacroList()
             end)
             
             autoPlayButton.MouseEnter:Connect(function()
-                if not (macroPlaying and currentMacroName == macroName and autoPlaying) then
+                if not (macroPlaying and currentMacroName == macroName and autoPlaying and not autoRespawning) then
                     autoPlayButton.BackgroundColor3 = Color3.fromRGB(80, 100, 80)
                 end
             end)
             
             autoPlayButton.MouseLeave:Connect(function()
-                if macroPlaying and currentMacroName == macroName and autoPlaying then
+                if macroPlaying and currentMacroName == macroName and autoPlaying and not autoRespawning then
                     autoPlayButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
                 else
                     autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 80, 60)
+                end
+            end)
+            
+            autoRespButton.MouseEnter:Connect(function()
+                if not (macroPlaying and currentMacroName == macroName and autoPlaying and autoRespawning) then
+                    autoRespButton.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
+                end
+            end)
+            
+            autoRespButton.MouseLeave:Connect(function()
+                if macroPlaying and currentMacroName == macroName and autoPlaying and autoRespawning then
+                    autoRespButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                else
+                    autoRespButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
                 end
             end)
         end
@@ -1183,6 +1408,14 @@ function Utility.updateMacroList()
         
         exportButton.MouseLeave:Connect(function()
             exportButton.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
+        end)
+        
+        showPathButton.MouseEnter:Connect(function()
+            showPathButton.BackgroundColor3 = Color3.fromRGB(100, 100, 50)
+        end)
+        
+        showPathButton.MouseLeave:Connect(function()
+            showPathButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
         end)
         
         itemCount = itemCount + 1
@@ -1374,7 +1607,7 @@ local function initMacroUI()
     MacroScrollFrame.Parent = MacroFrame
     MacroScrollFrame.BackgroundTransparency = 1
     MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
-    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -55)
+    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -80)
     MacroScrollFrame.ScrollBarThickness = 2
     MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
     MacroScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1385,6 +1618,19 @@ local function initMacroUI()
     MacroLayout.Parent = MacroScrollFrame
     MacroLayout.Padding = UDim.new(0, 2)
     MacroLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local PauseButton = Instance.new("TextButton")
+    PauseButton.Name = "PauseButton"
+    PauseButton.Parent = MacroFrame
+    PauseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    PauseButton.BorderSizePixel = 0
+    PauseButton.Position = UDim2.new(0, 5, 1, -30)
+    PauseButton.Size = UDim2.new(0, 100, 0, 25)
+    PauseButton.Font = Enum.Font.Gotham
+    PauseButton.Text = "Pause"
+    PauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PauseButton.TextSize = 8
+    PauseButton.Visible = macroPlaying
 
     MacroStatusLabel = Instance.new("TextLabel")
     MacroStatusLabel.Name = "MacroStatusLabel"
@@ -1409,6 +1655,40 @@ local function initMacroUI()
     CloseMacroButton.MouseButton1Click:Connect(function()
         macroFrameVisible = false
         MacroFrame.Visible = false
+    end)
+    
+    PauseButton.MouseButton1Click:Connect(function()
+        if not macroPlaying then return end
+        local macro = savedMacros[currentMacroName]
+        local validFrames = macro.frames
+        local speed = macro.speed or 1
+        if playbackPaused then
+            -- resume
+            if pausedIndex and validFrames[pausedIndex] then
+                pcall(function()
+                    rootPart.CFrame = validFrames[pausedIndex].cframe
+                    rootPart.Velocity = validFrames[pausedIndex].velocity
+                    humanoid.WalkSpeed = validFrames[pausedIndex].walkSpeed
+                    humanoid.JumpPower = validFrames[pausedIndex].jumpPower
+                    humanoid.HipHeight = validFrames[pausedIndex].hipHeight
+                    humanoid:ChangeState(validFrames[pausedIndex].state)
+                end)
+            end
+            playbackPaused = false
+            PauseButton.Text = "Pause"
+            if pausePart then
+                pausePart:Destroy()
+                pausePart = nil
+            end
+        else
+            -- pause
+            playbackPaused = true
+            pausedIndex = pausedIndex or 1 -- fallback
+            pausedPosition = validFrames[pausedIndex].cframe.Position
+            createPauseIndicator(pausedPosition)
+            PauseButton.Text = "Resume"
+        end
+        updateMacroStatus()
     end)
 end
 
@@ -1436,6 +1716,7 @@ function Utility.resetStates()
     macroRecording = false
     macroPlaying = false
     autoPlaying = false
+    autoRespawning = false
     recordingPaused = false
     playbackPaused = false
     
@@ -1477,6 +1758,7 @@ function Utility.init(deps)
     macroRecording = false
     macroPlaying = false
     autoPlaying = false
+    autoRespawning = false
     recordingPaused = false
     playbackPaused = false
     currentMacro = {}
@@ -1484,14 +1766,18 @@ function Utility.init(deps)
     currentMacroName = nil
     lastFrameTime = 0
     
+    PathVisualsFolder = Instance.new("Folder")
+    PathVisualsFolder.Name = "SupertoolPaths"
+    PathVisualsFolder.Parent = workspace
+    
     local success, error = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
             print("[SUPERTOOL] Created Supertool folder")
         end
-        if not isfolder(MACRO_FOLDER_PATH) then
-            makefolder(MACRO_FOLDER_PATH)
-            print("[SUPERTOOL] Created macro folder: " .. MACRO_FOLDER_PATH)
+        if not isfolder(PATH_FOLDER_PATH) then
+            makefolder(PATH_FOLDER_PATH)
+            print("[SUPERTOOL] Created path folder: " .. PATH_FOLDER_PATH)
         end
     end)
     
@@ -1505,8 +1791,8 @@ function Utility.init(deps)
     local loadedCount = syncMacrosFromJSON()
     
     local legacyCount = 0
-    if fileSystem["Supertool/Macro"] then
-        for macroName, macroData in pairs(fileSystem["Supertool/Macro"]) do
+    if fileSystem["Supertool/path"] then
+        for macroName, macroData in pairs(fileSystem["Supertool/path"]) do
             if not savedMacros[macroName] and macroData and macroData.frames then
                 local validFrames = {}
                 for _, frame in pairs(macroData.frames) do
@@ -1554,11 +1840,7 @@ function Utility.init(deps)
                         
                         if macroPlaying and currentMacroName then
                             print("[SUPERTOOL] Resuming macro playback: " .. currentMacroName)
-                            if autoPlaying then
-                                playMacro(currentMacroName, true)
-                            else
-                                playMacro(currentMacroName, false)
-                            end
+                            playMacro(currentMacroName, autoPlaying, autoRespawning)
                         end
                         
                         updateMacroStatus()
@@ -1583,8 +1865,23 @@ function Utility.init(deps)
         end)
     end
     
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+            if currentMacroName and macroPlaying then
+                local macro = savedMacros[currentMacroName]
+                if macro and macro.waypointPositions and #macro.waypointPositions > 1 then
+                    local prevWP = macro.waypointPositions[#macro.waypointPositions - 1]
+                    if rootPart then
+                        rootPart.CFrame = CFrame.new(prevWP)
+                    end
+                end
+            end
+        end
+    end)
+    
     print("[SUPERTOOL] Utility module fully initialized")
-    print("  - JSON Path: " .. MACRO_FOLDER_PATH)
+    print("  - JSON Path: " .. PATH_FOLDER_PATH)
     print("  - Total Macros: " .. (#savedMacros > 0 and tostring(#savedMacros) or "0"))
     print("  - Version: 1.2 (Speed Edit & Auto-Resume)")
 end
