@@ -1,5 +1,5 @@
 -- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
--- Updated version with fixed JSON saving, swimming detection, status display, and idle text
+-- Updated version with fixed swimming color, status sync, live idle duration, auto pause/resume, and undo functionality
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -42,6 +42,9 @@ local pathPauseIndex = 1
 local lastPathTime = 0
 local pathVisualParts = {}
 local pathMarkerParts = {}
+local idleStartTime = nil
+local currentIdleLabel = nil
+local idleStartPosition = nil
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -57,7 +60,16 @@ local FALL_THRESHOLD = -10 -- studs per second Y velocity
 local SWIM_THRESHOLD = 2 -- when in water
 local MARKER_DISTANCE = 5 -- meters between path markers
 
--- Helper function untuk sanitize filename
+-- Movement colors
+local movementColors = {
+    swimming = Color3.fromRGB(128, 0, 128),
+    jumping = Color3.fromRGB(255, 0, 0),
+    falling = Color3.fromRGB(255, 255, 0),
+    walking = Color3.fromRGB(0, 255, 0),
+    idle = Color3.fromRGB(200, 200, 200)
+}
+
+-- Helper function for sanitize filename
 local function sanitizeFileName(name)
     local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
     sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
@@ -183,20 +195,26 @@ local function detectMovementType(velocity, position)
     end
     
     if isInWater then
-        return "swimming", Color3.fromRGB(128, 0, 128)
+        return "swimming"
     elseif yVelocity > JUMP_THRESHOLD then
-        return "jumping", Color3.fromRGB(255, 0, 0)
+        return "jumping"
     elseif yVelocity < FALL_THRESHOLD then
-        return "falling", Color3.fromRGB(255, 255, 0)
+        return "falling"
     elseif speed > WALK_THRESHOLD then
-        return "walking", Color3.fromRGB(0, 255, 0)
+        return "walking"
     else
-        return "idle", Color3.fromRGB(200, 200, 200), 2.3
+        return "idle"
     end
 end
 
+-- Get color from movement type
+local function getColorFromType(movementType)
+    return movementColors[movementType] or Color3.fromRGB(200, 200, 200)
+end
+
 -- Path Visualization
-local function createPathVisual(position, movementType, color, isMarker, idleDuration)
+local function createPathVisual(position, movementType, isMarker, idleDuration)
+    local color = getColorFromType(movementType)
     local part = Instance.new("Part")
     part.Name = isMarker and "PathMarker" or "PathPoint"
     part.Parent = workspace
@@ -234,7 +252,8 @@ local function createPathVisual(position, movementType, color, isMarker, idleDur
             textLabel.Font = Enum.Font.Gotham
             textLabel.Text = idleDuration >= 60 and 
                 string.format("%.1fm", idleDuration/60) or 
-                string.format("%.1fd", idleDuration)
+                string.format("%.1fs", idleDuration)
+            textLabel.Name = "IdleLabel"
         end
     end
     
@@ -271,9 +290,14 @@ local function startPathRecording()
     pathRecording = true
     currentPath = {points = {}, startTime = tick(), markers = {}}
     lastPathTime = 0
+    idleStartTime = nil
+    currentIdleLabel = nil
+    idleStartPosition = nil
     clearPathVisuals()
     
     print("[SUPERTOOL] Path recording started")
+    
+    local previousMovementType = nil
     
     pathConnection = RunService.Heartbeat:Connect(function()
         if not pathRecording or pathPaused then return end
@@ -283,7 +307,7 @@ local function startPathRecording()
         local currentTime = tick() - currentPath.startTime
         local position = rootPart.Position
         local velocity = rootPart.Velocity
-        local movementType, color, idleDuration = detectMovementType(velocity, position)
+        local movementType = detectMovementType(velocity, position)
         
         local pathPoint = {
             time = currentTime,
@@ -292,14 +316,46 @@ local function startPathRecording()
             velocity = velocity,
             movementType = movementType,
             walkSpeed = humanoid.WalkSpeed,
-            jumpPower = humanoid.JumpPower,
-            idleDuration = idleDuration
+            jumpPower = humanoid.JumpPower
         }
         
         table.insert(currentPath.points, pathPoint)
         
-        local visualPart = createPathVisual(position, movementType, color, false, idleDuration)
+        local visualPart = createPathVisual(position, movementType, false)
         table.insert(pathVisualParts, visualPart)
+        
+        if movementType == "idle" then
+            if previousMovementType ~= "idle" then
+                idleStartTime = currentTime
+                idleStartPosition = position
+                currentIdleLabel = createPathVisual(position, movementType, true, 0)
+                table.insert(pathMarkerParts, currentIdleLabel)
+            end
+            if currentIdleLabel then
+                local duration = currentTime - idleStartTime
+                local label = currentIdleLabel:FindFirstChildOfClass("BillboardGui"):FindFirstChild("IdleLabel")
+                if label then
+                    label.Text = duration >= 60 and 
+                        string.format("%.1fm", duration/60) or 
+                        string.format("%.1fs", duration)
+                end
+            end
+        else
+            if previousMovementType == "idle" and idleStartTime then
+                local duration = currentTime - idleStartTime
+                table.insert(currentPath.markers, {
+                    time = idleStartTime,
+                    position = idleStartPosition,
+                    cframe = CFrame.new(idleStartPosition),
+                    pathIndex = #currentPath.points - 1,
+                    idleDuration = duration,
+                    movementType = "idle"
+                })
+                idleStartTime = nil
+                currentIdleLabel = nil
+                idleStartPosition = nil
+            end
+        end
         
         local shouldCreateMarker = false
         if #currentPath.markers == 0 then
@@ -312,26 +368,44 @@ local function startPathRecording()
             end
         end
         
-        if shouldCreateMarker then
+        if shouldCreateMarker and movementType ~= "idle" then
             local marker = {
                 time = currentTime,
                 position = position,
                 cframe = rootPart.CFrame,
                 pathIndex = #currentPath.points,
-                idleDuration = idleDuration
+                movementType = movementType
             }
             table.insert(currentPath.markers, marker)
             
-            local markerPart = createPathVisual(position, movementType, color, true, idleDuration)
+            local markerPart = createPathVisual(position, movementType, true)
             table.insert(pathMarkerParts, markerPart)
             
             print("[SUPERTOOL] Path marker created at " .. tostring(position))
         end
+        
+        previousMovementType = movementType
     end)
 end
 
 local function stopPathRecording()
     if not pathRecording then return end
+    
+    if idleStartTime then
+        local duration = (tick() - currentPath.startTime) - idleStartTime
+        table.insert(currentPath.markers, {
+            time = idleStartTime,
+            position = idleStartPosition,
+            cframe = CFrame.new(idleStartPosition),
+            pathIndex = #currentPath.points,
+            idleDuration = duration,
+            movementType = "idle"
+        })
+        idleStartTime = nil
+        currentIdleLabel = nil
+        idleStartPosition = nil
+    end
+    
     pathRecording = false
     pathPaused = false
     if pathConnection then
@@ -390,14 +464,12 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     
     clearPathVisuals()
     for i, point in pairs(path.points) do
-        local _, color, idleDuration = detectMovementType(point.velocity, point.position)
-        local visualPart = createPathVisual(point.position, point.movementType, color, false, point.idleDuration)
+        local visualPart = createPathVisual(point.position, point.movementType, false)
         table.insert(pathVisualParts, visualPart)
     end
     
     for i, marker in pairs(path.markers or {}) do
-        local _, color, idleDuration = detectMovementType(Vector3.new(0, 0, 0), marker.position)
-        local markerPart = createPathVisual(marker.position, "marker", color, true, marker.idleDuration)
+        local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
         table.insert(pathMarkerParts, markerPart)
     end
     
@@ -477,10 +549,37 @@ local function undoToLastMarker()
     local path = savedPaths[currentPathName]
     if not path or not path.markers or #path.markers == 0 then return end
     
-    local lastMarker = path.markers[#path.markers]
+    local lastMarkerIndex = #path.markers
+    local lastMarker = path.markers[lastMarkerIndex]
     if lastMarker and updateCharacterReferences() then
         rootPart.CFrame = lastMarker.cframe
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
+        
+        -- Remove points and markers after the last marker
+        path.points = {table.unpack(path.points, 1, lastMarker.pathIndex)}
+        path.markers = {table.unpack(path.markers, 1, lastMarkerIndex - 1)}
+        path.pointCount = #path.points
+        path.markerCount = #path.markers
+        path.duration = path.points[#path.points].time
+        
+        -- Save updated path
+        savePathToJSON(currentPathName, path)
+        
+        -- Update visuals
+        clearPathVisuals()
+        for i, point in pairs(path.points) do
+            local visualPart = createPathVisual(point.position, point.movementType, false)
+            table.insert(pathVisualParts, visualPart)
+        end
+        
+        for i, marker in pairs(path.markers) do
+            local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
+            table.insert(pathMarkerParts, markerPart)
+        end
+        
+        -- Create white sphere at undo position
+        local undoMarker = createPathVisual(lastMarker.position, "idle", true)
+        table.insert(pathMarkerParts, undoMarker)
     end
 end
 
@@ -504,8 +603,7 @@ function savePathToJSON(pathName, pathData)
                 velocity = {point.velocity.X, point.velocity.Y, point.velocity.Z},
                 movementType = point.movementType,
                 walkSpeed = point.walkSpeed,
-                jumpPower = point.jumpPower,
-                idleDuration = point.idleDuration
+                jumpPower = point.jumpPower
             })
         end
         
@@ -516,7 +614,8 @@ function savePathToJSON(pathName, pathData)
                 position = {marker.position.X, marker.position.Y, marker.position.Z},
                 cframe = {marker.cframe:GetComponents()},
                 pathIndex = marker.pathIndex,
-                idleDuration = marker.idleDuration
+                idleDuration = marker.idleDuration,
+                movementType = marker.movementType
             })
         end
         
@@ -561,8 +660,7 @@ function loadPathFromJSON(pathName)
                 velocity = validateAndConvertVector3(pointData.velocity),
                 movementType = pointData.movementType or "walking",
                 walkSpeed = pointData.walkSpeed or 16,
-                jumpPower = pointData.jumpPower or 50,
-                idleDuration = pointData.idleDuration
+                jumpPower = pointData.jumpPower or 50
             }
             table.insert(validPoints, point)
         end
@@ -574,7 +672,8 @@ function loadPathFromJSON(pathName)
                 position = validateAndConvertVector3(markerData.position),
                 cframe = validateAndConvertCFrame(markerData.cframe),
                 pathIndex = markerData.pathIndex,
-                idleDuration = markerData.idleDuration
+                idleDuration = markerData.idleDuration,
+                movementType = markerData.movementType
             }
             table.insert(validMarkers, marker)
         end
@@ -979,7 +1078,7 @@ local function initMacroUI()
     MacroTitle.BorderSizePixel = 0
     MacroTitle.Size = UDim2.new(1, 0, 0, 20)
     MacroTitle.Font = Enum.Font.Gotham
-    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.2"
+    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.3"
     MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     MacroTitle.TextSize = 8
 
@@ -1034,7 +1133,7 @@ local function initMacroUI()
     MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
     MacroStatusLabel.BorderSizePixel = 1
-    MacroStatusLabel.Position = UDim2.new(1, -250, 0, 10)
+    MacroStatusLabel.Position = UDim2.new(1, -250, 0, 5)
     MacroStatusLabel.Size = UDim2.new(0, 240, 0, 25)
     MacroStatusLabel.Font = Enum.Font.Gotham
     MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1071,7 +1170,7 @@ local function initPathUI()
     PathTitle.BorderSizePixel = 0
     PathTitle.Size = UDim2.new(1, 0, 0, 20)
     PathTitle.Font = Enum.Font.Gotham
-    PathTitle.Text = "PATH CREATOR - JSON SYNC v1.2"
+    PathTitle.Text = "PATH CREATOR - JSON SYNC v1.3"
     PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathTitle.TextSize = 8
 
@@ -1126,7 +1225,7 @@ local function initPathUI()
     PathStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     PathStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PathStatusLabel.BorderSizePixel = 1
-    PathStatusLabel.Position = UDim2.new(1, -250, 0, 35)
+    PathStatusLabel.Position = UDim2.new(1, -250, 0, 30)
     PathStatusLabel.Size = UDim2.new(0, 240, 0, 25)
     PathStatusLabel.Font = Enum.Font.Gotham
     PathStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1592,6 +1691,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Clear Visuals", clearPathVisuals)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
+    createButton("Undo Path", undoToLastMarker)
 end
 
 -- Initialize function
@@ -1641,17 +1741,23 @@ function Utility.init(deps)
                 rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
                 if humanoid and rootPart then
                     if macroRecording and recordingPaused then
+                        task.wait(pauseResumeTime)
                         recordingPaused = false
                         updateMacroStatus()
                     end
                     if pathRecording and pathPaused then
+                        task.wait(pauseResumeTime)
                         pathPaused = false
                         updatePathStatus()
                     end
                     if macroPlaying and currentMacroName then
+                        task.wait(pauseResumeTime)
+                        macroPaused = false
                         playMacro(currentMacroName, autoPlaying, autoRespawning)
                     end
                     if pathPlaying and currentPathName then
+                        task.wait(pauseResumeTime)
+                        pathPaused = false
                         playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
                 end
@@ -1676,12 +1782,33 @@ function Utility.init(deps)
                 updatePathStatus()
             end
         end)
+        
+        if humanoid then
+            humanoid.Died:Connect(function()
+                if macroRecording then
+                    recordingPaused = true
+                    updateMacroStatus()
+                end
+                if pathRecording then
+                    pathPaused = true
+                    updatePathStatus()
+                end
+                if macroPlaying then
+                    macroPaused = true
+                    updateMacroStatus()
+                end
+                if pathPlaying then
+                    pathPaused = true
+                    updatePathStatus()
+                end
+            end)
+        end
     end
     
     task.spawn(function()
         initMacroUI()
         initPathUI()
-        print("[SUPERTOOL] Enhanced Utility Module v2.2 initialized")
+        print("[SUPERTOOL] Enhanced Utility Module v2.3 initialized")
         print("  - Path Recording: Visual navigation with undo markers and idle duration")
         print("  - Enhanced Macros: Full macro system with pause/resume")
         print("  - Keyboard Controls: Ctrl+Z (undo)")
