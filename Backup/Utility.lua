@@ -1,5 +1,5 @@
 -- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
--- Updated version with fixed swimming color, status sync, live idle duration, auto pause/resume, and undo functionality
+-- Updated version with fixed status text, undo during recording only, external undo toggle, larger idle text, hide/show toggle, and removed "textbox" text
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -248,7 +248,7 @@ local function createPathVisual(position, movementType, isMarker, idleDuration)
             textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
             textLabel.TextStrokeTransparency = 0.5
-            textLabel.TextSize = 8
+            textLabel.TextSize = 12 -- Increased for better visibility
             textLabel.Font = Enum.Font.Gotham
             textLabel.Text = idleDuration >= 60 and 
                 string.format("%.1fm", idleDuration/60) or 
@@ -523,12 +523,25 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     end)
 end
 
+local function togglePathVisuals(pathName)
+    if pathShowOnly and currentPathName == pathName then
+        clearPathVisuals()
+        pathShowOnly = false
+        currentPathName = nil
+        updatePathStatus()
+    else
+        playPath(pathName, true, false, false)
+    end
+    updatePathList()
+end
+
 local function stopPathPlayback()
     if not pathPlaying then return end
     pathPlaying = false
     pathAutoPlaying = false
     pathAutoRespawning = false
     pathPaused = false
+    pathShowOnly = false
     pathPauseIndex = 1
     if pathPlayConnection then
         pathPlayConnection:Disconnect()
@@ -544,10 +557,16 @@ end
 
 -- Path Undo System
 local function undoToLastMarker()
-    if not currentPathName then return end
+    if not pathRecording or not currentPathName then
+        warn("[SUPERTOOL] Undo only available during path recording")
+        return
+    end
     
     local path = savedPaths[currentPathName]
-    if not path or not path.markers or #path.markers == 0 then return end
+    if not path or not path.markers or #path.markers == 0 then
+        warn("[SUPERTOOL] No markers to undo")
+        return
+    end
     
     local lastMarkerIndex = #path.markers
     local lastMarker = path.markers[lastMarkerIndex]
@@ -1078,7 +1097,7 @@ local function initMacroUI()
     MacroTitle.BorderSizePixel = 0
     MacroTitle.Size = UDim2.new(1, 0, 0, 20)
     MacroTitle.Font = Enum.Font.Gotham
-    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.3"
+    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.4"
     MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     MacroTitle.TextSize = 8
 
@@ -1140,6 +1159,7 @@ local function initMacroUI()
     MacroStatusLabel.TextSize = 8
     MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
     MacroStatusLabel.Visible = false
+    MacroStatusLabel.ZIndex = 10 -- Ensure visibility
 
     CloseMacroButton.MouseButton1Click:Connect(function()
         MacroFrame.Visible = false
@@ -1170,7 +1190,7 @@ local function initPathUI()
     PathTitle.BorderSizePixel = 0
     PathTitle.Size = UDim2.new(1, 0, 0, 20)
     PathTitle.Font = Enum.Font.Gotham
-    PathTitle.Text = "PATH CREATOR - JSON SYNC v1.3"
+    PathTitle.Text = "PATH CREATOR - JSON SYNC v1.4"
     PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathTitle.TextSize = 8
 
@@ -1232,6 +1252,7 @@ local function initPathUI()
     PathStatusLabel.TextSize = 8
     PathStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
     PathStatusLabel.Visible = false
+    PathStatusLabel.ZIndex = 10 -- Ensure visibility
 
     ClosePathButton.MouseButton1Click:Connect(function()
         PathFrame.Visible = false
@@ -1511,15 +1532,15 @@ function updatePathList()
             autoRespButton.Font = Enum.Font.Gotham
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
             
-            local showButton = Instance.new("TextButton")
-            showButton.Parent = pathItem
-            showButton.Position = UDim2.new(0, 140, 0, 40)
-            showButton.Size = UDim2.new(0, 40, 0, 18)
-            showButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-            showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            showButton.TextSize = 7
-            showButton.Font = Enum.Font.Gotham
-            showButton.Text = "SHOW"
+            local toggleShowButton = Instance.new("TextButton")
+            toggleShowButton.Parent = pathItem
+            toggleShowButton.Position = UDim2.new(0, 140, 0, 40)
+            toggleShowButton.Size = UDim2.new(0, 40, 0, 18)
+            toggleShowButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            toggleShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            toggleShowButton.TextSize = 7
+            toggleShowButton.Font = Enum.Font.Gotham
+            toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
             
             local deleteButton = Instance.new("TextButton")
             deleteButton.Parent = pathItem
@@ -1601,8 +1622,8 @@ function updatePathList()
                 updatePathList()
             end)
             
-            showButton.MouseButton1Click:Connect(function()
-                playPath(pathName, true, false, false)
+            toggleShowButton.MouseButton1Click:Connect(function()
+                togglePathVisuals(pathName)
             end)
             
             deleteButton.MouseButton1Click:Connect(function()
@@ -1808,7 +1829,7 @@ function Utility.init(deps)
     task.spawn(function()
         initMacroUI()
         initPathUI()
-        print("[SUPERTOOL] Enhanced Utility Module v2.3 initialized")
+        print("[SUPERTOOL] Enhanced Utility Module v2.4 initialized")
         print("  - Path Recording: Visual navigation with undo markers and idle duration")
         print("  - Enhanced Macros: Full macro system with pause/resume")
         print("  - Keyboard Controls: Ctrl+Z (undo)")
