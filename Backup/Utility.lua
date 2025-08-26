@@ -1687,6 +1687,16 @@ end
 
 -- Load utility buttons
 function Utility.loadUtilityButtons(createButton)
+    if not createButton then
+        error("[SUPERTOOL] createButton function is nil in loadUtilityButtons")
+    end
+    if not startMacroRecording then
+        error("[SUPERTOOL] startMacroRecording is nil")
+    end
+    if not stopMacroRecording then
+        error("[SUPERTOOL] stopMacroRecording is nil")
+    end
+    print("[SUPERTOOL] Loading utility buttons with createButton:", createButton)
     createButton("Record Macro", startMacroRecording)
     createButton("Stop Macro", stopMacroRecording)
     createButton("Macro Manager", function()
@@ -1717,6 +1727,10 @@ end
 
 -- Initialize function
 function Utility.init(deps)
+    if not deps or type(deps) ~= "table" then
+        error("[SUPERTOOL] Invalid dependencies table provided to Utility.init")
+    end
+    
     Players = deps.Players
     humanoid = deps.humanoid
     rootPart = deps.rootPart
@@ -1726,6 +1740,12 @@ function Utility.init(deps)
     RunService = deps.RunService
     settings = deps.settings
     ScreenGui = deps.ScreenGui
+    
+    -- Validate critical dependencies
+    if not Players then warn("[SUPERTOOL] Players service not provided") end
+    if not player then warn("[SUPERTOOL] player not provided") end
+    if not RunService then warn("[SUPERTOOL] RunService not provided") end
+    if not ScreenGui then warn("[SUPERTOOL] ScreenGui not provided") end
     
     macroRecording = false
     macroPlaying = false
