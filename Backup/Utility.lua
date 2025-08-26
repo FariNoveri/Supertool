@@ -1,5 +1,5 @@
 -- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
--- Fixed version with working macro functionality, proper UI, and requested improvements
+-- Updated version with fixed JSON saving, swimming detection, status display, and idle text
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -178,7 +178,7 @@ local function detectMovementType(velocity, position)
     local yVelocity = velocity.Y
     
     local isInWater = false
-    if speed > 2 and speed < 8 and math.abs(yVelocity) < 2 then
+    if humanoid and humanoid:GetState() == Enum.HumanoidStateType.Swimming then
         isInWater = true
     end
     
@@ -191,12 +191,12 @@ local function detectMovementType(velocity, position)
     elseif speed > WALK_THRESHOLD then
         return "walking", Color3.fromRGB(0, 255, 0)
     else
-        return "idle", Color3.fromRGB(200, 200, 200), 2.3 -- Added idle duration
+        return "idle", Color3.fromRGB(200, 200, 200), 2.3
     end
 end
 
 -- Path Visualization
-local function createPathVisual(position, movementType, color, isMarker)
+local function createPathVisual(position, movementType, color, isMarker, idleDuration)
     local part = Instance.new("Part")
     part.Name = isMarker and "PathMarker" or "PathPoint"
     part.Parent = workspace
@@ -215,6 +215,27 @@ local function createPathVisual(position, movementType, color, isMarker)
         pointLight.Color = color
         pointLight.Brightness = 2
         pointLight.Range = 10
+        
+        if movementType == "idle" and idleDuration then
+            local billboard = Instance.new("BillboardGui")
+            billboard.Parent = part
+            billboard.Size = UDim2.new(0, 100, 0, 30)
+            billboard.StudsOffset = Vector3.new(0, 2, 0)
+            billboard.AlwaysOnTop = true
+            
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Parent = billboard
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            textLabel.TextStrokeTransparency = 0.5
+            textLabel.TextSize = 8
+            textLabel.Font = Enum.Font.Gotham
+            textLabel.Text = idleDuration >= 60 and 
+                string.format("%.1fm", idleDuration/60) or 
+                string.format("%.1fd", idleDuration)
+        end
     end
     
     return part
@@ -277,7 +298,7 @@ local function startPathRecording()
         
         table.insert(currentPath.points, pathPoint)
         
-        local visualPart = createPathVisual(position, movementType, color, false)
+        local visualPart = createPathVisual(position, movementType, color, false, idleDuration)
         table.insert(pathVisualParts, visualPart)
         
         local shouldCreateMarker = false
@@ -296,11 +317,12 @@ local function startPathRecording()
                 time = currentTime,
                 position = position,
                 cframe = rootPart.CFrame,
-                pathIndex = #currentPath.points
+                pathIndex = #currentPath.points,
+                idleDuration = idleDuration
             }
             table.insert(currentPath.markers, marker)
             
-            local markerPart = createPathVisual(position, movementType, color, true)
+            local markerPart = createPathVisual(position, movementType, color, true, idleDuration)
             table.insert(pathMarkerParts, markerPart)
             
             print("[SUPERTOOL] Path marker created at " .. tostring(position))
@@ -368,19 +390,20 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     
     clearPathVisuals()
     for i, point in pairs(path.points) do
-        local _, color = detectMovementType(point.velocity, point.position)
-        local visualPart = createPathVisual(point.position, point.movementType, color, false)
+        local _, color, idleDuration = detectMovementType(point.velocity, point.position)
+        local visualPart = createPathVisual(point.position, point.movementType, color, false, point.idleDuration)
         table.insert(pathVisualParts, visualPart)
     end
     
     for i, marker in pairs(path.markers or {}) do
-        local _, color = detectMovementType(Vector3.new(0, 0, 0), marker.position)
-        local markerPart = createPathVisual(marker.position, "marker", color, true)
+        local _, color, idleDuration = detectMovementType(Vector3.new(0, 0, 0), marker.position)
+        local markerPart = createPathVisual(marker.position, "marker", color, true, marker.idleDuration)
         table.insert(pathMarkerParts, markerPart)
     end
     
     if pathShowOnly then
         print("[SUPERTOOL] Showing path: " .. pathName)
+        updatePathStatus()
         return
     end
     
@@ -410,6 +433,7 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
                     pathPlayConnection = nil
                 end
                 humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+                updatePathStatus()
                 return
             end
         end
@@ -471,14 +495,40 @@ function savePathToJSON(pathName, pathData)
             makefolder(PATH_FOLDER_PATH)
         end
         
+        local serializedPoints = {}
+        for _, point in ipairs(pathData.points or {}) do
+            table.insert(serializedPoints, {
+                time = point.time,
+                position = {point.position.X, point.position.Y, point.position.Z},
+                cframe = {point.cframe:GetComponents()},
+                velocity = {point.velocity.X, point.velocity.Y, point.velocity.Z},
+                movementType = point.movementType,
+                walkSpeed = point.walkSpeed,
+                jumpPower = point.jumpPower,
+                idleDuration = point.idleDuration
+            })
+        end
+        
+        local serializedMarkers = {}
+        for _, marker in ipairs(pathData.markers or {}) do
+            table.insert(serializedMarkers, {
+                time = marker.time,
+                position = {marker.position.X, marker.position.Y, marker.position.Z},
+                cframe = {marker.cframe:GetComponents()},
+                pathIndex = marker.pathIndex,
+                idleDuration = marker.idleDuration
+            })
+        end
+        
         local jsonData = {
             name = pathName,
             created = pathData.created or os.time(),
-            points = pathData.points,
-            markers = pathData.markers or {},
-            pointCount = #pathData.points,
-            markerCount = #(pathData.markers or {}),
-            duration = pathData.duration
+            points = serializedPoints,
+            markers = serializedMarkers,
+            pointCount = #serializedPoints,
+            markerCount = #serializedMarkers,
+            duration = pathData.duration,
+            speed = pathData.speed or 1
         }
         
         local jsonString = HttpService:JSONEncode(jsonData)
@@ -502,7 +552,43 @@ function loadPathFromJSON(pathName)
         local jsonString = readfile(filePath)
         local jsonData = HttpService:JSONDecode(jsonString)
         
-        return jsonData
+        local validPoints = {}
+        for _, pointData in ipairs(jsonData.points or {}) do
+            local point = {
+                time = pointData.time,
+                position = validateAndConvertVector3(pointData.position),
+                cframe = validateAndConvertCFrame(pointData.cframe),
+                velocity = validateAndConvertVector3(pointData.velocity),
+                movementType = pointData.movementType or "walking",
+                walkSpeed = pointData.walkSpeed or 16,
+                jumpPower = pointData.jumpPower or 50,
+                idleDuration = pointData.idleDuration
+            }
+            table.insert(validPoints, point)
+        end
+        
+        local validMarkers = {}
+        for _, markerData in ipairs(jsonData.markers or {}) do
+            local marker = {
+                time = markerData.time,
+                position = validateAndConvertVector3(markerData.position),
+                cframe = validateAndConvertCFrame(markerData.cframe),
+                pathIndex = markerData.pathIndex,
+                idleDuration = markerData.idleDuration
+            }
+            table.insert(validMarkers, marker)
+        end
+        
+        return {
+            name = jsonData.name or pathName,
+            created = jsonData.created or os.time(),
+            points = validPoints,
+            markers = validMarkers,
+            pointCount = #validPoints,
+            markerCount = #validMarkers,
+            duration = jsonData.duration or 0,
+            speed = jsonData.speed or 1
+        }
     end)
     
     return success and result or nil
@@ -611,7 +697,7 @@ local function stopMacroRecording()
     currentMacro.created = os.time()
     
     savedMacros[macroName] = currentMacro
-    saveToJSONFile(macroName, currentMacro)
+    saveMacroToJSON(macroName, currentMacro)
     
     MacroInput.Text = ""
     Utility.updateMacroList()
@@ -651,7 +737,7 @@ local function playMacro(macroName, autoPlay, respawn)
         return
     end
     
-    local macro = savedMacros[macroName] or loadFromJSONFile(macroName)
+    local macro = savedMacros[macroName] or loadMacroFromJSON(macroName)
     if not macro or not macro.frames or #macro.frames == 0 then
         warn("[SUPERTOOL] Cannot play macro: Invalid macro data for " .. macroName)
         return
@@ -725,82 +811,36 @@ local function updateMacroStatus()
     
     local statusText = ""
     if macroRecording then
-        statusText = macroPaused and "Recording Paused" or "Recording Macro"
+        statusText = recordingPaused and "Recording Paused" or "Recording Macro..."
     elseif macroPlaying and currentMacroName then
-        local macro = savedMacros[currentMacroName] or loadFromJSONFile(currentMacroName)
+        local macro = savedMacros[currentMacroName] or loadMacroFromJSON(currentMacroName)
         local speed = macro and macro.speed or 1
-        local modeText = autoRespawning and "Macro Auto-Respawning" or (autoPlaying and "Macro Auto-Playing" or "Playing Macro")
+        local modeText = autoRespawning and "Auto-Respawning Macro" or (autoPlaying and "Auto-Playing Macro" or "Playing Macro")
         statusText = (macroPaused and "Paused: " or modeText .. ": ") .. currentMacroName .. " (Speed: " .. speed .. "x)"
-    elseif pathRecording then
-        statusText = pathPaused and "Paused Path" or "Recording Path"
-    elseif pathPlaying and currentPathName then
-        local statusPrefix = pathShowOnly and "👁️ Showing Path: " or "🛤️ Playing Path: "
-        statusText = (pathPaused and "Paused: " or statusPrefix) .. currentPathName
     end
     
     MacroStatusLabel.Text = statusText
     MacroStatusLabel.Visible = statusText ~= ""
 end
 
+local function updatePathStatus()
+    if not PathStatusLabel then return end
+    
+    local statusText = ""
+    if pathRecording then
+        statusText = pathPaused and "Recording Paused" or "Recording Path..."
+    elseif pathPlaying and currentPathName then
+        local statusPrefix = pathShowOnly and "👁️ Showing Path: " or "🛤️ Playing Path: "
+        local modeText = pathAutoRespawning and "Auto-Respawning Path" or (pathAutoPlaying and "Auto-Playing Path" or "Playing Path")
+        statusText = (pathPaused and "Paused: " or (pathShowOnly and statusPrefix or modeText .. ": ")) .. currentPathName
+    end
+    
+    PathStatusLabel.Text = statusText
+    PathStatusLabel.Visible = statusText ~= ""
+end
+
 -- File System Integration
-local fileSystem = {
-    ["Supertool/Macro"] = {},
-    ["Supertool/Paths"] = {}
-}
-
-local function ensureFileSystem()
-    if not fileSystem["Supertool"] then
-        fileSystem["Supertool"] = {}
-    end
-    if not fileSystem["Supertool/Macro"] then
-        fileSystem["Supertool/Macro"] = {}
-    end
-    if not fileSystem["Supertool/Paths"] then
-        fileSystem["Supertool/Paths"] = {}
-    end
-end
-
-local function saveToFileSystem(macroName, macroData)
-    ensureFileSystem()
-    fileSystem["Supertool/Macro"][macroName] = macroData
-    saveToJSONFile(macroName, macroData)
-end
-
-local function loadFromFileSystem(macroName)
-    local jsonData = loadFromJSONFile(macroName)
-    if jsonData then
-        return jsonData
-    end
-    ensureFileSystem()
-    return fileSystem["Supertool/Macro"][macroName]
-end
-
-local function deleteFromFileSystem(macroName)
-    ensureFileSystem()
-    fileSystem["Supertool/Macro"][macroName] = nil
-    local sanitizedName = sanitizeFileName(macroName)
-    local filePath = MACRO_FOLDER_PATH .. sanitizedName .. ".json"
-    if isfile(filePath) then
-        delfile(filePath)
-    end
-end
-
-local function renameInFileSystem(oldName, newName)
-    ensureFileSystem()
-    if fileSystem["Supertool/Macro"][oldName] then
-        fileSystem["Supertool/Macro"][newName] = fileSystem["Supertool/Macro"][oldName]
-        fileSystem["Supertool/Macro"][oldName] = nil
-    end
-    local oldPath = MACRO_FOLDER_PATH .. sanitizeFileName(oldName) .. ".json"
-    local newPath = MACRO_FOLDER_PATH .. sanitizeFileName(newName) .. ".json"
-    if isfile(oldPath) then
-        local data = readfile(oldPath)
-        writefile(newPath, data)
-        delfile(oldPath)
-    end
-end
-
-local function saveToJSONFile(macroName, macroData)
+function saveMacroToJSON(macroName, macroData)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
@@ -841,13 +881,14 @@ local function saveToJSONFile(macroName, macroData)
         
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
+        print("[SUPERTOOL] Macro saved: " .. filePath)
         return true
     end)
     
     return success
 end
 
-local function loadFromJSONFile(macroName)
+function loadMacroFromJSON(macroName)
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
@@ -879,6 +920,41 @@ local function loadFromJSONFile(macroName)
     end)
     
     return success and result or nil
+end
+
+function deleteMacroFromJSON(macroName)
+    local success, error = pcall(function()
+        local sanitizedName = sanitizeFileName(macroName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = MACRO_FOLDER_PATH .. fileName
+        
+        if isfile(filePath) then
+            delfile(filePath)
+            print("[SUPERTOOL] Macro deleted: " .. filePath)
+            return true
+        end
+        return false
+    end)
+    
+    return success and error or false
+end
+
+function renameMacroInJSON(oldName, newName)
+    local success, error = pcall(function()
+        local oldData = loadMacroFromJSON(oldName)
+        if not oldData then return false end
+        
+        oldData.name = newName
+        oldData.modified = os.time()
+        
+        if saveMacroToJSON(newName, oldData) then
+            deleteMacroFromJSON(oldName)
+            return true
+        end
+        return false
+    end)
+    
+    return success and error or false
 end
 
 -- UI Components
@@ -1153,7 +1229,7 @@ function Utility.updateMacroList()
             renameInput.Size = UDim2.new(0, 130, 0, 15)
             renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
             renameInput.BorderSizePixel = 0
-            renameInput.PlaceholderText = "New name..."
+            renameInput.PlaceholderText = "Rename..."
             renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
             renameInput.TextSize = 6
             renameInput.Font = Enum.Font.Gotham
@@ -1222,7 +1298,7 @@ function Utility.updateMacroList()
                     stopMacroPlayback()
                 end
                 savedMacros[macroName] = nil
-                deleteFromFileSystem(macroName)
+                deleteMacroFromJSON(macroName)
                 Utility.updateMacroList()
             end)
             
@@ -1237,7 +1313,7 @@ function Utility.updateMacroList()
                             currentMacroName = newName
                         end
                         
-                        renameInFileSystem(macroName, newName)
+                        renameMacroInJSON(macroName, newName)
                         renameInput.Text = ""
                         Utility.updateMacroList()
                     end
@@ -1249,7 +1325,7 @@ function Utility.updateMacroList()
                     local newSpeed = tonumber(speedInput.Text)
                     if newSpeed and newSpeed > 0 and newSpeed <= 10 then
                         macro.speed = newSpeed
-                        saveToFileSystem(macroName, macro)
+                        saveMacroToJSON(macroName, macro)
                     else
                         speedInput.Text = tostring(macro.speed or 1)
                     end
@@ -1362,7 +1438,7 @@ function updatePathList()
             renameInput.Size = UDim2.new(0, 130, 0, 15)
             renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
             renameInput.BorderSizePixel = 0
-            renameInput.PlaceholderText = "New name..."
+            renameInput.PlaceholderText = "Rename..."
             renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
             renameInput.TextSize = 6
             renameInput.Font = Enum.Font.Gotham
@@ -1540,8 +1616,6 @@ function Utility.init(deps)
     pathShowOnly = false
     pathPaused = false
     
-    ensureFileSystem()
-    
     local success = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
@@ -1607,10 +1681,11 @@ function Utility.init(deps)
     task.spawn(function()
         initMacroUI()
         initPathUI()
-        print("[SUPERTOOL] Enhanced Utility Module v2.1 initialized")
-        print("  - Path Recording: Visual navigation with undo markers")
+        print("[SUPERTOOL] Enhanced Utility Module v2.2 initialized")
+        print("  - Path Recording: Visual navigation with undo markers and idle duration")
         print("  - Enhanced Macros: Full macro system with pause/resume")
         print("  - Keyboard Controls: Ctrl+Z (undo)")
+        print("  - JSON Storage: Supertool/Macro and Supertool/Paths")
     end)
 end
 
