@@ -1,5 +1,5 @@
--- Enhanced Unified Macro-Path System for MinimalHackGUI by Fari Noveri
--- Version 3.0 - Unified GUI with advanced features and JSON sync
+-- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
+-- Updated version with fixed status text, undo during recording only, external undo toggle, larger idle text, hide/show toggle, and removed "textbox" text
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -7,39 +7,51 @@ local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player
 -- Initialize module
 local Utility = {}
 
--- Unified System Variables
-local isRecording = false
-local isPlaying = false
+-- Macro System Variables
+local macroRecording = false
+local macroPlaying = false
 local autoPlaying = false
 local autoRespawning = false
-local isPaused = false
-local currentData = {}
-local savedItems = {}
-local frameVisible = false
-local MainFrame, MainScrollFrame, MainLayout, MainInput, StatusLabel
+local macroPaused = false
+local currentMacro = {}
+local savedMacros = {}
+local macroFrameVisible = false
+local MacroFrame, MacroScrollFrame, MacroLayout, MacroInput, MacroStatusLabel
 local recordConnection = nil
 local playbackConnection = nil
-local currentItemName = nil
+local currentMacroName = nil
 local recordingPaused = false
 local lastFrameTime = 0
-local pauseIndex = 1
-local pauseTime = 0
-local pauseResumeTime = 5 -- Seconds to wait before resuming after death
-local currentRecordingType = "macro" -- "macro" or "path"
+local macroPauseIndex = 1
+local macroPauseTime = 0
+local pauseResumeTime = 5 -- Seconds to wait before resuming macro after death
 
--- Path-specific variables
+-- Path Recording System Variables
+local pathRecording = false
+local pathPlaying = false
+local pathShowOnly = false
+local pathPaused = false
+local currentPath = {}
+local savedPaths = {}
+local pathFrameVisible = false
+local PathFrame, PathScrollFrame, PathLayout, PathInput, PathStatusLabel
+local pathConnection = nil
+local pathPlayConnection = nil
+local currentPathName = nil
+local pathPauseIndex = 1
+local lastPathTime = 0
 local pathVisualParts = {}
 local pathMarkerParts = {}
 local idleStartTime = nil
 local currentIdleLabel = nil
 local idleStartPosition = nil
-local pauseMarker = nil
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local SAVE_FOLDER_PATH = "Supertool/Macro/"
+local MACRO_FOLDER_PATH = "Supertool/Macro/"
+local PATH_FOLDER_PATH = "Supertool/Paths/"
 
 -- Path movement detection constants
 local WALK_THRESHOLD = 5 -- studs per second
@@ -54,8 +66,7 @@ local movementColors = {
     jumping = Color3.fromRGB(255, 0, 0),
     falling = Color3.fromRGB(255, 255, 0),
     walking = Color3.fromRGB(0, 255, 0),
-    idle = Color3.fromRGB(200, 200, 200),
-    paused = Color3.fromRGB(255, 165, 0) -- Orange for pause marker
+    idle = Color3.fromRGB(200, 200, 200)
 }
 
 -- Helper function for sanitize filename
@@ -63,24 +74,9 @@ local function sanitizeFileName(name)
     local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
     sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
     if sanitized == "" then
-        sanitized = "item_" .. os.time()
+        sanitized = "unnamed_" .. os.time()
     end
     return sanitized
-end
-
--- Generate random filename
-local function generateRandomName(type)
-    local prefixes = {
-        macro = {"Swift", "Quick", "Auto", "Smooth", "Fast", "Pro"},
-        path = {"Route", "Trail", "Journey", "Track", "Way", "Path"}
-    }
-    local suffixes = {"Alpha", "Beta", "Gamma", "Delta", "Prime", "Max", "Ultra", "Plus"}
-    
-    local prefix = prefixes[type][math.random(1, #prefixes[type])]
-    local suffix = suffixes[math.random(1, #suffixes)]
-    local number = math.random(100, 999)
-    
-    return prefix .. suffix .. number
 end
 
 -- Helper functions for CFrame and Vector3 validation
@@ -217,36 +213,32 @@ local function getColorFromType(movementType)
 end
 
 -- Path Visualization
-local function createPathVisual(position, movementType, isMarker, idleDuration, isPauseMarker)
+local function createPathVisual(position, movementType, isMarker, idleDuration)
     local color = getColorFromType(movementType)
-    if isPauseMarker then
-        color = movementColors.paused
-    end
-    
     local part = Instance.new("Part")
-    part.Name = isPauseMarker and "PauseMarker" or (isMarker and "PathMarker" or "PathPoint")
+    part.Name = isMarker and "PathMarker" or "PathPoint"
     part.Parent = workspace
     part.Anchored = true
     part.CanCollide = false
     part.Material = Enum.Material.Neon
     part.Color = color
     part.Transparency = isMarker and 0.3 or 0.7
-    part.Size = isPauseMarker and Vector3.new(2, 2, 2) or (isMarker and Vector3.new(1, 1, 1) or Vector3.new(0.5, 0.5, 0.5))
+    part.Size = isMarker and Vector3.new(1, 1, 1) or Vector3.new(0.5, 0.5, 0.5)
     part.Shape = isMarker and Enum.PartType.Ball or Enum.PartType.Block
     part.CFrame = CFrame.new(position)
     
-    if isMarker or isPauseMarker then
+    if isMarker then
         local pointLight = Instance.new("PointLight")
         pointLight.Parent = part
         pointLight.Color = color
-        pointLight.Brightness = isPauseMarker and 3 or 2
-        pointLight.Range = isPauseMarker and 15 or 10
+        pointLight.Brightness = 2
+        pointLight.Range = 10
         
-        if (movementType == "idle" and idleDuration) or isPauseMarker then
+        if movementType == "idle" and idleDuration then
             local billboard = Instance.new("BillboardGui")
             billboard.Parent = part
-            billboard.Size = UDim2.new(0, 120, 0, 30)
-            billboard.StudsOffset = Vector3.new(0, 3, 0)
+            billboard.Size = UDim2.new(0, 100, 0, 30)
+            billboard.StudsOffset = Vector3.new(0, 2, 0)
             billboard.AlwaysOnTop = true
             
             local textLabel = Instance.new("TextLabel")
@@ -256,18 +248,12 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
             textLabel.TextStrokeTransparency = 0.5
-            textLabel.TextSize = 14
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.Name = isPauseMarker and "PauseLabel" or "IdleLabel"
-            
-            if isPauseMarker then
-                textLabel.Text = "⏸️ PAUSED HERE"
-                textLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
-            else
-                textLabel.Text = idleDuration >= 60 and 
-                    string.format("%.1fm", idleDuration/60) or 
-                    string.format("%.1fs", idleDuration)
-            end
+            textLabel.TextSize = 12 -- Increased for better visibility
+            textLabel.Font = Enum.Font.Gotham
+            textLabel.Text = idleDuration >= 60 and 
+                string.format("%.1fm", idleDuration/60) or 
+                string.format("%.1fs", idleDuration)
+            textLabel.Name = "IdleLabel"
         end
     end
     
@@ -285,167 +271,133 @@ local function clearPathVisuals()
             part:Destroy()
         end
     end
-    if pauseMarker and pauseMarker.Parent then
-        pauseMarker:Destroy()
-    end
     pathVisualParts = {}
     pathMarkerParts = {}
-    pauseMarker = nil
 end
 
--- Unified Recording Functions
-local function startRecording(recordType)
-    if isRecording or isPlaying then 
-        warn("[SUPERTOOL] Cannot start recording: Another recording/playback is active")
+-- Path Recording Functions
+local function startPathRecording()
+    if pathRecording or pathPlaying or macroRecording or macroPlaying then 
+        warn("[SUPERTOOL] Cannot start path recording: Another recording/playback is active")
         return 
     end
     
     if not updateCharacterReferences() then
-        warn("[SUPERTOOL] Cannot start recording: Character not ready")
+        warn("[SUPERTOOL] Cannot start path recording: Character not ready")
         return
     end
     
-    isRecording = true
-    currentRecordingType = recordType
-    recordingPaused = false
-    isPaused = false
+    pathRecording = true
+    currentPath = {points = {}, startTime = tick(), markers = {}}
+    lastPathTime = 0
+    idleStartTime = nil
+    currentIdleLabel = nil
+    idleStartPosition = nil
     clearPathVisuals()
     
-    if recordType == "macro" then
-        currentData = {frames = {}, startTime = tick(), speed = 1, type = "macro"}
-    else -- path
-        currentData = {points = {}, markers = {}, startTime = tick(), speed = 1, type = "path"}
-        idleStartTime = nil
-        currentIdleLabel = nil
-        idleStartPosition = nil
-    end
-    
-    lastFrameTime = 0
-    updateStatus()
-    
-    print("[SUPERTOOL] " .. recordType:gsub("^%l", string.upper) .. " recording started")
+    print("[SUPERTOOL] Path recording started")
     
     local previousMovementType = nil
     
-    recordConnection = RunService.Heartbeat:Connect(function()
-        if not isRecording or isPaused then return end
+    pathConnection = RunService.Heartbeat:Connect(function()
+        if not pathRecording or pathPaused then return end
         
         if not updateCharacterReferences() then return end
         
-        local currentTime = tick() - currentData.startTime
+        local currentTime = tick() - currentPath.startTime
+        local position = rootPart.Position
+        local velocity = rootPart.Velocity
+        local movementType = detectMovementType(velocity, position)
         
-        if recordType == "macro" then
-            local success, frame = pcall(function()
-                return {
-                    time = currentTime,
-                    cframe = rootPart.CFrame,
-                    velocity = rootPart.Velocity,
-                    walkSpeed = humanoid.WalkSpeed,
-                    jumpPower = humanoid.JumpPower,
-                    hipHeight = humanoid.HipHeight,
-                    state = humanoid:GetState()
-                }
-            end)
-            
-            if success and frame then
-                table.insert(currentData.frames, frame)
+        local pathPoint = {
+            time = currentTime,
+            position = position,
+            cframe = rootPart.CFrame,
+            velocity = velocity,
+            movementType = movementType,
+            walkSpeed = humanoid.WalkSpeed,
+            jumpPower = humanoid.JumpPower
+        }
+        
+        table.insert(currentPath.points, pathPoint)
+        
+        local visualPart = createPathVisual(position, movementType, false)
+        table.insert(pathVisualParts, visualPart)
+        
+        if movementType == "idle" then
+            if previousMovementType ~= "idle" then
+                idleStartTime = currentTime
+                idleStartPosition = position
+                currentIdleLabel = createPathVisual(position, movementType, true, 0)
+                table.insert(pathMarkerParts, currentIdleLabel)
             end
-        else -- path
-            local position = rootPart.Position
-            local velocity = rootPart.Velocity
-            local movementType = detectMovementType(velocity, position)
-            
-            local pathPoint = {
+            if currentIdleLabel then
+                local duration = currentTime - idleStartTime
+                local label = currentIdleLabel:FindFirstChildOfClass("BillboardGui"):FindFirstChild("IdleLabel")
+                if label then
+                    label.Text = duration >= 60 and 
+                        string.format("%.1fm", duration/60) or 
+                        string.format("%.1fs", duration)
+                end
+            end
+        else
+            if previousMovementType == "idle" and idleStartTime then
+                local duration = currentTime - idleStartTime
+                table.insert(currentPath.markers, {
+                    time = idleStartTime,
+                    position = idleStartPosition,
+                    cframe = CFrame.new(idleStartPosition),
+                    pathIndex = #currentPath.points - 1,
+                    idleDuration = duration,
+                    movementType = "idle"
+                })
+                idleStartTime = nil
+                currentIdleLabel = nil
+                idleStartPosition = nil
+            end
+        end
+        
+        local shouldCreateMarker = false
+        if #currentPath.markers == 0 then
+            shouldCreateMarker = true
+        else
+            local lastMarker = currentPath.markers[#currentPath.markers]
+            local distance = (position - lastMarker.position).Magnitude
+            if distance >= MARKER_DISTANCE then
+                shouldCreateMarker = true
+            end
+        end
+        
+        if shouldCreateMarker and movementType ~= "idle" then
+            local marker = {
                 time = currentTime,
                 position = position,
                 cframe = rootPart.CFrame,
-                velocity = velocity,
-                movementType = movementType,
-                walkSpeed = humanoid.WalkSpeed,
-                jumpPower = humanoid.JumpPower
+                pathIndex = #currentPath.points,
+                movementType = movementType
             }
+            table.insert(currentPath.markers, marker)
             
-            table.insert(currentData.points, pathPoint)
+            local markerPart = createPathVisual(position, movementType, true)
+            table.insert(pathMarkerParts, markerPart)
             
-            local visualPart = createPathVisual(position, movementType, false)
-            table.insert(pathVisualParts, visualPart)
-            
-            -- Handle idle detection and markers
-            if movementType == "idle" then
-                if previousMovementType ~= "idle" then
-                    idleStartTime = currentTime
-                    idleStartPosition = position
-                    currentIdleLabel = createPathVisual(position, movementType, true, 0)
-                    table.insert(pathMarkerParts, currentIdleLabel)
-                end
-                if currentIdleLabel then
-                    local duration = currentTime - idleStartTime
-                    local label = currentIdleLabel:FindFirstChildOfClass("BillboardGui"):FindFirstChild("IdleLabel")
-                    if label then
-                        label.Text = duration >= 60 and 
-                            string.format("%.1fm", duration/60) or 
-                            string.format("%.1fs", duration)
-                    end
-                end
-            else
-                if previousMovementType == "idle" and idleStartTime then
-                    local duration = currentTime - idleStartTime
-                    table.insert(currentData.markers, {
-                        time = idleStartTime,
-                        position = idleStartPosition,
-                        cframe = CFrame.new(idleStartPosition),
-                        pathIndex = #currentData.points - 1,
-                        idleDuration = duration,
-                        movementType = "idle"
-                    })
-                    idleStartTime = nil
-                    currentIdleLabel = nil
-                    idleStartPosition = nil
-                end
-            end
-            
-            -- Create distance markers
-            local shouldCreateMarker = false
-            if #currentData.markers == 0 then
-                shouldCreateMarker = true
-            else
-                local lastMarker = currentData.markers[#currentData.markers]
-                local distance = (position - lastMarker.position).Magnitude
-                if distance >= MARKER_DISTANCE then
-                    shouldCreateMarker = true
-                end
-            end
-            
-            if shouldCreateMarker and movementType ~= "idle" then
-                local marker = {
-                    time = currentTime,
-                    position = position,
-                    cframe = rootPart.CFrame,
-                    pathIndex = #currentData.points,
-                    movementType = movementType
-                }
-                table.insert(currentData.markers, marker)
-                
-                local markerPart = createPathVisual(position, movementType, true)
-                table.insert(pathMarkerParts, markerPart)
-            end
-            
-            previousMovementType = movementType
+            print("[SUPERTOOL] Path marker created at " .. tostring(position))
         end
+        
+        previousMovementType = movementType
     end)
 end
 
-local function stopRecording()
-    if not isRecording then return end
+local function stopPathRecording()
+    if not pathRecording then return end
     
-    -- Handle final idle duration for paths
-    if currentRecordingType == "path" and idleStartTime then
-        local duration = (tick() - currentData.startTime) - idleStartTime
-        table.insert(currentData.markers, {
+    if idleStartTime then
+        local duration = (tick() - currentPath.startTime) - idleStartTime
+        table.insert(currentPath.markers, {
             time = idleStartTime,
             position = idleStartPosition,
             cframe = CFrame.new(idleStartPosition),
-            pathIndex = #currentData.points,
+            pathIndex = #currentPath.points,
             idleDuration = duration,
             movementType = "idle"
         })
@@ -454,238 +406,192 @@ local function stopRecording()
         idleStartPosition = nil
     end
     
-    isRecording = false
-    isPaused = false
-    recordingPaused = false
-    if recordConnection then
-        recordConnection:Disconnect()
-        recordConnection = nil
+    pathRecording = false
+    pathPaused = false
+    if pathConnection then
+        pathConnection:Disconnect()
+        pathConnection = nil
     end
     
-    -- Generate random name
-    local itemName = generateRandomName(currentRecordingType)
-    
-    -- Validate data
-    local dataCount = 0
-    if currentRecordingType == "macro" then
-        dataCount = #(currentData.frames or {})
-    else
-        dataCount = #(currentData.points or {})
+    local pathName = PathInput.Text
+    if pathName == "" then
+        pathName = "Path_" .. os.date("%H%M%S")
     end
     
-    if dataCount == 0 then
-        warn("[SUPERTOOL] Cannot save empty " .. currentRecordingType)
+    if #currentPath.points == 0 then
+        warn("[SUPERTOOL] Cannot save empty path")
         clearPathVisuals()
-        updateStatus()
         return
     end
     
-    -- Set metadata
-    currentData.name = itemName
-    currentData.created = os.time()
+    currentPath.name = pathName
+    currentPath.created = os.time()
+    currentPath.pointCount = #currentPath.points
+    currentPath.markerCount = #currentPath.markers
+    currentPath.duration = currentPath.points[#currentPath.points].time
     
-    if currentRecordingType == "macro" then
-        currentData.frameCount = #currentData.frames
-        currentData.duration = currentData.frames[#currentData.frames].time
-    else
-        currentData.pointCount = #currentData.points
-        currentData.markerCount = #(currentData.markers or {})
-        currentData.duration = currentData.points[#currentData.points].time
-    end
+    savedPaths[pathName] = currentPath
+    savePathToJSON(pathName, currentPath)
     
-    -- Save data
-    savedItems[itemName] = currentData
-    saveToJSON(itemName, currentData)
+    PathInput.Text = ""
+    updatePathList()
     
-    updateList()
-    updateStatus()
-    
-    print("[SUPERTOOL] " .. currentRecordingType:gsub("^%l", string.upper) .. " saved: " .. itemName .. " (" .. dataCount .. " " .. (currentRecordingType == "macro" and "frames" or "points") .. ")")
+    print("[SUPERTOOL] Path recorded: " .. pathName .. " (" .. #currentPath.points .. " points, " .. #currentPath.markers .. " markers)")
 end
 
--- Unified Playback Functions
-local function playItem(itemName, showOnly, autoPlay, respawn)
-    if isRecording or isPlaying then 
-        stopPlayback()
-    end
+-- Path Playback Functions
+local function playPath(pathName, showOnly, autoPlay, respawn)
+    if pathRecording or pathPlaying or macroRecording or macroPlaying then return end
     
     if not updateCharacterReferences() then
-        warn("[SUPERTOOL] Cannot play item: Character not ready")
+        warn("[SUPERTOOL] Cannot play path: Character not ready")
         return
     end
     
-    local item = savedItems[itemName] or loadFromJSON(itemName)
-    if not item then
-        warn("[SUPERTOOL] Cannot play item: Invalid data for " .. itemName)
+    local path = savedPaths[pathName] or loadPathFromJSON(pathName)
+    if not path or not path.points or #path.points == 0 then
+        warn("[SUPERTOOL] Cannot play path: Invalid path data")
         return
     end
     
-    isPlaying = true
-    autoPlaying = autoPlay or false
-    autoRespawning = respawn or false
-    currentItemName = itemName
-    isPaused = false
-    pauseIndex = 1
+    pathPlaying = true
+    pathShowOnly = showOnly or false
+    pathAutoPlaying = autoPlay or false
+    pathAutoRespawning = respawn or false
+    currentPathName = pathName
+    pathPaused = false
+    pathPauseIndex = 1
     
-    -- Clear previous visuals
     clearPathVisuals()
-    
-    if item.type == "path" then
-        -- Show path visuals
-        for i, point in pairs(item.points or {}) do
-            local visualPart = createPathVisual(point.position, point.movementType, false)
-            table.insert(pathVisualParts, visualPart)
-        end
-        
-        for i, marker in pairs(item.markers or {}) do
-            local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
-            table.insert(pathMarkerParts, markerPart)
-        end
-        
-        if showOnly then
-            print("[SUPERTOOL] Showing path: " .. itemName)
-            updateStatus()
-            return
-        end
+    for i, point in pairs(path.points) do
+        local visualPart = createPathVisual(point.position, point.movementType, false)
+        table.insert(pathVisualParts, visualPart)
     end
     
-    print("[SUPERTOOL] Playing " .. item.type .. ": " .. itemName)
+    for i, marker in pairs(path.markers or {}) do
+        local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
+        table.insert(pathMarkerParts, markerPart)
+    end
+    
+    if pathShowOnly then
+        print("[SUPERTOOL] Showing path: " .. pathName)
+        updatePathStatus()
+        return
+    end
+    
+    print("[SUPERTOOL] Playing path: " .. pathName)
     
     local startTime = tick()
     local index = 1
-    local speed = item.speed or 1
-    local dataArray = item.type == "macro" and item.frames or item.points
     
-    if item.type == "macro" and humanoid then
-        humanoid.WalkSpeed = 0
-    end
-    
-    playbackConnection = RunService.Heartbeat:Connect(function()
-        if not isPlaying or isPaused then return end
+    pathPlayConnection = RunService.Heartbeat:Connect(function()
+        if not pathPlaying or pathPaused then return end
         
         if not updateCharacterReferences() then return end
         
-        if index > #dataArray then
-            if autoPlaying then
-                if autoRespawning then
+        if index > #path.points then
+            if pathAutoPlaying then
+                if pathAutoRespawning then
                     resetCharacter()
                 else
                     index = 1
                     startTime = tick()
                 end
             else
-                stopPlayback()
+                pathPlaying = false
+                currentPathName = nil
+                if pathPlayConnection then
+                    pathPlayConnection:Disconnect()
+                    pathPlayConnection = nil
+                end
+                humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+                updatePathStatus()
                 return
             end
         end
         
-        local frameData = dataArray[index]
-        local scaledTime = frameData.time / speed
-        
-        if scaledTime <= (tick() - startTime) then
+        local point = path.points[index]
+        if point and tick() - startTime >= point.time then
             pcall(function()
-                rootPart.CFrame = frameData.cframe
-                rootPart.Velocity = frameData.velocity
-                humanoid.WalkSpeed = frameData.walkSpeed
-                humanoid.JumpPower = frameData.jumpPower
-                
-                if item.type == "macro" then
-                    humanoid.HipHeight = frameData.hipHeight
-                    humanoid:ChangeState(frameData.state)
-                end
+                rootPart.CFrame = point.cframe
+                rootPart.Velocity = point.velocity
+                humanoid.WalkSpeed = point.walkSpeed
+                humanoid.JumpPower = point.jumpPower
             end)
             index = index + 1
         end
     end)
-    
-    updateStatus()
 end
 
-local function stopPlayback()
-    if not isPlaying then return end
-    isPlaying = false
-    autoPlaying = false
-    autoRespawning = false
-    isPaused = false
-    pauseIndex = 1
-    if playbackConnection then
-        playbackConnection:Disconnect()
-        playbackConnection = nil
+local function togglePathVisuals(pathName)
+    if pathShowOnly and currentPathName == pathName then
+        clearPathVisuals()
+        pathShowOnly = false
+        currentPathName = nil
+        updatePathStatus()
+    else
+        playPath(pathName, true, false, false)
+    end
+    updatePathList()
+end
+
+local function stopPathPlayback()
+    if not pathPlaying then return end
+    pathPlaying = false
+    pathAutoPlaying = false
+    pathAutoRespawning = false
+    pathPaused = false
+    pathShowOnly = false
+    pathPauseIndex = 1
+    if pathPlayConnection then
+        pathPlayConnection:Disconnect()
+        pathPlayConnection = nil
     end
     if humanoid then
         humanoid.WalkSpeed = settings.WalkSpeed.value or 16
     end
-    
-    -- Remove pause marker
-    if pauseMarker then
-        pauseMarker:Destroy()
-        pauseMarker = nil
-    end
-    
-    currentItemName = nil
-    updateList()
-    updateStatus()
+    currentPathName = nil
+    updatePathList()
+    updatePathStatus()
 end
 
-local function pausePlayback()
-    if not isPlaying then return end
-    isPaused = not isPaused
-    
-    -- Handle pause marker for paths
-    if currentItemName then
-        local item = savedItems[currentItemName] or loadFromJSON(currentItemName)
-        if item and item.type == "path" and rootPart then
-            if isPaused then
-                -- Create pause marker
-                pauseMarker = createPathVisual(rootPart.Position, "paused", true, nil, true)
-            else
-                -- Remove pause marker
-                if pauseMarker then
-                    pauseMarker:Destroy()
-                    pauseMarker = nil
-                end
-            end
-        end
-    end
-    
-    updateStatus()
-end
-
--- Undo System (for paths only)
+-- Path Undo System
 local function undoToLastMarker()
-    if not isRecording or currentRecordingType ~= "path" or not currentData.markers then
+    if not pathRecording or not currentPathName then
         warn("[SUPERTOOL] Undo only available during path recording")
         return
     end
     
-    if #currentData.markers == 0 then
+    local path = savedPaths[currentPathName]
+    if not path or not path.markers or #path.markers == 0 then
         warn("[SUPERTOOL] No markers to undo")
         return
     end
     
-    local lastMarkerIndex = #currentData.markers
-    local lastMarker = currentData.markers[lastMarkerIndex]
+    local lastMarkerIndex = #path.markers
+    local lastMarker = path.markers[lastMarkerIndex]
     if lastMarker and updateCharacterReferences() then
         rootPart.CFrame = lastMarker.cframe
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
         
         -- Remove points and markers after the last marker
-        currentData.points = {table.unpack(currentData.points, 1, lastMarker.pathIndex)}
-        currentData.markers = {table.unpack(currentData.markers, 1, lastMarkerIndex - 1)}
+        path.points = {table.unpack(path.points, 1, lastMarker.pathIndex)}
+        path.markers = {table.unpack(path.markers, 1, lastMarkerIndex - 1)}
+        path.pointCount = #path.points
+        path.markerCount = #path.markers
+        path.duration = path.points[#path.points].time
         
-        -- Save updated data
-        if currentItemName then
-            saveToJSON(currentItemName, currentData)
-        end
+        -- Save updated path
+        savePathToJSON(currentPathName, path)
         
         -- Update visuals
         clearPathVisuals()
-        for i, point in pairs(currentData.points) do
+        for i, point in pairs(path.points) do
             local visualPart = createPathVisual(point.position, point.movementType, false)
             table.insert(pathVisualParts, visualPart)
         end
         
-        for i, marker in pairs(currentData.markers) do
+        for i, marker in pairs(path.markers) do
             local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
             table.insert(pathMarkerParts, markerPart)
         end
@@ -696,187 +602,125 @@ local function undoToLastMarker()
     end
 end
 
--- Status Update Function
-local function updateStatus()
-    if not StatusLabel then return end
-    
-    local statusText = ""
-    if isRecording then
-        local typeText = currentRecordingType:gsub("^%l", string.upper)
-        statusText = recordingPaused and "Recording Paused" or ("Recording " .. typeText .. "...")
-    elseif isPlaying and currentItemName then
-        local item = savedItems[currentItemName] or loadFromJSON(currentItemName)
-        local typeText = (item and item.type or "item"):gsub("^%l", string.upper)
-        local speed = item and item.speed or 1
-        local modeText = autoRespawning and "Auto-Respawning" or (autoPlaying and "Auto-Playing" or "Playing")
-        statusText = (isPaused and "⏸️ Paused: " or (modeText .. " " .. typeText .. ": ")) .. currentItemName .. " (Speed: " .. speed .. "x)"
-    end
-    
-    StatusLabel.Text = statusText
-    StatusLabel.Visible = statusText ~= ""
-end
-
--- File System Functions
-function saveToJSON(itemName, itemData)
+-- File system functions for paths
+function savePathToJSON(pathName, pathData)
     local success, error = pcall(function()
-        local sanitizedName = sanitizeFileName(itemName)
+        local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
-        local filePath = SAVE_FOLDER_PATH .. fileName
+        local filePath = PATH_FOLDER_PATH .. fileName
         
-        if not isfolder(SAVE_FOLDER_PATH) then
-            makefolder(SAVE_FOLDER_PATH)
+        if not isfolder(PATH_FOLDER_PATH) then
+            makefolder(PATH_FOLDER_PATH)
+        end
+        
+        local serializedPoints = {}
+        for _, point in ipairs(pathData.points or {}) do
+            table.insert(serializedPoints, {
+                time = point.time,
+                position = {point.position.X, point.position.Y, point.position.Z},
+                cframe = {point.cframe:GetComponents()},
+                velocity = {point.velocity.X, point.velocity.Y, point.velocity.Z},
+                movementType = point.movementType,
+                walkSpeed = point.walkSpeed,
+                jumpPower = point.jumpPower
+            })
+        end
+        
+        local serializedMarkers = {}
+        for _, marker in ipairs(pathData.markers or {}) do
+            table.insert(serializedMarkers, {
+                time = marker.time,
+                position = {marker.position.X, marker.position.Y, marker.position.Z},
+                cframe = {marker.cframe:GetComponents()},
+                pathIndex = marker.pathIndex,
+                idleDuration = marker.idleDuration,
+                movementType = marker.movementType
+            })
         end
         
         local jsonData = {
-            name = itemName,
-            type = itemData.type,
-            created = itemData.created or os.time(),
-            speed = itemData.speed or 1
+            name = pathName,
+            created = pathData.created or os.time(),
+            points = serializedPoints,
+            markers = serializedMarkers,
+            pointCount = #serializedPoints,
+            markerCount = #serializedMarkers,
+            duration = pathData.duration,
+            speed = pathData.speed or 1
         }
-        
-        if itemData.type == "macro" then
-            local serializedFrames = {}
-            for i, frame in pairs(itemData.frames or {}) do
-                if frame and frame.time then
-                    local serializedFrame = {
-                        time = frame.time,
-                        cframe = {frame.cframe:GetComponents()},
-                        velocity = {frame.velocity.X, frame.velocity.Y, frame.velocity.Z},
-                        walkSpeed = frame.walkSpeed,
-                        jumpPower = frame.jumpPower,
-                        hipHeight = frame.hipHeight,
-                        state = frame.state.Name
-                    }
-                    table.insert(serializedFrames, serializedFrame)
-                end
-            end
-            
-            jsonData.frames = serializedFrames
-            jsonData.frameCount = #serializedFrames
-            jsonData.duration = serializedFrames[#serializedFrames] and serializedFrames[#serializedFrames].time or 0
-        else -- path
-            local serializedPoints = {}
-            for _, point in ipairs(itemData.points or {}) do
-                table.insert(serializedPoints, {
-                    time = point.time,
-                    position = {point.position.X, point.position.Y, point.position.Z},
-                    cframe = {point.cframe:GetComponents()},
-                    velocity = {point.velocity.X, point.velocity.Y, point.velocity.Z},
-                    movementType = point.movementType,
-                    walkSpeed = point.walkSpeed,
-                    jumpPower = point.jumpPower
-                })
-            end
-            
-            local serializedMarkers = {}
-            for _, marker in ipairs(itemData.markers or {}) do
-                table.insert(serializedMarkers, {
-                    time = marker.time,
-                    position = {marker.position.X, marker.position.Y, marker.position.Z},
-                    cframe = {marker.cframe:GetComponents()},
-                    pathIndex = marker.pathIndex,
-                    idleDuration = marker.idleDuration,
-                    movementType = marker.movementType
-                })
-            end
-            
-            jsonData.points = serializedPoints
-            jsonData.markers = serializedMarkers
-            jsonData.pointCount = #serializedPoints
-            jsonData.markerCount = #serializedMarkers
-            jsonData.duration = itemData.duration
-        end
         
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
         
-        print("[SUPERTOOL] Item saved: " .. filePath)
+        print("[SUPERTOOL] Path saved: " .. filePath)
         return true
     end)
     
     return success
 end
 
-function loadFromJSON(itemName)
+function loadPathFromJSON(pathName)
     local success, result = pcall(function()
-        local sanitizedName = sanitizeFileName(itemName)
+        local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
-        local filePath = SAVE_FOLDER_PATH .. fileName
+        local filePath = PATH_FOLDER_PATH .. fileName
         
         if not isfile(filePath) then return nil end
         
         local jsonString = readfile(filePath)
         local jsonData = HttpService:JSONDecode(jsonString)
         
-        local loadedData = {
-            name = jsonData.name or itemName,
-            type = jsonData.type or "macro",
-            created = jsonData.created or os.time(),
-            speed = jsonData.speed or 1
-        }
-        
-        if jsonData.type == "macro" then
-            local validFrames = {}
-            for i, rawFrame in pairs(jsonData.frames or {}) do
-                local validFrame = validateFrame(rawFrame)
-                if validFrame then
-                    table.insert(validFrames, validFrame)
-                end
-            end
-            
-            loadedData.frames = validFrames
-            loadedData.frameCount = #validFrames
-            loadedData.duration = validFrames[#validFrames] and validFrames[#validFrames].time or 0
-        else -- path
-            local validPoints = {}
-            for _, pointData in ipairs(jsonData.points or {}) do
-                local point = {
-                    time = pointData.time,
-                    position = validateAndConvertVector3(pointData.position),
-                    cframe = validateAndConvertCFrame(pointData.cframe),
-                    velocity = validateAndConvertVector3(pointData.velocity),
-                    movementType = pointData.movementType or "walking",
-                    walkSpeed = pointData.walkSpeed or 16,
-                    jumpPower = pointData.jumpPower or 50
-                }
-                table.insert(validPoints, point)
-            end
-            
-            local validMarkers = {}
-            for _, markerData in ipairs(jsonData.markers or {}) do
-                local marker = {
-                    time = markerData.time,
-                    position = validateAndConvertVector3(markerData.position),
-                    cframe = validateAndConvertCFrame(markerData.cframe),
-                    pathIndex = markerData.pathIndex,
-                    idleDuration = markerData.idleDuration,
-                    movementType = markerData.movementType
-                }
-                table.insert(validMarkers, marker)
-            end
-            
-            loadedData.points = validPoints
-            loadedData.markers = validMarkers
-            loadedData.pointCount = #validPoints
-            loadedData.markerCount = #validMarkers
-            loadedData.duration = jsonData.duration or 0
+        local validPoints = {}
+        for _, pointData in ipairs(jsonData.points or {}) do
+            local point = {
+                time = pointData.time,
+                position = validateAndConvertVector3(pointData.position),
+                cframe = validateAndConvertCFrame(pointData.cframe),
+                velocity = validateAndConvertVector3(pointData.velocity),
+                movementType = pointData.movementType or "walking",
+                walkSpeed = pointData.walkSpeed or 16,
+                jumpPower = pointData.jumpPower or 50
+            }
+            table.insert(validPoints, point)
         end
         
-        return loadedData
+        local validMarkers = {}
+        for _, markerData in ipairs(jsonData.markers or {}) do
+            local marker = {
+                time = markerData.time,
+                position = validateAndConvertVector3(markerData.position),
+                cframe = validateAndConvertCFrame(markerData.cframe),
+                pathIndex = markerData.pathIndex,
+                idleDuration = markerData.idleDuration,
+                movementType = markerData.movementType
+            }
+            table.insert(validMarkers, marker)
+        end
+        
+        return {
+            name = jsonData.name or pathName,
+            created = jsonData.created or os.time(),
+            points = validPoints,
+            markers = validMarkers,
+            pointCount = #validPoints,
+            markerCount = #validMarkers,
+            duration = jsonData.duration or 0,
+            speed = jsonData.speed or 1
+        }
     end)
     
     return success and result or nil
 end
 
-function deleteFromJSON(itemName)
+function deletePathFromJSON(pathName)
     local success, error = pcall(function()
-        local sanitizedName = sanitizeFileName(itemName)
+        local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
-        local filePath = SAVE_FOLDER_PATH .. fileName
+        local filePath = PATH_FOLDER_PATH .. fileName
         
         if isfile(filePath) then
             delfile(filePath)
-            print("[SUPERTOOL] Item deleted: " .. filePath)
+            print("[SUPERTOOL] Path deleted: " .. filePath)
             return true
         end
         return false
@@ -885,16 +729,344 @@ function deleteFromJSON(itemName)
     return success and error or false
 end
 
-function renameInJSON(oldName, newName)
+function renamePathInJSON(oldName, newName)
     local success, error = pcall(function()
-        local oldData = loadFromJSON(oldName)
+        local oldData = loadPathFromJSON(oldName)
         if not oldData then return false end
         
         oldData.name = newName
         oldData.modified = os.time()
         
-        if saveToJSON(newName, oldData) then
-            deleteFromJSON(oldName)
+        if savePathToJSON(newName, oldData) then
+            deletePathFromJSON(oldName)
+            return true
+        end
+        return false
+    end)
+    
+    return success and error or false
+end
+
+-- Macro Functions
+local function startMacroRecording()
+    if macroRecording or macroPlaying or pathRecording or pathPlaying then 
+        warn("[SUPERTOOL] Cannot start macro recording: Another recording/playback is active")
+        return 
+    end
+    
+    if not updateCharacterReferences() then
+        warn("[SUPERTOOL] Cannot start recording: Character not ready")
+        return
+    end
+    
+    macroRecording = true
+    recordingPaused = false
+    macroPaused = false
+    currentMacro = {frames = {}, startTime = tick(), speed = 1}
+    lastFrameTime = 0
+    updateMacroStatus()
+    
+    recordConnection = RunService.Heartbeat:Connect(function()
+        if not macroRecording or macroPaused then return end
+        
+        if not updateCharacterReferences() then return end
+        
+        local success, frame = pcall(function()
+            return {
+                time = tick() - currentMacro.startTime,
+                cframe = rootPart.CFrame,
+                velocity = rootPart.Velocity,
+                walkSpeed = humanoid.WalkSpeed,
+                jumpPower = humanoid.JumpPower,
+                hipHeight = humanoid.HipHeight,
+                state = humanoid:GetState()
+            }
+        end)
+        
+        if success and frame then
+            table.insert(currentMacro.frames, frame)
+        end
+    end)
+end
+
+local function stopMacroRecording()
+    if not macroRecording then return end
+    macroRecording = false
+    macroPaused = false
+    recordingPaused = false
+    if recordConnection then
+        recordConnection:Disconnect()
+        recordConnection = nil
+    end
+    
+    local macroName = MacroInput.Text
+    if macroName == "" then
+        macroName = "Macro_" .. os.date("%H%M%S")
+    end
+    
+    if #currentMacro.frames == 0 then
+        warn("[SUPERTOOL] Cannot save empty macro")
+        updateMacroStatus()
+        return
+    end
+    
+    currentMacro.frameCount = #currentMacro.frames
+    currentMacro.duration = currentMacro.frames[#currentMacro.frames].time
+    currentMacro.created = os.time()
+    
+    savedMacros[macroName] = currentMacro
+    saveMacroToJSON(macroName, currentMacro)
+    
+    MacroInput.Text = ""
+    Utility.updateMacroList()
+    updateMacroStatus()
+    if MacroFrame then
+        MacroFrame.Visible = true
+    end
+    
+    print("[SUPERTOOL] Macro saved: " .. macroName)
+end
+
+local function stopMacroPlayback()
+    if not macroPlaying then return end
+    macroPlaying = false
+    autoPlaying = false
+    autoRespawning = false
+    macroPaused = false
+    if playbackConnection then
+        playbackConnection:Disconnect()
+        playbackConnection = nil
+    end
+    if humanoid then
+        humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+    end
+    currentMacroName = nil
+    Utility.updateMacroList()
+    updateMacroStatus()
+end
+
+local function playMacro(macroName, autoPlay, respawn)
+    if macroRecording or macroPlaying or pathRecording or pathPlaying then
+        stopMacroPlayback()
+    end
+    
+    if not updateCharacterReferences() then
+        warn("[SUPERTOOL] Cannot play macro: Character not ready")
+        return
+    end
+    
+    local macro = savedMacros[macroName] or loadMacroFromJSON(macroName)
+    if not macro or not macro.frames or #macro.frames == 0 then
+        warn("[SUPERTOOL] Cannot play macro: Invalid macro data for " .. macroName)
+        return
+    end
+    
+    macroPlaying = true
+    autoPlaying = autoPlay or false
+    autoRespawning = respawn or false
+    macroPaused = false
+    currentMacroName = macroName
+    humanoid.WalkSpeed = 0
+    updateMacroStatus()
+    
+    print("[SUPERTOOL] Playing macro: " .. macroName)
+    
+    local startTime = tick()
+    local index = 1
+    local speed = macro.speed or 1
+    
+    playbackConnection = RunService.Heartbeat:Connect(function()
+        if not macroPlaying or macroPaused then return end
+        
+        if not updateCharacterReferences() then return end
+        
+        if index > #macro.frames then
+            if autoPlaying then
+                if autoRespawning then
+                    resetCharacter()
+                else
+                    index = 1
+                    startTime = tick()
+                end
+            else
+                stopMacroPlayback()
+                return
+            end
+        end
+        
+        local frame = macro.frames[index]
+        local scaledTime = frame.time / speed
+        
+        if scaledTime <= (tick() - startTime) then
+            pcall(function()
+                rootPart.CFrame = frame.cframe
+                rootPart.Velocity = frame.velocity
+                humanoid.WalkSpeed = frame.walkSpeed
+                humanoid.JumpPower = frame.jumpPower
+                humanoid.HipHeight = frame.hipHeight
+                humanoid:ChangeState(frame.state)
+            end)
+            index = index + 1
+        end
+    end)
+end
+
+local function pauseMacro()
+    if not macroPlaying then return end
+    macroPaused = not macroPaused
+    updateMacroStatus()
+end
+
+local function pausePath()
+    if not pathPlaying then return end
+    pathPaused = not pathPaused
+    updatePathStatus()
+end
+
+-- Status Update Functions
+local function updateMacroStatus()
+    if not MacroStatusLabel then return end
+    
+    local statusText = ""
+    if macroRecording then
+        statusText = recordingPaused and "Recording Paused" or "Recording Macro..."
+    elseif macroPlaying and currentMacroName then
+        local macro = savedMacros[currentMacroName] or loadMacroFromJSON(currentMacroName)
+        local speed = macro and macro.speed or 1
+        local modeText = autoRespawning and "Auto-Respawning Macro" or (autoPlaying and "Auto-Playing Macro" or "Playing Macro")
+        statusText = (macroPaused and "Paused: " or modeText .. ": ") .. currentMacroName .. " (Speed: " .. speed .. "x)"
+    end
+    
+    MacroStatusLabel.Text = statusText
+    MacroStatusLabel.Visible = statusText ~= ""
+end
+
+local function updatePathStatus()
+    if not PathStatusLabel then return end
+    
+    local statusText = ""
+    if pathRecording then
+        statusText = pathPaused and "Recording Paused" or "Recording Path..."
+    elseif pathPlaying and currentPathName then
+        local statusPrefix = pathShowOnly and "👁️ Showing Path: " or "🛤️ Playing Path: "
+        local modeText = pathAutoRespawning and "Auto-Respawning Path" or (pathAutoPlaying and "Auto-Playing Path" or "Playing Path")
+        statusText = (pathPaused and "Paused: " or (pathShowOnly and statusPrefix or modeText .. ": ")) .. currentPathName
+    end
+    
+    PathStatusLabel.Text = statusText
+    PathStatusLabel.Visible = statusText ~= ""
+end
+
+-- File System Integration
+function saveMacroToJSON(macroName, macroData)
+    local success, error = pcall(function()
+        local sanitizedName = sanitizeFileName(macroName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = MACRO_FOLDER_PATH .. fileName
+        
+        if not isfolder(MACRO_FOLDER_PATH) then
+            makefolder(MACRO_FOLDER_PATH)
+        end
+        
+        if not macroData or not macroData.frames then
+            return false
+        end
+        
+        local serializedFrames = {}
+        for i, frame in pairs(macroData.frames) do
+            if frame and frame.time then
+                local serializedFrame = {
+                    time = frame.time,
+                    cframe = {frame.cframe:GetComponents()},
+                    velocity = {frame.velocity.X, frame.velocity.Y, frame.velocity.Z},
+                    walkSpeed = frame.walkSpeed,
+                    jumpPower = frame.jumpPower,
+                    hipHeight = frame.hipHeight,
+                    state = frame.state.Name
+                }
+                table.insert(serializedFrames, serializedFrame)
+            end
+        end
+        
+        local jsonData = {
+            name = macroName,
+            created = macroData.created or os.time(),
+            frames = serializedFrames,
+            speed = macroData.speed or 1,
+            frameCount = #serializedFrames,
+            duration = serializedFrames[#serializedFrames] and serializedFrames[#serializedFrames].time or 0
+        }
+        
+        local jsonString = HttpService:JSONEncode(jsonData)
+        writefile(filePath, jsonString)
+        print("[SUPERTOOL] Macro saved: " .. filePath)
+        return true
+    end)
+    
+    return success
+end
+
+function loadMacroFromJSON(macroName)
+    local success, result = pcall(function()
+        local sanitizedName = sanitizeFileName(macroName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = MACRO_FOLDER_PATH .. fileName
+        
+        if not isfile(filePath) then return nil end
+        
+        local jsonString = readfile(filePath)
+        local jsonData = HttpService:JSONDecode(jsonString)
+        
+        local validFrames = {}
+        for i, rawFrame in pairs(jsonData.frames or {}) do
+            local validFrame = validateFrame(rawFrame)
+            if validFrame then
+                table.insert(validFrames, validFrame)
+            end
+        end
+        
+        if #validFrames == 0 then return nil end
+        
+        return {
+            name = jsonData.name or macroName,
+            created = jsonData.created or os.time(),
+            frames = validFrames,
+            speed = jsonData.speed or 1,
+            frameCount = #validFrames,
+            duration = validFrames[#validFrames].time
+        }
+    end)
+    
+    return success and result or nil
+end
+
+function deleteMacroFromJSON(macroName)
+    local success, error = pcall(function()
+        local sanitizedName = sanitizeFileName(macroName)
+        local fileName = sanitizedName .. ".json"
+        local filePath = MACRO_FOLDER_PATH .. fileName
+        
+        if isfile(filePath) then
+            delfile(filePath)
+            print("[SUPERTOOL] Macro deleted: " .. filePath)
+            return true
+        end
+        return false
+    end)
+    
+    return success and error or false
+end
+
+function renameMacroInJSON(oldName, newName)
+    local success, error = pcall(function()
+        local oldData = loadMacroFromJSON(oldName)
+        if not oldData then return false end
+        
+        oldData.name = newName
+        oldData.modified = os.time()
+        
+        if saveMacroToJSON(newName, oldData) then
+            deleteMacroFromJSON(oldName)
             return true
         end
         return false
@@ -904,397 +1076,367 @@ function renameInJSON(oldName, newName)
 end
 
 -- UI Components
-local function initUnifiedUI()
-    if MainFrame then return end
+local function initMacroUI()
+    if MacroFrame then return end
     
-    MainFrame = Instance.new("Frame")
-    MainFrame.Name = "UnifiedFrame"
-    MainFrame.Parent = ScreenGui
-    MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    MainFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    MainFrame.BorderSizePixel = 1
-    MainFrame.Position = UDim2.new(0.3, 0, 0.15, 0)
-    MainFrame.Size = UDim2.new(0, 400, 0, 500)
-    MainFrame.Visible = false
-    MainFrame.Active = true
-    MainFrame.Draggable = true
+    MacroFrame = Instance.new("Frame")
+    MacroFrame.Name = "MacroFrame"
+    MacroFrame.Parent = ScreenGui
+    MacroFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroFrame.BorderSizePixel = 1
+    MacroFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
+    MacroFrame.Size = UDim2.new(0, 300, 0, 400)
+    MacroFrame.Visible = false
+    MacroFrame.Active = true
+    MacroFrame.Draggable = true
 
-    local MainTitle = Instance.new("TextLabel")
-    MainTitle.Parent = MainFrame
-    MainTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MainTitle.BorderSizePixel = 0
-    MainTitle.Size = UDim2.new(1, 0, 0, 25)
-    MainTitle.Font = Enum.Font.GothamBold
-    MainTitle.Text = "🎯 SUPERTOOL UNIFIED SYSTEM v3.0"
-    MainTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MainTitle.TextSize = 10
+    local MacroTitle = Instance.new("TextLabel")
+    MacroTitle.Parent = MacroFrame
+    MacroTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroTitle.BorderSizePixel = 0
+    MacroTitle.Size = UDim2.new(1, 0, 0, 20)
+    MacroTitle.Font = Enum.Font.Gotham
+    MacroTitle.Text = "MACRO MANAGER - JSON SYNC v1.4"
+    MacroTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroTitle.TextSize = 8
 
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Parent = MainFrame
-    CloseButton.BackgroundTransparency = 1
-    CloseButton.Position = UDim2.new(1, -25, 0, 2)
-    CloseButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseButton.Font = Enum.Font.GothamBold
-    CloseButton.Text = "✕"
-    CloseButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    CloseButton.TextSize = 12
+    local CloseMacroButton = Instance.new("TextButton")
+    CloseMacroButton.Parent = MacroFrame
+    CloseMacroButton.BackgroundTransparency = 1
+    CloseMacroButton.Position = UDim2.new(1, -20, 0, 2)
+    CloseMacroButton.Size = UDim2.new(0, 15, 0, 15)
+    CloseMacroButton.Font = Enum.Font.GothamBold
+    CloseMacroButton.Text = "X"
+    CloseMacroButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseMacroButton.TextSize = 8
 
-    MainInput = Instance.new("TextBox")
-    MainInput.Parent = MainFrame
-    MainInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    MainInput.BorderSizePixel = 0
-    MainInput.Position = UDim2.new(0, 10, 0, 35)
-    MainInput.Size = UDim2.new(1, -20, 0, 25)
-    MainInput.Font = Enum.Font.Gotham
-    MainInput.PlaceholderText = "🔍 Search macros and paths..."
-    MainInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MainInput.TextSize = 9
-    MainInput.ClearTextOnFocus = false
+    MacroInput = Instance.new("TextBox")
+    MacroInput.Parent = MacroFrame
+    MacroInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MacroInput.BorderSizePixel = 0
+    MacroInput.Position = UDim2.new(0, 5, 0, 25)
+    MacroInput.Size = UDim2.new(1, -10, 0, 20)
+    MacroInput.Font = Enum.Font.Gotham
+    MacroInput.PlaceholderText = "Search macros..."
+    MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroInput.TextSize = 7
 
-    MainScrollFrame = Instance.new("ScrollingFrame")
-    MainScrollFrame.Parent = MainFrame
-    MainScrollFrame.BackgroundTransparency = 1
-    MainScrollFrame.Position = UDim2.new(0, 10, 0, 70)
-    MainScrollFrame.Size = UDim2.new(1, -20, 1, -110)
-    MainScrollFrame.ScrollBarThickness = 3
-    MainScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    MainScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    MacroScrollFrame = Instance.new("ScrollingFrame")
+    MacroScrollFrame.Parent = MacroFrame
+    MacroScrollFrame.BackgroundTransparency = 1
+    MacroScrollFrame.Position = UDim2.new(0, 5, 0, 50)
+    MacroScrollFrame.Size = UDim2.new(1, -10, 1, -80)
+    MacroScrollFrame.ScrollBarThickness = 2
+    MacroScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
-    MainLayout = Instance.new("UIListLayout")
-    MainLayout.Parent = MainScrollFrame
-    MainLayout.Padding = UDim.new(0, 5)
-    MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    MacroLayout = Instance.new("UIListLayout")
+    MacroLayout.Parent = MacroScrollFrame
+    MacroLayout.Padding = UDim.new(0, 2)
 
-    -- Control buttons
-    local ControlFrame = Instance.new("Frame")
-    ControlFrame.Parent = MainFrame
-    ControlFrame.BackgroundTransparency = 1
-    ControlFrame.Position = UDim2.new(0, 10, 1, -35)
-    ControlFrame.Size = UDim2.new(1, -20, 0, 30)
+    local MacroPauseButton = Instance.new("TextButton")
+    MacroPauseButton.Parent = MacroFrame
+    MacroPauseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    MacroPauseButton.BorderSizePixel = 0
+    MacroPauseButton.Position = UDim2.new(0, 5, 1, -30)
+    MacroPauseButton.Size = UDim2.new(0, 100, 0, 25)
+    MacroPauseButton.Font = Enum.Font.Gotham
+    MacroPauseButton.Text = "Pause"
+    MacroPauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroPauseButton.TextSize = 8
+    MacroPauseButton.Visible = macroPlaying
 
-    local PauseButton = Instance.new("TextButton")
-    PauseButton.Parent = ControlFrame
-    PauseButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-    PauseButton.BorderSizePixel = 0
-    PauseButton.Position = UDim2.new(0, 0, 0, 0)
-    PauseButton.Size = UDim2.new(0, 80, 0, 30)
-    PauseButton.Font = Enum.Font.GothamBold
-    PauseButton.Text = "⏸️ PAUSE"
-    PauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PauseButton.TextSize = 9
+    MacroStatusLabel = Instance.new("TextLabel")
+    MacroStatusLabel.Parent = ScreenGui
+    MacroStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MacroStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    MacroStatusLabel.BorderSizePixel = 1
+    MacroStatusLabel.Position = UDim2.new(1, -250, 0, 5)
+    MacroStatusLabel.Size = UDim2.new(0, 240, 0, 25)
+    MacroStatusLabel.Font = Enum.Font.Gotham
+    MacroStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MacroStatusLabel.TextSize = 8
+    MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    MacroStatusLabel.Visible = false
+    MacroStatusLabel.ZIndex = 10 -- Ensure visibility
 
-    local StopButton = Instance.new("TextButton")
-    StopButton.Parent = ControlFrame
-    StopButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-    StopButton.BorderSizePixel = 0
-    StopButton.Position = UDim2.new(0, 90, 0, 0)
-    StopButton.Size = UDim2.new(0, 80, 0, 30)
-    StopButton.Font = Enum.Font.GothamBold
-    StopButton.Text = "⏹️ STOP"
-    StopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    StopButton.TextSize = 9
-
-    local ClearVisualsButton = Instance.new("TextButton")
-    ClearVisualsButton.Parent = ControlFrame
-    ClearVisualsButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    ClearVisualsButton.BorderSizePixel = 0
-    ClearVisualsButton.Position = UDim2.new(0, 180, 0, 0)
-    ClearVisualsButton.Size = UDim2.new(0, 100, 0, 30)
-    ClearVisualsButton.Font = Enum.Font.GothamBold
-    ClearVisualsButton.Text = "🧹 CLEAR"
-    ClearVisualsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ClearVisualsButton.TextSize = 9
-
-    StatusLabel = Instance.new("TextLabel")
-    StatusLabel.Parent = ScreenGui
-    StatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    StatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    StatusLabel.BorderSizePixel = 1
-    StatusLabel.Position = UDim2.new(1, -300, 0, 10)
-    StatusLabel.Size = UDim2.new(0, 290, 0, 30)
-    StatusLabel.Font = Enum.Font.GothamBold
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    StatusLabel.TextSize = 10
-    StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    StatusLabel.Visible = false
-    StatusLabel.ZIndex = 10
-
-    -- Button connections
-    CloseButton.MouseButton1Click:Connect(function()
-        MainFrame.Visible = false
-        frameVisible = false
+    CloseMacroButton.MouseButton1Click:Connect(function()
+        MacroFrame.Visible = false
+        macroFrameVisible = false
     end)
 
-    PauseButton.MouseButton1Click:Connect(pausePlayback)
-    StopButton.MouseButton1Click:Connect(stopPlayback)
-    ClearVisualsButton.MouseButton1Click:Connect(clearPathVisuals)
-    
-    -- Search functionality
-    MainInput.Changed:Connect(function(property)
-        if property == "Text" then
-            updateList()
-        end
-    end)
+    MacroPauseButton.MouseButton1Click:Connect(pauseMacro)
 end
 
-function updateList()
-    if not MainScrollFrame then return end
+local function initPathUI()
+    if PathFrame then return end
     
-    -- Clear existing items
-    for _, child in pairs(MainScrollFrame:GetChildren()) do
-        if child:IsA("Frame") and child.Name == "ItemFrame" then
+    PathFrame = Instance.new("Frame")
+    PathFrame.Name = "PathFrame"
+    PathFrame.Parent = ScreenGui
+    PathFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    PathFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    PathFrame.BorderSizePixel = 1
+    PathFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
+    PathFrame.Size = UDim2.new(0, 300, 0, 400)
+    PathFrame.Visible = false
+    PathFrame.Active = true
+    PathFrame.Draggable = true
+
+    local PathTitle = Instance.new("TextLabel")
+    PathTitle.Parent = PathFrame
+    PathTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    PathTitle.BorderSizePixel = 0
+    PathTitle.Size = UDim2.new(1, 0, 0, 20)
+    PathTitle.Font = Enum.Font.Gotham
+    PathTitle.Text = "PATH CREATOR - JSON SYNC v1.4"
+    PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PathTitle.TextSize = 8
+
+    local ClosePathButton = Instance.new("TextButton")
+    ClosePathButton.Parent = PathFrame
+    ClosePathButton.BackgroundTransparency = 1
+    ClosePathButton.Position = UDim2.new(1, -20, 0, 2)
+    ClosePathButton.Size = UDim2.new(0, 15, 0, 15)
+    ClosePathButton.Font = Enum.Font.GothamBold
+    ClosePathButton.Text = "X"
+    ClosePathButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ClosePathButton.TextSize = 8
+
+    PathInput = Instance.new("TextBox")
+    PathInput.Parent = PathFrame
+    PathInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    PathInput.BorderSizePixel = 0
+    PathInput.Position = UDim2.new(0, 5, 0, 25)
+    PathInput.Size = UDim2.new(1, -10, 0, 20)
+    PathInput.Font = Enum.Font.Gotham
+    PathInput.PlaceholderText = "Search paths..."
+    PathInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PathInput.TextSize = 7
+
+    PathScrollFrame = Instance.new("ScrollingFrame")
+    PathScrollFrame.Parent = PathFrame
+    PathScrollFrame.BackgroundTransparency = 1
+    PathScrollFrame.Position = UDim2.new(0, 5, 0, 50)
+    PathScrollFrame.Size = UDim2.new(1, -10, 1, -80)
+    PathScrollFrame.ScrollBarThickness = 2
+    PathScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    PathLayout = Instance.new("UIListLayout")
+    PathLayout.Parent = PathScrollFrame
+    PathLayout.Padding = UDim.new(0, 2)
+
+    local PathPauseButton = Instance.new("TextButton")
+    PathPauseButton.Parent = PathFrame
+    PathPauseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    PathPauseButton.BorderSizePixel = 0
+    PathPauseButton.Position = UDim2.new(0, 5, 1, -30)
+    PathPauseButton.Size = UDim2.new(0, 100, 0, 25)
+    PathPauseButton.Font = Enum.Font.Gotham
+    PathPauseButton.Text = "Pause"
+    PathPauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PathPauseButton.TextSize = 8
+    PathPauseButton.Visible = pathPlaying
+
+    PathStatusLabel = Instance.new("TextLabel")
+    PathStatusLabel.Parent = ScreenGui
+    PathStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    PathStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    PathStatusLabel.BorderSizePixel = 1
+    PathStatusLabel.Position = UDim2.new(1, -250, 0, 30)
+    PathStatusLabel.Size = UDim2.new(0, 240, 0, 25)
+    PathStatusLabel.Font = Enum.Font.Gotham
+    PathStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PathStatusLabel.TextSize = 8
+    PathStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    PathStatusLabel.Visible = false
+    PathStatusLabel.ZIndex = 10 -- Ensure visibility
+
+    ClosePathButton.MouseButton1Click:Connect(function()
+        PathFrame.Visible = false
+        pathFrameVisible = false
+    end)
+
+    PathPauseButton.MouseButton1Click:Connect(pausePath)
+end
+
+function Utility.updateMacroList()
+    if not MacroScrollFrame then return end
+    
+    for _, child in pairs(MacroScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
             child:Destroy()
         end
     end
     
-    local searchText = MainInput.Text:lower()
-    local layoutOrder = 0
-    
-    for itemName, item in pairs(savedItems) do
-        if searchText == "" or string.find(itemName:lower(), searchText) then
-            layoutOrder = layoutOrder + 1
-            
-            local itemFrame = Instance.new("Frame")
-            itemFrame.Name = "ItemFrame"
-            itemFrame.Parent = MainScrollFrame
-            itemFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            itemFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-            itemFrame.BorderSizePixel = 1
-            itemFrame.Size = UDim2.new(1, -10, 0, 140)
-            itemFrame.LayoutOrder = layoutOrder
-            
-            -- Type indicator
-            local typeIcon = item.type == "macro" and "🎮" or "🛤️"
-            local typeColor = item.type == "macro" and Color3.fromRGB(100, 150, 255) or Color3.fromRGB(100, 255, 150)
+    local searchText = MacroInput.Text:lower()
+    for macroName, macro in pairs(savedMacros) do
+        if searchText == "" or string.find(macroName:lower(), searchText) then
+            local macroItem = Instance.new("Frame")
+            macroItem.Parent = MacroScrollFrame
+            macroItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            macroItem.Size = UDim2.new(1, -5, 0, 110)
             
             local nameLabel = Instance.new("TextLabel")
-            nameLabel.Parent = itemFrame
-            nameLabel.Position = UDim2.new(0, 8, 0, 5)
-            nameLabel.Size = UDim2.new(1, -16, 0, 20)
-            nameLabel.Text = typeIcon .. " " .. itemName
-            nameLabel.TextColor3 = typeColor
+            nameLabel.Parent = macroItem
+            nameLabel.Position = UDim2.new(0, 5, 0, 5)
+            nameLabel.Size = UDim2.new(1, -10, 0, 15)
+            nameLabel.Text = macroName
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             nameLabel.BackgroundTransparency = 1
-            nameLabel.TextSize = 10
-            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextSize = 7
+            nameLabel.Font = Enum.Font.Gotham
             nameLabel.TextXAlignment = Enum.TextXAlignment.Left
             
-            -- Info label
-            local infoText = ""
-            if item.type == "macro" then
-                infoText = string.format("Frames: %d | Duration: %.1fs", 
-                                       item.frameCount or 0, 
-                                       item.duration or 0)
-            else
-                infoText = string.format("Points: %d | Markers: %d | Duration: %.1fs", 
-                                       item.pointCount or 0, 
-                                       item.markerCount or 0, 
-                                       item.duration or 0)
-            end
-            
+            local frameCount = macro.frameCount or #(macro.frames or {})
+            local duration = macro.duration or 0
             local infoLabel = Instance.new("TextLabel")
-            infoLabel.Parent = itemFrame
-            infoLabel.Position = UDim2.new(0, 8, 0, 25)
-            infoLabel.Size = UDim2.new(1, -16, 0, 15)
+            infoLabel.Parent = macroItem
+            infoLabel.Position = UDim2.new(0, 5, 0, 20)
+            infoLabel.Size = UDim2.new(1, -10, 0, 10)
             infoLabel.BackgroundTransparency = 1
-            infoLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-            infoLabel.TextSize = 8
+            infoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+            infoLabel.TextSize = 6
             infoLabel.Font = Enum.Font.Gotham
-            infoLabel.Text = infoText
+            infoLabel.Text = string.format("Frames: %d | Duration: %.1fs", frameCount, duration)
             infoLabel.TextXAlignment = Enum.TextXAlignment.Left
             
-            -- Action buttons row 1
             local playButton = Instance.new("TextButton")
-            playButton.Parent = itemFrame
-            playButton.Position = UDim2.new(0, 8, 0, 45)
-            playButton.Size = UDim2.new(0, 50, 0, 20)
-            playButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+            playButton.Parent = macroItem
+            playButton.Position = UDim2.new(0, 5, 0, 40)
+            playButton.Size = UDim2.new(0, 40, 0, 18)
+            playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
             playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            playButton.TextSize = 8
-            playButton.Font = Enum.Font.GothamBold
-            local isCurrentlyPlaying = (isPlaying and currentItemName == itemName and not autoPlaying)
-            playButton.Text = isCurrentlyPlaying and "STOP" or "▶️ PLAY"
+            playButton.TextSize = 7
+            playButton.Font = Enum.Font.Gotham
+            playButton.Text = (macroPlaying and currentMacroName == macroName and not autoPlaying) and "STOP" or "PLAY"
             
             local autoPlayButton = Instance.new("TextButton")
-            autoPlayButton.Parent = itemFrame
-            autoPlayButton.Position = UDim2.new(0, 63, 0, 45)
-            autoPlayButton.Size = UDim2.new(0, 50, 0, 20)
-            autoPlayButton.BackgroundColor3 = Color3.fromRGB(80, 140, 80)
+            autoPlayButton.Parent = macroItem
+            autoPlayButton.Position = UDim2.new(0, 50, 0, 40)
+            autoPlayButton.Size = UDim2.new(0, 40, 0, 18)
+            autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 80, 60)
             autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoPlayButton.TextSize = 8
-            autoPlayButton.Font = Enum.Font.GothamBold
-            local isAutoPlaying = (isPlaying and currentItemName == itemName and autoPlaying and not autoRespawning)
-            autoPlayButton.Text = isAutoPlaying and "STOP" or "🔄 AUTO"
+            autoPlayButton.TextSize = 7
+            autoPlayButton.Font = Enum.Font.Gotham
+            autoPlayButton.Text = (macroPlaying and currentMacroName == macroName and autoPlaying and not autoRespawning) and "STOP" or "AUTO"
             
             local autoRespawnButton = Instance.new("TextButton")
-            autoRespawnButton.Parent = itemFrame
-            autoRespawnButton.Position = UDim2.new(0, 118, 0, 45)
-            autoRespawnButton.Size = UDim2.new(0, 60, 0, 20)
-            autoRespawnButton.BackgroundColor3 = Color3.fromRGB(100, 160, 100)
+            autoRespawnButton.Parent = macroItem
+            autoRespawnButton.Position = UDim2.new(0, 95, 0, 40)
+            autoRespawnButton.Size = UDim2.new(0, 40, 0, 18)
+            autoRespawnButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
             autoRespawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoRespawnButton.TextSize = 8
-            autoRespawnButton.Font = Enum.Font.GothamBold
-            local isAutoRespawning = (isPlaying and currentItemName == itemName and autoPlaying and autoRespawning)
-            autoRespawnButton.Text = isAutoRespawning and "STOP" or "♻️ A-RESP"
-            
-            -- Show/Hide button (only for paths)
-            if item.type == "path" then
-                local showButton = Instance.new("TextButton")
-                showButton.Parent = itemFrame
-                showButton.Position = UDim2.new(0, 183, 0, 45)
-                showButton.Size = UDim2.new(0, 50, 0, 20)
-                showButton.BackgroundColor3 = Color3.fromRGB(40, 100, 140)
-                showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                showButton.TextSize = 8
-                showButton.Font = Enum.Font.GothamBold
-                showButton.Text = "👁️ SHOW"
-                
-                showButton.MouseButton1Click:Connect(function()
-                    playItem(itemName, true, false, false)
-                    updateList()
-                end)
-            end
+            autoRespawnButton.TextSize = 7
+            autoRespawnButton.Font = Enum.Font.Gotham
+            autoRespawnButton.Text = (macroPlaying and currentMacroName == macroName and autoPlaying and autoRespawning) and "STOP" or "A-RESP"
             
             local deleteButton = Instance.new("TextButton")
-            deleteButton.Parent = itemFrame
-            deleteButton.Position = UDim2.new(1, -60, 0, 45)
-            deleteButton.Size = UDim2.new(0, 50, 0, 20)
-            deleteButton.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
+            deleteButton.Parent = macroItem
+            deleteButton.Position = UDim2.new(0, 140, 0, 40)
+            deleteButton.Size = UDim2.new(0, 40, 0, 18)
+            deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
             deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            deleteButton.TextSize = 8
-            deleteButton.Font = Enum.Font.GothamBold
-            deleteButton.Text = "🗑️ DEL"
+            deleteButton.TextSize = 7
+            deleteButton.Font = Enum.Font.Gotham
+            deleteButton.Text = "DELETE"
             
-            -- Action buttons row 2
             local renameInput = Instance.new("TextBox")
-            renameInput.Parent = itemFrame
-            renameInput.Position = UDim2.new(0, 8, 0, 70)
-            renameInput.Size = UDim2.new(0, 120, 0, 18)
+            renameInput.Parent = macroItem
+            renameInput.Position = UDim2.new(0, 5, 0, 65)
+            renameInput.Size = UDim2.new(0, 130, 0, 15)
             renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
             renameInput.BorderSizePixel = 0
-            renameInput.PlaceholderText = "✏️ Rename..."
+            renameInput.PlaceholderText = "Rename..."
             renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameInput.TextSize = 7
+            renameInput.TextSize = 6
             renameInput.Font = Enum.Font.Gotham
             
             local renameButton = Instance.new("TextButton")
-            renameButton.Parent = itemFrame
-            renameButton.Position = UDim2.new(0, 133, 0, 70)
-            renameButton.Size = UDim2.new(0, 45, 0, 18)
-            renameButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+            renameButton.Parent = macroItem
+            renameButton.Position = UDim2.new(0, 140, 0, 65)
+            renameButton.Size = UDim2.new(0, 40, 0, 15)
+            renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
             renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameButton.TextSize = 7
-            renameButton.Font = Enum.Font.GothamBold
+            renameButton.TextSize = 6
+            renameButton.Font = Enum.Font.Gotham
             renameButton.Text = "RENAME"
             
-            local exportButton = Instance.new("TextButton")
-            exportButton.Parent = itemFrame
-            exportButton.Position = UDim2.new(0, 183, 0, 70)
-            exportButton.Size = UDim2.new(0, 50, 0, 18)
-            exportButton.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
-            exportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            exportButton.TextSize = 7
-            exportButton.Font = Enum.Font.GothamBold
-            exportButton.Text = "📤 EXPORT"
-            
-            -- Speed control
             local speedLabel = Instance.new("TextLabel")
-            speedLabel.Parent = itemFrame
-            speedLabel.Position = UDim2.new(0, 8, 0, 95)
-            speedLabel.Size = UDim2.new(0, 45, 0, 15)
+            speedLabel.Parent = macroItem
+            speedLabel.Position = UDim2.new(0, 5, 0, 85)
+            speedLabel.Size = UDim2.new(0, 40, 0, 15)
             speedLabel.BackgroundTransparency = 1
-            speedLabel.Text = "⚡ Speed:"
+            speedLabel.Text = "Speed:"
             speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            speedLabel.TextSize = 7
+            speedLabel.TextSize = 6
             speedLabel.Font = Enum.Font.Gotham
             speedLabel.TextXAlignment = Enum.TextXAlignment.Left
             
             local speedInput = Instance.new("TextBox")
-            speedInput.Parent = itemFrame
-            speedInput.Position = UDim2.new(0, 58, 0, 95)
+            speedInput.Parent = macroItem
+            speedInput.Position = UDim2.new(0, 50, 0, 85)
             speedInput.Size = UDim2.new(0, 40, 0, 15)
             speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
             speedInput.BorderSizePixel = 0
-            speedInput.Text = tostring(item.speed or 1)
+            speedInput.Text = tostring(macro.speed or 1)
             speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            speedInput.TextSize = 7
+            speedInput.TextSize = 6
             speedInput.Font = Enum.Font.Gotham
             
-            -- Date info
-            local dateLabel = Instance.new("TextLabel")
-            dateLabel.Parent = itemFrame
-            dateLabel.Position = UDim2.new(0, 8, 0, 115)
-            dateLabel.Size = UDim2.new(1, -16, 0, 15)
-            dateLabel.BackgroundTransparency = 1
-            dateLabel.Text = "📅 Created: " .. os.date("%Y-%m-%d %H:%M:%S", item.created or os.time())
-            dateLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-            dateLabel.TextSize = 6
-            dateLabel.Font = Enum.Font.Gotham
-            dateLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            -- Button connections
             playButton.MouseButton1Click:Connect(function()
-                if isCurrentlyPlaying then
-                    stopPlayback()
+                if macroPlaying and currentMacroName == macroName and not autoPlaying then
+                    stopMacroPlayback()
                 else
-                    playItem(itemName, false, false, false)
+                    playMacro(macroName, false, false)
                 end
-                updateList()
+                Utility.updateMacroList()
             end)
             
             autoPlayButton.MouseButton1Click:Connect(function()
-                if isAutoPlaying then
-                    stopPlayback()
+                if macroPlaying and currentMacroName == macroName and autoPlaying and not autoRespawning then
+                    stopMacroPlayback()
                 else
-                    playItem(itemName, false, true, false)
+                    playMacro(macroName, true, false)
                 end
-                updateList()
+                Utility.updateMacroList()
             end)
             
             autoRespawnButton.MouseButton1Click:Connect(function()
-                if isAutoRespawning then
-                    stopPlayback()
+                if macroPlaying and currentMacroName == macroName and autoPlaying and autoRespawning then
+                    stopMacroPlayback()
                 else
-                    playItem(itemName, false, true, true)
+                    playMacro(macroName, true, true)
                 end
-                updateList()
+                Utility.updateMacroList()
             end)
             
             deleteButton.MouseButton1Click:Connect(function()
-                -- Confirm delete (simple implementation)
-                if isPlaying and currentItemName == itemName then
-                    stopPlayback()
+                if macroPlaying and currentMacroName == macroName then
+                    stopMacroPlayback()
                 end
-                savedItems[itemName] = nil
-                deleteFromJSON(itemName)
-                clearPathVisuals()
-                updateList()
-                print("[SUPERTOOL] Deleted: " .. itemName)
+                savedMacros[macroName] = nil
+                deleteMacroFromJSON(macroName)
+                Utility.updateMacroList()
             end)
             
             renameButton.MouseButton1Click:Connect(function()
                 if renameInput.Text ~= "" then
                     local newName = renameInput.Text
-                    if savedItems[itemName] then
-                        savedItems[newName] = savedItems[itemName]
-                        savedItems[itemName] = nil
+                    if savedMacros[macroName] then
+                        savedMacros[newName] = savedMacros[macroName]
+                        savedMacros[macroName] = nil
                         
-                        if isPlaying and currentItemName == itemName then
-                            currentItemName = newName
+                        if macroPlaying and currentMacroName == macroName then
+                            currentMacroName = newName
                         end
                         
-                        renameInJSON(itemName, newName)
+                        renameMacroInJSON(macroName, newName)
                         renameInput.Text = ""
-                        updateList()
-                        print("[SUPERTOOL] Renamed: " .. itemName .. " → " .. newName)
+                        Utility.updateMacroList()
                     end
-                end
-            end)
-            
-            exportButton.MouseButton1Click:Connect(function()
-                -- Simple export - copy filename to clipboard if possible
-                print("[SUPERTOOL] Export: " .. itemName .. " (saved in " .. SAVE_FOLDER_PATH .. ")")
-                if setclipboard then
-                    setclipboard(SAVE_FOLDER_PATH .. sanitizeFileName(itemName) .. ".json")
                 end
             end)
             
@@ -1302,21 +1444,233 @@ function updateList()
                 if enterPressed then
                     local newSpeed = tonumber(speedInput.Text)
                     if newSpeed and newSpeed > 0 and newSpeed <= 10 then
-                        item.speed = newSpeed
-                        saveToJSON(itemName, item)
-                        print("[SUPERTOOL] Speed updated: " .. itemName .. " → " .. newSpeed .. "x")
+                        macro.speed = newSpeed
+                        saveMacroToJSON(macroName, macro)
                     else
-                        speedInput.Text = tostring(item.speed or 1)
+                        speedInput.Text = tostring(macro.speed or 1)
                     end
                 end
             end)
         end
     end
     
-    -- Update canvas size
     task.wait(0.1)
-    if MainLayout then
-        MainScrollFrame.CanvasSize = UDim2.new(0, 0, 0, MainLayout.AbsoluteContentSize.Y + 10)
+    if MacroLayout then
+        MacroScrollFrame.CanvasSize = UDim2.new(0, 0, 0, MacroLayout.AbsoluteContentSize.Y + 5)
+    end
+end
+
+function updatePathList()
+    if not PathScrollFrame then return end
+    
+    for _, child in pairs(PathScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local searchText = PathInput.Text:lower()
+    for pathName, path in pairs(savedPaths) do
+        if searchText == "" or string.find(pathName:lower(), searchText) then
+            local pathItem = Instance.new("Frame")
+            pathItem.Parent = PathScrollFrame
+            pathItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            pathItem.Size = UDim2.new(1, -5, 0, 110)
+            
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Parent = pathItem
+            nameLabel.Position = UDim2.new(0, 5, 0, 5)
+            nameLabel.Size = UDim2.new(1, -10, 0, 15)
+            nameLabel.Text = pathName
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.TextSize = 7
+            nameLabel.Font = Enum.Font.Gotham
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            
+            local infoLabel = Instance.new("TextLabel")
+            infoLabel.Parent = pathItem
+            infoLabel.Position = UDim2.new(0, 5, 0, 20)
+            infoLabel.Size = UDim2.new(1, -10, 0, 10)
+            infoLabel.BackgroundTransparency = 1
+            infoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+            infoLabel.TextSize = 6
+            infoLabel.Font = Enum.Font.Gotham
+            infoLabel.Text = string.format("Points: %d | Markers: %d | Duration: %.1fs", 
+                                         path.pointCount or 0, 
+                                         path.markerCount or 0, 
+                                         path.duration or 0)
+            infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+            
+            local playButton = Instance.new("TextButton")
+            playButton.Parent = pathItem
+            playButton.Position = UDim2.new(0, 5, 0, 40)
+            playButton.Size = UDim2.new(0, 40, 0, 18)
+            playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            playButton.TextSize = 7
+            playButton.Font = Enum.Font.Gotham
+            playButton.Text = (pathPlaying and currentPathName == pathName and not pathAutoPlaying) and "STOP" or "PLAY"
+            
+            local autoPlayButton = Instance.new("TextButton")
+            autoPlayButton.Parent = pathItem
+            autoPlayButton.Position = UDim2.new(0, 50, 0, 40)
+            autoPlayButton.Size = UDim2.new(0, 40, 0, 18)
+            autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 80, 60)
+            autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            autoPlayButton.TextSize = 7
+            autoPlayButton.Font = Enum.Font.Gotham
+            autoPlayButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "AUTO"
+            
+            local autoRespButton = Instance.new("TextButton")
+            autoRespButton.Parent = pathItem
+            autoRespButton.Position = UDim2.new(0, 95, 0, 40)
+            autoRespButton.Size = UDim2.new(0, 40, 0, 18)
+            autoRespButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+            autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            autoRespButton.TextSize = 7
+            autoRespButton.Font = Enum.Font.Gotham
+            autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
+            
+            local toggleShowButton = Instance.new("TextButton")
+            toggleShowButton.Parent = pathItem
+            toggleShowButton.Position = UDim2.new(0, 140, 0, 40)
+            toggleShowButton.Size = UDim2.new(0, 40, 0, 18)
+            toggleShowButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            toggleShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            toggleShowButton.TextSize = 7
+            toggleShowButton.Font = Enum.Font.Gotham
+            toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
+            
+            local deleteButton = Instance.new("TextButton")
+            deleteButton.Parent = pathItem
+            deleteButton.Position = UDim2.new(0, 185, 0, 40)
+            deleteButton.Size = UDim2.new(0, 40, 0, 18)
+            deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+            deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            deleteButton.TextSize = 7
+            deleteButton.Font = Enum.Font.Gotham
+            deleteButton.Text = "DELETE"
+            
+            local renameInput = Instance.new("TextBox")
+            renameInput.Parent = pathItem
+            renameInput.Position = UDim2.new(0, 5, 0, 65)
+            renameInput.Size = UDim2.new(0, 130, 0, 15)
+            renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            renameInput.BorderSizePixel = 0
+            renameInput.PlaceholderText = "Rename..."
+            renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            renameInput.TextSize = 6
+            renameInput.Font = Enum.Font.Gotham
+            
+            local renameButton = Instance.new("TextButton")
+            renameButton.Parent = pathItem
+            renameButton.Position = UDim2.new(0, 140, 0, 65)
+            renameButton.Size = UDim2.new(0, 40, 0, 15)
+            renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            renameButton.TextSize = 6
+            renameButton.Font = Enum.Font.Gotham
+            renameButton.Text = "RENAME"
+            
+            local speedLabel = Instance.new("TextLabel")
+            speedLabel.Parent = pathItem
+            speedLabel.Position = UDim2.new(0, 5, 0, 85)
+            speedLabel.Size = UDim2.new(0, 40, 0, 15)
+            speedLabel.BackgroundTransparency = 1
+            speedLabel.Text = "Speed:"
+            speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+            speedLabel.TextSize = 6
+            speedLabel.Font = Enum.Font.Gotham
+            speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+            
+            local speedInput = Instance.new("TextBox")
+            speedInput.Parent = pathItem
+            speedInput.Position = UDim2.new(0, 50, 0, 85)
+            speedInput.Size = UDim2.new(0, 40, 0, 15)
+            speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            speedInput.BorderSizePixel = 0
+            speedInput.Text = tostring(path.speed or 1)
+            speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            speedInput.TextSize = 6
+            speedInput.Font = Enum.Font.Gotham
+            
+            playButton.MouseButton1Click:Connect(function()
+                if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
+                    stopPathPlayback()
+                else
+                    playPath(pathName, false, false, false)
+                end
+                updatePathList()
+            end)
+            
+            autoPlayButton.MouseButton1Click:Connect(function()
+                if pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning then
+                    stopPathPlayback()
+                else
+                    playPath(pathName, false, true, false)
+                end
+                updatePathList()
+            end)
+            
+            autoRespButton.MouseButton1Click:Connect(function()
+                if pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning then
+                    stopPathPlayback()
+                else
+                    playPath(pathName, false, true, true)
+                end
+                updatePathList()
+            end)
+            
+            toggleShowButton.MouseButton1Click:Connect(function()
+                togglePathVisuals(pathName)
+            end)
+            
+            deleteButton.MouseButton1Click:Connect(function()
+                if pathPlaying and currentPathName == pathName then
+                    stopPathPlayback()
+                end
+                savedPaths[pathName] = nil
+                deletePathFromJSON(pathName)
+                updatePathList()
+                clearPathVisuals()
+            end)
+            
+            renameButton.MouseButton1Click:Connect(function()
+                if renameInput.Text ~= "" then
+                    local newName = renameInput.Text
+                    if savedPaths[pathName] then
+                        savedPaths[newName] = savedPaths[pathName]
+                        savedPaths[pathName] = nil
+                        
+                        if pathPlaying and currentPathName == pathName then
+                            currentPathName = newName
+                        end
+                        
+                        renamePathInJSON(pathName, newName)
+                        renameInput.Text = ""
+                        updatePathList()
+                    end
+                end
+            end)
+            
+            speedInput.FocusLost:Connect(function(enterPressed)
+                if enterPressed then
+                    local newSpeed = tonumber(speedInput.Text)
+                    if newSpeed and newSpeed > 0 and newSpeed <= 10 then
+                        path.speed = newSpeed
+                        savePathToJSON(pathName, path)
+                    else
+                        speedInput.Text = tostring(path.speed or 1)
+                    end
+                end
+            end)
+        end
+    end
+    
+    task.wait(0.1)
+    if PathLayout then
+        PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 5)
     end
 end
 
@@ -1333,36 +1687,36 @@ end
 
 -- Load utility buttons
 function Utility.loadUtilityButtons(createButton)
-    if not createButton then
-        error("[SUPERTOOL] createButton function is nil in loadUtilityButtons")
-    end
-    
-    print("[SUPERTOOL] Loading unified utility buttons")
-    
-    createButton("🎮 Record Macro", function() startRecording("macro") end)
-    createButton("🛤️ Record Path", function() startRecording("path") end)
-    createButton("⏹️ Stop Recording", stopRecording)
-    createButton("📋 Manager", function()
-        if not MainFrame then initUnifiedUI() end
-        MainFrame.Visible = not MainFrame.Visible
-        frameVisible = MainFrame.Visible
-        if frameVisible then
-            updateList()
+    createButton("Record Macro", startMacroRecording)
+    createButton("Stop Macro", stopMacroRecording)
+    createButton("Macro Manager", function()
+        if not MacroFrame then initMacroUI() end
+        MacroFrame.Visible = not MacroFrame.Visible
+        macroFrameVisible = MacroFrame.Visible
+        if macroFrameVisible then
+            Utility.updateMacroList()
         end
     end)
     
-    createButton("🧹 Clear Visuals", clearPathVisuals)
-    createButton("💀 Kill Player", killPlayer)
-    createButton("♻️ Reset Character", resetCharacter)
-    createButton("↶ Undo Path", undoToLastMarker)
+    createButton("Record Path", startPathRecording)
+    createButton("Stop Path", stopPathRecording)
+    createButton("Path Manager", function()
+        if not PathFrame then initPathUI() end
+        PathFrame.Visible = not PathFrame.Visible
+        pathFrameVisible = PathFrame.Visible
+        if pathFrameVisible then
+            updatePathList()
+        end
+    end)
+    
+    createButton("Clear Visuals", clearPathVisuals)
+    createButton("Kill Player", killPlayer)
+    createButton("Reset Character", resetCharacter)
+    createButton("Undo Path", undoToLastMarker)
 end
 
 -- Initialize function
 function Utility.init(deps)
-    if not deps or type(deps) ~= "table" then
-        error("[SUPERTOOL] Invalid dependencies table provided to Utility.init")
-    end
-    
     Players = deps.Players
     humanoid = deps.humanoid
     rootPart = deps.rootPart
@@ -1373,26 +1727,25 @@ function Utility.init(deps)
     settings = deps.settings
     ScreenGui = deps.ScreenGui
     
-    -- Validate critical dependencies
-    if not Players then warn("[SUPERTOOL] Players service not provided") end
-    if not player then warn("[SUPERTOOL] player not provided") end
-    if not RunService then warn("[SUPERTOOL] RunService not provided") end
-    if not ScreenGui then warn("[SUPERTOOL] ScreenGui not provided") end
-    
-    -- Reset all states
-    isRecording = false
-    isPlaying = false
+    macroRecording = false
+    macroPlaying = false
     autoPlaying = false
     autoRespawning = false
-    isPaused = false
+    macroPaused = false
+    pathRecording = false
+    pathPlaying = false
+    pathShowOnly = false
+    pathPaused = false
     
-    -- Create folder structure
     local success = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
         end
-        if not isfolder(SAVE_FOLDER_PATH) then
-            makefolder(SAVE_FOLDER_PATH)
+        if not isfolder(MACRO_FOLDER_PATH) then
+            makefolder(MACRO_FOLDER_PATH)
+        end
+        if not isfolder(PATH_FOLDER_PATH) then
+            makefolder(PATH_FOLDER_PATH)
         end
     end)
     
@@ -1402,62 +1755,85 @@ function Utility.init(deps)
     
     setupKeyboardControls()
     
-    -- Character management
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
             task.spawn(function()
                 humanoid = newCharacter:WaitForChild("Humanoid", 30)
                 rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
                 if humanoid and rootPart then
-                    if isRecording and recordingPaused then
+                    if macroRecording and recordingPaused then
                         task.wait(pauseResumeTime)
                         recordingPaused = false
-                        updateStatus()
+                        updateMacroStatus()
                     end
-                    if isPlaying and currentItemName then
+                    if pathRecording and pathPaused then
                         task.wait(pauseResumeTime)
-                        isPaused = false
-                        local item = savedItems[currentItemName] or loadFromJSON(currentItemName)
-                        if item then
-                            playItem(currentItemName, false, autoPlaying, autoRespawning)
-                        end
+                        pathPaused = false
+                        updatePathStatus()
+                    end
+                    if macroPlaying and currentMacroName then
+                        task.wait(pauseResumeTime)
+                        macroPaused = false
+                        playMacro(currentMacroName, autoPlaying, autoRespawning)
+                    end
+                    if pathPlaying and currentPathName then
+                        task.wait(pauseResumeTime)
+                        pathPaused = false
+                        playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
                 end
             end)
         end)
         
         player.CharacterRemoving:Connect(function()
-            if isRecording then
+            if macroRecording then
                 recordingPaused = true
-                updateStatus()
+                updateMacroStatus()
             end
-            if isPlaying then
-                isPaused = true
-                updateStatus()
+            if pathRecording then
+                pathPaused = true
+                updatePathStatus()
+            end
+            if macroPlaying then
+                macroPaused = true
+                updateMacroStatus()
+            end
+            if pathPlaying then
+                pathPaused = true
+                updatePathStatus()
             end
         end)
         
         if humanoid then
             humanoid.Died:Connect(function()
-                if isRecording then
+                if macroRecording then
                     recordingPaused = true
-                    updateStatus()
+                    updateMacroStatus()
                 end
-                if isPlaying then
-                    isPaused = true
-                    updateStatus()
+                if pathRecording then
+                    pathPaused = true
+                    updatePathStatus()
+                end
+                if macroPlaying then
+                    macroPaused = true
+                    updateMacroStatus()
+                end
+                if pathPlaying then
+                    pathPaused = true
+                    updatePathStatus()
                 end
             end)
         end
     end
     
     task.spawn(function()
-        initUnifiedUI()
-        print("[SUPERTOOL] ✅ Enhanced Unified System v3.0 initialized")
-        print("  🎯 Features: Unified GUI with macros & paths")
-        print("  📁 Storage: " .. SAVE_FOLDER_PATH)
-        print("  ⌨️ Controls: Ctrl+Z (undo), Pause markers")
-        print("  🎮 Actions: Export, Rename, Delete with sync")
+        initMacroUI()
+        initPathUI()
+        print("[SUPERTOOL] Enhanced Utility Module v2.4 initialized")
+        print("  - Path Recording: Visual navigation with undo markers and idle duration")
+        print("  - Enhanced Macros: Full macro system with pause/resume")
+        print("  - Keyboard Controls: Ctrl+Z (undo)")
+        print("  - JSON Storage: Supertool/Macro and Supertool/Paths")
     end)
 end
 
