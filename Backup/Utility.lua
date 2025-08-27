@@ -279,7 +279,7 @@ end
 
 -- Path Recording Functions
 local function startPathRecording()
-    if pathRecording or pathPlaying or macroRecording or macroPlaying then 
+    if pathRecording or pathPlaying or pathShowOnly or macroRecording or macroPlaying then 
         warn("[SUPERTOOL] Cannot start path recording: Another recording/playback is active")
         return 
     end
@@ -445,7 +445,7 @@ end
 
 -- Path Playback Functions
 local function playPath(pathName, showOnly, autoPlay, respawn)
-    if pathRecording or pathPlaying or macroRecording or macroPlaying then return end
+    if pathRecording or pathPlaying or pathShowOnly or macroRecording or macroPlaying then return end
     
     if not updateCharacterReferences() then
         warn("[SUPERTOOL] Cannot play path: Character not ready")
@@ -458,10 +458,7 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     
-    pathPlaying = true
     pathShowOnly = showOnly or false
-    pathAutoPlaying = autoPlay or false
-    pathAutoRespawning = respawn or false
     currentPathName = pathName
     pathPaused = false
     pathPauseIndex = 1
@@ -483,6 +480,10 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         print("[SUPERTOOL] Showing path: " .. pathName)
         return
     end
+    
+    pathPlaying = true
+    pathAutoPlaying = autoPlay or false
+    pathAutoRespawning = respawn or false
     
     print("[SUPERTOOL] Playing path: " .. pathName)
     
@@ -747,7 +748,7 @@ end
 
 -- Macro Functions
 local function startMacroRecording()
-    if macroRecording or macroPlaying or pathRecording or pathPlaying then 
+    if macroRecording or macroPlaying or pathRecording or pathPlaying or pathShowOnly then 
         warn("[SUPERTOOL] Cannot start macro recording: Another recording/playback is active")
         return 
     end
@@ -844,7 +845,7 @@ local function stopMacroPlayback()
 end
 
 local function playMacro(macroName, autoPlay, respawn)
-    if macroRecording or macroPlaying or pathRecording or pathPlaying then
+    if macroRecording or macroPlaying or pathRecording or pathPlaying or pathShowOnly then
         stopMacroPlayback()
     end
     
@@ -992,9 +993,10 @@ local function updatePathStatus()
     if pathRecording then
         statusText = pathPaused and "Recording Path Paused" or "Recording Path..."
     elseif pathPlaying and currentPathName then
-        local statusPrefix = pathShowOnly and "👁️ Showing Path: " or "🛤️ Playing Path: "
         local modeText = pathAutoRespawning and "Auto-Respawning Path" or (pathAutoPlaying and "Auto-Playing Path" or "Playing Path")
-        statusText = (pathPaused and "Path Paused: " or (pathShowOnly and statusPrefix or modeText .. ": ")) .. currentPathName
+        statusText = (pathPaused and "Path Paused: " or modeText .. ": ") .. currentPathName
+    elseif pathShowOnly and currentPathName then
+        statusText = "👁️ Showing Path: " .. currentPathName
     end
     
     PathStatusLabel.Text = statusText
