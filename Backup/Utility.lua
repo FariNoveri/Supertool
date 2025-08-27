@@ -708,6 +708,10 @@ function loadPathFromJSON(pathName)
         }
     end)
     
+    if success and result then
+        savedPaths[result.name] = result
+    end
+    
     return success and result or nil
 end
 
@@ -1825,10 +1829,7 @@ function Utility.init(deps)
     for _, file in ipairs(pathFiles) do
         if string.match(file, "%.json$") then
             local name = string.gsub(file, ".+/(.-)%.json$", "%1")
-            local path = loadPathFromJSON(name)
-            if path then
-                savedPaths[path.name] = path
-            end
+            loadPathFromJSON(name)
         end
     end
     
