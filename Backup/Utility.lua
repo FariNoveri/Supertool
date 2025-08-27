@@ -1,5 +1,6 @@
 -- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
 -- Updated version with fixed status text, undo during recording only, external undo toggle, larger idle text, hide/show toggle, and removed "textbox" text
+-- FIXED: Auto-load files after relog and undo during recording
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -555,50 +556,103 @@ local function stopPathPlayback()
     updatePathStatus()
 end
 
--- Path Undo System
+-- Path Undo System - FIXED VERSION
 local function undoToLastMarker()
-    if not pathRecording or not currentPathName then
-        warn("[SUPERTOOL] Undo only available during path recording")
+    -- FIXED: Check if we're recording a path and have markers to undo
+    if not pathRecording or not currentPath or not currentPath.markers or #currentPath.markers == 0 then
+        warn("[SUPERTOOL] Undo only available during path recording with existing markers")
         return
     end
     
-    local path = savedPaths[currentPathName]
-    if not path or not path.markers or #path.markers == 0 then
-        warn("[SUPERTOOL] No markers to undo")
-        return
-    end
+    -- FIXED: Use currentPath instead of savedPaths lookup
+    local lastMarkerIndex = #currentPath.markers
+    local lastMarker = currentPath.markers[lastMarkerIndex]
     
-    local lastMarkerIndex = #path.markers
-    local lastMarker = path.markers[lastMarkerIndex]
     if lastMarker and updateCharacterReferences() then
         rootPart.CFrame = lastMarker.cframe
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
         
         -- Remove points and markers after the last marker
-        path.points = {table.unpack(path.points, 1, lastMarker.pathIndex)}
-        path.markers = {table.unpack(path.markers, 1, lastMarkerIndex - 1)}
-        path.pointCount = #path.points
-        path.markerCount = #path.markers
-        path.duration = path.points[#path.points].time
+        currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
+        currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
         
-        -- Save updated path
-        savePathToJSON(currentPathName, path)
-        
-        -- Update visuals
+        -- Update visuals - clear and recreate
         clearPathVisuals()
-        for i, point in pairs(path.points) do
+        for i, point in pairs(currentPath.points) do
             local visualPart = createPathVisual(point.position, point.movementType, false)
             table.insert(pathVisualParts, visualPart)
         end
         
-        for i, marker in pairs(path.markers) do
+        for i, marker in pairs(currentPath.markers) do
             local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
             table.insert(pathMarkerParts, markerPart)
         end
         
         -- Create white sphere at undo position
         local undoMarker = createPathVisual(lastMarker.position, "idle", true)
+        undoMarker.Color = Color3.fromRGB(255, 255, 255) -- Make it white for visibility
         table.insert(pathMarkerParts, undoMarker)
+    end
+end
+
+-- FIXED: Load all existing files function
+local function loadAllSavedMacros()
+    local success, result = pcall(function()
+        if not isfolder(MACRO_FOLDER_PATH) then return 0 end
+        
+        local files = listfiles(MACRO_FOLDER_PATH)
+        local loadedCount = 0
+        
+        for _, filePath in pairs(files) do
+            local fileName = filePath:match("([^/\\]+)%.json$")
+            if fileName then
+                local macroData = loadMacroFromJSON(fileName)
+                if macroData then
+                    savedMacros[fileName] = macroData
+                    loadedCount = loadedCount + 1
+                end
+            end
+        end
+        
+        return loadedCount
+    end)
+    
+    if success then
+        print("[SUPERTOOL] Loaded " .. result .. " macros from disk")
+        return result
+    else
+        warn("[SUPERTOOL] Failed to load macros: " .. tostring(result))
+        return 0
+    end
+end
+
+local function loadAllSavedPaths()
+    local success, result = pcall(function()
+        if not isfolder(PATH_FOLDER_PATH) then return 0 end
+        
+        local files = listfiles(PATH_FOLDER_PATH)
+        local loadedCount = 0
+        
+        for _, filePath in pairs(files) do
+            local fileName = filePath:match("([^/\\]+)%.json$")
+            if fileName then
+                local pathData = loadPathFromJSON(fileName)
+                if pathData then
+                    savedPaths[fileName] = pathData
+                    loadedCount = loadedCount + 1
+                end
+            end
+        end
+        
+        return loadedCount
+    end)
+    
+    if success then
+        print("[SUPERTOOL] Loaded " .. result .. " paths from disk")
+        return result
+    else
+        warn("[SUPERTOOL] Failed to load paths: " .. tostring(result))
+        return 0
     end
 end
 
@@ -1737,6 +1791,7 @@ function Utility.init(deps)
     pathShowOnly = false
     pathPaused = false
     
+    -- FIXED: Create folder structure first
     local success = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
@@ -1752,6 +1807,13 @@ function Utility.init(deps)
     if not success then
         warn("[SUPERTOOL] Failed to create folder structure")
     end
+    
+    -- FIXED: Load all existing files on initialization
+    task.spawn(function()
+        local macroCount = loadAllSavedMacros()
+        local pathCount = loadAllSavedPaths()
+        print("[SUPERTOOL] Initialization complete - Macros: " .. macroCount .. ", Paths: " .. pathCount)
+    end)
     
     setupKeyboardControls()
     
@@ -1829,7 +1891,9 @@ function Utility.init(deps)
     task.spawn(function()
         initMacroUI()
         initPathUI()
-        print("[SUPERTOOL] Enhanced Utility Module v2.4 initialized")
+        print("[SUPERTOOL] Enhanced Utility Module v2.5 FIXED initialized")
+        print("  - FIXED: Auto-load all saved files after relog")
+        print("  - FIXED: Undo function now works during path recording")
         print("  - Path Recording: Visual navigation with undo markers and idle duration")
         print("  - Enhanced Macros: Full macro system with pause/resume")
         print("  - Keyboard Controls: Ctrl+Z (undo)")
