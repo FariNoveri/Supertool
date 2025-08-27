@@ -1024,7 +1024,7 @@ local function spectatePrevPlayer()
     stopSpectating()
 end
 
--- Update Player List - FIXED BUTTON EVENTS
+-- Update Player List - FIXED BUTTON EVENTS AND FILTERING
 function Player.updatePlayerList()
     if not PlayerListScrollFrame then
         warn("PlayerListScrollFrame not initialized")
@@ -1041,9 +1041,19 @@ function Player.updatePlayerList()
     local previousSelectedPlayer = Player.selectedPlayer
     Player.spectatePlayerList = {}
     local playerCount = 0
-    local players = Players:GetPlayers()
     
-    if #players <= 1 then
+    -- Get all players excluding local player
+    local allPlayers = Players:GetPlayers()
+    local validPlayers = {}
+    
+    for _, p in pairs(allPlayers) do
+        if p ~= player then
+            table.insert(validPlayers, p)
+            table.insert(Player.spectatePlayerList, p)
+        end
+    end
+    
+    if #validPlayers == 0 then
         local noPlayersLabel = Instance.new("TextLabel")
         noPlayersLabel.Name = "NoPlayersLabel"
         noPlayersLabel.Parent = PlayerListScrollFrame
@@ -1056,352 +1066,372 @@ function Player.updatePlayerList()
         noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
         noPlayersLabel.ZIndex = 1
     else
-        for _, p in pairs(players) do
-            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
-                playerCount = playerCount + 1
-                table.insert(Player.spectatePlayerList, p)
-                
-                local playerItem = Instance.new("Frame")
-                playerItem.Name = p.Name .. "Item"
-                playerItem.Parent = PlayerListScrollFrame
-                playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-                playerItem.BorderSizePixel = 0
-                playerItem.Size = UDim2.new(1, -5, 0, 210)
-                playerItem.LayoutOrder = playerCount
-                playerItem.ZIndex = 1
-                
-                local nameLabel = Instance.new("TextLabel")
-                nameLabel.Name = "NameLabel"
-                nameLabel.Parent = playerItem
-                nameLabel.BackgroundTransparency = 1
-                nameLabel.Position = UDim2.new(0, 5, 0, 5)
-                nameLabel.Size = UDim2.new(1, -10, 0, 20)
-                nameLabel.Font = Enum.Font.GothamBold
-                nameLabel.Text = p.Name
-                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                nameLabel.TextSize = 12
-                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-                nameLabel.ZIndex = 2
-                
-                local selectButton = Instance.new("TextButton")
-                selectButton.Name = "SelectButton"
-                selectButton.Parent = playerItem
-                selectButton.BackgroundColor3 = Player.selectedPlayer == p and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
-                selectButton.BorderSizePixel = 0
-                selectButton.Position = UDim2.new(0, 5, 0, 30)
-                selectButton.Size = UDim2.new(1, -10, 0, 25)
-                selectButton.Font = Enum.Font.Gotham
-                selectButton.Text = Player.selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
-                selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                selectButton.TextSize = 10
-                selectButton.ZIndex = 2
-                selectButton.Active = true
-                selectButton.Selectable = true
-                
-                -- Add all the other buttons
-                local spectateButton = Instance.new("TextButton")
-                spectateButton.Name = "SpectateButton"
-                spectateButton.Parent = playerItem
-                spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-                spectateButton.BorderSizePixel = 0
-                spectateButton.Position = UDim2.new(0, 5, 0, 60)
-                spectateButton.Size = UDim2.new(0, 70, 0, 25)
-                spectateButton.Font = Enum.Font.Gotham
-                spectateButton.Text = "SPECTATE"
-                spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                spectateButton.TextSize = 9
-                spectateButton.ZIndex = 2
-                spectateButton.Active = true
-                
-                local stopSpectateButton = Instance.new("TextButton")
-                stopSpectateButton.Name = "StopSpectateButton"
-                stopSpectateButton.Parent = playerItem
-                stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-                stopSpectateButton.BorderSizePixel = 0
-                stopSpectateButton.Position = UDim2.new(0, 80, 0, 60)
-                stopSpectateButton.Size = UDim2.new(0, 70, 0, 25)
-                stopSpectateButton.Font = Enum.Font.Gotham
-                stopSpectateButton.Text = "STOP"
-                stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                stopSpectateButton.TextSize = 9
-                stopSpectateButton.ZIndex = 2
-                stopSpectateButton.Active = true
-                
-                local teleportButton = Instance.new("TextButton")
-                teleportButton.Name = "TeleportButton"
-                teleportButton.Parent = playerItem
-                teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-                teleportButton.BorderSizePixel = 0
-                teleportButton.Position = UDim2.new(0, 155, 0, 60)
-                teleportButton.Size = UDim2.new(1, -160, 0, 25)
-                teleportButton.Font = Enum.Font.Gotham
-                teleportButton.Text = "TELEPORT"
-                teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                teleportButton.TextSize = 9
-                teleportButton.ZIndex = 2
-                teleportButton.Active = true
-                
-                local followButton = Instance.new("TextButton")
-                followButton.Name = "FollowButton"
-                followButton.Parent = playerItem
-                followButton.BackgroundColor3 = Player.followTarget == p and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
-                followButton.BorderSizePixel = 0
-                followButton.Position = UDim2.new(0, 5, 0, 90)
-                followButton.Size = UDim2.new(0, 70, 0, 25)
-                followButton.Font = Enum.Font.Gotham
-                followButton.Text = Player.followTarget == p and "FOLLOWING" or "FOLLOW"
-                followButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                followButton.TextSize = 9
-                followButton.ZIndex = 2
-                followButton.Active = true
-                
-                local stopFollowButton = Instance.new("TextButton")
-                stopFollowButton.Name = "StopFollowButton"
-                stopFollowButton.Parent = playerItem
-                stopFollowButton.BackgroundColor3 = Color3.fromRGB(80, 40, 60)
-                stopFollowButton.BorderSizePixel = 0
-                stopFollowButton.Position = UDim2.new(0, 80, 0, 90)
-                stopFollowButton.Size = UDim2.new(0, 70, 0, 25)
-                stopFollowButton.Font = Enum.Font.Gotham
-                stopFollowButton.Text = "STOP FOLLOW"
-                stopFollowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                stopFollowButton.TextSize = 8
-                stopFollowButton.ZIndex = 2
-                stopFollowButton.Active = true
-                
-                local bringButton = Instance.new("TextButton")
-                bringButton.Name = "BringButton"
-                bringButton.Parent = playerItem
-                bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
-                bringButton.BorderSizePixel = 0
-                bringButton.Position = UDim2.new(0, 155, 0, 90)
-                bringButton.Size = UDim2.new(1, -160, 0, 25)
-                bringButton.Font = Enum.Font.Gotham
-                bringButton.Text = "BRING"
-                bringButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                bringButton.TextSize = 9
-                bringButton.ZIndex = 2
-                bringButton.Active = true
-                
-                local magnetButton = Instance.new("TextButton")
-                magnetButton.Name = "MagnetButton"
-                magnetButton.Parent = playerItem
-                magnetButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
-                magnetButton.BorderSizePixel = 0
-                magnetButton.Position = UDim2.new(0, 5, 0, 120)
-                magnetButton.Size = UDim2.new(1, -10, 0, 25)
-                magnetButton.Font = Enum.Font.Gotham
-                magnetButton.Text = "MAGNET"
-                magnetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                magnetButton.TextSize = 9
-                magnetButton.ZIndex = 2
-                magnetButton.Active = true
-                
-                local hideButton = Instance.new("TextButton")
-                hideButton.Name = "HideButton"
-                hideButton.Parent = playerItem
-                hideButton.BackgroundColor3 = Player.hiddenPlayers[p] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(80, 60, 40)
-                hideButton.BorderSizePixel = 0
-                hideButton.Position = UDim2.new(0, 5, 0, 150)
-                hideButton.Size = UDim2.new(0, 70, 0, 25)
-                hideButton.Font = Enum.Font.Gotham
-                hideButton.Text = Player.hiddenPlayers[p] and "SHOW" or "HIDE"
-                hideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                hideButton.TextSize = 9
-                hideButton.ZIndex = 2
-                hideButton.Active = true
-                
-                local showButton = Instance.new("TextButton")
-                showButton.Name = "ShowButton"
-                showButton.Parent = playerItem
-                showButton.BackgroundColor3 = Color3.fromRGB(40, 80, 60)
-                showButton.BorderSizePixel = 0
-                showButton.Position = UDim2.new(0, 80, 0, 150)
-                showButton.Size = UDim2.new(0, 70, 0, 25)
-                showButton.Font = Enum.Font.Gotham
-                showButton.Text = "VISIBLE"
-                showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                showButton.TextSize = 8
-                showButton.ZIndex = 2
-                showButton.Active = true
-                
-                local freezeIndividualButton = Instance.new("TextButton")
-                freezeIndividualButton.Name = "FreezeIndividualButton"
-                freezeIndividualButton.Parent = playerItem
-                freezeIndividualButton.BackgroundColor3 = Player.frozenPlayerPositions[p] and Color3.fromRGB(80, 80, 40) or Color3.fromRGB(40, 40, 100)
-                freezeIndividualButton.BorderSizePixel = 0
-                freezeIndividualButton.Position = UDim2.new(0, 155, 0, 150)
-                freezeIndividualButton.Size = UDim2.new(1, -160, 0, 25)
-                freezeIndividualButton.Font = Enum.Font.Gotham
-                freezeIndividualButton.Text = Player.frozenPlayerPositions[p] and "UNFREEZE" or "FREEZE"
-                freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-                freezeIndividualButton.TextSize = 8
-                freezeIndividualButton.ZIndex = 2
-                freezeIndividualButton.Active = true
-                
-                -- Button Events
-                selectButton.MouseButton1Click:Connect(function()
-                    print("Select button clicked for: " .. p.Name) -- Debug print
-                    Player.selectedPlayer = p
-                    Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
-                    if SelectedPlayerLabel then
-                        SelectedPlayerLabel.Text = "SELECTED: " .. p.Name:upper()
+        for _, p in pairs(validPlayers) do
+            playerCount = playerCount + 1
+            
+            local playerItem = Instance.new("Frame")
+            playerItem.Name = p.Name .. "Item"
+            playerItem.Parent = PlayerListScrollFrame
+            playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            playerItem.BorderSizePixel = 0
+            playerItem.Size = UDim2.new(1, -5, 0, 210)
+            playerItem.LayoutOrder = playerCount
+            playerItem.ZIndex = 1
+            
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Name = "NameLabel"
+            nameLabel.Parent = playerItem
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Position = UDim2.new(0, 5, 0, 5)
+            nameLabel.Size = UDim2.new(1, -10, 0, 20)
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.Text = p.Name
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextSize = 12
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.ZIndex = 2
+            
+            local selectButton = Instance.new("TextButton")
+            selectButton.Name = "SelectButton"
+            selectButton.Parent = playerItem
+            selectButton.BackgroundColor3 = Player.selectedPlayer == p and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
+            selectButton.BorderSizePixel = 0
+            selectButton.Position = UDim2.new(0, 5, 0, 30)
+            selectButton.Size = UDim2.new(1, -10, 0, 25)
+            selectButton.Font = Enum.Font.Gotham
+            selectButton.Text = Player.selectedPlayer == p and "SELECTED" or "SELECT PLAYER"
+            selectButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            selectButton.TextSize = 10
+            selectButton.ZIndex = 2
+            selectButton.Active = true
+            selectButton.Selectable = true
+            
+            -- Add all the other buttons
+            local spectateButton = Instance.new("TextButton")
+            spectateButton.Name = "SpectateButton"
+            spectateButton.Parent = playerItem
+            spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            spectateButton.BorderSizePixel = 0
+            spectateButton.Position = UDim2.new(0, 5, 0, 60)
+            spectateButton.Size = UDim2.new(0, 70, 0, 25)
+            spectateButton.Font = Enum.Font.Gotham
+            spectateButton.Text = "SPECTATE"
+            spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            spectateButton.TextSize = 9
+            spectateButton.ZIndex = 2
+            spectateButton.Active = true
+            
+            local stopSpectateButton = Instance.new("TextButton")
+            stopSpectateButton.Name = "StopSpectateButton"
+            stopSpectateButton.Parent = playerItem
+            stopSpectateButton.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+            stopSpectateButton.BorderSizePixel = 0
+            stopSpectateButton.Position = UDim2.new(0, 80, 0, 60)
+            stopSpectateButton.Size = UDim2.new(0, 70, 0, 25)
+            stopSpectateButton.Font = Enum.Font.Gotham
+            stopSpectateButton.Text = "STOP"
+            stopSpectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            stopSpectateButton.TextSize = 9
+            stopSpectateButton.ZIndex = 2
+            stopSpectateButton.Active = true
+            
+            local teleportButton = Instance.new("TextButton")
+            teleportButton.Name = "TeleportButton"
+            teleportButton.Parent = playerItem
+            teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+            teleportButton.BorderSizePixel = 0
+            teleportButton.Position = UDim2.new(0, 155, 0, 60)
+            teleportButton.Size = UDim2.new(1, -160, 0, 25)
+            teleportButton.Font = Enum.Font.Gotham
+            teleportButton.Text = "TELEPORT"
+            teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            teleportButton.TextSize = 9
+            teleportButton.ZIndex = 2
+            teleportButton.Active = true
+            
+            local followButton = Instance.new("TextButton")
+            followButton.Name = "FollowButton"
+            followButton.Parent = playerItem
+            followButton.BackgroundColor3 = Player.followTarget == p and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
+            followButton.BorderSizePixel = 0
+            followButton.Position = UDim2.new(0, 5, 0, 90)
+            followButton.Size = UDim2.new(0, 70, 0, 25)
+            followButton.Font = Enum.Font.Gotham
+            followButton.Text = Player.followTarget == p and "FOLLOWING" or "FOLLOW"
+            followButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            followButton.TextSize = 9
+            followButton.ZIndex = 2
+            followButton.Active = true
+            
+            local stopFollowButton = Instance.new("TextButton")
+            stopFollowButton.Name = "StopFollowButton"
+            stopFollowButton.Parent = playerItem
+            stopFollowButton.BackgroundColor3 = Color3.fromRGB(80, 40, 60)
+            stopFollowButton.BorderSizePixel = 0
+            stopFollowButton.Position = UDim2.new(0, 80, 0, 90)
+            stopFollowButton.Size = UDim2.new(0, 70, 0, 25)
+            stopFollowButton.Font = Enum.Font.Gotham
+            stopFollowButton.Text = "STOP FOLLOW"
+            stopFollowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            stopFollowButton.TextSize = 8
+            stopFollowButton.ZIndex = 2
+            stopFollowButton.Active = true
+            
+            local bringButton = Instance.new("TextButton")
+            bringButton.Name = "BringButton"
+            bringButton.Parent = playerItem
+            bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
+            bringButton.BorderSizePixel = 0
+            bringButton.Position = UDim2.new(0, 155, 0, 90)
+            bringButton.Size = UDim2.new(1, -160, 0, 25)
+            bringButton.Font = Enum.Font.Gotham
+            bringButton.Text = "BRING"
+            bringButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            bringButton.TextSize = 9
+            bringButton.ZIndex = 2
+            bringButton.Active = true
+            
+            local magnetButton = Instance.new("TextButton")
+            magnetButton.Name = "MagnetButton"
+            magnetButton.Parent = playerItem
+            magnetButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
+            magnetButton.BorderSizePixel = 0
+            magnetButton.Position = UDim2.new(0, 5, 0, 120)
+            magnetButton.Size = UDim2.new(1, -10, 0, 25)
+            magnetButton.Font = Enum.Font.Gotham
+            magnetButton.Text = "MAGNET"
+            magnetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            magnetButton.TextSize = 9
+            magnetButton.ZIndex = 2
+            magnetButton.Active = true
+            
+            local hideButton = Instance.new("TextButton")
+            hideButton.Name = "HideButton"
+            hideButton.Parent = playerItem
+            hideButton.BackgroundColor3 = Player.hiddenPlayers[p] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(80, 60, 40)
+            hideButton.BorderSizePixel = 0
+            hideButton.Position = UDim2.new(0, 5, 0, 150)
+            hideButton.Size = UDim2.new(0, 70, 0, 25)
+            hideButton.Font = Enum.Font.Gotham
+            hideButton.Text = Player.hiddenPlayers[p] and "SHOW" or "HIDE"
+            hideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            hideButton.TextSize = 9
+            hideButton.ZIndex = 2
+            hideButton.Active = true
+            
+            local showButton = Instance.new("TextButton")
+            showButton.Name = "ShowButton"
+            showButton.Parent = playerItem
+            showButton.BackgroundColor3 = Color3.fromRGB(40, 80, 60)
+            showButton.BorderSizePixel = 0
+            showButton.Position = UDim2.new(0, 80, 0, 150)
+            showButton.Size = UDim2.new(0, 70, 0, 25)
+            showButton.Font = Enum.Font.Gotham
+            showButton.Text = "VISIBLE"
+            showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            showButton.TextSize = 8
+            showButton.ZIndex = 2
+            showButton.Active = true
+            
+            local freezeIndividualButton = Instance.new("TextButton")
+            freezeIndividualButton.Name = "FreezeIndividualButton"
+            freezeIndividualButton.Parent = playerItem
+            freezeIndividualButton.BackgroundColor3 = Player.frozenPlayerPositions[p] and Color3.fromRGB(80, 80, 40) or Color3.fromRGB(40, 40, 100)
+            freezeIndividualButton.BorderSizePixel = 0
+            freezeIndividualButton.Position = UDim2.new(0, 155, 0, 150)
+            freezeIndividualButton.Size = UDim2.new(1, -160, 0, 25)
+            freezeIndividualButton.Font = Enum.Font.Gotham
+            freezeIndividualButton.Text = Player.frozenPlayerPositions[p] and "UNFREEZE" or "FREEZE"
+            freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            freezeIndividualButton.TextSize = 8
+            freezeIndividualButton.ZIndex = 2
+            freezeIndividualButton.Active = true
+            
+            -- FIXED Button Events with proper scope
+            local currentPlayer = p  -- Capture the current player in the loop
+            
+            selectButton.MouseButton1Click:Connect(function()
+                Player.selectedPlayer = currentPlayer
+                Player.currentSpectateIndex = table.find(Player.spectatePlayerList, currentPlayer) or 0
+                if SelectedPlayerLabel then
+                    SelectedPlayerLabel.Text = "SELECTED: " .. currentPlayer.Name:upper()
+                end
+                -- Update all select buttons
+                for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                    if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                        local btn = item.SelectButton
+                        btn.BackgroundColor3 = item.Name == currentPlayer.Name .. "Item" and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
+                        btn.Text = item.Name == currentPlayer.Name .. "Item" and "SELECTED" or "SELECT PLAYER"
                     end
-                    -- Update all select buttons
-                    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
-                        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
-                            local btn = item.SelectButton
-                            btn.BackgroundColor3 = item.Name == p.Name .. "Item" and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
-                            btn.Text = item.Name == p.Name .. "Item" and "SELECTED" or "SELECT PLAYER"
+                end
+                updateSpectateButtons()
+                print("Selected player: " .. currentPlayer.Name)
+            end)
+            
+            spectateButton.MouseButton1Click:Connect(function()
+                Player.currentSpectateIndex = table.find(Player.spectatePlayerList, currentPlayer) or 0
+                spectatePlayer(currentPlayer)
+            end)
+            
+            stopSpectateButton.MouseButton1Click:Connect(function()
+                stopSpectating()
+            end)
+            
+            teleportButton.MouseButton1Click:Connect(function()
+                local success, result = pcall(function()
+                    if currentPlayer and currentPlayer.Character and currentPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        if not Player.rootPart then
+                            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                                Player.rootPart = player.Character.HumanoidRootPart
+                            else
+                                print("Cannot teleport: Local player missing HumanoidRootPart")
+                                return
+                            end
                         end
-                    end
-                    updateSpectateButtons()
-                    print("Selected player: " .. p.Name)
-                end)
-                
-                spectateButton.MouseButton1Click:Connect(function()
-                    print("Spectate button clicked for: " .. p.Name) -- Debug print
-                    Player.currentSpectateIndex = table.find(Player.spectatePlayerList, p) or 0
-                    spectatePlayer(p)
-                end)
-                
-                stopSpectateButton.MouseButton1Click:Connect(function()
-                    print("Stop spectate button clicked for: " .. p.Name) -- Debug print
-                    stopSpectating()
-                end)
-                
-                teleportButton.MouseButton1Click:Connect(function()
-                    print("Teleport button clicked for: " .. p.Name) -- Debug print
-                    local success, result = pcall(function()
-                        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
-                            local targetPosition = p.Character.HumanoidRootPart.CFrame
-                            local newPosition = targetPosition * CFrame.new(0, 0, 5)
-                            Player.rootPart.CFrame = newPosition
-                            print("Teleported to: " .. p.Name)
-                        else
-                            print("Cannot teleport: No valid target player or missing rootPart")
-                        end
-                    end)
-                    if not success then
-                        warn("Teleport failed: " .. tostring(result))
+                        
+                        local targetPosition = currentPlayer.Character.HumanoidRootPart.CFrame
+                        local newPosition = targetPosition * CFrame.new(0, 0, 5)
+                        Player.rootPart.CFrame = newPosition
+                        print("Teleported to: " .. currentPlayer.Name)
+                    else
+                        print("Cannot teleport: Target player has no character or HumanoidRootPart")
                     end
                 end)
-                
-                followButton.MouseButton1Click:Connect(function()
-                    print("Follow button clicked for: " .. p.Name) -- Debug print
-                    toggleFollowPlayer(p)
+                if not success then
+                    warn("Teleport failed: " .. tostring(result))
+                end
+            end)
+            
+            followButton.MouseButton1Click:Connect(function()
+                toggleFollowPlayer(currentPlayer)
+                task.spawn(function()
+                    task.wait(0.1)
+                    Player.updatePlayerList()
+                end)
+            end)
+            
+            stopFollowButton.MouseButton1Click:Connect(function()
+                if Player.followTarget == currentPlayer then
+                    stopFollowing()
                     task.spawn(function()
                         task.wait(0.1)
                         Player.updatePlayerList()
                     end)
-                end)
-                
-                stopFollowButton.MouseButton1Click:Connect(function()
-                    print("Stop follow button clicked for: " .. p.Name) -- Debug print
-                    if Player.followTarget == p then
-                        stopFollowing()
-                        task.spawn(function()
-                            task.wait(0.1)
-                            Player.updatePlayerList()
-                        end)
+                end
+            end)
+            
+            bringButton.MouseButton1Click:Connect(function()
+                bringPlayer(currentPlayer)
+            end)
+            
+            magnetButton.MouseButton1Click:Connect(function()
+                if currentPlayer.Character and currentPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    if not Player.rootPart then
+                        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            Player.rootPart = player.Character.HumanoidRootPart
+                        else
+                            print("Cannot magnet: Local player missing HumanoidRootPart")
+                            return
+                        end
                     end
-                end)
-                
-                bringButton.MouseButton1Click:Connect(function()
-                    print("Bring button clicked for: " .. p.Name) -- Debug print
-                    bringPlayer(p)
-                end)
-                
-                magnetButton.MouseButton1Click:Connect(function()
-                    print("Magnet button clicked for: " .. p.Name) -- Debug print
-                    if p.Character and p.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
-                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
-                        toggleMagnetPlayers(true)
-                    else
-                        print("Cannot magnet: No valid target player or missing rootPart")
-                    end
-                end)
-                
-                hideButton.MouseButton1Click:Connect(function()
-                    print("Hide button clicked for: " .. p.Name) -- Debug print
-                    if Player.hiddenPlayers[p] then
-                        showPlayer(p)
-                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-                        hideButton.Text = "HIDE"
-                    else
-                        hidePlayer(p)
-                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
-                        hideButton.Text = "SHOW"
-                    end
-                end)
-                
-                showButton.MouseButton1Click:Connect(function()
-                    print("Show button clicked for: " .. p.Name) -- Debug print
-                    if Player.hiddenPlayers[p] then
-                        showPlayer(p)
-                        hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-                        hideButton.Text = "HIDE"
-                    end
-                end)
-                
-                freezeIndividualButton.MouseButton1Click:Connect(function()
-                    print("Freeze button clicked for: " .. p.Name) -- Debug print
-                    if Player.frozenPlayerPositions[p] then
-                        unfreezePlayer(p)
-                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(40, 40, 100)
-                        freezeIndividualButton.Text = "FREEZE"
-                    else
-                        freezePlayer(p)
-                        freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
-                        freezeIndividualButton.Text = "UNFREEZE"
-                    end
-                end)
-                
-                -- Add hover effects for better UX
-                selectButton.MouseEnter:Connect(function()
-                    if Player.selectedPlayer ~= p then
-                        selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-                    end
-                end)
-                
-                selectButton.MouseLeave:Connect(function()
-                    if Player.selectedPlayer ~= p then
-                        selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                    else
-                        selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                    end
-                end)
-                
-                spectateButton.MouseEnter:Connect(function()
-                    spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-                end)
-                
-                spectateButton.MouseLeave:Connect(function()
-                    spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-                end)
-            end
+                    
+                    Player.magnetPlayerPositions[currentPlayer] = currentPlayer.Character.HumanoidRootPart
+                    toggleMagnetPlayers(true)
+                else
+                    print("Cannot magnet: Target player has no character or HumanoidRootPart")
+                end
+            end)
+            
+            hideButton.MouseButton1Click:Connect(function()
+                if Player.hiddenPlayers[currentPlayer] then
+                    showPlayer(currentPlayer)
+                    hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                    hideButton.Text = "HIDE"
+                else
+                    hidePlayer(currentPlayer)
+                    hideButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
+                    hideButton.Text = "SHOW"
+                end
+            end)
+            
+            showButton.MouseButton1Click:Connect(function()
+                if Player.hiddenPlayers[currentPlayer] then
+                    showPlayer(currentPlayer)
+                    hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                    hideButton.Text = "HIDE"
+                end
+            end)
+            
+            freezeIndividualButton.MouseButton1Click:Connect(function()
+                if Player.frozenPlayerPositions[currentPlayer] then
+                    unfreezePlayer(currentPlayer)
+                    freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(40, 40, 100)
+                    freezeIndividualButton.Text = "FREEZE"
+                else
+                    freezePlayer(currentPlayer)
+                    freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
+                    freezeIndividualButton.Text = "UNFREEZE"
+                end
+            end)
+            
+            -- Add hover effects for better UX
+            selectButton.MouseEnter:Connect(function()
+                if Player.selectedPlayer ~= currentPlayer then
+                    selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+                end
+            end)
+            
+            selectButton.MouseLeave:Connect(function()
+                if Player.selectedPlayer ~= currentPlayer then
+                    selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                else
+                    selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                end
+            end)
+            
+            spectateButton.MouseEnter:Connect(function()
+                spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+            end)
+            
+            spectateButton.MouseLeave:Connect(function()
+                spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            end)
+            
+            teleportButton.MouseEnter:Connect(function()
+                teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+            end)
+            
+            teleportButton.MouseLeave:Connect(function()
+                teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+            end)
         end
     end
     
+    -- Restore previous selected player if they still exist
     if previousSelectedPlayer then
-        Player.selectedPlayer = previousSelectedPlayer
-        Player.currentSpectateIndex = table.find(Player.spectatePlayerList, Player.selectedPlayer) or 0
-        if Player.currentSpectateIndex == 0 and Player.selectedPlayer then
-            if not (Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("Humanoid")) then
-                stopSpectating()
+        local stillExists = table.find(Player.spectatePlayerList, previousSelectedPlayer)
+        if stillExists then
+            Player.selectedPlayer = previousSelectedPlayer
+            Player.currentSpectateIndex = stillExists
+            if SelectedPlayerLabel then
+                SelectedPlayerLabel.Text = "SELECTED: " .. previousSelectedPlayer.Name:upper()
             end
+        else
+            Player.selectedPlayer = nil
+            Player.currentSpectateIndex = 0
+            if SelectedPlayerLabel then
+                SelectedPlayerLabel.Text = "SELECTED: NONE"
+            end
+            stopSpectating()
         end
-        if SelectedPlayerLabel then
-            SelectedPlayerLabel.Text = Player.selectedPlayer and "SELECTED: " .. Player.selectedPlayer.Name:upper() or "SELECTED: NONE"
-        end
-    else
-        Player.currentSpectateIndex = 0
     end
     
     task.spawn(function()
         task.wait(0.1)
-        local contentSize = PlayerListLayout.AbsoluteContentSize
-        PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
+        if PlayerListLayout then
+            local contentSize = PlayerListLayout.AbsoluteContentSize
+            PlayerListScrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(contentSize.Y + 10, 30))
+        end
     end)
     updateSpectateButtons()
 end
@@ -1414,13 +1444,22 @@ local function teleportToSpectatedPlayer()
     end
     
     local success, result = pcall(function()
-        if Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") and Player.rootPart then
+        if Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            if not Player.rootPart then
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    Player.rootPart = player.Character.HumanoidRootPart
+                else
+                    print("Cannot teleport: Local player missing HumanoidRootPart")
+                    return
+                end
+            end
+            
             local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
             local newPosition = targetPosition * CFrame.new(0, 0, 5)
             Player.rootPart.CFrame = newPosition
             print("Teleported to spectated player: " .. Player.selectedPlayer.Name)
         else
-            print("Cannot teleport: No valid spectated player or missing rootPart")
+            print("Cannot teleport: No valid spectated player or missing HumanoidRootPart")
         end
     end)
     
@@ -1985,6 +2024,7 @@ end
 local function initConnections()
     connections.playerAdded = Players.PlayerAdded:Connect(function(newPlayer)
         print("Player added: " .. newPlayer.Name)
+        task.wait(1) -- Wait for character to load
         Player.updatePlayerList()
         setupPlayerMonitoring(newPlayer)
     end)
@@ -1998,6 +2038,7 @@ local function initConnections()
         if Player.followTarget == leavingPlayer then
             stopFollowing()
         end
+        task.wait(0.5)
         Player.updatePlayerList()
     end)
     
@@ -2009,20 +2050,28 @@ local function initConnections()
             warn("Failed to initialize local player character parts")
         end
         if Player.hideMyCharacterEnabled then
+            task.wait(0.5)
             hideMyCharacter()
         end
         if Player.forceFieldEnabled then
+            task.wait(0.1)
             toggleForceField(true)
         end
         if Player.fastRespawnEnabled then
             toggleFastRespawn(true)
         end
+        task.wait(1)
         Player.updatePlayerList()
     end)
     
-    connections.updatePlayerList = RunService.Heartbeat:Connect(function()
-        if Player.playerListVisible then
-            Player.updatePlayerList()
+    -- Remove the continuous heartbeat update as it causes performance issues
+    -- Only update when player list is visible
+    connections.updatePlayerListPeriodic = task.spawn(function()
+        while true do
+            if Player.playerListVisible and PlayerListFrame and PlayerListFrame.Visible then
+                Player.updatePlayerList()
+            end
+            task.wait(2) -- Update every 2 seconds when visible
         end
     end)
 end
@@ -2062,7 +2111,11 @@ function Player.cleanup()
     
     for _, connection in pairs(connections) do
         if connection then
-            connection:Disconnect()
+            if typeof(connection) == "RBXScriptConnection" then
+                connection:Disconnect()
+            elseif typeof(connection) == "thread" then
+                task.cancel(connection)
+            end
         end
     end
     connections = {}

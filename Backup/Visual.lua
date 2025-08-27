@@ -35,6 +35,14 @@ local processedObjects = {}
 local freecamSpeed = 50
 local mouseDelta = Vector2.new(0, 0)
 
+-- Freecam variables for native-like behavior
+local freecamCFrame = nil
+local freecamLookVector = Vector3.new(0, 0, -1)
+local freecamRightVector = Vector3.new(1, 0, 0)
+local freecamUpVector = Vector3.new(0, 1, 0)
+local freecamYaw = 0
+local freecamPitch = 0
+
 -- Function to get enemy health and determine color
 local function getHealthColor(enemy)
     if not enemy or not enemy.Character then
@@ -248,7 +256,7 @@ end
 
 -- Handle mouse input for camera rotation
 local function handleMouseInput(input, processed)
-    if not (Visual.freecamEnabled or Visual.noClipCameraEnabled) or processed then return end
+    if not (Visual.freecamEnabled) or processed then return end
     
     if input.UserInputType == Enum.UserInputType.MouseMovement then
         mouseDelta = Vector2.new(input.Delta.X, input.Delta.Y)
@@ -290,121 +298,61 @@ local function toggleHideOwnNickname(enabled)
     end
 end
 
--- FIXED: NoClipCamera - Mimics regular camera but passes through objects
+-- FIXED: NoClipCamera - Camera passes through objects while maintaining normal movement
 local function toggleNoClipCamera(enabled)
     Visual.noClipCameraEnabled = enabled
     print("NoClipCamera:", enabled)
     
     local camera = Workspace.CurrentCamera
-    local character = player.Character
-    local humanoid = character and character:FindFirstChild("Humanoid")
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     
     if enabled then
         if Visual.freecamEnabled then
             Visual.toggleFreecam(false)
         end
         
+        -- Store original settings but don't change camera behavior
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
         
-        camera.CameraType = Enum.CameraType.Custom
-        camera.CameraSubject = humanoid or camera.CameraSubject
-        
-        if rootPart then
-            Visual.noClipCameraCFrame = CFrame.new(rootPart.Position + Vector3.new(0, 2, 0))
-        else
-            Visual.noClipCameraCFrame = camera.CFrame
-        end
-        
-        if joystickFrame then
-            joystickFrame.Visible = true
-        end
-        
+        -- Keep normal camera behavior but disable collision detection
         if Visual.noClipCameraConnection then
             Visual.noClipCameraConnection:Disconnect()
         end
         
-        Visual.noClipCameraConnection = RunService.RenderStepped:Connect(function(deltaTime)
-            if Visual.noClipCameraEnabled and character and humanoid and rootPart then
-                local currentCFrame = Visual.noClipCameraCFrame or camera.CFrame
-                local moveSpeed = freecamSpeed * deltaTime
+        Visual.noClipCameraConnection = RunService.RenderStepped:Connect(function()
+            if Visual.noClipCameraEnabled then
+                -- Raycast from camera position in look direction to detect what should be behind
+                local camera = Workspace.CurrentCamera
+                local rayOrigin = camera.CFrame.Position
+                local rayDirection = camera.CFrame.LookVector * 1000
                 
-                local forwardVector = currentCFrame.LookVector
-                local rightVector = currentCFrame.RightVector
-                local upVector = currentCFrame.UpVector
+                -- Create raycast params
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                raycastParams.FilterDescendantsInstances = {player.Character}
                 
-                local movement = Vector3.new(0, 0, 0)
+                -- Perform raycast
+                local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
                 
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    movement = movement + forwardVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    movement = movement - forwardVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    movement = movement - rightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    movement = movement + rightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-                    movement = movement + upVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-                    movement = movement - upVector
-                end
-                
-                movement = movement + (rightVector * Visual.joystickDelta.X + forwardVector * -Visual.joystickDelta.Y)
-                
-                if movement.Magnitude > 0 then
-                    movement = movement.Unit * moveSpeed
-                    Visual.noClipCameraCFrame = currentCFrame + movement
-                end
-                
-                -- Update camera position while maintaining normal camera behavior
-                camera.CFrame = Visual.noClipCameraCFrame
-                camera.CameraType = Enum.CameraType.Custom
-                camera.CameraSubject = humanoid
-                
-                -- Disable collision for camera
-                for _, part in pairs(Workspace:GetDescendants()) do
-                    if part:IsA("BasePart") and part ~= rootPart then
-                        part.CanCollide = false
+                -- If we hit something close to the camera, make camera ignore collision
+                if raycastResult and raycastResult.Distance < 5 then
+                    local hitPart = raycastResult.Instance
+                    if hitPart and hitPart:IsA("BasePart") then
+                        -- Temporarily disable collision for the part the camera is close to
+                        local originalCanCollide = hitPart.CanCollide
+                        hitPart.CanCollide = false
+                        
+                        -- Re-enable collision after a short delay
+                        task.wait(0.1)
+                        pcall(function()
+                            if hitPart and hitPart.Parent then
+                                hitPart.CanCollide = originalCanCollide
+                            end
+                        end)
                     end
                 end
             end
         end)
-        
-        if not connections.touchInput then
-            connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    Visual.joystickDelta = handleJoystickInput(input, processed)
-                end
-            end)
-        end
-        
-        if not connections.touchBegan then
-            connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    Visual.joystickDelta = handleJoystickInput(input, processed)
-                end
-            end)
-        end
-        
-        if not connections.touchEnded then
-            connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    Visual.joystickDelta = handleJoystickInput(input, processed)
-                end
-            end)
-        end
-        
-        if not connections.mouseInput then
-            connections.mouseInput = UserInputService.InputChanged:Connect(function(input, processed)
-                handleMouseInput(input, processed)
-            end)
-        end
         
     else
         if Visual.noClipCameraConnection then
@@ -412,37 +360,17 @@ local function toggleNoClipCamera(enabled)
             Visual.noClipCameraConnection = nil
         end
         
-        if joystickFrame then
-            joystickFrame.Visible = false
-            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
-        end
-        
-        -- Restore collisions
-        for _, part in pairs(Workspace:GetDescendants()) do
-            if part:IsA("BasePart") and foliageStates[part] then
-                part.CanCollide = foliageStates[part].CanCollide ~= false
-            end
-        end
-        
+        -- Restore original camera settings
         local camera = Workspace.CurrentCamera
         if Visual.originalCameraType then
             camera.CameraType = Visual.originalCameraType
-        else
-            camera.CameraType = Enum.CameraType.Custom
         end
         
         if Visual.originalCameraSubject then
             camera.CameraSubject = Visual.originalCameraSubject
-        else
-            local currentHumanoid = player.Character and player.Character:FindFirstChild("Humanoid")
-            if currentHumanoid then
-                camera.CameraSubject = currentHumanoid
-            end
         end
         
         Visual.noClipCameraCFrame = nil
-        Visual.joystickDelta = Vector2.new(0, 0)
-        mouseDelta = Vector2.new(0, 0)
     end
 end
 
@@ -613,7 +541,7 @@ local function toggleESP(enabled)
     end
 end
 
--- FIXED: Freecam - Smooth movement with rotation, character stays still
+-- FIXED: Freecam - Native Roblox-like behavior (Shift+P style)
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -628,31 +556,25 @@ local function toggleFreecam(enabled)
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
         
-        if not currentHumanoid or not currentRootPart then
+        if not currentRootPart then
             print("Warning: No character found for freecam")
             Visual.freecamEnabled = false
             return
         end
         
-        Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
-        Visual.originalJumpPower = currentHumanoid.JumpPower
-        Visual.originalJumpHeight = currentHumanoid.JumpHeight
-        Visual.originalPosition = currentRootPart.CFrame
+        -- Store original settings
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
         
-        currentHumanoid.PlatformStand = true
-        currentHumanoid.WalkSpeed = 0
-        currentHumanoid.JumpPower = 0
-        currentHumanoid.JumpHeight = 0
-        currentRootPart.Anchored = true
-        currentRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        currentRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        -- Initialize freecam position from current camera
+        freecamCFrame = camera.CFrame
+        local x, y, z = freecamCFrame:ToEulerAnglesXYZ()
+        freecamYaw = -y -- Negative because Roblox camera yaw is inverted
+        freecamPitch = -x -- Negative because Roblox camera pitch is inverted
         
+        -- Set camera to scriptable mode
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
-        
-        Visual.freecamCFrame = camera.CFrame
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
         
@@ -666,71 +588,67 @@ local function toggleFreecam(enabled)
         
         Visual.freecamConnection = RunService.RenderStepped:Connect(function(deltaTime)
             if Visual.freecamEnabled then
-                local char = player.Character
-                local hum = char and char:FindFirstChild("Humanoid")
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                
-                if hum and root and Visual.originalPosition then
-                    hum.PlatformStand = true
-                    hum.WalkSpeed = 0
-                    hum.JumpPower = 0
-                    hum.JumpHeight = 0
-                    root.Anchored = true
-                    root.CFrame = Visual.originalPosition
-                    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                end
-                
                 local camera = Workspace.CurrentCamera
-                local currentCFrame = Visual.freecamCFrame or camera.CFrame
                 local moveSpeed = freecamSpeed * deltaTime
                 
-                local forwardVector = currentCFrame.LookVector
-                local rightVector = currentCFrame.RightVector
-                local upVector = currentCFrame.UpVector
+                -- Handle mouse rotation (like native freecam)
+                if mouseDelta.Magnitude > 0 then
+                    local sensitivity = 0.002 -- Similar to Roblox's sensitivity
+                    freecamYaw = freecamYaw - mouseDelta.X * sensitivity
+                    freecamPitch = math.clamp(freecamPitch - mouseDelta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
+                    mouseDelta = Vector2.new(0, 0)
+                end
+                
+                -- Calculate look vectors from yaw and pitch
+                local yawCFrame = CFrame.Angles(0, freecamYaw, 0)
+                local pitchCFrame = CFrame.Angles(freecamPitch, 0, 0)
+                local rotationCFrame = yawCFrame * pitchCFrame
+                
+                freecamLookVector = rotationCFrame.LookVector
+                freecamRightVector = rotationCFrame.RightVector
+                freecamUpVector = rotationCFrame.UpVector
                 
                 local movement = Vector3.new(0, 0, 0)
+                local currentPos = freecamCFrame.Position
                 
+                -- WASD movement (like native freecam)
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    movement = movement + forwardVector
+                    movement = movement + freecamLookVector
                 end
                 if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    movement = movement - forwardVector
+                    movement = movement - freecamLookVector
                 end
                 if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    movement = movement - rightVector
+                    movement = movement - freecamRightVector
                 end
                 if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    movement = movement + rightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-                    movement = movement + upVector
+                    movement = movement + freecamRightVector
                 end
                 if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-                    movement = movement - upVector
+                    movement = movement - freecamUpVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+                    movement = movement + freecamUpVector
                 end
                 
-                movement = movement + (rightVector * Visual.joystickDelta.X + forwardVector * -Visual.joystickDelta.Y)
+                -- Mobile joystick support
+                if Visual.joystickDelta.Magnitude > 0 then
+                    movement = movement + (freecamRightVector * Visual.joystickDelta.X + freecamLookVector * -Visual.joystickDelta.Y)
+                end
                 
+                -- Apply movement
                 if movement.Magnitude > 0 then
                     movement = movement.Unit * moveSpeed
-                    Visual.freecamCFrame = currentCFrame + movement
+                    currentPos = currentPos + movement
                 end
                 
-                -- Add camera rotation
-                local rotationSpeed = 0.1
-                local yaw = currentCFrame:ToEulerAnglesXYZ()
-                local newYaw = yaw - mouseDelta.X * rotationSpeed
-                local pitch = math.clamp(yaw - mouseDelta.Y * rotationSpeed, -math.pi/2, math.pi/2)
-                Visual.freecamCFrame = CFrame.new(Visual.freecamCFrame.Position) * CFrame.Angles(0, newYaw, 0) * CFrame.Angles(pitch, 0, 0)
-                
-                camera.CFrame = Visual.freecamCFrame
-                camera.CameraType = Enum.CameraType.Scriptable
-                
-                mouseDelta = Vector2.new(0, 0) -- Reset mouse delta after use
+                -- Update camera CFrame with new position and rotation
+                freecamCFrame = CFrame.new(currentPos) * CFrame.Angles(-freecamPitch, freecamYaw, 0)
+                camera.CFrame = freecamCFrame
             end
         end)
         
+        -- Enable input connections for joystick and mouse
         if not connections.touchInput then
             connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
                 if input.UserInputType == Enum.UserInputType.Touch then
@@ -773,6 +691,8 @@ local function toggleFreecam(enabled)
         end
         
         local camera = Workspace.CurrentCamera
+        
+        -- Restore original camera settings
         if Visual.originalCameraType then
             camera.CameraType = Visual.originalCameraType
         else
@@ -781,7 +701,6 @@ local function toggleFreecam(enabled)
         
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
-        local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
         
         if Visual.originalCameraSubject then
             camera.CameraSubject = Visual.originalCameraSubject
@@ -789,19 +708,10 @@ local function toggleFreecam(enabled)
             camera.CameraSubject = currentHumanoid
         end
         
-        if currentHumanoid and currentRootPart then
-            currentHumanoid.PlatformStand = false
-            currentRootPart.Anchored = false
-            
-            currentHumanoid.WalkSpeed = Visual.originalWalkSpeed or (settings.WalkSpeed and settings.WalkSpeed.value) or 16
-            currentHumanoid.JumpPower = Visual.originalJumpPower or ((settings.JumpHeight and settings.JumpHeight.value * 2.4) or 50)
-            currentHumanoid.JumpHeight = Visual.originalJumpHeight or (settings.JumpHeight and settings.JumpHeight.value) or 7.2
-            
-            task.wait(0.1)
-            camera.CFrame = CFrame.lookAt(currentRootPart.Position + Vector3.new(0, 2, 10), currentRootPart.Position)
-        end
-        
-        Visual.freecamCFrame = nil
+        -- Reset freecam variables
+        freecamCFrame = nil
+        freecamYaw = 0
+        freecamPitch = 0
         Visual.joystickDelta = Vector2.new(0, 0)
         mouseDelta = Vector2.new(0, 0)
     end

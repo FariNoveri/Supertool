@@ -1,5 +1,5 @@
 -- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
--- Updated version with fixed status text, undo during recording only, external undo toggle, larger idle text, hide/show toggle, and removed "textbox" text
+-- Updated version with fixed status text, undo during recording only, external undo toggle, larger idle text, hide/show toggle
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -25,6 +25,7 @@ local lastFrameTime = 0
 local macroPauseIndex = 1
 local macroPauseTime = 0
 local pauseResumeTime = 5 -- Seconds to wait before resuming macro after death
+local macroPausedMarker = nil
 
 -- Path Recording System Variables
 local pathRecording = false
@@ -45,6 +46,7 @@ local pathMarkerParts = {}
 local idleStartTime = nil
 local currentIdleLabel = nil
 local idleStartPosition = nil
+local pathPausedMarker = nil
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -239,7 +241,7 @@ local function createPathVisual(position, movementType, isMarker, idleDuration)
             billboard.Parent = part
             billboard.Size = UDim2.new(0, 100, 0, 30)
             billboard.StudsOffset = Vector3.new(0, 2, 0)
-            billboard.AlwaysOnTop = true
+            billboard.AlwaysOnTop = false
             
             local textLabel = Instance.new("TextLabel")
             textLabel.Parent = billboard
@@ -296,6 +298,7 @@ local function startPathRecording()
     clearPathVisuals()
     
     print("[SUPERTOOL] Path recording started")
+    updatePathStatus()
     
     local previousMovementType = nil
     
@@ -435,6 +438,7 @@ local function stopPathRecording()
     
     PathInput.Text = ""
     updatePathList()
+    updatePathStatus()
     
     print("[SUPERTOOL] Path recorded: " .. pathName .. " (" .. #currentPath.points .. " points, " .. #currentPath.markers .. " markers)")
 end
@@ -473,9 +477,10 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         table.insert(pathMarkerParts, markerPart)
     end
     
+    updatePathStatus()
+    
     if pathShowOnly then
         print("[SUPERTOOL] Showing path: " .. pathName)
-        updatePathStatus()
         return
     end
     
@@ -541,7 +546,6 @@ local function stopPathPlayback()
     pathAutoPlaying = false
     pathAutoRespawning = false
     pathPaused = false
-    pathShowOnly = false
     pathPauseIndex = 1
     if pathPlayConnection then
         pathPlayConnection:Disconnect()
@@ -557,12 +561,12 @@ end
 
 -- Path Undo System
 local function undoToLastMarker()
-    if not pathRecording or not currentPathName then
+    if not pathRecording then
         warn("[SUPERTOOL] Undo only available during path recording")
         return
     end
     
-    local path = savedPaths[currentPathName]
+    local path = currentPath
     if not path or not path.markers or #path.markers == 0 then
         warn("[SUPERTOOL] No markers to undo")
         return
@@ -577,12 +581,6 @@ local function undoToLastMarker()
         -- Remove points and markers after the last marker
         path.points = {table.unpack(path.points, 1, lastMarker.pathIndex)}
         path.markers = {table.unpack(path.markers, 1, lastMarkerIndex - 1)}
-        path.pointCount = #path.points
-        path.markerCount = #path.markers
-        path.duration = path.points[#path.points].time
-        
-        -- Save updated path
-        savePathToJSON(currentPathName, path)
         
         -- Update visuals
         clearPathVisuals()
@@ -914,12 +912,54 @@ end
 local function pauseMacro()
     if not macroPlaying then return end
     macroPaused = not macroPaused
+    if macroPaused then
+        if macroPausedMarker then macroPausedMarker:Destroy() end
+        macroPausedMarker = Instance.new("Part")
+        macroPausedMarker.Anchored = true
+        macroPausedMarker.CanCollide = false
+        macroPausedMarker.Transparency = 1
+        macroPausedMarker.Position = rootPart.Position + Vector3.new(0, 5, 0)
+        macroPausedMarker.Parent = workspace
+        local bb = Instance.new("BillboardGui", macroPausedMarker)
+        bb.Size = UDim2.new(0, 200, 0, 50)
+        bb.AlwaysOnTop = true
+        local tl = Instance.new("TextLabel", bb)
+        tl.Size = UDim2.new(1, 0, 1, 0)
+        tl.BackgroundTransparency = 1
+        tl.Text = "PAUSED HERE"
+        tl.TextColor3 = Color3.new(1, 0, 0)
+        tl.TextSize = 24
+        tl.Font = Enum.Font.GothamBold
+    else
+        if macroPausedMarker then macroPausedMarker:Destroy() macroPausedMarker = nil end
+    end
     updateMacroStatus()
 end
 
 local function pausePath()
     if not pathPlaying then return end
     pathPaused = not pathPaused
+    if pathPaused then
+        if pathPausedMarker then pathPausedMarker:Destroy() end
+        pathPausedMarker = Instance.new("Part")
+        pathPausedMarker.Anchored = true
+        pathPausedMarker.CanCollide = false
+        pathPausedMarker.Transparency = 1
+        pathPausedMarker.Position = rootPart.Position + Vector3.new(0, 5, 0)
+        pathPausedMarker.Parent = workspace
+        local bb = Instance.new("BillboardGui", pathPausedMarker)
+        bb.Size = UDim2.new(0, 200, 0, 50)
+        bb.AlwaysOnTop = true
+        local tl = Instance.new("TextLabel", bb)
+        tl.Size = UDim2.new(1, 0, 1, 0)
+        tl.BackgroundTransparency = 1
+        tl.Text = "PAUSED HERE"
+        tl.TextColor3 = Color3.new(1, 0, 0)
+        tl.TextSize = 24
+        tl.Font = Enum.Font.GothamBold
+    else
+        if pathPausedMarker then pathPausedMarker:Destroy() pathPausedMarker = nil end
+    end
     updatePathStatus()
 end
 
@@ -929,16 +969,20 @@ local function updateMacroStatus()
     
     local statusText = ""
     if macroRecording then
-        statusText = recordingPaused and "Recording Paused" or "Recording Macro..."
+        statusText = recordingPaused and "Recording Macro Paused" or "Recording Macro..."
     elseif macroPlaying and currentMacroName then
         local macro = savedMacros[currentMacroName] or loadMacroFromJSON(currentMacroName)
         local speed = macro and macro.speed or 1
         local modeText = autoRespawning and "Auto-Respawning Macro" or (autoPlaying and "Auto-Playing Macro" or "Playing Macro")
-        statusText = (macroPaused and "Paused: " or modeText .. ": ") .. currentMacroName .. " (Speed: " .. speed .. "x)"
+        statusText = (macroPaused and "Macro Paused: " or modeText .. ": ") .. currentMacroName .. " (Speed: " .. speed .. "x)"
     end
     
     MacroStatusLabel.Text = statusText
     MacroStatusLabel.Visible = statusText ~= ""
+    if MacroFrame then
+        MacroFrame:FindFirstChild("Pause").Visible = macroPlaying
+        MacroFrame:FindFirstChild("Pause").Text = macroPaused and "Resume" or "Pause"
+    end
 end
 
 local function updatePathStatus()
@@ -946,15 +990,19 @@ local function updatePathStatus()
     
     local statusText = ""
     if pathRecording then
-        statusText = pathPaused and "Recording Paused" or "Recording Path..."
+        statusText = pathPaused and "Recording Path Paused" or "Recording Path..."
     elseif pathPlaying and currentPathName then
         local statusPrefix = pathShowOnly and "👁️ Showing Path: " or "🛤️ Playing Path: "
         local modeText = pathAutoRespawning and "Auto-Respawning Path" or (pathAutoPlaying and "Auto-Playing Path" or "Playing Path")
-        statusText = (pathPaused and "Paused: " or (pathShowOnly and statusPrefix or modeText .. ": ")) .. currentPathName
+        statusText = (pathPaused and "Path Paused: " or (pathShowOnly and statusPrefix or modeText .. ": ")) .. currentPathName
     end
     
     PathStatusLabel.Text = statusText
     PathStatusLabel.Visible = statusText ~= ""
+    if PathFrame then
+        PathFrame:FindFirstChild("Pause").Visible = pathPlaying and not pathShowOnly
+        PathFrame:FindFirstChild("Pause").Text = pathPaused and "Resume" or "Pause"
+    end
 end
 
 -- File System Integration
@@ -1121,6 +1169,7 @@ local function initMacroUI()
     MacroInput.PlaceholderText = "Search macros..."
     MacroInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     MacroInput.TextSize = 7
+    MacroInput.Text = ""
 
     MacroScrollFrame = Instance.new("ScrollingFrame")
     MacroScrollFrame.Parent = MacroFrame
@@ -1136,6 +1185,7 @@ local function initMacroUI()
     MacroLayout.Padding = UDim.new(0, 2)
 
     local MacroPauseButton = Instance.new("TextButton")
+    MacroPauseButton.Name = "Pause"
     MacroPauseButton.Parent = MacroFrame
     MacroPauseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     MacroPauseButton.BorderSizePixel = 0
@@ -1145,7 +1195,7 @@ local function initMacroUI()
     MacroPauseButton.Text = "Pause"
     MacroPauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     MacroPauseButton.TextSize = 8
-    MacroPauseButton.Visible = macroPlaying
+    MacroPauseButton.Visible = false
 
     MacroStatusLabel = Instance.new("TextLabel")
     MacroStatusLabel.Parent = ScreenGui
@@ -1214,6 +1264,7 @@ local function initPathUI()
     PathInput.PlaceholderText = "Search paths..."
     PathInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathInput.TextSize = 7
+    PathInput.Text = ""
 
     PathScrollFrame = Instance.new("ScrollingFrame")
     PathScrollFrame.Parent = PathFrame
@@ -1229,6 +1280,7 @@ local function initPathUI()
     PathLayout.Padding = UDim.new(0, 2)
 
     local PathPauseButton = Instance.new("TextButton")
+    PathPauseButton.Name = "Pause"
     PathPauseButton.Parent = PathFrame
     PathPauseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     PathPauseButton.BorderSizePixel = 0
@@ -1238,7 +1290,7 @@ local function initPathUI()
     PathPauseButton.Text = "Pause"
     PathPauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathPauseButton.TextSize = 8
-    PathPauseButton.Visible = pathPlaying
+    PathPauseButton.Visible = false
 
     PathStatusLabel = Instance.new("TextLabel")
     PathStatusLabel.Parent = ScreenGui
@@ -1353,6 +1405,7 @@ function Utility.updateMacroList()
             renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
             renameInput.TextSize = 6
             renameInput.Font = Enum.Font.Gotham
+            renameInput.Text = ""
             
             local renameButton = Instance.new("TextButton")
             renameButton.Parent = macroItem
@@ -1562,6 +1615,7 @@ function updatePathList()
             renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
             renameInput.TextSize = 6
             renameInput.Font = Enum.Font.Gotham
+            renameInput.Text = ""
             
             local renameButton = Instance.new("TextButton")
             renameButton.Parent = pathItem
@@ -1751,6 +1805,29 @@ function Utility.init(deps)
     
     if not success then
         warn("[SUPERTOOL] Failed to create folder structure")
+    end
+    
+    -- Load saved macros and paths
+    local macroFiles = listfiles(MACRO_FOLDER_PATH)
+    for _, file in ipairs(macroFiles) do
+        if string.match(file, "%.json$") then
+            local name = string.gsub(file, ".+/(.-)%.json$", "%1")
+            local macro = loadMacroFromJSON(name)
+            if macro then
+                savedMacros[macro.name] = macro
+            end
+        end
+    end
+    
+    local pathFiles = listfiles(PATH_FOLDER_PATH)
+    for _, file in ipairs(pathFiles) do
+        if string.match(file, "%.json$") then
+            local name = string.gsub(file, ".+/(.-)%.json$", "%1")
+            local path = loadPathFromJSON(name)
+            if path then
+                savedPaths[path.name] = path
+            end
+        end
     end
     
     setupKeyboardControls()
