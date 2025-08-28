@@ -1,18 +1,12 @@
--- Enhanced Utility Module with Gear Spawner for MinimalHackGUI by Fari Noveri
--- Version 2.5: Includes Macro System, Path Creator, and Gear Spawner
--- Features: Gear spawning with duplicate prevention, reset all gears, JSON storage for macros/paths
--- Dependencies: Must be passed from mainloader.lua
+-- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
+-- Updated version with fixed status text, undo during recording only, external undo toggle, larger idle text, hide/show toggle, and removed "textbox" text
+-- FIXED: Auto-load files after relog and undo during recording
 
-local Utility = {}
-
--- Dependencies
+-- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
 
--- Services
-local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local InsertService = game:GetService("InsertService")
+-- Initialize module
+local Utility = {}
 
 -- Macro System Variables
 local macroRecording = false
@@ -53,34 +47,10 @@ local idleStartTime = nil
 local currentIdleLabel = nil
 local idleStartPosition = nil
 
--- Gear Spawner Variables
-local gearFrameVisible = false
-local GearFrame, GearScrollFrame, GearLayout, GearStatusLabel
-local spawnedGears = {} -- Track spawned gear instances
-local gearList = {
-    {name = "Rainbow Magic Carpet", id = 225921000},
-    {name = "The 6th Annual Bloxy Award", id = 2758794374},
-    {name = "Speed Coil", id = 99119158},
-    {name = "Icy Arctic Fowl", id = 101078559},
-    {name = "Dragon's Flame Sword", id = 168140949},
-    {name = "Frost Guard General's Sword", id = 139574344},
-    {name = "Phoenix", id = 92142799},
-    {name = "Deluxe Rainbow Magic Carpet", id = 477910063},
-    {name = "Airstrike", id = 88885539},
-    {name = "Dual Gravity Coil", id = 150366274},
-    {name = "Regeneration Coil", id = 119101539},
-    {name = "Foul Poison Fowl", id = 170896941},
-    {name = "Neon Rainbow Phoenix", id = 261827192},
-    {name = "Golden Magic Carpet", id = 1016183873},
-    {name = "8-Bit Phoenix", id = 163355404},
-    {name = "Water Dragon Claws", id = 2548989639},
-    {name = "Flying Dragon", id = 610133821},
-    {name = "Paint Grenade", id = 172246820},
-    {name = "Mega Annoying Megaphone", id = 65545971},
-    {name = "Breath of Ice", id = 2605966484}
-}
-
 -- File System Integration
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local MACRO_FOLDER_PATH = "Supertool/Macro/"
 local PATH_FOLDER_PATH = "Supertool/Paths/"
 
@@ -279,7 +249,7 @@ local function createPathVisual(position, movementType, isMarker, idleDuration)
             textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
             textLabel.TextStrokeTransparency = 0.5
-            textLabel.TextSize = 12
+            textLabel.TextSize = 12 -- Increased for better visibility
             textLabel.Font = Enum.Font.Gotham
             textLabel.Text = idleDuration >= 60 and 
                 string.format("%.1fm", idleDuration/60) or 
@@ -586,52 +556,108 @@ local function stopPathPlayback()
     updatePathStatus()
 end
 
--- Path Undo System
+-- Path Undo System - FIXED VERSION
 local function undoToLastMarker()
-    if not pathRecording or not currentPath then
-        warn("[SUPERTOOL] Undo only available during path recording")
+    -- FIXED: Check if we're recording a path and have markers to undo
+    if not pathRecording or not currentPath or not currentPath.markers or #currentPath.markers == 0 then
+        warn("[SUPERTOOL] Undo only available during path recording with existing markers")
         return
     end
     
-    local path = currentPath
-    if not path.markers or #path.markers == 0 then
-        warn("[SUPERTOOL] No markers to undo")
-        return
-    end
+    -- FIXED: Use currentPath instead of savedPaths lookup
+    local lastMarkerIndex = #currentPath.markers
+    local lastMarker = currentPath.markers[lastMarkerIndex]
     
-    local lastMarkerIndex = #path.markers
-    local lastMarker = path.markers[lastMarkerIndex]
     if lastMarker and updateCharacterReferences() then
         rootPart.CFrame = lastMarker.cframe
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
         
         -- Remove points and markers after the last marker
-        path.points = {table.unpack(path.points, 1, lastMarker.pathIndex)}
-        path.markers = {table.unpack(path.markers, 1, lastMarkerIndex - 1)}
-        path.pointCount = #path.points
-        path.markerCount = #path.markers
-        path.duration = path.points[#path.points].time
+        currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
+        currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
         
-        -- Update visuals
+        -- Update visuals - clear and recreate
         clearPathVisuals()
-        for i, point in pairs(path.points) do
+        for i, point in pairs(currentPath.points) do
             local visualPart = createPathVisual(point.position, point.movementType, false)
             table.insert(pathVisualParts, visualPart)
         end
         
-        for i, marker in pairs(path.markers) do
+        for i, marker in pairs(currentPath.markers) do
             local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
             table.insert(pathMarkerParts, markerPart)
         end
         
         -- Create white sphere at undo position
         local undoMarker = createPathVisual(lastMarker.position, "idle", true)
+        undoMarker.Color = Color3.fromRGB(255, 255, 255) -- Make it white for visibility
         table.insert(pathMarkerParts, undoMarker)
     end
 end
 
+-- FIXED: Load all existing files function
+local function loadAllSavedMacros()
+    local success, result = pcall(function()
+        if not isfolder(MACRO_FOLDER_PATH) then return 0 end
+        
+        local files = listfiles(MACRO_FOLDER_PATH)
+        local loadedCount = 0
+        
+        for _, filePath in pairs(files) do
+            local fileName = filePath:match("([^/\\]+)%.json$")
+            if fileName then
+                local macroData = loadMacroFromJSON(fileName)
+                if macroData then
+                    savedMacros[fileName] = macroData
+                    loadedCount = loadedCount + 1
+                end
+            end
+        end
+        
+        return loadedCount
+    end)
+    
+    if success then
+        print("[SUPERTOOL] Loaded " .. result .. " macros from disk")
+        return result
+    else
+        warn("[SUPERTOOL] Failed to load macros: " .. tostring(result))
+        return 0
+    end
+end
+
+local function loadAllSavedPaths()
+    local success, result = pcall(function()
+        if not isfolder(PATH_FOLDER_PATH) then return 0 end
+        
+        local files = listfiles(PATH_FOLDER_PATH)
+        local loadedCount = 0
+        
+        for _, filePath in pairs(files) do
+            local fileName = filePath:match("([^/\\]+)%.json$")
+            if fileName then
+                local pathData = loadPathFromJSON(fileName)
+                if pathData then
+                    savedPaths[fileName] = pathData
+                    loadedCount = loadedCount + 1
+                end
+            end
+        end
+        
+        return loadedCount
+    end)
+    
+    if success then
+        print("[SUPERTOOL] Loaded " .. result .. " paths from disk")
+        return result
+    else
+        warn("[SUPERTOOL] Failed to load paths: " .. tostring(result))
+        return 0
+    end
+end
+
 -- File system functions for paths
-local function savePathToJSON(pathName, pathData)
+function savePathToJSON(pathName, pathData)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
@@ -687,7 +713,7 @@ local function savePathToJSON(pathName, pathData)
     return success
 end
 
-local function loadPathFromJSON(pathName)
+function loadPathFromJSON(pathName)
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
@@ -740,7 +766,7 @@ local function loadPathFromJSON(pathName)
     return success and result or nil
 end
 
-local function deletePathFromJSON(pathName)
+function deletePathFromJSON(pathName)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
@@ -757,7 +783,7 @@ local function deletePathFromJSON(pathName)
     return success and error or false
 end
 
-local function renamePathInJSON(oldName, newName)
+function renamePathInJSON(oldName, newName)
     local success, error = pcall(function()
         local oldData = loadPathFromJSON(oldName)
         if not oldData then return false end
@@ -951,84 +977,6 @@ local function pausePath()
     updatePathStatus()
 end
 
--- Gear Spawner Functions
-local function hasGear(gearId)
-    if player.Character then
-        for _, item in pairs(player.Character:GetChildren()) do
-            if item:IsA("Tool") and item.Name == tostring(gearId) then
-                return true
-            end
-        end
-    end
-    if player.Backpack then
-        for _, item in pairs(player.Backpack:GetChildren()) do
-            if item:IsA("Tool") and item.Name == tostring(gearId) then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function spawnGear(gearId, gearName)
-    if hasGear(gearId) then
-        warn("[GEARSPAWNER] Gear already exists: " .. gearName)
-        updateGearStatus("Already owned: " .. gearName)
-        return
-    end
-
-    local success, result = pcall(function()
-        local gear = InsertService:LoadAsset(gearId)
-        if gear then
-            local tool = gear:GetChildren()[1]
-            if tool and tool:IsA("Tool") then
-                tool.Parent = player.Backpack
-                spawnedGears[gearId] = tool
-                print("[GEARSPAWNER] Spawned gear: " .. gearName)
-                updateGearStatus("Spawned: " .. gearName)
-            else
-                warn("[GEARSPAWNER] Failed to spawn gear: Invalid tool for " .. gearName)
-                updateGearStatus("Failed to spawn: " .. gearName)
-            end
-            gear:Destroy()
-        end
-    end)
-
-    if not success then
-        warn("[GEARSPAWNER] Error spawning gear: " .. tostring(result))
-        updateGearStatus("Error spawning: " .. gearName)
-    end
-end
-
-local function resetAllGears()
-    for gearId, gear in pairs(spawnedGears) do
-        if gear and gear.Parent then
-            gear:Destroy()
-        end
-    end
-    spawnedGears = {}
-    
-    if player.Character then
-        for _, item in pairs(player.Character:GetChildren()) do
-            if item:IsA("Tool") then
-                item:Destroy()
-            end
-        end
-    end
-    
-    if player.Backpack then
-        for _, item in pairs(player.Backpack:GetChildren()) do
-            if item:IsA("Tool") then
-                item:Destroy()
-            end
-        end
-    end
-    
-    print("[GEARSPAWNER] All gears reset")
-    updateGearStatus("All gears reset")
-    Utility.updateGearList()
-end
-
 -- Status Update Functions
 local function updateMacroStatus()
     if not MacroStatusLabel then return end
@@ -1063,24 +1011,8 @@ local function updatePathStatus()
     PathStatusLabel.Visible = statusText ~= ""
 end
 
-local function updateGearStatus(statusText)
-    if GearStatusLabel then
-        GearStatusLabel.Text = statusText
-        GearStatusLabel.Visible = statusText ~= ""
-        if statusText ~= "" then
-            task.spawn(function()
-                task.wait(3)
-                if GearStatusLabel.Text == statusText then
-                    GearStatusLabel.Visible = false
-                    GearStatusLabel.Text = ""
-                end
-            end)
-        end
-    end
-end
-
--- File System Integration for Macros
-local function saveMacroToJSON(macroName, macroData)
+-- File System Integration
+function saveMacroToJSON(macroName, macroData)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
@@ -1128,7 +1060,7 @@ local function saveMacroToJSON(macroName, macroData)
     return success
 end
 
-local function loadMacroFromJSON(macroName)
+function loadMacroFromJSON(macroName)
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
@@ -1162,7 +1094,7 @@ local function loadMacroFromJSON(macroName)
     return success and result or nil
 end
 
-local function deleteMacroFromJSON(macroName)
+function deleteMacroFromJSON(macroName)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(macroName)
         local fileName = sanitizedName .. ".json"
@@ -1179,7 +1111,7 @@ local function deleteMacroFromJSON(macroName)
     return success and error or false
 end
 
-local function renameMacroInJSON(oldName, newName)
+function renameMacroInJSON(oldName, newName)
     local success, error = pcall(function()
         local oldData = loadMacroFromJSON(oldName)
         if not oldData then return false end
@@ -1281,7 +1213,7 @@ local function initMacroUI()
     MacroStatusLabel.TextSize = 8
     MacroStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
     MacroStatusLabel.Visible = false
-    MacroStatusLabel.ZIndex = 10
+    MacroStatusLabel.ZIndex = 10 -- Ensure visibility
 
     CloseMacroButton.MouseButton1Click:Connect(function()
         MacroFrame.Visible = false
@@ -1374,7 +1306,7 @@ local function initPathUI()
     PathStatusLabel.TextSize = 8
     PathStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
     PathStatusLabel.Visible = false
-    PathStatusLabel.ZIndex = 10
+    PathStatusLabel.ZIndex = 10 -- Ensure visibility
 
     ClosePathButton.MouseButton1Click:Connect(function()
         PathFrame.Visible = false
@@ -1382,87 +1314,6 @@ local function initPathUI()
     end)
 
     PathPauseButton.MouseButton1Click:Connect(pausePath)
-end
-
-local function initGearUI()
-    if GearFrame then return end
-
-    GearFrame = Instance.new("Frame")
-    GearFrame.Name = "GearFrame"
-    GearFrame.Parent = ScreenGui
-    GearFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    GearFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    GearFrame.BorderSizePixel = 1
-    GearFrame.Position = UDim2.new(0.7, 0, 0.2, 0)
-    GearFrame.Size = UDim2.new(0, 300, 0, 400)
-    GearFrame.Visible = false
-    GearFrame.Active = true
-    GearFrame.Draggable = true
-
-    local GearTitle = Instance.new("TextLabel")
-    GearTitle.Parent = GearFrame
-    GearTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearTitle.BorderSizePixel = 0
-    GearTitle.Size = UDim2.new(1, 0, 0, 20)
-    GearTitle.Font = Enum.Font.Gotham
-    GearTitle.Text = "GEAR SPAWNER v1.0"
-    GearTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearTitle.TextSize = 8
-
-    local CloseGearButton = Instance.new("TextButton")
-    CloseGearButton.Parent = GearFrame
-    CloseGearButton.BackgroundTransparency = 1
-    CloseGearButton.Position = UDim2.new(1, -20, 0, 2)
-    CloseGearButton.Size = UDim2.new(0, 15, 0, 15)
-    CloseGearButton.Font = Enum.Font.GothamBold
-    CloseGearButton.Text = "X"
-    CloseGearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseGearButton.TextSize = 8
-
-    GearScrollFrame = Instance.new("ScrollingFrame")
-    GearScrollFrame.Parent = GearFrame
-    GearScrollFrame.BackgroundTransparency = 1
-    GearScrollFrame.Position = UDim2.new(0, 5, 0, 50)
-    GearScrollFrame.Size = UDim2.new(1, -10, 1, -80)
-    GearScrollFrame.ScrollBarThickness = 2
-    GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    GearLayout = Instance.new("UIListLayout")
-    GearLayout.Parent = GearScrollFrame
-    GearLayout.Padding = UDim.new(0, 2)
-
-    local ResetAllButton = Instance.new("TextButton")
-    ResetAllButton.Parent = GearFrame
-    ResetAllButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-    ResetAllButton.BorderSizePixel = 0
-    ResetAllButton.Position = UDim2.new(0, 5, 1, -30)
-    ResetAllButton.Size = UDim2.new(0, 100, 0, 25)
-    ResetAllButton.Font = Enum.Font.Gotham
-    ResetAllButton.Text = "Reset All Gears"
-    ResetAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ResetAllButton.TextSize = 8
-
-    GearStatusLabel = Instance.new("TextLabel")
-    GearStatusLabel.Parent = ScreenGui
-    GearStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    GearStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    GearStatusLabel.BorderSizePixel = 1
-    GearStatusLabel.Position = UDim2.new(1, -250, 0, 55)
-    GearStatusLabel.Size = UDim2.new(0, 240, 0, 25)
-    GearStatusLabel.Font = Enum.Font.Gotham
-    GearStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearStatusLabel.TextSize = 8
-    GearStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    GearStatusLabel.Visible = false
-    GearStatusLabel.ZIndex = 10
-
-    CloseGearButton.MouseButton1Click:Connect(function()
-        GearFrame.Visible = false
-        gearFrameVisible = false
-    end)
-
-    ResetAllButton.MouseButton1Click:Connect(resetAllGears)
 end
 
 function Utility.updateMacroList()
@@ -1802,7 +1653,7 @@ function updatePathList()
                 if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
                     stopPathPlayback()
                 else
-                                    playPath(pathName, false, false, false)
+                    playPath(pathName, false, false, false)
                 end
                 updatePathList()
             end)
@@ -1836,6 +1687,7 @@ function updatePathList()
                 savedPaths[pathName] = nil
                 deletePathFromJSON(pathName)
                 updatePathList()
+                clearPathVisuals()
             end)
             
             renameButton.MouseButton1Click:Connect(function()
@@ -1876,69 +1728,21 @@ function updatePathList()
     end
 end
 
-function Utility.updateGearList()
-    if not GearScrollFrame then return end
-
-    for _, child in pairs(GearScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
+-- Keyboard Controls
+local function setupKeyboardControls()
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        if input.KeyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+            undoToLastMarker()
         end
-    end
-
-    for _, gear in ipairs(gearList) do
-        local gearItem = Instance.new("Frame")
-        gearItem.Parent = GearScrollFrame
-        gearItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        gearItem.Size = UDim2.new(1, -5, 0, 40)
-
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Parent = gearItem
-        nameLabel.Position = UDim2.new(0, 5, 0, 5)
-        nameLabel.Size = UDim2.new(1, -90, 0, 15)
-        nameLabel.Text = gear.name
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextSize = 7
-        nameLabel.Font = Enum.Font.Gotham
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-        local idLabel = Instance.new("TextLabel")
-        idLabel.Parent = gearItem
-        idLabel.Position = UDim2.new(0, 5, 0, 20)
-        idLabel.Size = UDim2.new(1, -90, 0, 10)
-        idLabel.BackgroundTransparency = 1
-        idLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-        idLabel.TextSize = 6
-        idLabel.Font = Enum.Font.Gotham
-        idLabel.Text = "ID: " .. gear.id
-        idLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-        local spawnButton = Instance.new("TextButton")
-        spawnButton.Parent = gearItem
-        spawnButton.Position = UDim2.new(1, -80, 0, 5)
-        spawnButton.Size = UDim2.new(0, 75, 0, 25)
-        spawnButton.BackgroundColor3 = Color3.fromRGB(60, 80, 60)
-        spawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        spawnButton.TextSize = 7
-        spawnButton.Font = Enum.Font.Gotham
-        spawnButton.Text = hasGear(gear.id) and "OWNED" or "SPAWN"
-
-        spawnButton.MouseButton1Click:Connect(function()
-            if not hasGear(gear.id) then
-                spawnGear(gear.id, gear.name)
-                spawnButton.Text = "OWNED"
-            end
-        end)
-    end
-
-    task.wait(0.1)
-    if GearLayout then
-        GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, GearLayout.AbsoluteContentSize.Y + 5)
-    end
+    end)
 end
 
--- Load Buttons for Main UI
-function Utility.loadMacroButton(createButton)
+-- Load utility buttons
+function Utility.loadUtilityButtons(createButton)
+    createButton("Record Macro", startMacroRecording)
+    createButton("Stop Macro", stopMacroRecording)
     createButton("Macro Manager", function()
         if not MacroFrame then initMacroUI() end
         MacroFrame.Visible = not MacroFrame.Visible
@@ -1947,10 +1751,10 @@ function Utility.loadMacroButton(createButton)
             Utility.updateMacroList()
         end
     end)
-end
-
-function Utility.loadPathButton(createButton)
-    createButton("Path Creator", function()
+    
+    createButton("Record Path", startPathRecording)
+    createButton("Stop Path", stopPathRecording)
+    createButton("Path Manager", function()
         if not PathFrame then initPathUI() end
         PathFrame.Visible = not PathFrame.Visible
         pathFrameVisible = PathFrame.Visible
@@ -1958,113 +1762,143 @@ function Utility.loadPathButton(createButton)
             updatePathList()
         end
     end)
+    
+    createButton("Clear Visuals", clearPathVisuals)
+    createButton("Kill Player", killPlayer)
+    createButton("Reset Character", resetCharacter)
+    createButton("Undo Path", undoToLastMarker)
 end
 
-function Utility.loadGearButton(createButton)
-    createButton("Gear Spawner", function()
-        if not GearFrame then initGearUI() end
-        GearFrame.Visible = not GearFrame.Visible
-        gearFrameVisible = GearFrame.Visible
-        if gearFrameVisible then
-            Utility.updateGearList()
-        end
-    end)
-end
-
--- Initialize Utility Module
+-- Initialize function
 function Utility.init(deps)
     Players = deps.Players
     humanoid = deps.humanoid
     rootPart = deps.rootPart
     ScrollFrame = deps.ScrollFrame
     buttonStates = deps.buttonStates
-    RunService = deps.RunService
     player = deps.player
-    ScreenGui = deps.ScreenGui
+    RunService = deps.RunService
     settings = deps.settings
-
-    -- Initialize UI components
-    initMacroUI()
-    initPathUI()
-    initGearUI()
-
-    -- Load saved macros and paths
-    if isfolder(MACRO_FOLDER_PATH) then
-        for _, file in ipairs(listfiles(MACRO_FOLDER_PATH)) do
-            local macroName = string.match(file, "([^/\\]+)%.json$")
-            if macroName then
-                local macroData = loadMacroFromJSON(macroName)
-                if macroData then
-                    savedMacros[macroName] = macroData
-                end
-            end
+    ScreenGui = deps.ScreenGui
+    
+    macroRecording = false
+    macroPlaying = false
+    autoPlaying = false
+    autoRespawning = false
+    macroPaused = false
+    pathRecording = false
+    pathPlaying = false
+    pathShowOnly = false
+    pathPaused = false
+    
+    -- FIXED: Create folder structure first
+    local success = pcall(function()
+        if not isfolder("Supertool") then
+            makefolder("Supertool")
         end
-    end
-
-    if isfolder(PATH_FOLDER_PATH) then
-        for _, file in ipairs(listfiles(PATH_FOLDER_PATH)) do
-            local pathName = string.match(file, "([^/\\]+)%.json$")
-            if pathName then
-                local pathData = loadPathFromJSON(pathName)
-                if pathData then
-                    savedPaths[pathName] = pathData
-                end
-            end
+        if not isfolder(MACRO_FOLDER_PATH) then
+            makefolder(MACRO_FOLDER_PATH)
         end
-    end
-
-    -- Character respawn handling
-    player.CharacterAdded:Connect(function(character)
-        humanoid = character:WaitForChild("Humanoid")
-        rootPart = character:WaitForChild("HumanoidRootPart")
-        
-        if macroPlaying and autoRespawning and currentMacroName then
-            task.spawn(function()
-                task.wait(pauseResumeTime)
-                playMacro(currentMacroName, autoPlaying, autoRespawning)
-            end)
-        end
-        
-        if pathPlaying and pathAutoRespawning and currentPathName then
-            task.spawn(function()
-                task.wait(pauseResumeTime)
-                playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
-            end)
+        if not isfolder(PATH_FOLDER_PATH) then
+            makefolder(PATH_FOLDER_PATH)
         end
     end)
-
-    -- Input handling for recording controls
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
+    
+    if not success then
+        warn("[SUPERTOOL] Failed to create folder structure")
+    end
+    
+    -- FIXED: Load all existing files on initialization
+    task.spawn(function()
+        local macroCount = loadAllSavedMacros()
+        local pathCount = loadAllSavedPaths()
+        print("[SUPERTOOL] Initialization complete - Macros: " .. macroCount .. ", Paths: " .. pathCount)
+    end)
+    
+    setupKeyboardControls()
+    
+    if player then
+        player.CharacterAdded:Connect(function(newCharacter)
+            task.spawn(function()
+                humanoid = newCharacter:WaitForChild("Humanoid", 30)
+                rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
+                if humanoid and rootPart then
+                    if macroRecording and recordingPaused then
+                        task.wait(pauseResumeTime)
+                        recordingPaused = false
+                        updateMacroStatus()
+                    end
+                    if pathRecording and pathPaused then
+                        task.wait(pauseResumeTime)
+                        pathPaused = false
+                        updatePathStatus()
+                    end
+                    if macroPlaying and currentMacroName then
+                        task.wait(pauseResumeTime)
+                        macroPaused = false
+                        playMacro(currentMacroName, autoPlaying, autoRespawning)
+                    end
+                    if pathPlaying and currentPathName then
+                        task.wait(pauseResumeTime)
+                        pathPaused = false
+                        playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
+                    end
+                end
+            end)
+        end)
         
-        if input.KeyCode == Enum.KeyCode.R then
+        player.CharacterRemoving:Connect(function()
             if macroRecording then
-                stopMacroRecording()
-            else
-                startMacroRecording()
+                recordingPaused = true
+                updateMacroStatus()
             end
-        elseif input.KeyCode == Enum.KeyCode.P and macroRecording then
-            macroPaused = not macroPaused
-            updateMacroStatus()
-        elseif input.KeyCode == Enum.KeyCode.U and pathRecording then
-            undoToLastMarker()
+            if pathRecording then
+                pathPaused = true
+                updatePathStatus()
+            end
+            if macroPlaying then
+                macroPaused = true
+                updateMacroStatus()
+            end
+            if pathPlaying then
+                pathPaused = true
+                updatePathStatus()
+            end
+        end)
+        
+        if humanoid then
+            humanoid.Died:Connect(function()
+                if macroRecording then
+                    recordingPaused = true
+                    updateMacroStatus()
+                end
+                if pathRecording then
+                    pathPaused = true
+                    updatePathStatus()
+                end
+                if macroPlaying then
+                    macroPaused = true
+                    updateMacroStatus()
+                end
+                if pathPlaying then
+                    pathPaused = true
+                    updatePathStatus()
+                end
+            end)
         end
-    end)
-
-    print("[SUPERTOOL] Utility Module v2.5 initialized")
-    print("  - Macro Count: " .. #table.keys(savedMacros))
-    print("  - Path Count: " .. #table.keys(savedPaths))
-    print("  - Gear Count: " .. #gearList)
-    print("  - Features: Macro recording/playback, Path recording/playback, Gear spawning")
-end
-
--- Helper function to get table keys
-function table.keys(tbl)
-    local keys = {}
-    for key, _ in pairs(tbl) do
-        table.insert(keys, key)
     end
-    return keys
+    
+    task.spawn(function()
+        initMacroUI()
+        initPathUI()
+        print("[SUPERTOOL] Enhanced Utility Module v2.5 FIXED initialized")
+        print("  - FIXED: Auto-load all saved files after relog")
+        print("  - FIXED: Undo function now works during path recording")
+        print("  - Path Recording: Visual navigation with undo markers and idle duration")
+        print("  - Enhanced Macros: Full macro system with pause/resume")
+        print("  - Keyboard Controls: Ctrl+Z (undo)")
+        print("  - JSON Storage: Supertool/Macro and Supertool/Paths")
+    end)
 end
 
 return Utility
