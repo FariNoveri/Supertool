@@ -1,7 +1,7 @@
 -- Enhanced Path-only Utility for MinimalHackGUI by Fari Noveri
 -- Updated version with fixed Ctrl+Z, JSON loading, status display, and enhanced path features
 -- REMOVED: All macro functionality
--- ADDED: Top-right status display, pause/resume with markers, clickable path points, spawn gear system
+-- ADDED: Top-right status display, pause/resume with markers, clickable path points
 -- farinoveri30@gmail.com (claude ai)
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -35,38 +35,10 @@ local pausedHereLabel = nil
 local playbackStartTime = 0
 local playbackPauseTime = 0
 
--- Gear System Variables
-local GearFrame, GearScrollFrame, GearLayout
-local gearFrameVisible = false
-local spawnedGears = {}
-local gearList = {
-    {name = "Rainbow Magic Carpet", id = 225921000},
-    {name = "The 6th Annual Bloxy Award", id = 2758794374},
-    {name = "Speed Coil", id = 99119158},
-    {name = "Icy Arctic Fowl", id = 101078559},
-    {name = "Dragon's Flame Sword", id = 168140949},
-    {name = "Frost Guard General's Sword", id = 139574344},
-    {name = "Phoenix", id = 92142799},
-    {name = "Deluxe Rainbow Magic Carpet", id = 477910063},
-    {name = "Airstrike", id = 88885539},
-    {name = "Dual Gravity Coil", id = 150366274},
-    {name = "Regeneration Coil", id = 119101539},
-    {name = "Foul Poison Fowl", id = 170896941},
-    {name = "Neon Rainbow Phoenix", id = 261827192},
-    {name = "Golden Magic Carpet", id = 1016183873},
-    {name = "8-Bit Phoenix", id = 163355404},
-    {name = "Water Dragon Claws", id = 2548989639},
-    {name = "Flying Dragon", id = 610133821},
-    {name = "Paint Grenade", id = 172246820},
-    {name = "Mega Annoying Megaphone", id = 65545971},
-    {name = "Breath of Ice", id = 2605966484}
-}
-
 -- File System Integration
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local InsertService = game:GetService("InsertService")
 local PATH_FOLDER_PATH = "Supertool/Paths/"
 
 -- Path movement detection constants
@@ -174,67 +146,6 @@ local function resetCharacter()
     if player then
         player:LoadCharacter()
     end
-end
-
--- Gear System Functions
-local function spawnGear(gearId)
-    local success, result = pcall(function()
-        if not updateCharacterReferences() then
-            warn("[SUPERTOOL] Cannot spawn gear: Character not ready")
-            return false
-        end
-        
-        -- Check if gear already exists
-        if spawnedGears[gearId] then
-            warn("[SUPERTOOL] Gear " .. gearId .. " already spawned")
-            return false
-        end
-        
-        -- Load the gear from catalog
-        local gear = InsertService:LoadAsset(gearId)
-        if gear then
-            local tool = gear:GetChildren()[1]
-            if tool and tool:IsA("Tool") then
-                tool.Parent = player.Backpack
-                spawnedGears[gearId] = tool
-                print("[SUPERTOOL] Spawned gear: " .. tool.Name .. " (ID: " .. gearId .. ")")
-                
-                -- Track when gear is removed
-                tool.AncestryChanged:Connect(function()
-                    if not tool.Parent then
-                        spawnedGears[gearId] = nil
-                    end
-                end)
-                
-                return true
-            else
-                gear:Destroy()
-                warn("[SUPERTOOL] Invalid gear asset: " .. gearId)
-                return false
-            end
-        else
-            warn("[SUPERTOOL] Failed to load gear: " .. gearId)
-            return false
-        end
-    end)
-    
-    if not success then
-        warn("[SUPERTOOL] Error spawning gear " .. gearId .. ": " .. tostring(result))
-        return false
-    end
-    
-    return result
-end
-
-local function resetAllGears()
-    for gearId, gear in pairs(spawnedGears) do
-        if gear and gear.Parent then
-            gear:Destroy()
-        end
-    end
-    spawnedGears = {}
-    print("[SUPERTOOL] All gears reset")
-    updateGearList() -- Update UI to reflect changes
 end
 
 -- Path Movement Detection
@@ -600,17 +511,9 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     
-    local path = savedPaths[pathName]
-    if not path then
-        -- Try to load from JSON if not in memory
-        path = loadPathFromJSON(pathName)
-        if path then
-            savedPaths[pathName] = path
-        end
-    end
-    
+    local path = savedPaths[pathName] or loadPathFromJSON(pathName)
     if not path or not path.points or #path.points == 0 then
-        warn("[SUPERTOOL] Cannot play path: Invalid path data for " .. pathName)
+        warn("[SUPERTOOL] Cannot play path: Invalid path data")
         return
     end
     
@@ -794,29 +697,18 @@ end
 -- FIXED: Load all existing files function
 local function loadAllSavedPaths()
     local success, result = pcall(function()
-        -- Create folder structure first
-        if not isfolder("Supertool") then
-            makefolder("Supertool")
-        end
-        if not isfolder(PATH_FOLDER_PATH) then
-            makefolder(PATH_FOLDER_PATH)
-            return 0
-        end
+        if not isfolder(PATH_FOLDER_PATH) then return 0 end
         
         local files = listfiles(PATH_FOLDER_PATH)
         local loadedCount = 0
         
-        for _, filePath in pairs(files or {}) do
+        for _, filePath in pairs(files) do
             local fileName = filePath:match("([^/\\]+)%.json$")
             if fileName then
-                print("[SUPERTOOL] Loading file: " .. fileName)
                 local pathData = loadPathFromJSON(fileName)
-                if pathData and pathData.points and #pathData.points > 0 then
-                    savedPaths[fileName] = pathData
+                if pathData then
+                    savedPaths[pathData.name] = pathData
                     loadedCount = loadedCount + 1
-                    print("[SUPERTOOL] Successfully loaded: " .. fileName .. " with " .. #pathData.points .. " points")
-                else
-                    warn("[SUPERTOOL] Failed to load or invalid path: " .. fileName)
                 end
             end
         end
@@ -895,8 +787,7 @@ function savePathToJSON(pathName, pathData)
             pointCount = #serializedPoints,
             markerCount = #serializedMarkers,
             duration = pathData.duration,
-            speed = pathData.speed or 1,
-            version = "2.0"
+            speed = pathData.speed or 1
         }
         
         local jsonString = HttpService:JSONEncode(jsonData)
@@ -906,9 +797,6 @@ function savePathToJSON(pathName, pathData)
         return true
     end)
     
-    if not success then
-        warn("[SUPERTOOL] Failed to save path: " .. tostring(error))
-    end
     return success
 end
 
@@ -918,29 +806,15 @@ function loadPathFromJSON(pathName)
         local fileName = sanitizedName .. ".json"
         local filePath = PATH_FOLDER_PATH .. fileName
         
-        print("[SUPERTOOL] Attempting to load: " .. filePath)
-        
-        if not isfile(filePath) then 
-            warn("[SUPERTOOL] File not found: " .. filePath)
-            return nil 
-        end
+        if not isfile(filePath) then return nil end
         
         local jsonString = readfile(filePath)
-        if not jsonString or jsonString == "" then
-            warn("[SUPERTOOL] Empty or invalid file: " .. filePath)
-            return nil
-        end
-        
         local jsonData = HttpService:JSONDecode(jsonString)
-        if not jsonData or not jsonData.points then
-            warn("[SUPERTOOL] Invalid JSON structure in: " .. filePath)
-            return nil
-        end
         
         local validPoints = {}
-        for i, pointData in ipairs(jsonData.points or {}) do
+        for _, pointData in ipairs(jsonData.points or {}) do
             local point = {
-                time = pointData.time or 0,
+                time = pointData.time,
                 position = validateAndConvertVector3(pointData.position),
                 cframe = validateAndConvertCFrame(pointData.cframe),
                 velocity = validateAndConvertVector3(pointData.velocity),
@@ -952,12 +826,12 @@ function loadPathFromJSON(pathName)
         end
         
         local validMarkers = {}
-        for i, markerData in ipairs(jsonData.markers or {}) do
+        for _, markerData in ipairs(jsonData.markers or {}) do
             local marker = {
-                time = markerData.time or 0,
+                time = markerData.time,
                 position = validateAndConvertVector3(markerData.position),
                 cframe = validateAndConvertCFrame(markerData.cframe),
-                pathIndex = markerData.pathIndex or 1,
+                pathIndex = markerData.pathIndex,
                 idleDuration = markerData.idleDuration,
                 movementType = markerData.movementType
             }
@@ -972,18 +846,11 @@ function loadPathFromJSON(pathName)
             pointCount = #validPoints,
             markerCount = #validMarkers,
             duration = jsonData.duration or 0,
-            speed = jsonData.speed or 1,
-            version = jsonData.version or "1.0"
+            speed = jsonData.speed or 1
         }
     end)
     
-    if success and result then
-        print("[SUPERTOOL] Successfully loaded path: " .. pathName .. " with " .. #result.points .. " points")
-        return result
-    else
-        warn("[SUPERTOOL] Failed to load path " .. pathName .. ": " .. tostring(result))
-        return nil
-    end
+    return success and result or nil
 end
 
 function deletePathFromJSON(pathName)
@@ -1019,152 +886,6 @@ function renamePathInJSON(oldName, newName)
     end)
     
     return success and error or false
-end
-
--- Gear UI Functions
-local function initGearUI()
-    if GearFrame then return end
-    
-    GearFrame = Instance.new("Frame")
-    GearFrame.Name = "GearFrame"
-    GearFrame.Parent = ScreenGui
-    GearFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    GearFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    GearFrame.BorderSizePixel = 1
-    GearFrame.Position = UDim2.new(0.7, 0, 0.1, 0)
-    GearFrame.Size = UDim2.new(0, 350, 0, 500)
-    GearFrame.Visible = false
-    GearFrame.Active = true
-    GearFrame.Draggable = true
-
-    local GearTitle = Instance.new("TextLabel")
-    GearTitle.Parent = GearFrame
-    GearTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearTitle.BorderSizePixel = 0
-    GearTitle.Size = UDim2.new(1, 0, 0, 25)
-    GearTitle.Font = Enum.Font.GothamBold
-    GearTitle.Text = "GEAR SPAWNER"
-    GearTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearTitle.TextSize = 12
-
-    local CloseGearButton = Instance.new("TextButton")
-    CloseGearButton.Parent = GearFrame
-    CloseGearButton.BackgroundTransparency = 1
-    CloseGearButton.Position = UDim2.new(1, -25, 0, 2)
-    CloseGearButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseGearButton.Font = Enum.Font.GothamBold
-    CloseGearButton.Text = "X"
-    CloseGearButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    CloseGearButton.TextSize = 12
-
-    local ResetAllButton = Instance.new("TextButton")
-    ResetAllButton.Parent = GearFrame
-    ResetAllButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-    ResetAllButton.BorderSizePixel = 0
-    ResetAllButton.Position = UDim2.new(0, 5, 0, 30)
-    ResetAllButton.Size = UDim2.new(1, -10, 0, 25)
-    ResetAllButton.Font = Enum.Font.GothamBold
-    ResetAllButton.Text = "RESET ALL GEARS"
-    ResetAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ResetAllButton.TextSize = 10
-
-    GearScrollFrame = Instance.new("ScrollingFrame")
-    GearScrollFrame.Parent = GearFrame
-    GearScrollFrame.BackgroundTransparency = 1
-    GearScrollFrame.Position = UDim2.new(0, 5, 0, 60)
-    GearScrollFrame.Size = UDim2.new(1, -10, 1, -65)
-    GearScrollFrame.ScrollBarThickness = 4
-    GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    GearLayout = Instance.new("UIListLayout")
-    GearLayout.Parent = GearScrollFrame
-    GearLayout.Padding = UDim.new(0, 2)
-
-    -- Event connections
-    CloseGearButton.MouseButton1Click:Connect(function()
-        GearFrame.Visible = false
-        gearFrameVisible = false
-    end)
-
-    ResetAllButton.MouseButton1Click:Connect(resetAllGears)
-end
-
-function updateGearList()
-    if not GearScrollFrame then return end
-    
-    -- Clear existing items
-    for _, child in pairs(GearScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    
-    -- Create gear items
-    for i, gear in ipairs(gearList) do
-        local gearItem = Instance.new("Frame")
-        gearItem.Parent = GearScrollFrame
-        gearItem.BackgroundColor3 = spawnedGears[gear.id] and Color3.fromRGB(40, 60, 40) or Color3.fromRGB(25, 25, 25)
-        gearItem.BorderColor3 = Color3.fromRGB(40, 40, 40)
-        gearItem.BorderSizePixel = 1
-        gearItem.Size = UDim2.new(1, -5, 0, 50)
-        
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Parent = gearItem
-        nameLabel.Position = UDim2.new(0, 5, 0, 3)
-        nameLabel.Size = UDim2.new(1, -80, 0, 20)
-        nameLabel.Text = gear.name
-        nameLabel.TextColor3 = spawnedGears[gear.id] and Color3.fromRGB(150, 255, 150) or Color3.fromRGB(255, 255, 255)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextSize = 9
-        nameLabel.Font = Enum.Font.GothamBold
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.TextYAlignment = Enum.TextYAlignment.Top
-        
-        local idLabel = Instance.new("TextLabel")
-        idLabel.Parent = gearItem
-        idLabel.Position = UDim2.new(0, 5, 0, 22)
-        idLabel.Size = UDim2.new(1, -80, 0, 15)
-        idLabel.BackgroundTransparency = 1
-        idLabel.Text = "ID: " .. gear.id
-        idLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-        idLabel.TextSize = 7
-        idLabel.Font = Enum.Font.Gotham
-        idLabel.TextXAlignment = Enum.TextXAlignment.Left
-        idLabel.TextYAlignment = Enum.TextYAlignment.Top
-        
-        local spawnButton = Instance.new("TextButton")
-        spawnButton.Parent = gearItem
-        spawnButton.Position = UDim2.new(1, -70, 0, 5)
-        spawnButton.Size = UDim2.new(0, 65, 0, 40)
-        spawnButton.BackgroundColor3 = spawnedGears[gear.id] and Color3.fromRGB(100, 50, 50) or Color3.fromRGB(50, 100, 50)
-        spawnButton.BorderSizePixel = 0
-        spawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        spawnButton.TextSize = 8
-        spawnButton.Font = Enum.Font.GothamBold
-        spawnButton.Text = spawnedGears[gear.id] and "REMOVE" or "SPAWN"
-        
-        spawnButton.MouseButton1Click:Connect(function()
-            if spawnedGears[gear.id] then
-                -- Remove gear
-                if spawnedGears[gear.id].Parent then
-                    spawnedGears[gear.id]:Destroy()
-                end
-                spawnedGears[gear.id] = nil
-                print("[SUPERTOOL] Removed gear: " .. gear.name)
-            else
-                -- Spawn gear
-                spawnGear(gear.id)
-            end
-            updateGearList()
-        end)
-    end
-    
-    -- Update canvas size
-    task.wait(0.1)
-    if GearLayout then
-        GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, GearLayout.AbsoluteContentSize.Y + 10)
-    end
 end
 
 -- UI Components
@@ -1545,18 +1266,6 @@ function Utility.loadUtilityButtons(createButton)
         end
     end)
     
-    createButton("Spawn Gear", function()
-        if not GearFrame then 
-            initGearUI()
-            updateGearList()
-        end
-        GearFrame.Visible = not GearFrame.Visible
-        gearFrameVisible = GearFrame.Visible
-        if gearFrameVisible then
-            updateGearList()
-        end
-    end)
-    
     createButton("Clear Visuals", clearPathVisuals)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
@@ -1583,15 +1292,13 @@ function Utility.init(deps)
     pathAutoPlaying = false
     pathAutoRespawning = false
     
-    -- FIXED: Create folder structure first and load paths properly
+    -- FIXED: Create folder structure first
     local success = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
-            print("[SUPERTOOL] Created main folder")
         end
         if not isfolder(PATH_FOLDER_PATH) then
             makefolder(PATH_FOLDER_PATH)
-            print("[SUPERTOOL] Created paths folder")
         end
     end)
     
@@ -1599,23 +1306,9 @@ function Utility.init(deps)
         warn("[SUPERTOOL] Failed to create folder structure")
     end
     
-    -- FIXED: Load all existing files on initialization with delay
-    task.spawn(function()
-        task.wait(2) -- Give time for everything to initialize
-        local pathCount = loadAllSavedPaths()
-        print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
-        if pathCount > 0 then
-            print("[SUPERTOOL] Available paths:")
-            for name, path in pairs(savedPaths) do
-                print("  - " .. name .. " (" .. #path.points .. " points)")
-            end
-        end
-        
-        -- Update UI if it exists
-        if PathFrame and pathFrameVisible then
-            updatePathList()
-        end
-    end)
+    -- FIXED: Load all existing files on initialization
+    local pathCount = loadAllSavedPaths()
+    print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
     
     setupKeyboardControls()
     
@@ -1666,19 +1359,16 @@ function Utility.init(deps)
     
     task.spawn(function()
         initPathUI()
-        initGearUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.1 initialized")
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized")
         print("  - REMOVED: All macro functionality")
         print("  - FIXED: Ctrl+Z undo function")
         print("  - FIXED: JSON path loading after relog")
         print("  - ADDED: Top-right status display")
         print("  - ADDED: Clickable path points every 5 meters")
         print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
-        print("  - ADDED: Gear spawner system with 20 premium gears")
         print("  - ENHANCED: Better UI with improved controls")
         print("  - Keyboard Controls: Ctrl+Z (undo during recording)")
         print("  - JSON Storage: Supertool/Paths/")
-        print("  - Gear Features: Anti-duplicate protection, reset all function")
     end)
 end
 
