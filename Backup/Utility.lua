@@ -1,7 +1,5 @@
 -- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
 -- Updated version with fixed status text, undo during recording only, external undo toggle, larger idle text, hide/show toggle, and removed "textbox" text
--- FIXED: Auto-load files after relog and undo during recording
--- NEW: Gear Spawning System with duplicate prevention
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -48,40 +46,10 @@ local idleStartTime = nil
 local currentIdleLabel = nil
 local idleStartPosition = nil
 
--- Gear Spawning System Variables
-local gearFrameVisible = false
-local GearFrame, GearScrollFrame, GearLayout, GearInput, GearStatusLabel
-local spawnedGears = {} -- Track spawned gears to prevent duplicates
-
--- Predefined gear list with IDs
-local availableGears = {
-    {name = "Rainbow Magic Carpet", id = 225921000},
-    {name = "The 6th Annual Bloxy Award", id = 2758794374},
-    {name = "Speed Coil", id = 99119158},
-    {name = "Icy Arctic Fowl", id = 101078559},
-    {name = "Dragon's Flame Sword", id = 168140949},
-    {name = "Frost Guard General's Sword", id = 139574344},
-    {name = "Phoenix", id = 92142799},
-    {name = "Deluxe Rainbow Magic Carpet", id = 477910063},
-    {name = "Airstrike", id = 88885539},
-    {name = "Dual Gravity Coil", id = 150366274},
-    {name = "Regeneration Coil", id = 119101539},
-    {name = "Foul Poison Fowl", id = 170896941},
-    {name = "Neon Rainbow Phoenix", id = 261827192},
-    {name = "Golden Magic Carpet", id = 1016183873},
-    {name = "8-Bit Phoenix", id = 163355404},
-    {name = "Water Dragon Claws", id = 2548989639},
-    {name = "Flying Dragon", id = 610133821},
-    {name = "Paint Grenade", id = 172246820},
-    {name = "Mega Annoying Megaphone", id = 65545971},
-    {name = "Breath of Ice", id = 2605966484}
-}
-
 -- File System Integration
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local InsertService = game:GetService("InsertService")
 local MACRO_FOLDER_PATH = "Supertool/Macro/"
 local PATH_FOLDER_PATH = "Supertool/Paths/"
 
@@ -214,94 +182,6 @@ local function resetCharacter()
     if player then
         player:LoadCharacter()
     end
-end
-
--- Gear Spawning Functions
-local function spawnGear(gearId, gearName)
-    if not updateCharacterReferences() then
-        warn("[SUPERTOOL] Cannot spawn gear: Character not ready")
-        return false
-    end
-    
-    -- Check if gear is already spawned
-    if spawnedGears[gearId] then
-        warn("[SUPERTOOL] Gear already spawned: " .. gearName)
-        return false
-    end
-    
-    local success, result = pcall(function()
-        local gear = InsertService:LoadAsset(gearId)
-        if gear and gear:GetChildren()[1] then
-            local gearTool = gear:GetChildren()[1]
-            gearTool.Parent = player.Backpack
-            spawnedGears[gearId] = {
-                tool = gearTool,
-                name = gearName,
-                id = gearId
-            }
-            print("[SUPERTOOL] Spawned gear: " .. gearName .. " (ID: " .. gearId .. ")")
-            return true
-        else
-            warn("[SUPERTOOL] Failed to load gear: " .. gearName)
-            return false
-        end
-    end)
-    
-    if not success then
-        warn("[SUPERTOOL] Error spawning gear " .. gearName .. ": " .. tostring(result))
-        return false
-    end
-    
-    return result
-end
-
-local function resetAllGears()
-    local removedCount = 0
-    
-    -- Remove from backpack and character
-    if player then
-        if player.Backpack then
-            for _, tool in pairs(player.Backpack:GetChildren()) do
-                if tool:IsA("Tool") then
-                    tool:Destroy()
-                    removedCount = removedCount + 1
-                end
-            end
-        end
-        
-        if player.Character then
-            for _, tool in pairs(player.Character:GetChildren()) do
-                if tool:IsA("Tool") then
-                    tool:Destroy()
-                    removedCount = removedCount + 1
-                end
-            end
-        end
-    end
-    
-    -- Clear tracking table
-    spawnedGears = {}
-    
-    print("[SUPERTOOL] Removed " .. removedCount .. " gear items")
-    updateGearStatus()
-    return removedCount
-end
-
-local function updateGearStatus()
-    if not GearStatusLabel then return end
-    
-    local gearCount = 0
-    for _ in pairs(spawnedGears) do
-        gearCount = gearCount + 1
-    end
-    
-    local statusText = ""
-    if gearCount > 0 then
-        statusText = "Active Gears: " .. gearCount
-    end
-    
-    GearStatusLabel.Text = statusText
-    GearStatusLabel.Visible = statusText ~= ""
 end
 
 -- Path Movement Detection
@@ -675,103 +555,50 @@ local function stopPathPlayback()
     updatePathStatus()
 end
 
--- Path Undo System - FIXED VERSION
+-- Path Undo System
 local function undoToLastMarker()
-    -- FIXED: Check if we're recording a path and have markers to undo
-    if not pathRecording or not currentPath or not currentPath.markers or #currentPath.markers == 0 then
-        warn("[SUPERTOOL] Undo only available during path recording with existing markers")
+    if not pathRecording or not currentPathName then
+        warn("[SUPERTOOL] Undo only available during path recording")
         return
     end
     
-    -- FIXED: Use currentPath instead of savedPaths lookup
-    local lastMarkerIndex = #currentPath.markers
-    local lastMarker = currentPath.markers[lastMarkerIndex]
+    local path = savedPaths[currentPathName]
+    if not path or not path.markers or #path.markers == 0 then
+        warn("[SUPERTOOL] No markers to undo")
+        return
+    end
     
+    local lastMarkerIndex = #path.markers
+    local lastMarker = path.markers[lastMarkerIndex]
     if lastMarker and updateCharacterReferences() then
         rootPart.CFrame = lastMarker.cframe
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
         
         -- Remove points and markers after the last marker
-        currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
-        currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
+        path.points = {table.unpack(path.points, 1, lastMarker.pathIndex)}
+        path.markers = {table.unpack(path.markers, 1, lastMarkerIndex - 1)}
+        path.pointCount = #path.points
+        path.markerCount = #path.markers
+        path.duration = path.points[#path.points].time
         
-        -- Update visuals - clear and recreate
+        -- Save updated path
+        savePathToJSON(currentPathName, path)
+        
+        -- Update visuals
         clearPathVisuals()
-        for i, point in pairs(currentPath.points) do
+        for i, point in pairs(path.points) do
             local visualPart = createPathVisual(point.position, point.movementType, false)
             table.insert(pathVisualParts, visualPart)
         end
         
-        for i, marker in pairs(currentPath.markers) do
+        for i, marker in pairs(path.markers) do
             local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
             table.insert(pathMarkerParts, markerPart)
         end
         
         -- Create white sphere at undo position
         local undoMarker = createPathVisual(lastMarker.position, "idle", true)
-        undoMarker.Color = Color3.fromRGB(255, 255, 255) -- Make it white for visibility
         table.insert(pathMarkerParts, undoMarker)
-    end
-end
-
--- FIXED: Load all existing files function
-local function loadAllSavedMacros()
-    local success, result = pcall(function()
-        if not isfolder(MACRO_FOLDER_PATH) then return 0 end
-        
-        local files = listfiles(MACRO_FOLDER_PATH)
-        local loadedCount = 0
-        
-        for _, filePath in pairs(files) do
-            local fileName = filePath:match("([^/\\]+)%.json$")
-            if fileName then
-                local macroData = loadMacroFromJSON(fileName)
-                if macroData then
-                    savedMacros[fileName] = macroData
-                    loadedCount = loadedCount + 1
-                end
-            end
-        end
-        
-        return loadedCount
-    end)
-    
-    if success then
-        print("[SUPERTOOL] Loaded " .. result .. " macros from disk")
-        return result
-    else
-        warn("[SUPERTOOL] Failed to load macros: " .. tostring(result))
-        return 0
-    end
-end
-
-local function loadAllSavedPaths()
-    local success, result = pcall(function()
-        if not isfolder(PATH_FOLDER_PATH) then return 0 end
-        
-        local files = listfiles(PATH_FOLDER_PATH)
-        local loadedCount = 0
-        
-        for _, filePath in pairs(files) do
-            local fileName = filePath:match("([^/\\]+)%.json$")
-            if fileName then
-                local pathData = loadPathFromJSON(fileName)
-                if pathData then
-                    savedPaths[fileName] = pathData
-                    loadedCount = loadedCount + 1
-                end
-            end
-        end
-        
-        return loadedCount
-    end)
-    
-    if success then
-        print("[SUPERTOOL] Loaded " .. result .. " paths from disk")
-        return result
-    else
-        warn("[SUPERTOOL] Failed to load paths: " .. tostring(result))
-        return 0
     end
 end
 
@@ -1248,196 +1075,6 @@ function renameMacroInJSON(oldName, newName)
     return success and error or false
 end
 
--- Gear UI Functions
-local function initGearUI()
-    if GearFrame then return end
-    
-    GearFrame = Instance.new("Frame")
-    GearFrame.Name = "GearFrame"
-    GearFrame.Parent = ScreenGui
-    GearFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    GearFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    GearFrame.BorderSizePixel = 1
-    GearFrame.Position = UDim2.new(0.7, 0, 0.2, 0)
-    GearFrame.Size = UDim2.new(0, 350, 0, 450)
-    GearFrame.Visible = false
-    GearFrame.Active = true
-    GearFrame.Draggable = true
-
-    local GearTitle = Instance.new("TextLabel")
-    GearTitle.Parent = GearFrame
-    GearTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearTitle.BorderSizePixel = 0
-    GearTitle.Size = UDim2.new(1, 0, 0, 20)
-    GearTitle.Font = Enum.Font.Gotham
-    GearTitle.Text = "GEAR SPAWNER - ANTI-DUPLICATE v1.0"
-    GearTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearTitle.TextSize = 8
-
-    local CloseGearButton = Instance.new("TextButton")
-    CloseGearButton.Parent = GearFrame
-    CloseGearButton.BackgroundTransparency = 1
-    CloseGearButton.Position = UDim2.new(1, -20, 0, 2)
-    CloseGearButton.Size = UDim2.new(0, 15, 0, 15)
-    CloseGearButton.Font = Enum.Font.GothamBold
-    CloseGearButton.Text = "X"
-    CloseGearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseGearButton.TextSize = 8
-
-    GearInput = Instance.new("TextBox")
-    GearInput.Parent = GearFrame
-    GearInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearInput.BorderSizePixel = 0
-    GearInput.Position = UDim2.new(0, 5, 0, 25)
-    GearInput.Size = UDim2.new(1, -80, 0, 20)
-    GearInput.Font = Enum.Font.Gotham
-    GearInput.PlaceholderText = "Search gears..."
-    GearInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearInput.TextSize = 7
-
-    local ResetAllButton = Instance.new("TextButton")
-    ResetAllButton.Parent = GearFrame
-    ResetAllButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-    ResetAllButton.BorderSizePixel = 0
-    ResetAllButton.Position = UDim2.new(1, -70, 0, 25)
-    ResetAllButton.Size = UDim2.new(0, 65, 0, 20)
-    ResetAllButton.Font = Enum.Font.Gotham
-    ResetAllButton.Text = "RESET ALL"
-    ResetAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ResetAllButton.TextSize = 7
-
-    GearScrollFrame = Instance.new("ScrollingFrame")
-    GearScrollFrame.Parent = GearFrame
-    GearScrollFrame.BackgroundTransparency = 1
-    GearScrollFrame.Position = UDim2.new(0, 5, 0, 50)
-    GearScrollFrame.Size = UDim2.new(1, -10, 1, -80)
-    GearScrollFrame.ScrollBarThickness = 2
-    GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    GearLayout = Instance.new("UIListLayout")
-    GearLayout.Parent = GearScrollFrame
-    GearLayout.Padding = UDim.new(0, 2)
-
-    GearStatusLabel = Instance.new("TextLabel")
-    GearStatusLabel.Parent = ScreenGui
-    GearStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    GearStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    GearStatusLabel.BorderSizePixel = 1
-    GearStatusLabel.Position = UDim2.new(1, -250, 0, 55)
-    GearStatusLabel.Size = UDim2.new(0, 240, 0, 25)
-    GearStatusLabel.Font = Enum.Font.Gotham
-    GearStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearStatusLabel.TextSize = 8
-    GearStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    GearStatusLabel.Visible = false
-    GearStatusLabel.ZIndex = 10
-
-    CloseGearButton.MouseButton1Click:Connect(function()
-        GearFrame.Visible = false
-        gearFrameVisible = false
-    end)
-
-    ResetAllButton.MouseButton1Click:Connect(function()
-        resetAllGears()
-        updateGearList()
-    end)
-
-    GearInput.Changed:Connect(function()
-        if GearInput.Text then
-            updateGearList()
-        end
-    end)
-end
-
-function updateGearList()
-    if not GearScrollFrame then return end
-    
-    for _, child in pairs(GearScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    
-    local searchText = GearInput.Text:lower()
-    for _, gear in pairs(availableGears) do
-        if searchText == "" or string.find(gear.name:lower(), searchText) then
-            local gearItem = Instance.new("Frame")
-            gearItem.Parent = GearScrollFrame
-            gearItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            gearItem.Size = UDim2.new(1, -5, 0, 60)
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Parent = gearItem
-            nameLabel.Position = UDim2.new(0, 5, 0, 5)
-            nameLabel.Size = UDim2.new(1, -10, 0, 15)
-            nameLabel.Text = gear.name
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.TextSize = 8
-            nameLabel.Font = Enum.Font.Gotham
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            local idLabel = Instance.new("TextLabel")
-            idLabel.Parent = gearItem
-            idLabel.Position = UDim2.new(0, 5, 0, 20)
-            idLabel.Size = UDim2.new(1, -10, 0, 12)
-            idLabel.BackgroundTransparency = 1
-            idLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-            idLabel.TextSize = 6
-            idLabel.Font = Enum.Font.Gotham
-            idLabel.Text = "ID: " .. gear.id
-            idLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            local spawnButton = Instance.new("TextButton")
-            spawnButton.Parent = gearItem
-            spawnButton.Position = UDim2.new(0, 5, 0, 35)
-            spawnButton.Size = UDim2.new(0, 60, 0, 20)
-            spawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            spawnButton.TextSize = 7
-            spawnButton.Font = Enum.Font.Gotham
-            
-            local statusLabel = Instance.new("TextLabel")
-            statusLabel.Parent = gearItem
-            statusLabel.Position = UDim2.new(0, 70, 0, 35)
-            statusLabel.Size = UDim2.new(1, -75, 0, 20)
-            statusLabel.BackgroundTransparency = 1
-            statusLabel.TextSize = 6
-            statusLabel.Font = Enum.Font.Gotham
-            statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            if spawnedGears[gear.id] then
-                spawnButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-                spawnButton.Text = "SPAWNED"
-                statusLabel.Text = "✓ Already in backpack"
-                statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-            else
-                spawnButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                spawnButton.Text = "SPAWN"
-                statusLabel.Text = "Click to spawn gear"
-                statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            end
-            
-            spawnButton.MouseButton1Click:Connect(function()
-                if not spawnedGears[gear.id] then
-                    local success = spawnGear(gear.id, gear.name)
-                    if success then
-                        updateGearList()
-                        updateGearStatus()
-                    end
-                else
-                    warn("[SUPERTOOL] Gear already spawned: " .. gear.name)
-                end
-            end)
-        end
-    end
-    
-    task.wait(0.1)
-    if GearLayout then
-        GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, GearLayout.AbsoluteContentSize.Y + 5)
-    end
-end
-
 -- UI Components
 local function initMacroUI()
     if MacroFrame then return end
@@ -1535,7 +1172,7 @@ end
 local function initPathUI()
     if PathFrame then return end
     
-        PathFrame = Instance.new("Frame")
+    PathFrame = Instance.new("Frame")
     PathFrame.Name = "PathFrame"
     PathFrame.Parent = ScreenGui
     PathFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -2072,16 +1709,6 @@ function Utility.loadUtilityButtons(createButton)
         end
     end)
     
-    createButton("Spawn Gear", function()
-        if not GearFrame then initGearUI() end
-        GearFrame.Visible = not GearFrame.Visible
-        gearFrameVisible = GearFrame.Visible
-        if gearFrameVisible then
-            updateGearList()
-            updateGearStatus()
-        end
-    end)
-    
     createButton("Clear Visuals", clearPathVisuals)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
@@ -2109,9 +1736,7 @@ function Utility.init(deps)
     pathPlaying = false
     pathShowOnly = false
     pathPaused = false
-    spawnedGears = {}
     
-    -- FIXED: Create folder structure first
     local success = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
@@ -2128,16 +1753,8 @@ function Utility.init(deps)
         warn("[SUPERTOOL] Failed to create folder structure")
     end
     
-    -- FIXED: Load all existing files on initialization
-    task.spawn(function()
-        local macroCount = loadAllSavedMacros()
-        local pathCount = loadAllSavedPaths()
-        print("[SUPERTOOL] Initialization complete - Macros: " .. macroCount .. ", Paths: " .. pathCount)
-    end)
-    
     setupKeyboardControls()
     
-    -- Track gear removal for cleanup
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
             task.spawn(function()
@@ -2185,10 +1802,6 @@ function Utility.init(deps)
                 pathPaused = true
                 updatePathStatus()
             end
-            
-            -- Clear spawned gears tracking when character is removed
-            spawnedGears = {}
-            updateGearStatus()
         end)
         
         if humanoid then
@@ -2211,42 +1824,16 @@ function Utility.init(deps)
                 end
             end)
         end
-        
-        -- Monitor gear changes in backpack
-        if player.Backpack then
-            player.Backpack.ChildRemoved:Connect(function(child)
-                if child:IsA("Tool") then
-                    -- Find and remove from tracking
-                    for gearId, gearData in pairs(spawnedGears) do
-                        if gearData.tool == child then
-                            spawnedGears[gearId] = nil
-                            updateGearStatus()
-                            if gearFrameVisible then
-                                updateGearList()
-                            end
-                            break
-                        end
-                    end
-                end
-            end)
-        end
     end
     
     task.spawn(function()
         initMacroUI()
         initPathUI()
-        initGearUI()
-        print("[SUPERTOOL] Enhanced Utility Module v2.6 with Gear Spawner initialized")
-        print("  - FIXED: Auto-load all saved files after relog")
-        print("  - FIXED: Undo function now works during path recording")
-        print("  - NEW: Gear Spawning System with 20 predefined gears")
-        print("  - NEW: Anti-duplicate gear spawning system")
-        print("  - NEW: Reset All function to clear all gears")
+        print("[SUPERTOOL] Enhanced Utility Module v2.4 initialized")
         print("  - Path Recording: Visual navigation with undo markers and idle duration")
         print("  - Enhanced Macros: Full macro system with pause/resume")
         print("  - Keyboard Controls: Ctrl+Z (undo)")
         print("  - JSON Storage: Supertool/Macro and Supertool/Paths")
-        print("  - Available Gears: Rainbow Magic Carpet, Phoenix, Speed Coil, and 17 more!")
     end)
 end
 
