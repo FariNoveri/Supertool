@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - FIXED MODULE LOADER
+-- Main entry point for MinimalHackGUI by Fari Noveri - IMPROVED MODULE LOADER
 
 -- Services
 local Players = game:GetService("Players")
@@ -6,6 +6,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
 
 -- Local Player
 local player = Players.LocalPlayer
@@ -62,7 +63,7 @@ Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Title.BorderSizePixel = 0
 Title.Size = UDim2.new(1, 0, 0, 25)
 Title.Font = Enum.Font.Gotham
-Title.Text = "MinimalHackGUI by Fari Noveri [Fixed Loader]"
+Title.Text = "MinimalHackGUI by Fari Noveri [Improved Loader v2.0]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
@@ -110,12 +111,26 @@ MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 10
 
+-- Loading Status Label
+local LoadingStatus = Instance.new("TextLabel")
+LoadingStatus.Name = "LoadingStatus"
+LoadingStatus.Parent = Frame
+LoadingStatus.BackgroundTransparency = 1
+LoadingStatus.Position = UDim2.new(0, 10, 1, -25)
+LoadingStatus.Size = UDim2.new(1, -20, 0, 20)
+LoadingStatus.Font = Enum.Font.Gotham
+LoadingStatus.Text = "Initializing modules..."
+LoadingStatus.TextColor3 = Color3.fromRGB(200, 200, 200)
+LoadingStatus.TextSize = 8
+LoadingStatus.TextXAlignment = Enum.TextXAlignment.Left
+LoadingStatus.Visible = true
+
 -- Category Container with Scrolling
 local CategoryContainer = Instance.new("ScrollingFrame")
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
 CategoryContainer.Position = UDim2.new(0, 5, 0, 30)
-CategoryContainer.Size = UDim2.new(0, 80, 1, -35)
+CategoryContainer.Size = UDim2.new(0, 80, 1, -60)
 CategoryContainer.ScrollBarThickness = 4
 CategoryContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
 CategoryContainer.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -138,7 +153,7 @@ local FeatureContainer = Instance.new("ScrollingFrame")
 FeatureContainer.Parent = Frame
 FeatureContainer.BackgroundTransparency = 1
 FeatureContainer.Position = UDim2.new(0, 90, 0, 30)
-FeatureContainer.Size = UDim2.new(1, -95, 1, -35)
+FeatureContainer.Size = UDim2.new(1, -95, 1, -60)
 FeatureContainer.ScrollBarThickness = 4
 FeatureContainer.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
 FeatureContainer.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -171,9 +186,10 @@ local categories = {
 local categoryFrames = {}
 local isMinimized = false
 
--- Load modules - FIXED VERSION
+-- Module loading system - IMPROVED VERSION
 local modules = {}
 local modulesLoaded = {}
+local moduleLoadingStatus = {}
 
 local moduleURLs = {
     Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Movement.lua",
@@ -186,72 +202,115 @@ local moduleURLs = {
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua"
 }
 
--- PROPER MODULE LOADING FUNCTION
-local function loadModule(moduleName)
-    print("Attempting to load module: " .. moduleName)
-    
-    if not moduleURLs[moduleName] then
-        warn("No URL defined for module: " .. moduleName)
-        return false
-    end
-    
-    local success, result = pcall(function()
-        -- Try to get the module content
-        local response = game:HttpGet(moduleURLs[moduleName])
-        
-        if not response or response == "" or response:find("404") then
-            error("Failed to fetch module or got 404")
-        end
-        
-        print("Got response for " .. moduleName .. " (length: " .. #response .. ")")
-        
-        -- Try to load the string as Lua code
-        local moduleFunc, loadError = loadstring(response)
-        if not moduleFunc then
-            error("Failed to compile module: " .. tostring(loadError))
-        end
-        
-        -- Execute the module code to get the module table
-        local moduleTable = moduleFunc()
-        
-        if not moduleTable then
-            error("Module function returned nil")
-        end
-        
-        if type(moduleTable) ~= "table" then
-            error("Module must return a table, got: " .. type(moduleTable))
-        end
-        
-        print("Successfully compiled and executed module: " .. moduleName)
-        return moduleTable
-    end)
-    
-    if success and result then
-        modules[moduleName] = result
-        modulesLoaded[moduleName] = true
-        print("✓ Module loaded successfully: " .. moduleName)
-        
-        -- If this is the currently selected category, reload buttons
-        if selectedCategory == moduleName then
-            task.wait(0.1) -- Small delay to ensure everything is ready
-            loadButtons()
-        end
-        return true
-    else
-        warn("✗ Failed to load module " .. moduleName .. ": " .. tostring(result))
-        return false
+-- Update loading status
+local function updateLoadingStatus(message)
+    if LoadingStatus then
+        LoadingStatus.Text = message
+        LoadingStatus.Visible = true
+        print("[LOADER] " .. message)
     end
 end
 
--- Load all modules asynchronously
-print("Starting module loading...")
-for moduleName, _ in pairs(moduleURLs) do
-    task.spawn(function()
-        local startTime = tick()
-        local success = loadModule(moduleName)
-        local loadTime = tick() - startTime
-        print(string.format("Module %s: %s (%.2fs)", moduleName, success and "SUCCESS" or "FAILED", loadTime))
-    end)
+-- IMPROVED MODULE LOADING FUNCTION WITH RETRY LOGIC
+local function loadModule(moduleName)
+    local maxRetries = 3
+    local retryDelay = 1
+    
+    updateLoadingStatus("Loading " .. moduleName .. " module...")
+    
+    if not moduleURLs[moduleName] then
+        warn("[LOADER] No URL defined for module: " .. moduleName)
+        moduleLoadingStatus[moduleName] = "No URL"
+        return false
+    end
+    
+    for attempt = 1, maxRetries do
+        local success, result = pcall(function()
+            print(string.format("[LOADER] Attempt %d/%d for %s", attempt, maxRetries, moduleName))
+            
+            -- Try to get the module content with timeout handling
+            local response
+            local httpSuccess, httpError = pcall(function()
+                response = HttpService:GetAsync(moduleURLs[moduleName], false)
+            end)
+            
+            if not httpSuccess then
+                error("HTTP request failed: " .. tostring(httpError))
+            end
+            
+            if not response then
+                error("No response received")
+            end
+            
+            if response == "" then
+                error("Empty response received")
+            end
+            
+            if response:find("404") or response:find("Not Found") then
+                error("404 Not Found")
+            end
+            
+            if response:find("<!DOCTYPE html>") or response:find("<html") then
+                error("Received HTML instead of Lua code")
+            end
+            
+            print(string.format("[LOADER] %s response received (length: %d)", moduleName, #response))
+            
+            -- Validate that it's Lua code by checking for common patterns
+            if not (response:find("local") or response:find("function") or response:find("return")) then
+                error("Response doesn't appear to be valid Lua code")
+            end
+            
+            -- Try to compile the string as Lua code
+            local moduleFunc, loadError = loadstring(response)
+            if not moduleFunc then
+                error("Failed to compile module: " .. tostring(loadError))
+            end
+            
+            -- Execute the module code to get the module table
+            local moduleTable = moduleFunc()
+            
+            if not moduleTable then
+                error("Module function returned nil")
+            end
+            
+            if type(moduleTable) ~= "table" then
+                error("Module must return a table, got: " .. type(moduleTable))
+            end
+            
+            print(string.format("[LOADER] Successfully compiled and executed %s", moduleName))
+            return moduleTable
+        end)
+        
+        if success and result then
+            modules[moduleName] = result
+            modulesLoaded[moduleName] = true
+            moduleLoadingStatus[moduleName] = "Success"
+            updateLoadingStatus(moduleName .. " loaded successfully (" .. attempt .. "/" .. maxRetries .. ")")
+            
+            -- If this is the currently selected category, reload buttons
+            if selectedCategory == moduleName then
+                task.wait(0.1)
+                loadButtons()
+            end
+            return true
+        else
+            local errorMsg = tostring(result or "Unknown error")
+            warn(string.format("[LOADER] Attempt %d/%d failed for %s: %s", attempt, maxRetries, moduleName, errorMsg))
+            moduleLoadingStatus[moduleName] = "Attempt " .. attempt .. " failed: " .. errorMsg
+            
+            if attempt < maxRetries then
+                updateLoadingStatus(string.format("%s failed (attempt %d/%d), retrying...", moduleName, attempt, maxRetries))
+                task.wait(retryDelay)
+                retryDelay = retryDelay * 1.5 -- Exponential backoff
+            else
+                updateLoadingStatus(moduleName .. " failed to load after " .. maxRetries .. " attempts")
+                moduleLoadingStatus[moduleName] = "Failed after " .. maxRetries .. " attempts"
+            end
+        end
+    end
+    
+    return false
 end
 
 -- Dependencies for modules
@@ -270,7 +329,9 @@ local dependencies = {
 
 -- Initialize modules
 local function initializeModules()
-    print("Initializing loaded modules...")
+    updateLoadingStatus("Initializing loaded modules...")
+    local initializedCount = 0
+    
     for moduleName, module in pairs(modules) do
         if module and type(module.init) == "function" then
             local success, result = pcall(function()
@@ -280,14 +341,19 @@ local function initializeModules()
                 return module.init(dependencies)
             end)
             if not success then
-                warn("Failed to initialize module " .. moduleName .. ": " .. tostring(result))
+                warn("[LOADER] Failed to initialize module " .. moduleName .. ": " .. tostring(result))
+                moduleLoadingStatus[moduleName] = moduleLoadingStatus[moduleName] .. " | Init failed"
             else
-                print("✓ Initialized module: " .. moduleName)
+                print("[LOADER] Initialized module: " .. moduleName)
+                initializedCount = initializedCount + 1
             end
         else
-            print("Module " .. moduleName .. " has no init function or is invalid")
+            warn("[LOADER] Module " .. moduleName .. " has no init function or is invalid")
+            moduleLoadingStatus[moduleName] = moduleLoadingStatus[moduleName] .. " | No init function"
         end
     end
+    
+    updateLoadingStatus(string.format("Initialized %d modules", initializedCount))
 end
 
 -- Helper functions for exclusive features
@@ -407,9 +473,9 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     return button
 end
 
--- PROPER LOAD BUTTONS FUNCTION
+-- IMPROVED LOAD BUTTONS FUNCTION
 local function loadButtons()
-    print("Loading buttons for category: " .. selectedCategory)
+    print("[LOADER] Loading buttons for category: " .. selectedCategory)
     
     -- Clear existing buttons
     for _, child in pairs(FeatureContainer:GetChildren()) do
@@ -426,27 +492,35 @@ local function loadButtons()
     end
 
     if not selectedCategory then
-        warn("No category selected!")
+        warn("[LOADER] No category selected!")
         return
     end
     
     -- Check if module is loaded
     if not modules[selectedCategory] then
-        local loadingLabel = Instance.new("TextLabel")
-        loadingLabel.Parent = FeatureContainer
-        loadingLabel.BackgroundTransparency = 1
-        loadingLabel.Size = UDim2.new(1, -2, 0, 20)
-        loadingLabel.Font = Enum.Font.Gotham
-        loadingLabel.Text = "Loading " .. selectedCategory .. " module..."
-        loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        loadingLabel.TextSize = 8
-        loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
+        local statusLabel = Instance.new("TextLabel")
+        statusLabel.Parent = FeatureContainer
+        statusLabel.BackgroundTransparency = 1
+        statusLabel.Size = UDim2.new(1, -2, 0, 40)
+        statusLabel.Font = Enum.Font.Gotham
+        statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        statusLabel.TextSize = 8
+        statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+        statusLabel.TextYAlignment = Enum.TextYAlignment.Top
+        statusLabel.TextWrapped = true
         
-        -- Try to load the module if not already loading
-        if not modulesLoaded[selectedCategory] then
+        local status = moduleLoadingStatus[selectedCategory] or "Not loaded"
+        if modulesLoaded[selectedCategory] == nil then
+            statusLabel.Text = "Loading " .. selectedCategory .. " module...\nStatus: " .. status
+            statusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+            
+            -- Try to load the module if not already attempted
             task.spawn(function()
                 loadModule(selectedCategory)
             end)
+        else
+            statusLabel.Text = "Failed to load " .. selectedCategory .. " module.\nStatus: " .. status .. "\n\nTry selecting another category or restart the script."
+            statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
         end
         return
     end
@@ -458,7 +532,7 @@ local function loadButtons()
     -- Load buttons based on selected category
     if selectedCategory == "Movement" and module.loadMovementButtons then
         success, errorMessage = pcall(function()
-            print("Calling Movement.loadMovementButtons")
+            print("[LOADER] Calling Movement.loadMovementButtons")
             module.loadMovementButtons(
                 function(name, callback) return createButton(name, callback, "Movement") end,
                 function(name, callback, disableCallback) return createToggleButton(name, callback, "Movement", disableCallback) end
@@ -468,7 +542,7 @@ local function loadButtons()
     elseif selectedCategory == "Player" and module.loadPlayerButtons then
         success, errorMessage = pcall(function()
             local selectedPlayer = module.getSelectedPlayer and module.getSelectedPlayer() or nil
-            print("Calling Player.loadPlayerButtons with selectedPlayer: " .. tostring(selectedPlayer))
+            print("[LOADER] Calling Player.loadPlayerButtons with selectedPlayer: " .. tostring(selectedPlayer))
             module.loadPlayerButtons(
                 function(name, callback) return createButton(name, callback, "Player") end,
                 function(name, callback, disableCallback) return createToggleButton(name, callback, "Player", disableCallback) end,
@@ -482,7 +556,7 @@ local function loadButtons()
             local freecamEnabled = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false
             local freecamPosition = freecamEnabled and select(2, modules.Visual.getFreecamState()) or nil
             local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
-            print("Calling Teleport.loadTeleportButtons")
+            print("[LOADER] Calling Teleport.loadTeleportButtons")
             module.loadTeleportButtons(
                 function(name, callback) return createButton(name, callback, "Teleport") end,
                 selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
@@ -491,7 +565,7 @@ local function loadButtons()
         
     elseif selectedCategory == "Visual" and module.loadVisualButtons then
         success, errorMessage = pcall(function()
-            print("Calling Visual.loadVisualButtons")
+            print("[LOADER] Calling Visual.loadVisualButtons")
             module.loadVisualButtons(function(name, callback, disableCallback)
                 return createToggleButton(name, callback, "Visual", disableCallback)
             end)
@@ -499,7 +573,7 @@ local function loadButtons()
         
     elseif selectedCategory == "Utility" and module.loadUtilityButtons then
         success, errorMessage = pcall(function()
-            print("Calling Utility.loadUtilityButtons")
+            print("[LOADER] Calling Utility.loadUtilityButtons")
             module.loadUtilityButtons(function(name, callback)
                 return createButton(name, callback, "Utility")
             end)
@@ -507,7 +581,7 @@ local function loadButtons()
         
     elseif selectedCategory == "AntiAdmin" and module.loadAntiAdminButtons then
         success, errorMessage = pcall(function()
-            print("Calling AntiAdmin.loadAntiAdminButtons")
+            print("[LOADER] Calling AntiAdmin.loadAntiAdminButtons")
             module.loadAntiAdminButtons(function(name, callback, disableCallback)
                 return createToggleButton(name, callback, "AntiAdmin", disableCallback)
             end, FeatureContainer)
@@ -515,7 +589,7 @@ local function loadButtons()
         
     elseif selectedCategory == "Settings" and module.loadSettingsButtons then
         success, errorMessage = pcall(function()
-            print("Calling Settings.loadSettingsButtons")
+            print("[LOADER] Calling Settings.loadSettingsButtons")
             module.loadSettingsButtons(function(name, callback)
                 return createButton(name, callback, "Settings")
             end)
@@ -523,13 +597,13 @@ local function loadButtons()
         
     elseif selectedCategory == "Info" and module.createInfoDisplay then
         success, errorMessage = pcall(function()
-            print("Calling Info.createInfoDisplay")
+            print("[LOADER] Calling Info.createInfoDisplay")
             module.createInfoDisplay(FeatureContainer)
         end)
         
     else
         errorMessage = "Module " .. selectedCategory .. " doesn't have the required function!"
-        warn(errorMessage)
+        warn("[LOADER] " .. errorMessage)
     end
 
     -- Show error if loading failed
@@ -537,17 +611,17 @@ local function loadButtons()
         local errorLabel = Instance.new("TextLabel")
         errorLabel.Parent = FeatureContainer
         errorLabel.BackgroundTransparency = 1
-        errorLabel.Size = UDim2.new(1, -2, 0, 40)
+        errorLabel.Size = UDim2.new(1, -2, 0, 60)
         errorLabel.Font = Enum.Font.Gotham
-        errorLabel.Text = "Error loading " .. selectedCategory .. ":\n" .. tostring(errorMessage)
+        errorLabel.Text = "Error loading " .. selectedCategory .. " buttons:\n" .. tostring(errorMessage) .. "\n\nModule status: " .. (moduleLoadingStatus[selectedCategory] or "Unknown")
         errorLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
         errorLabel.TextSize = 8
         errorLabel.TextXAlignment = Enum.TextXAlignment.Left
         errorLabel.TextYAlignment = Enum.TextYAlignment.Top
         errorLabel.TextWrapped = true
-        print("Error: " .. tostring(errorMessage))
+        print("[LOADER] Error: " .. tostring(errorMessage))
     elseif success then
-        print("✓ Successfully loaded buttons for " .. selectedCategory)
+        print("[LOADER] Successfully loaded buttons for " .. selectedCategory)
     end
 end
 
@@ -596,7 +670,7 @@ end
 
 -- Reset states
 local function resetStates()
-    print("Resetting all states")
+    print("[LOADER] Resetting all states")
     
     for _, connection in pairs(connections) do
         if connection and connection.Disconnect then
@@ -640,7 +714,7 @@ local function onCharacterAdded(newCharacter)
         end
     end)
     if not success then
-        warn("Failed to set up character: " .. tostring(result))
+        warn("[LOADER] Failed to set up character: " .. tostring(result))
     end
 end
 
@@ -660,48 +734,237 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
     end
 end)
 
--- Start initialization
-task.spawn(function()
-    local timeout = 30 -- Increased timeout
-    local startTime = tick()
+-- IMPROVED MODULE LOADING WITH SEQUENTIAL PROCESSING AND BETTER ERROR HANDLING
+local function startModuleLoading()
+    updateLoadingStatus("Starting module loading process...")
     
-    -- Wait for at least one module to load
-    while tick() - startTime < timeout do
-        local loadedCount = 0
-        for _ in pairs(modulesLoaded) do
+    local totalModules = 0
+    for _ in pairs(moduleURLs) do
+        totalModules = totalModules + 1
+    end
+    
+    local loadedCount = 0
+    local failedCount = 0
+    
+    -- Load modules one by one to avoid overwhelming the HTTP service
+    for moduleName, _ in pairs(moduleURLs) do
+        updateLoadingStatus(string.format("Loading %s (%d/%d)...", moduleName, loadedCount + failedCount + 1, totalModules))
+        
+        local success = loadModule(moduleName)
+        if success then
             loadedCount = loadedCount + 1
+        else
+            failedCount = failedCount + 1
         end
         
-        if loadedCount > 0 then
-            print("At least one module loaded, proceeding...")
-            break
-        end
-        
+        -- Small delay between module loads to prevent rate limiting
         task.wait(0.5)
     end
-
-    -- Report loading results
-    local loadedModules = {}
-    local failedModules = {}
     
-    for moduleName, _ in pairs(moduleURLs) do
-        if modulesLoaded[moduleName] then
-            table.insert(loadedModules, moduleName)
+    -- Summary of loading results
+    if loadedCount > 0 then
+        updateLoadingStatus(string.format("✓ Loaded %d/%d modules successfully", loadedCount, totalModules))
+        print("[LOADER] Successfully loaded modules: " .. table.concat(getLoadedModuleNames(), ", "))
+    end
+    
+    if failedCount > 0 then
+        local failedModules = getFailedModuleNames()
+        print("[LOADER] Failed to load modules: " .. table.concat(failedModules, ", "))
+        
+        if loadedCount == 0 then
+            updateLoadingStatus("❌ All modules failed to load - check your internet connection")
         else
-            table.insert(failedModules, moduleName)
+            updateLoadingStatus(string.format("⚠️ %d modules failed, %d loaded successfully", failedCount, loadedCount))
         end
     end
     
-    if #loadedModules > 0 then
-        print("✓ Successfully loaded modules: " .. table.concat(loadedModules, ", "))
+    if loadedCount > 0 then
+        initializeModules()
+        loadButtons()
+        
+        -- Hide loading status after successful initialization
+        task.wait(2)
+        if LoadingStatus then
+            LoadingStatus.Visible = false
+        end
     end
     
-    if #failedModules > 0 then
-        print("✗ Failed to load modules: " .. table.concat(failedModules, ", "))
-    end
+    print("[LOADER] Module loading process complete!")
+    return loadedCount > 0
+end
 
-    initializeModules()
-    loadButtons()
-    
-    print("MinimalHackGUI initialization complete!")
+-- Helper functions for module status reporting
+local function getLoadedModuleNames()
+    local loaded = {}
+    for moduleName, isLoaded in pairs(modulesLoaded) do
+        if isLoaded then
+            table.insert(loaded, moduleName)
+        end
+    end
+    return loaded
+end
+
+local function getFailedModuleNames()
+    local failed = {}
+    for moduleName, _ in pairs(moduleURLs) do
+        if not modulesLoaded[moduleName] then
+            table.insert(failed, moduleName)
+        end
+    end
+    return failed
+end
+
+-- Debug function to show detailed module status
+local function showModuleStatus()
+    print("\n[LOADER] === MODULE LOADING STATUS ===")
+    for moduleName, url in pairs(moduleURLs) do
+        local status = moduleLoadingStatus[moduleName] or "Not attempted"
+        local loaded = modulesLoaded[moduleName] and "✓" or "✗"
+        print(string.format("[LOADER] %s %s: %s", loaded, moduleName, status))
+    end
+    print("[LOADER] ==============================\n")
+end
+
+-- Add debug command for troubleshooting
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.F9 then
+        showModuleStatus()
+    end
 end)
+
+-- Alternative loading method using different HTTP approach
+local function alternativeLoadModule(moduleName)
+    local success, result = pcall(function()
+        -- Try using game:HttpGet instead of HttpService:GetAsync
+        local response = game:HttpGet(moduleURLs[moduleName])
+        
+        if not response or response == "" then
+            error("Empty response from game:HttpGet")
+        end
+        
+        if response:find("404") or response:find("Not Found") then
+            error("404 Not Found")
+        end
+        
+        -- Continue with normal processing
+        local moduleFunc, loadError = loadstring(response)
+        if not moduleFunc then
+            error("Failed to compile: " .. tostring(loadError))
+        end
+        
+        local moduleTable = moduleFunc()
+        if not moduleTable or type(moduleTable) ~= "table" then
+            error("Invalid module table")
+        end
+        
+        return moduleTable
+    end)
+    
+    if success and result then
+        modules[moduleName] = result
+        modulesLoaded[moduleName] = true
+        moduleLoadingStatus[moduleName] = "Success (alternative method)"
+        return true
+    else
+        moduleLoadingStatus[moduleName] = "Alternative method also failed: " .. tostring(result)
+        return false
+    end
+end
+
+-- Retry failed modules with alternative method
+local function retryFailedModules()
+    local retriedCount = 0
+    updateLoadingStatus("Retrying failed modules with alternative method...")
+    
+    for moduleName, _ in pairs(moduleURLs) do
+        if not modulesLoaded[moduleName] then
+            print("[LOADER] Retrying " .. moduleName .. " with alternative method...")
+            if alternativeLoadModule(moduleName) then
+                retriedCount = retriedCount + 1
+                print("[LOADER] ✓ Successfully loaded " .. moduleName .. " with alternative method")
+            end
+            task.wait(0.3)
+        end
+    end
+    
+    if retriedCount > 0 then
+        updateLoadingStatus(string.format("✓ Recovered %d additional modules", retriedCount))
+        initializeModules()
+        loadButtons()
+    end
+    
+    return retriedCount
+end
+
+-- Emergency fallback: Load from pastebin or other sources if GitHub fails
+local fallbackURLs = {
+    -- Add fallback URLs here if needed
+    -- Utility = "https://pastebin.com/raw/XXXXXXXX",
+}
+
+local function loadFromFallback(moduleName)
+    if not fallbackURLs[moduleName] then
+        return false
+    end
+    
+    updateLoadingStatus("Trying fallback source for " .. moduleName .. "...")
+    
+    local success, result = pcall(function()
+        local response = game:HttpGet(fallbackURLs[moduleName])
+        if not response or response == "" then
+            error("Empty fallback response")
+        end
+        
+        local moduleFunc, loadError = loadstring(response)
+        if not moduleFunc then
+            error("Failed to compile fallback: " .. tostring(loadError))
+        end
+        
+        return moduleFunc()
+    end)
+    
+    if success and result and type(result) == "table" then
+        modules[moduleName] = result
+        modulesLoaded[moduleName] = true
+        moduleLoadingStatus[moduleName] = "Success (fallback source)"
+        return true
+    end
+    
+    return false
+end
+
+-- Start the improved loading process
+task.spawn(function()
+    local success = startModuleLoading()
+    
+    -- If initial loading had failures, try alternative methods
+    if not success or #getFailedModuleNames() > 0 then
+        task.wait(2)
+        local recovered = retryFailedModules()
+        
+        -- If still have failures, try fallback sources
+        if #getFailedModuleNames() > 0 then
+            for _, moduleName in ipairs(getFailedModuleNames()) do
+                loadFromFallback(moduleName)
+            end
+        end
+        
+        -- Final status update
+        local finalLoaded = #getLoadedModuleNames()
+        local finalFailed = #getFailedModuleNames()
+        
+        if finalLoaded > 0 then
+            updateLoadingStatus(string.format("Ready! %d/%d modules loaded", finalLoaded, finalLoaded + finalFailed))
+            if LoadingStatus then
+                task.wait(3)
+                LoadingStatus.Visible = false
+            end
+        else
+            updateLoadingStatus("❌ No modules could be loaded - script may not function properly")
+        end
+    end
+end)
+
+print("[LOADER] MinimalHackGUI Improved Loader v2.0 initialized!")
+print("[LOADER] Press F9 to show detailed module loading status")
+print("[LOADER] Press HOME to toggle GUI visibility")
