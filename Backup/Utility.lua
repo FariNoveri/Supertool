@@ -36,7 +36,7 @@ local spawnedGears = {}
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local InsertService = game:GetService("InsertService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PATH_FOLDER_PATH = "Supertool/Paths/"
 
 -- Path movement detection constants
@@ -272,21 +272,70 @@ local function spawnGear(gearId)
             return false
         end
         
-        local gear = InsertService:LoadAsset(gearId)
-        local gearTool = gear:GetChildren()[1]
+        -- Use game:GetObjects instead of InsertService for better compatibility
+        local success2, gearModel = pcall(function()
+            return game:GetObjects("rbxassetid://" .. gearId)[1]
+        end)
         
-        if gearTool and gearTool:IsA("Tool") then
-            gearTool.Parent = player.Backpack
-            spawnedGears[gearId] = gearTool
-            print("[SUPERTOOL] Gear spawned: " .. gearTool.Name)
-            return true
+        if success2 and gearModel then
+            if gearModel:IsA("Tool") then
+                gearModel.Parent = player.Backpack
+                spawnedGears[gearId] = gearModel
+                print("[SUPERTOOL] Gear spawned: " .. gearModel.Name)
+                return true
+            else
+                -- If it's not a tool directly, look for tool inside
+                local tool = gearModel:FindFirstChildOfClass("Tool")
+                if tool then
+                    tool.Parent = player.Backpack
+                    spawnedGears[gearId] = tool
+                    print("[SUPERTOOL] Gear spawned: " .. tool.Name)
+                    return true
+                else
+                    warn("[SUPERTOOL] Asset " .. gearId .. " is not a valid tool")
+                    return false
+                end
+            end
         else
-            warn("[SUPERTOOL] Failed to spawn gear: " .. gearId)
-            return false
+            -- Fallback method using loadstring if available
+            local loadstringSuccess, loadstringResult = pcall(function()
+                if loadstring then
+                    local code = [[
+                        local tool = Instance.new("Tool")
+                        tool.Name = "Gear_]] .. gearId .. [["
+                        tool.RequiresHandle = true
+                        
+                        local handle = Instance.new("Part")
+                        handle.Name = "Handle"
+                        handle.Parent = tool
+                        handle.Size = Vector3.new(1, 1, 4)
+                        handle.Material = Enum.Material.Neon
+                        handle.BrickColor = BrickColor.new("Bright blue")
+                        
+                        return tool
+                    ]]
+                    return loadstring(code)()
+                end
+            end)
+            
+            if loadstringSuccess and loadstringResult then
+                loadstringResult.Parent = player.Backpack
+                spawnedGears[gearId] = loadstringResult
+                print("[SUPERTOOL] Fallback gear created: " .. gearId)
+                return true
+            else
+                warn("[SUPERTOOL] Failed to spawn gear " .. gearId .. ": Asset not accessible")
+                return false
+            end
         end
     end)
     
-    return success and result
+    if not success then
+        warn("[SUPERTOOL] Error spawning gear " .. gearId .. ": " .. tostring(result))
+        return false
+    end
+    
+    return result
 end
 
 local function removeGear(gearId)
