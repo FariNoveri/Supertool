@@ -34,6 +34,11 @@ local idleStartPosition = nil
 local pausedHereLabel = nil
 local playbackStartTime = 0
 local playbackPauseTime = 0
+local playbackOffsetTime = 0
+local pathVisualsVisible = true
+local lastPauseToggleTime = 0
+local lastVisibilityToggleTime = 0
+local DEBOUNCE_TIME = 0.5 -- seconds
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -184,20 +189,12 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
     part.Parent = workspace
     part.Anchored = true
     part.CanCollide = false
-    part.Material = Enum.Material.Neon
+    part.Material = Enum.Material.SmoothPlastic
     part.Color = color
     part.Transparency = isMarker and 0.3 or (isClickable and 0.5 or 0.7)
     part.Size = isMarker and Vector3.new(1, 1, 1) or (isClickable and Vector3.new(0.8, 0.8, 0.8) or Vector3.new(0.5, 0.5, 0.5))
     part.Shape = isMarker and Enum.PartType.Ball or Enum.PartType.Block
     part.CFrame = CFrame.new(position)
-    
-    if isMarker or isClickable then
-        local pointLight = Instance.new("PointLight")
-        pointLight.Parent = part
-        pointLight.Color = color
-        pointLight.Brightness = isClickable and 3 or 2
-        pointLight.Range = isClickable and 15 or 10
-    end
     
     if isClickable then
         -- Add click detection
@@ -223,7 +220,7 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             billboard.Parent = part
             billboard.Size = UDim2.new(0, 120, 0, 40)
             billboard.StudsOffset = Vector3.new(0, 3, 0)
-            billboard.AlwaysOnTop = true
+            billboard.AlwaysOnTop = false
             
             local textLabel = Instance.new("TextLabel")
             textLabel.Parent = billboard
@@ -243,6 +240,11 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             -- Set playback start index
             pathPauseIndex = closestIndex
             print("[SUPERTOOL] Path playback will start from index " .. closestIndex)
+            
+            if pathPlaying then
+                stopPathPlayback()
+                playPath(currentPathName, false, pathAutoPlaying, pathAutoRespawning)
+            end
         end)
     end
     
@@ -252,7 +254,7 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             billboard.Parent = part
             billboard.Size = UDim2.new(0, 100, 0, 30)
             billboard.StudsOffset = Vector3.new(0, 2, 0)
-            billboard.AlwaysOnTop = true
+            billboard.AlwaysOnTop = false
             
             local textLabel = Instance.new("TextLabel")
             textLabel.Parent = billboard
@@ -304,7 +306,7 @@ local function createPausedHereMarker(position)
     pausedHereLabel.Parent = workspace
     pausedHereLabel.Anchored = true
     pausedHereLabel.CanCollide = false
-    pausedHereLabel.Material = Enum.Material.Neon
+    pausedHereLabel.Material = Enum.Material.SmoothPlastic
     pausedHereLabel.Color = movementColors.paused
     pausedHereLabel.Transparency = 0.2
     pausedHereLabel.Size = Vector3.new(1.5, 1.5, 1.5)
@@ -315,7 +317,7 @@ local function createPausedHereMarker(position)
     billboard.Parent = pausedHereLabel
     billboard.Size = UDim2.new(0, 120, 0, 40)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
+    billboard.AlwaysOnTop = false
     
     local textLabel = Instance.new("TextLabel")
     textLabel.Parent = billboard
@@ -328,6 +330,42 @@ local function createPausedHereMarker(position)
     textLabel.TextSize = 12
     textLabel.Font = Enum.Font.GothamBold
     textLabel.Text = "PAUSED HERE"
+end
+
+local function togglePathVisibility()
+    pathVisualsVisible = not pathVisualsVisible
+    
+    local transparency = pathVisualsVisible and 0 or 1
+    
+    for _, part in pairs(pathVisualParts) do
+        if part and part.Parent then
+            part.Transparency = transparency
+            local billboard = part:FindFirstChildOfClass("BillboardGui")
+            if billboard then
+                billboard.Enabled = pathVisualsVisible
+            end
+        end
+    end
+    
+    for _, part in pairs(pathMarkerParts) do
+        if part and part.Parent then
+            part.Transparency = transparency
+            local billboard = part:FindFirstChildOfClass("BillboardGui")
+            if billboard then
+                billboard.Enabled = pathVisualsVisible
+            end
+        end
+    end
+    
+    if pausedHereLabel and pausedHereLabel.Parent then
+        pausedHereLabel.Transparency = transparency
+        local billboard = pausedHereLabel:FindFirstChildOfClass("BillboardGui")
+        if billboard then
+            billboard.Enabled = pathVisualsVisible
+        end
+    end
+    
+    print("[SUPERTOOL] Path visuals " .. (pathVisualsVisible and "shown" or "hidden"))
 end
 
 -- Path Recording Functions
@@ -523,9 +561,9 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     pathAutoRespawning = respawn or false
     currentPathName = pathName
     pathPaused = false
-    pathPauseIndex = 1
     playbackStartTime = tick()
     playbackPauseTime = 0
+    playbackOffsetTime = path.points[pathPauseIndex].time or 0
     
     clearPathVisuals()
     
@@ -570,6 +608,7 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
                     resetCharacter()
                 else
                     index = 1
+                    playbackOffsetTime = path.points[1].time or 0
                     playbackStartTime = tick()
                     playbackPauseTime = 0
                 end
@@ -581,11 +620,11 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         
         local point = path.points[index]
         if point then
-            local adjustedTime = point.time - playbackPauseTime
+            local adjustedTime = point.time - playbackOffsetTime - playbackPauseTime
             if tick() - playbackStartTime >= adjustedTime then
                 pcall(function()
                     rootPart.CFrame = point.cframe
-                    rootPart.Velocity = point.velocity
+                    rootPart.Velocity = point.movementType == "idle" and Vector3.new(0, 0, 0) or point.velocity
                     humanoid.WalkSpeed = point.walkSpeed
                     humanoid.JumpPower = point.jumpPower
                 end)
@@ -615,6 +654,7 @@ local function stopPathPlayback()
     pathPaused = false
     pathShowOnly = false
     pathPauseIndex = 1
+    playbackOffsetTime = 0
     if pathPlayConnection then
         pathPlayConnection:Disconnect()
         pathPlayConnection = nil
@@ -1246,9 +1286,27 @@ local function setupKeyboardControls()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
+        local currentTime = tick()
+        
         -- FIXED: Ctrl+Z for undo during path recording
         if input.KeyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
             undoToLastMarker()
+        end
+        
+        -- Ctrl+P for pause/resume
+        if input.KeyCode == Enum.KeyCode.P and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+            if currentTime - lastPauseToggleTime >= DEBOUNCE_TIME then
+                lastPauseToggleTime = currentTime
+                pausePath()
+            end
+        end
+        
+        -- Ctrl+L for hide/show path visuals
+        if input.KeyCode == Enum.KeyCode.L and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+            if currentTime - lastVisibilityToggleTime >= DEBOUNCE_TIME then
+                lastVisibilityToggleTime = currentTime
+                togglePathVisibility()
+            end
         end
     end)
 end
