@@ -1,5 +1,7 @@
--- Enhanced Utility-related features for MinimalHackGUI by Fari Noveri
--- Updated version with gear spawning system and fixed path loading
+-- Enhanced Path-only Utility for MinimalHackGUI by Fari Noveri
+-- Updated version with fixed Ctrl+Z, JSON loading, status display, and enhanced path features
+-- REMOVED: All macro functionality
+-- ADDED: Top-right status display, pause/resume with markers, clickable path points
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -12,6 +14,8 @@ local pathRecording = false
 local pathPlaying = false
 local pathShowOnly = false
 local pathPaused = false
+local pathAutoPlaying = false
+local pathAutoRespawning = false
 local currentPath = {}
 local savedPaths = {}
 local pathFrameVisible = false
@@ -26,17 +30,14 @@ local pathMarkerParts = {}
 local idleStartTime = nil
 local currentIdleLabel = nil
 local idleStartPosition = nil
-
--- Gear System Variables
-local gearFrameVisible = false
-local GearFrame, GearScrollFrame, GearLayout
-local spawnedGears = {}
+local pausedHereLabel = nil
+local playbackStartTime = 0
+local playbackPauseTime = 0
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PATH_FOLDER_PATH = "Supertool/Paths/"
 
 -- Path movement detection constants
@@ -45,6 +46,7 @@ local JUMP_THRESHOLD = 20 -- studs per second Y velocity
 local FALL_THRESHOLD = -10 -- studs per second Y velocity
 local SWIM_THRESHOLD = 2 -- when in water
 local MARKER_DISTANCE = 5 -- meters between path markers
+local CLICKABLE_RADIUS = 5 -- meters radius for clickable path points
 
 -- Movement colors
 local movementColors = {
@@ -52,31 +54,8 @@ local movementColors = {
     jumping = Color3.fromRGB(255, 0, 0),
     falling = Color3.fromRGB(255, 255, 0),
     walking = Color3.fromRGB(0, 255, 0),
-    idle = Color3.fromRGB(200, 200, 200)
-}
-
--- Gear database
-local gearDatabase = {
-    {id = 225921000, name = "Rainbow Magic Carpet"},
-    {id = 2758794374, name = "The 6th Annual Bloxy Award"},
-    {id = 99119158, name = "Speed Coil"},
-    {id = 101078559, name = "Icy Arctic Fowl"},
-    {id = 168140949, name = "Dragon's Flame Sword"},
-    {id = 139574344, name = "Frost Guard General's Sword"},
-    {id = 92142799, name = "Phoenix"},
-    {id = 477910063, name = "Deluxe Rainbow Magic Carpet"},
-    {id = 88885539, name = "Airstrike"},
-    {id = 150366274, name = "Dual Gravity Coil"},
-    {id = 119101539, name = "Regeneration Coil"},
-    {id = 170896941, name = "Foul Poison Fowl"},
-    {id = 261827192, name = "Neon Rainbow Phoenix"},
-    {id = 1016183873, name = "Golden Magic Carpet"},
-    {id = 163355404, name = "8-Bit Phoenix"},
-    {id = 2548989639, name = "Water Dragon Claws"},
-    {id = 610133821, name = "Flying Dragon"},
-    {id = 172246820, name = "Paint Grenade"},
-    {id = 65545971, name = "Mega Annoying Megaphone"},
-    {id = 2605966484, name = "Breath of Ice"}
+    idle = Color3.fromRGB(200, 200, 200),
+    paused = Color3.fromRGB(255, 255, 255)
 }
 
 -- Helper function for sanitize filename
@@ -197,27 +176,76 @@ local function getColorFromType(movementType)
 end
 
 -- Path Visualization
-local function createPathVisual(position, movementType, isMarker, idleDuration)
+local function createPathVisual(position, movementType, isMarker, idleDuration, isClickable)
     local color = getColorFromType(movementType)
     local part = Instance.new("Part")
-    part.Name = isMarker and "PathMarker" or "PathPoint"
+    part.Name = isMarker and "PathMarker" or (isClickable and "ClickablePathPoint" or "PathPoint")
     part.Parent = workspace
     part.Anchored = true
     part.CanCollide = false
     part.Material = Enum.Material.Neon
     part.Color = color
-    part.Transparency = isMarker and 0.3 or 0.7
-    part.Size = isMarker and Vector3.new(1, 1, 1) or Vector3.new(0.5, 0.5, 0.5)
+    part.Transparency = isMarker and 0.3 or (isClickable and 0.5 or 0.7)
+    part.Size = isMarker and Vector3.new(1, 1, 1) or (isClickable and Vector3.new(0.8, 0.8, 0.8) or Vector3.new(0.5, 0.5, 0.5))
     part.Shape = isMarker and Enum.PartType.Ball or Enum.PartType.Block
     part.CFrame = CFrame.new(position)
     
-    if isMarker then
+    if isMarker or isClickable then
         local pointLight = Instance.new("PointLight")
         pointLight.Parent = part
         pointLight.Color = color
-        pointLight.Brightness = 2
-        pointLight.Range = 10
+        pointLight.Brightness = isClickable and 3 or 2
+        pointLight.Range = isClickable and 15 or 10
+    end
+    
+    if isClickable then
+        -- Add click detection
+        local detector = Instance.new("ClickDetector")
+        detector.Parent = part
+        detector.MaxActivationDistance = 50
         
+        detector.MouseClick:Connect(function(player)
+            -- Find the closest point in the path
+            local closestIndex = 1
+            local closestDistance = math.huge
+            
+            for i, point in pairs(currentPath.points or savedPaths[currentPathName].points or {}) do
+                local distance = (position - point.position).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestIndex = i
+                end
+            end
+            
+            -- Create "Start From Here" label
+            local billboard = Instance.new("BillboardGui")
+            billboard.Parent = part
+            billboard.Size = UDim2.new(0, 120, 0, 40)
+            billboard.StudsOffset = Vector3.new(0, 3, 0)
+            billboard.AlwaysOnTop = true
+            
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Parent = billboard
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            textLabel.BackgroundTransparency = 0.3
+            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            textLabel.TextStrokeTransparency = 0.5
+            textLabel.TextSize = 14
+            textLabel.Font = Enum.Font.GothamBold
+            textLabel.Text = "START FROM HERE"
+            
+            -- Auto-remove after 3 seconds
+            game:GetService("Debris"):AddItem(billboard, 3)
+            
+            -- Set playback start index
+            pathPauseIndex = closestIndex
+            print("[SUPERTOOL] Path playback will start from index " .. closestIndex)
+        end)
+    end
+    
+    if isMarker then        
         if movementType == "idle" and idleDuration then
             local billboard = Instance.new("BillboardGui")
             billboard.Parent = part
@@ -257,105 +285,48 @@ local function clearPathVisuals()
     end
     pathVisualParts = {}
     pathMarkerParts = {}
+    
+    -- Clear paused here label
+    if pausedHereLabel and pausedHereLabel.Parent then
+        pausedHereLabel:Destroy()
+        pausedHereLabel = nil
+    end
 end
 
--- Gear Functions
-local function spawnGear(gearId)
-    local success, result = pcall(function()
-        if spawnedGears[gearId] then
-            warn("[SUPERTOOL] Gear already spawned: " .. gearId)
-            return false
-        end
-        
-        if not updateCharacterReferences() then
-            warn("[SUPERTOOL] Cannot spawn gear: Character not ready")
-            return false
-        end
-        
-        -- Use game:GetObjects instead of InsertService for better compatibility
-        local success2, gearModel = pcall(function()
-            return game:GetObjects("rbxassetid://" .. gearId)[1]
-        end)
-        
-        if success2 and gearModel then
-            if gearModel:IsA("Tool") then
-                gearModel.Parent = player.Backpack
-                spawnedGears[gearId] = gearModel
-                print("[SUPERTOOL] Gear spawned: " .. gearModel.Name)
-                return true
-            else
-                -- If it's not a tool directly, look for tool inside
-                local tool = gearModel:FindFirstChildOfClass("Tool")
-                if tool then
-                    tool.Parent = player.Backpack
-                    spawnedGears[gearId] = tool
-                    print("[SUPERTOOL] Gear spawned: " .. tool.Name)
-                    return true
-                else
-                    warn("[SUPERTOOL] Asset " .. gearId .. " is not a valid tool")
-                    return false
-                end
-            end
-        else
-            -- Fallback method using loadstring if available
-            local loadstringSuccess, loadstringResult = pcall(function()
-                if loadstring then
-                    local code = [[
-                        local tool = Instance.new("Tool")
-                        tool.Name = "Gear_]] .. gearId .. [["
-                        tool.RequiresHandle = true
-                        
-                        local handle = Instance.new("Part")
-                        handle.Name = "Handle"
-                        handle.Parent = tool
-                        handle.Size = Vector3.new(1, 1, 4)
-                        handle.Material = Enum.Material.Neon
-                        handle.BrickColor = BrickColor.new("Bright blue")
-                        
-                        return tool
-                    ]]
-                    return loadstring(code)()
-                end
-            end)
-            
-            if loadstringSuccess and loadstringResult then
-                loadstringResult.Parent = player.Backpack
-                spawnedGears[gearId] = loadstringResult
-                print("[SUPERTOOL] Fallback gear created: " .. gearId)
-                return true
-            else
-                warn("[SUPERTOOL] Failed to spawn gear " .. gearId .. ": Asset not accessible")
-                return false
-            end
-        end
-    end)
-    
-    if not success then
-        warn("[SUPERTOOL] Error spawning gear " .. gearId .. ": " .. tostring(result))
-        return false
+local function createPausedHereMarker(position)
+    if pausedHereLabel and pausedHereLabel.Parent then
+        pausedHereLabel:Destroy()
     end
     
-    return result
-end
-
-local function removeGear(gearId)
-    if spawnedGears[gearId] then
-        spawnedGears[gearId]:Destroy()
-        spawnedGears[gearId] = nil
-        print("[SUPERTOOL] Gear removed: " .. gearId)
-        return true
-    end
-    return false
-end
-
-local function resetAllGears()
-    for gearId, gear in pairs(spawnedGears) do
-        if gear and gear.Parent then
-            gear:Destroy()
-        end
-    end
-    spawnedGears = {}
-    print("[SUPERTOOL] All gears reset")
+    pausedHereLabel = Instance.new("Part")
+    pausedHereLabel.Name = "PausedHereMarker"
+    pausedHereLabel.Parent = workspace
+    pausedHereLabel.Anchored = true
+    pausedHereLabel.CanCollide = false
+    pausedHereLabel.Material = Enum.Material.Neon
+    pausedHereLabel.Color = movementColors.paused
+    pausedHereLabel.Transparency = 0.2
+    pausedHereLabel.Size = Vector3.new(1.5, 1.5, 1.5)
+    pausedHereLabel.Shape = Enum.PartType.Ball
+    pausedHereLabel.CFrame = CFrame.new(position)
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Parent = pausedHereLabel
+    billboard.Size = UDim2.new(0, 120, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Parent = billboard
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    textLabel.BackgroundTransparency = 0.3
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    textLabel.TextStrokeTransparency = 0.5
+    textLabel.TextSize = 12
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.Text = "PAUSED HERE"
 end
 
 -- Path Recording Functions
@@ -379,6 +350,7 @@ local function startPathRecording()
     clearPathVisuals()
     
     print("[SUPERTOOL] Path recording started")
+    updatePathStatus()
     
     local previousMovementType = nil
     
@@ -416,11 +388,14 @@ local function startPathRecording()
             end
             if currentIdleLabel then
                 local duration = currentTime - idleStartTime
-                local label = currentIdleLabel:FindFirstChildOfClass("BillboardGui"):FindFirstChild("IdleLabel")
+                local label = currentIdleLabel:FindFirstChildOfClass("BillboardGui")
                 if label then
-                    label.Text = duration >= 60 and 
-                        string.format("%.1fm", duration/60) or 
-                        string.format("%.1fs", duration)
+                    local textLabel = label:FindFirstChild("IdleLabel")
+                    if textLabel then
+                        textLabel.Text = duration >= 60 and 
+                            string.format("%.1fm", duration/60) or 
+                            string.format("%.1fs", duration)
+                    end
                 end
             end
         else
@@ -504,6 +479,7 @@ local function stopPathRecording()
     if #currentPath.points == 0 then
         warn("[SUPERTOOL] Cannot save empty path")
         clearPathVisuals()
+        updatePathStatus()
         return
     end
     
@@ -518,13 +494,16 @@ local function stopPathRecording()
     
     PathInput.Text = ""
     updatePathList()
+    updatePathStatus()
     
     print("[SUPERTOOL] Path recorded: " .. pathName .. " (" .. #currentPath.points .. " points, " .. #currentPath.markers .. " markers)")
 end
 
 -- Path Playback Functions
 local function playPath(pathName, showOnly, autoPlay, respawn)
-    if pathRecording or pathPlaying then return end
+    if pathRecording or pathPlaying then 
+        stopPathPlayback()
+    end
     
     if not updateCharacterReferences() then
         warn("[SUPERTOOL] Cannot play path: Character not ready")
@@ -544,11 +523,23 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     currentPathName = pathName
     pathPaused = false
     pathPauseIndex = 1
+    playbackStartTime = tick()
+    playbackPauseTime = 0
     
     clearPathVisuals()
+    
+    -- Create path visuals with clickable points every 5 meters
+    local lastClickablePosition = nil
     for i, point in pairs(path.points) do
         local visualPart = createPathVisual(point.position, point.movementType, false)
         table.insert(pathVisualParts, visualPart)
+        
+        -- Add clickable points every 5 meters
+        if not lastClickablePosition or (point.position - lastClickablePosition).Magnitude >= CLICKABLE_RADIUS then
+            local clickablePart = createPathVisual(point.position, point.movementType, false, nil, true)
+            table.insert(pathMarkerParts, clickablePart)
+            lastClickablePosition = point.position
+        end
     end
     
     for i, marker in pairs(path.markers or {}) do
@@ -556,16 +547,16 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         table.insert(pathMarkerParts, markerPart)
     end
     
+    updatePathStatus()
+    
     if pathShowOnly then
         print("[SUPERTOOL] Showing path: " .. pathName)
-        updatePathStatus()
         return
     end
     
     print("[SUPERTOOL] Playing path: " .. pathName)
     
-    local startTime = tick()
-    local index = 1
+    local index = pathPauseIndex
     
     pathPlayConnection = RunService.Heartbeat:Connect(function()
         if not pathPlaying or pathPaused then return end
@@ -578,30 +569,27 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
                     resetCharacter()
                 else
                     index = 1
-                    startTime = tick()
+                    playbackStartTime = tick()
+                    playbackPauseTime = 0
                 end
             else
-                pathPlaying = false
-                currentPathName = nil
-                if pathPlayConnection then
-                    pathPlayConnection:Disconnect()
-                    pathPlayConnection = nil
-                end
-                humanoid.WalkSpeed = settings.WalkSpeed.value or 16
-                updatePathStatus()
+                stopPathPlayback()
                 return
             end
         end
         
         local point = path.points[index]
-        if point and tick() - startTime >= point.time then
-            pcall(function()
-                rootPart.CFrame = point.cframe
-                rootPart.Velocity = point.velocity
-                humanoid.WalkSpeed = point.walkSpeed
-                humanoid.JumpPower = point.jumpPower
-            end)
-            index = index + 1
+        if point then
+            local adjustedTime = point.time - playbackPauseTime
+            if tick() - playbackStartTime >= adjustedTime then
+                pcall(function()
+                    rootPart.CFrame = point.cframe
+                    rootPart.Velocity = point.velocity
+                    humanoid.WalkSpeed = point.walkSpeed
+                    humanoid.JumpPower = point.jumpPower
+                end)
+                index = index + 1
+            end
         end
     end)
 end
@@ -634,25 +622,52 @@ local function stopPathPlayback()
         humanoid.WalkSpeed = settings.WalkSpeed.value or 16
     end
     currentPathName = nil
+    
+    -- Clear paused here marker
+    if pausedHereLabel and pausedHereLabel.Parent then
+        pausedHereLabel:Destroy()
+        pausedHereLabel = nil
+    end
+    
     updatePathList()
     updatePathStatus()
 end
 
--- Path Undo System
-local function undoToLastMarker()
-    if not pathRecording or not currentPath then
-        warn("[SUPERTOOL] Undo only available during path recording")
-        return
+local function pausePath()
+    if not pathPlaying or pathShowOnly then return end
+    
+    pathPaused = not pathPaused
+    
+    if pathPaused then
+        -- Create paused marker at current position
+        if updateCharacterReferences() then
+            createPausedHereMarker(rootPart.Position)
+            playbackPauseTime = playbackPauseTime + (tick() - playbackStartTime)
+        end
+    else
+        -- Remove paused marker and resume
+        if pausedHereLabel and pausedHereLabel.Parent then
+            pausedHereLabel:Destroy()
+            pausedHereLabel = nil
+        end
+        playbackStartTime = tick()
     end
     
-    if not currentPath.markers or #currentPath.markers == 0 then
-        warn("[SUPERTOOL] No markers to undo")
+    updatePathStatus()
+end
+
+-- FIXED: Path Undo System
+local function undoToLastMarker()
+    if not pathRecording or not currentPath or not currentPath.markers or #currentPath.markers == 0 then
+        warn("[SUPERTOOL] Undo only available during path recording with existing markers")
         return
     end
     
     local lastMarkerIndex = #currentPath.markers
     local lastMarker = currentPath.markers[lastMarkerIndex]
+    
     if lastMarker and updateCharacterReferences() then
+        -- Teleport to last marker
         rootPart.CFrame = lastMarker.cframe
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
         
@@ -660,7 +675,7 @@ local function undoToLastMarker()
         currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
         currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
         
-        -- Update visuals
+        -- Update visuals - clear and recreate
         clearPathVisuals()
         for i, point in pairs(currentPath.points) do
             local visualPart = createPathVisual(point.position, point.movementType, false)
@@ -673,22 +688,54 @@ local function undoToLastMarker()
         end
         
         -- Create white sphere at undo position
-        local undoMarker = createPathVisual(lastMarker.position, "idle", true)
+        local undoMarker = createPathVisual(lastMarker.position, "paused", true)
         table.insert(pathMarkerParts, undoMarker)
     end
 end
 
--- Status Update Functions
-local function updatePathStatus()
+-- FIXED: Load all existing files function
+local function loadAllSavedPaths()
+    local success, result = pcall(function()
+        if not isfolder(PATH_FOLDER_PATH) then return 0 end
+        
+        local files = listfiles(PATH_FOLDER_PATH)
+        local loadedCount = 0
+        
+        for _, filePath in pairs(files) do
+            local fileName = filePath:match("([^/\\]+)%.json$")
+            if fileName then
+                local pathData = loadPathFromJSON(fileName)
+                if pathData then
+                    savedPaths[fileName] = pathData
+                    loadedCount = loadedCount + 1
+                end
+            end
+        end
+        
+        return loadedCount
+    end)
+    
+    if success then
+        print("[SUPERTOOL] Loaded " .. result .. " paths from disk")
+        return result
+    else
+        warn("[SUPERTOOL] Failed to load paths: " .. tostring(result))
+        return 0
+    end
+end
+
+-- Status Update Functions - FIXED
+function updatePathStatus()
     if not PathStatusLabel then return end
     
     local statusText = ""
     if pathRecording then
-        statusText = pathPaused and "Recording Paused" or "Recording Path..."
+        statusText = pathPaused and "🔴 Recording Paused" or "🔴 Recording Path..."
     elseif pathPlaying and currentPathName then
-        local statusPrefix = pathShowOnly and "👁️ Showing Path: " or "🛤️ Playing Path: "
-        local modeText = pathAutoRespawning and "Auto-Respawning Path" or (pathAutoPlaying and "Auto-Playing Path" or "Playing Path")
-        statusText = (pathPaused and "Paused: " or (pathShowOnly and statusPrefix or modeText .. ": ")) .. currentPathName
+        local statusPrefix = pathShowOnly and "👁️ Showing: " or "🛤️ Playing: "
+        local modeText = pathAutoRespawning and "Auto-Respawn" or (pathAutoPlaying and "Auto-Loop" or "Single Play")
+        statusText = (pathPaused and "⏸️ Paused: " or statusPrefix) .. currentPathName .. 
+                    (pathShowOnly and "" or " (" .. modeText .. ")")
     end
     
     PathStatusLabel.Text = statusText
@@ -840,195 +887,7 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
--- Load all saved paths on initialization
-local function loadAllPaths()
-    local success, result = pcall(function()
-        if not isfolder(PATH_FOLDER_PATH) then
-            makefolder(PATH_FOLDER_PATH)
-            return
-        end
-        
-        local files = listfiles(PATH_FOLDER_PATH)
-        local loadedCount = 0
-        
-        for _, filePath in ipairs(files) do
-            if string.find(filePath, "%.json$") then
-                local fileName = string.gsub(filePath, PATH_FOLDER_PATH, "")
-                local pathName = string.gsub(fileName, "%.json$", "")
-                
-                local pathData = loadPathFromJSON(pathName)
-                if pathData then
-                    savedPaths[pathName] = pathData
-                    loadedCount = loadedCount + 1
-                end
-            end
-        end
-        
-        print("[SUPERTOOL] Loaded " .. loadedCount .. " saved paths")
-    end)
-    
-    if not success then
-        warn("[SUPERTOOL] Failed to load saved paths: " .. tostring(result))
-    end
-end
-
--- Gear UI Functions
-local function initGearUI()
-    if GearFrame then return end
-    
-    GearFrame = Instance.new("Frame")
-    GearFrame.Name = "GearFrame"
-    GearFrame.Parent = ScreenGui
-    GearFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    GearFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    GearFrame.BorderSizePixel = 1
-    GearFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
-    GearFrame.Size = UDim2.new(0, 400, 0, 500)
-    GearFrame.Visible = false
-    GearFrame.Active = true
-    GearFrame.Draggable = true
-
-    local GearTitle = Instance.new("TextLabel")
-    GearTitle.Parent = GearFrame
-    GearTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearTitle.BorderSizePixel = 0
-    GearTitle.Size = UDim2.new(1, 0, 0, 25)
-    GearTitle.Font = Enum.Font.Gotham
-    GearTitle.Text = "GEAR SPAWNER - v1.0"
-    GearTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearTitle.TextSize = 10
-
-    local CloseGearButton = Instance.new("TextButton")
-    CloseGearButton.Parent = GearFrame
-    CloseGearButton.BackgroundTransparency = 1
-    CloseGearButton.Position = UDim2.new(1, -25, 0, 2)
-    CloseGearButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseGearButton.Font = Enum.Font.GothamBold
-    CloseGearButton.Text = "X"
-    CloseGearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseGearButton.TextSize = 10
-
-    local ResetAllButton = Instance.new("TextButton")
-    ResetAllButton.Parent = GearFrame
-    ResetAllButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-    ResetAllButton.BorderSizePixel = 0
-    ResetAllButton.Position = UDim2.new(0, 10, 0, 35)
-    ResetAllButton.Size = UDim2.new(1, -20, 0, 30)
-    ResetAllButton.Font = Enum.Font.Gotham
-    ResetAllButton.Text = "RESET ALL GEARS"
-    ResetAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ResetAllButton.TextSize = 9
-
-    GearScrollFrame = Instance.new("ScrollingFrame")
-    GearScrollFrame.Parent = GearFrame
-    GearScrollFrame.BackgroundTransparency = 1
-    GearScrollFrame.Position = UDim2.new(0, 10, 0, 75)
-    GearScrollFrame.Size = UDim2.new(1, -20, 1, -85)
-    GearScrollFrame.ScrollBarThickness = 3
-    GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    GearLayout = Instance.new("UIListLayout")
-    GearLayout.Parent = GearScrollFrame
-    GearLayout.Padding = UDim.new(0, 5)
-
-    CloseGearButton.MouseButton1Click:Connect(function()
-        GearFrame.Visible = false
-        gearFrameVisible = false
-    end)
-
-    ResetAllButton.MouseButton1Click:Connect(function()
-        resetAllGears()
-        updateGearList()
-    end)
-    
-    updateGearList()
-end
-
-local function updateGearList()
-    if not GearScrollFrame then return end
-    
-    for _, child in pairs(GearScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    
-    for i, gearData in ipairs(gearDatabase) do
-        local gearItem = Instance.new("Frame")
-        gearItem.Parent = GearScrollFrame
-        gearItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        gearItem.BorderColor3 = Color3.fromRGB(45, 45, 45)
-        gearItem.BorderSizePixel = 1
-        gearItem.Size = UDim2.new(1, -5, 0, 50)
-        
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Parent = gearItem
-        nameLabel.Position = UDim2.new(0, 10, 0, 5)
-        nameLabel.Size = UDim2.new(0, 200, 0, 20)
-        nameLabel.Text = gearData.name
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextSize = 8
-        nameLabel.Font = Enum.Font.Gotham
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local idLabel = Instance.new("TextLabel")
-        idLabel.Parent = gearItem
-        idLabel.Position = UDim2.new(0, 10, 0, 25)
-        idLabel.Size = UDim2.new(0, 200, 0, 15)
-        idLabel.Text = "ID: " .. gearData.id
-        idLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-        idLabel.BackgroundTransparency = 1
-        idLabel.TextSize = 6
-        idLabel.Font = Enum.Font.Gotham
-        idLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local isSpawned = spawnedGears[gearData.id] ~= nil
-        
-        local spawnButton = Instance.new("TextButton")
-        spawnButton.Parent = gearItem
-        spawnButton.Position = UDim2.new(1, -120, 0, 10)
-        spawnButton.Size = UDim2.new(0, 50, 0, 30)
-        spawnButton.BackgroundColor3 = isSpawned and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
-        spawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        spawnButton.TextSize = 7
-        spawnButton.Font = Enum.Font.Gotham
-        spawnButton.Text = isSpawned and "SPAWNED" or "SPAWN"
-        
-        local removeButton = Instance.new("TextButton")
-        removeButton.Parent = gearItem
-        removeButton.Position = UDim2.new(1, -60, 0, 10)
-        removeButton.Size = UDim2.new(0, 50, 0, 30)
-        removeButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-        removeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        removeButton.TextSize = 7
-        removeButton.Font = Enum.Font.Gotham
-        removeButton.Text = "REMOVE"
-        removeButton.Visible = isSpawned
-        
-        spawnButton.MouseButton1Click:Connect(function()
-            if not isSpawned then
-                if spawnGear(gearData.id) then
-                    updateGearList()
-                end
-            end
-        end)
-        
-        removeButton.MouseButton1Click:Connect(function()
-            if removeGear(gearData.id) then
-                updateGearList()
-            end
-        end)
-    end
-    
-    task.wait(0.1)
-    if GearLayout then
-        GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, GearLayout.AbsoluteContentSize.Y + 10)
-    end
-end
-
--- Path UI Functions
+-- UI Components
 local function initPathUI()
     if PathFrame then return end
     
@@ -1039,7 +898,7 @@ local function initPathUI()
     PathFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PathFrame.BorderSizePixel = 1
     PathFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
-    PathFrame.Size = UDim2.new(0, 300, 0, 400)
+    PathFrame.Size = UDim2.new(0, 320, 0, 450)
     PathFrame.Visible = false
     PathFrame.Active = true
     PathFrame.Draggable = true
@@ -1048,81 +907,116 @@ local function initPathUI()
     PathTitle.Parent = PathFrame
     PathTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     PathTitle.BorderSizePixel = 0
-    PathTitle.Size = UDim2.new(1, 0, 0, 20)
-    PathTitle.Font = Enum.Font.Gotham
-    PathTitle.Text = "PATH CREATOR - JSON SYNC v2.0"
+    PathTitle.Size = UDim2.new(1, 0, 0, 25)
+    PathTitle.Font = Enum.Font.GothamBold
+    PathTitle.Text = "PATH CREATOR v2.0 - Enhanced"
     PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PathTitle.TextSize = 8
+    PathTitle.TextSize = 10
 
     local ClosePathButton = Instance.new("TextButton")
     ClosePathButton.Parent = PathFrame
     ClosePathButton.BackgroundTransparency = 1
-    ClosePathButton.Position = UDim2.new(1, -20, 0, 2)
-    ClosePathButton.Size = UDim2.new(0, 15, 0, 15)
+    ClosePathButton.Position = UDim2.new(1, -25, 0, 2)
+    ClosePathButton.Size = UDim2.new(0, 20, 0, 20)
     ClosePathButton.Font = Enum.Font.GothamBold
     ClosePathButton.Text = "X"
-    ClosePathButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ClosePathButton.TextSize = 8
+    ClosePathButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    ClosePathButton.TextSize = 12
 
     PathInput = Instance.new("TextBox")
     PathInput.Parent = PathFrame
     PathInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     PathInput.BorderSizePixel = 0
-    PathInput.Position = UDim2.new(0, 5, 0, 25)
-    PathInput.Size = UDim2.new(1, -10, 0, 20)
+    PathInput.Position = UDim2.new(0, 5, 0, 30)
+    PathInput.Size = UDim2.new(1, -10, 0, 25)
     PathInput.Font = Enum.Font.Gotham
-    PathInput.PlaceholderText = "Search paths..."
+    PathInput.PlaceholderText = "Search paths or enter new path name..."
     PathInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PathInput.TextSize = 7
+    PathInput.TextSize = 8
 
     PathScrollFrame = Instance.new("ScrollingFrame")
     PathScrollFrame.Parent = PathFrame
     PathScrollFrame.BackgroundTransparency = 1
-    PathScrollFrame.Position = UDim2.new(0, 5, 0, 50)
-    PathScrollFrame.Size = UDim2.new(1, -10, 1, -80)
-    PathScrollFrame.ScrollBarThickness = 2
-    PathScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+    PathScrollFrame.Position = UDim2.new(0, 5, 0, 60)
+    PathScrollFrame.Size = UDim2.new(1, -10, 1, -100)
+    PathScrollFrame.ScrollBarThickness = 3
+    PathScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
     PathLayout = Instance.new("UIListLayout")
     PathLayout.Parent = PathScrollFrame
-    PathLayout.Padding = UDim.new(0, 2)
+    PathLayout.Padding = UDim.new(0, 3)
+
+    local PathControlsFrame = Instance.new("Frame")
+    PathControlsFrame.Parent = PathFrame
+    PathControlsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    PathControlsFrame.BorderSizePixel = 0
+    PathControlsFrame.Position = UDim2.new(0, 5, 1, -35)
+    PathControlsFrame.Size = UDim2.new(1, -10, 0, 30)
 
     local PathPauseButton = Instance.new("TextButton")
-    PathPauseButton.Parent = PathFrame
-    PathPauseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    PathPauseButton.Parent = PathControlsFrame
+    PathPauseButton.BackgroundColor3 = Color3.fromRGB(80, 80, 60)
     PathPauseButton.BorderSizePixel = 0
-    PathPauseButton.Position = UDim2.new(0, 5, 1, -30)
-    PathPauseButton.Size = UDim2.new(0, 100, 0, 25)
-    PathPauseButton.Font = Enum.Font.Gotham
-    PathPauseButton.Text = "Pause"
+    PathPauseButton.Position = UDim2.new(0, 5, 0, 2.5)
+    PathPauseButton.Size = UDim2.new(0, 80, 0, 25)
+    PathPauseButton.Font = Enum.Font.GothamBold
+    PathPauseButton.Text = "PAUSE/RESUME"
     PathPauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathPauseButton.TextSize = 8
-    PathPauseButton.Visible = pathPlaying
 
+    local ClearVisualsButton = Instance.new("TextButton")
+    ClearVisualsButton.Parent = PathControlsFrame
+    ClearVisualsButton.BackgroundColor3 = Color3.fromRGB(80, 60, 60)
+    ClearVisualsButton.BorderSizePixel = 0
+    ClearVisualsButton.Position = UDim2.new(0, 90, 0, 2.5)
+    ClearVisualsButton.Size = UDim2.new(0, 80, 0, 25)
+    ClearVisualsButton.Font = Enum.Font.GothamBold
+    ClearVisualsButton.Text = "CLEAR"
+    ClearVisualsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ClearVisualsButton.TextSize = 8
+
+    local UndoButton = Instance.new("TextButton")
+    UndoButton.Parent = PathControlsFrame
+    UndoButton.BackgroundColor3 = Color3.fromRGB(60, 80, 80)
+    UndoButton.BorderSizePixel = 0
+    UndoButton.Position = UDim2.new(0, 175, 0, 2.5)
+    UndoButton.Size = UDim2.new(0, 80, 0, 25)
+    UndoButton.Font = Enum.Font.GothamBold
+    UndoButton.Text = "UNDO (Ctrl+Z)"
+    UndoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    UndoButton.TextSize = 7
+
+    -- Status Label positioned at top right
     PathStatusLabel = Instance.new("TextLabel")
     PathStatusLabel.Parent = ScreenGui
     PathStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     PathStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PathStatusLabel.BorderSizePixel = 1
-    PathStatusLabel.Position = UDim2.new(1, -250, 0, 5)
-    PathStatusLabel.Size = UDim2.new(0, 240, 0, 25)
-    PathStatusLabel.Font = Enum.Font.Gotham
+    PathStatusLabel.Position = UDim2.new(1, -300, 0, 5)
+    PathStatusLabel.Size = UDim2.new(0, 290, 0, 30)
+    PathStatusLabel.Font = Enum.Font.GothamBold
     PathStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PathStatusLabel.TextSize = 8
-    PathStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    PathStatusLabel.TextSize = 9
+    PathStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     PathStatusLabel.Visible = false
-    PathStatusLabel.ZIndex = 10
+    PathStatusLabel.ZIndex = 100
 
+    -- Event connections
     ClosePathButton.MouseButton1Click:Connect(function()
         PathFrame.Visible = false
         pathFrameVisible = false
     end)
 
-    PathPauseButton.MouseButton1Click:Connect(function()
-        if not pathPlaying then return end
-        pathPaused = not pathPaused
-        updatePathStatus()
+    PathPauseButton.MouseButton1Click:Connect(pausePath)
+    ClearVisualsButton.MouseButton1Click:Connect(clearPathVisuals)
+    UndoButton.MouseButton1Click:Connect(undoToLastMarker)
+    
+    -- Search functionality
+    PathInput.Changed:Connect(function(property)
+        if property == "Text" then
+            updatePathList()
+        end
     end)
 end
 
@@ -1141,26 +1035,28 @@ function updatePathList()
             local pathItem = Instance.new("Frame")
             pathItem.Parent = PathScrollFrame
             pathItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            pathItem.Size = UDim2.new(1, -5, 0, 110)
+            pathItem.BorderColor3 = Color3.fromRGB(40, 40, 40)
+            pathItem.BorderSizePixel = 1
+            pathItem.Size = UDim2.new(1, -5, 0, 120)
             
             local nameLabel = Instance.new("TextLabel")
             nameLabel.Parent = pathItem
-            nameLabel.Position = UDim2.new(0, 5, 0, 5)
-            nameLabel.Size = UDim2.new(1, -10, 0, 15)
+            nameLabel.Position = UDim2.new(0, 5, 0, 3)
+            nameLabel.Size = UDim2.new(1, -10, 0, 18)
             nameLabel.Text = pathName
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
             nameLabel.BackgroundTransparency = 1
-            nameLabel.TextSize = 7
-            nameLabel.Font = Enum.Font.Gotham
+            nameLabel.TextSize = 9
+            nameLabel.Font = Enum.Font.GothamBold
             nameLabel.TextXAlignment = Enum.TextXAlignment.Left
             
             local infoLabel = Instance.new("TextLabel")
             infoLabel.Parent = pathItem
             infoLabel.Position = UDim2.new(0, 5, 0, 20)
-            infoLabel.Size = UDim2.new(1, -10, 0, 10)
+            infoLabel.Size = UDim2.new(1, -10, 0, 12)
             infoLabel.BackgroundTransparency = 1
-            infoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-            infoLabel.TextSize = 6
+            infoLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+            infoLabel.TextSize = 7
             infoLabel.Font = Enum.Font.Gotham
             infoLabel.Text = string.format("Points: %d | Markers: %d | Duration: %.1fs", 
                                          path.pointCount or 0, 
@@ -1168,99 +1064,103 @@ function updatePathList()
                                          path.duration or 0)
             infoLabel.TextXAlignment = Enum.TextXAlignment.Left
             
+            -- Button row 1
             local playButton = Instance.new("TextButton")
             playButton.Parent = pathItem
-            playButton.Position = UDim2.new(0, 5, 0, 40)
-            playButton.Size = UDim2.new(0, 40, 0, 18)
-            playButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            playButton.Position = UDim2.new(0, 5, 0, 38)
+            playButton.Size = UDim2.new(0, 45, 0, 20)
+            playButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
             playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             playButton.TextSize = 7
-            playButton.Font = Enum.Font.Gotham
+            playButton.Font = Enum.Font.GothamBold
             playButton.Text = (pathPlaying and currentPathName == pathName and not pathAutoPlaying) and "STOP" or "PLAY"
             
             local autoPlayButton = Instance.new("TextButton")
             autoPlayButton.Parent = pathItem
-            autoPlayButton.Position = UDim2.new(0, 50, 0, 40)
-            autoPlayButton.Size = UDim2.new(0, 40, 0, 18)
-            autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 80, 60)
+            autoPlayButton.Position = UDim2.new(0, 55, 0, 38)
+            autoPlayButton.Size = UDim2.new(0, 45, 0, 20)
+            autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
             autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             autoPlayButton.TextSize = 7
-            autoPlayButton.Font = Enum.Font.Gotham
-            autoPlayButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "AUTO"
+            autoPlayButton.Font = Enum.Font.GothamBold
+            autoPlayButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "LOOP"
             
             local autoRespButton = Instance.new("TextButton")
             autoRespButton.Parent = pathItem
-            autoRespButton.Position = UDim2.new(0, 95, 0, 40)
-            autoRespButton.Size = UDim2.new(0, 40, 0, 18)
-            autoRespButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+            autoRespButton.Position = UDim2.new(0, 105, 0, 38)
+            autoRespButton.Size = UDim2.new(0, 45, 0, 20)
+            autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
             autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             autoRespButton.TextSize = 7
-            autoRespButton.Font = Enum.Font.Gotham
+            autoRespButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
             
             local toggleShowButton = Instance.new("TextButton")
             toggleShowButton.Parent = pathItem
-            toggleShowButton.Position = UDim2.new(0, 140, 0, 40)
-            toggleShowButton.Size = UDim2.new(0, 40, 0, 18)
-            toggleShowButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            toggleShowButton.Position = UDim2.new(0, 155, 0, 38)
+            toggleShowButton.Size = UDim2.new(0, 45, 0, 20)
+            toggleShowButton.BackgroundColor3 = Color3.fromRGB(100, 100, 60)
             toggleShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             toggleShowButton.TextSize = 7
-            toggleShowButton.Font = Enum.Font.Gotham
+            toggleShowButton.Font = Enum.Font.GothamBold
             toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
             
             local deleteButton = Instance.new("TextButton")
             deleteButton.Parent = pathItem
-            deleteButton.Position = UDim2.new(0, 185, 0, 40)
-            deleteButton.Size = UDim2.new(0, 40, 0, 18)
-            deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+            deleteButton.Position = UDim2.new(0, 205, 0, 38)
+            deleteButton.Size = UDim2.new(0, 45, 0, 20)
+            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
             deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             deleteButton.TextSize = 7
-            deleteButton.Font = Enum.Font.Gotham
+            deleteButton.Font = Enum.Font.GothamBold
             deleteButton.Text = "DELETE"
             
+            -- Rename section
             local renameInput = Instance.new("TextBox")
             renameInput.Parent = pathItem
             renameInput.Position = UDim2.new(0, 5, 0, 65)
-            renameInput.Size = UDim2.new(0, 130, 0, 15)
+            renameInput.Size = UDim2.new(0, 150, 0, 18)
             renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
             renameInput.BorderSizePixel = 0
-            renameInput.PlaceholderText = "Rename..."
+            renameInput.PlaceholderText = "Enter new name..."
             renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameInput.TextSize = 6
+            renameInput.TextSize = 7
             renameInput.Font = Enum.Font.Gotham
             
             local renameButton = Instance.new("TextButton")
             renameButton.Parent = pathItem
-            renameButton.Position = UDim2.new(0, 140, 0, 65)
-            renameButton.Size = UDim2.new(0, 40, 0, 15)
-            renameButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            renameButton.Position = UDim2.new(0, 160, 0, 65)
+            renameButton.Size = UDim2.new(0, 50, 0, 18)
+            renameButton.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
             renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameButton.TextSize = 6
-            renameButton.Font = Enum.Font.Gotham
+            renameButton.TextSize = 7
+            renameButton.Font = Enum.Font.GothamBold
             renameButton.Text = "RENAME"
             
+            -- Speed control
             local speedLabel = Instance.new("TextLabel")
             speedLabel.Parent = pathItem
-            speedLabel.Position = UDim2.new(0, 5, 0, 85)
-            speedLabel.Size = UDim2.new(0, 40, 0, 15)
+            speedLabel.Position = UDim2.new(0, 5, 0, 90)
+            speedLabel.Size = UDim2.new(0, 50, 0, 18)
             speedLabel.BackgroundTransparency = 1
             speedLabel.Text = "Speed:"
             speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            speedLabel.TextSize = 6
+            speedLabel.TextSize = 7
             speedLabel.Font = Enum.Font.Gotham
             speedLabel.TextXAlignment = Enum.TextXAlignment.Left
             
             local speedInput = Instance.new("TextBox")
             speedInput.Parent = pathItem
-            speedInput.Position = UDim2.new(0, 50, 0, 85)
-            speedInput.Size = UDim2.new(0, 40, 0, 15)
+            speedInput.Position = UDim2.new(0, 55, 0, 90)
+            speedInput.Size = UDim2.new(0, 50, 0, 18)
             speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
             speedInput.BorderSizePixel = 0
             speedInput.Text = tostring(path.speed or 1)
             speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            speedInput.TextSize = 6
+            speedInput.TextSize = 7
             speedInput.Font = Enum.Font.Gotham
             
+            -- Event connections
             playButton.MouseButton1Click:Connect(function()
                 if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
                     stopPathPlayback()
@@ -1336,15 +1236,16 @@ function updatePathList()
     
     task.wait(0.1)
     if PathLayout then
-        PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 5)
+        PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
     end
 end
 
--- Keyboard Controls
+-- FIXED: Keyboard Controls
 local function setupKeyboardControls()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
+        -- FIXED: Ctrl+Z for undo during path recording
         if input.KeyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
             undoToLastMarker()
         end
@@ -1364,19 +1265,10 @@ function Utility.loadUtilityButtons(createButton)
         end
     end)
     
-    createButton("Spawn Gear", function()
-        if not GearFrame then initGearUI() end
-        GearFrame.Visible = not GearFrame.Visible
-        gearFrameVisible = GearFrame.Visible
-        if gearFrameVisible then
-            updateGearList()
-        end
-    end)
-    
     createButton("Clear Visuals", clearPathVisuals)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
-    createButton("Undo Path", undoToLastMarker)
+    createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
 end
 
 -- Initialize function
@@ -1391,12 +1283,15 @@ function Utility.init(deps)
     settings = deps.settings
     ScreenGui = deps.ScreenGui
     
+    -- Reset all states
     pathRecording = false
     pathPlaying = false
     pathShowOnly = false
     pathPaused = false
-    spawnedGears = {}
+    pathAutoPlaying = false
+    pathAutoRespawning = false
     
+    -- FIXED: Create folder structure first
     local success = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
@@ -1410,8 +1305,11 @@ function Utility.init(deps)
         warn("[SUPERTOOL] Failed to create folder structure")
     end
     
-    -- Load all saved paths
-    loadAllPaths()
+    -- FIXED: Load all existing files on initialization
+    task.spawn(function()
+        local pathCount = loadAllSavedPaths()
+        print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
+    end)
     
     setupKeyboardControls()
     
@@ -1444,8 +1342,6 @@ function Utility.init(deps)
                 pathPaused = true
                 updatePathStatus()
             end
-            -- Reset spawned gears when character is removed
-            spawnedGears = {}
         end)
         
         if humanoid then
@@ -1464,13 +1360,16 @@ function Utility.init(deps)
     
     task.spawn(function()
         initPathUI()
-        initGearUI()
-        print("[SUPERTOOL] Enhanced Utility Module v3.0 initialized")
-        print("  - Path Recording: Visual navigation with undo markers and idle duration")
-        print("  - Gear Spawner: 20 premium gears with reset all functionality")
-        print("  - Auto-load: Saved paths are loaded on initialization")
-        print("  - Keyboard Controls: Ctrl+Z (undo)")
-        print("  - JSON Storage: Supertool/Paths")
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized")
+        print("  - REMOVED: All macro functionality")
+        print("  - FIXED: Ctrl+Z undo function")
+        print("  - FIXED: JSON path loading after relog")
+        print("  - ADDED: Top-right status display")
+        print("  - ADDED: Clickable path points every 5 meters")
+        print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
+        print("  - ENHANCED: Better UI with improved controls")
+        print("  - Keyboard Controls: Ctrl+Z (undo during recording)")
+        print("  - JSON Storage: Supertool/Paths/")
     end)
 end
 
