@@ -39,6 +39,12 @@ local pathVisualsVisible = true
 local lastPauseToggleTime = 0
 local lastVisibilityToggleTime = 0
 local DEBOUNCE_TIME = 0.5 -- seconds
+local visualFolder
+
+-- Delete Mode Variables
+local deleteMode = false
+local DeleteStatusLabel
+local clickConnection
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -182,11 +188,37 @@ local function getColorFromType(movementType)
 end
 
 -- Path Visualization
+local function createPathSegment(pos1, pos2, color)
+    local att1 = Instance.new("Attachment")
+    att1.WorldPosition = pos1
+    att1.Parent = visualFolder
+
+    local att2 = Instance.new("Attachment")
+    att2.WorldPosition = pos2
+    att2.Parent = visualFolder
+
+    local beam = Instance.new("Beam")
+    beam.Attachment0 = att1
+    beam.Attachment1 = att2
+    beam.Color = ColorSequence.new(color)
+    beam.Transparency = NumberSequence.new(0.3)
+    beam.Width0 = 0.5
+    beam.Width1 = 0.5
+    beam.LightEmission = 0
+    beam.LightInfluence = 0
+    beam.FaceCamera = true
+    beam.Parent = visualFolder
+
+    table.insert(pathVisualParts, att1)
+    table.insert(pathVisualParts, att2)
+    table.insert(pathVisualParts, beam)
+end
+
 local function createPathVisual(position, movementType, isMarker, idleDuration, isClickable)
     local color = getColorFromType(movementType)
     local part = Instance.new("Part")
     part.Name = isMarker and "PathMarker" or (isClickable and "ClickablePathPoint" or "PathPoint")
-    part.Parent = workspace
+    part.Parent = visualFolder
     part.Anchored = true
     part.CanCollide = false
     part.Material = Enum.Material.SmoothPlastic
@@ -303,7 +335,7 @@ local function createPausedHereMarker(position)
     
     pausedHereLabel = Instance.new("Part")
     pausedHereLabel.Name = "PausedHereMarker"
-    pausedHereLabel.Parent = workspace
+    pausedHereLabel.Parent = visualFolder
     pausedHereLabel.Anchored = true
     pausedHereLabel.CanCollide = false
     pausedHereLabel.Material = Enum.Material.SmoothPlastic
@@ -330,35 +362,43 @@ local function createPausedHereMarker(position)
     textLabel.TextSize = 12
     textLabel.Font = Enum.Font.GothamBold
     textLabel.Text = "PAUSED HERE"
+
+    table.insert(pathMarkerParts, pausedHereLabel)
 end
 
 local function togglePathVisibility()
     pathVisualsVisible = not pathVisualsVisible
     
-    local transparency = pathVisualsVisible and 0 or 1
-    
-    for _, part in pairs(pathVisualParts) do
-        if part and part.Parent then
-            part.Transparency = transparency
-            local billboard = part:FindFirstChildOfClass("BillboardGui")
-            if billboard then
-                billboard.Enabled = pathVisualsVisible
+    for _, item in pairs(pathVisualParts) do
+        if item and item.Parent then
+            if item:IsA("Beam") then
+                item.Enabled = pathVisualsVisible
+            elseif item:IsA("Part") then
+                item.Transparency = pathVisualsVisible and 0.3 or 1
+                local billboard = item:FindFirstChildOfClass("BillboardGui")
+                if billboard then
+                    billboard.Enabled = pathVisualsVisible
+                end
             end
         end
     end
     
-    for _, part in pairs(pathMarkerParts) do
-        if part and part.Parent then
-            part.Transparency = transparency
-            local billboard = part:FindFirstChildOfClass("BillboardGui")
-            if billboard then
-                billboard.Enabled = pathVisualsVisible
+    for _, item in pairs(pathMarkerParts) do
+        if item and item.Parent then
+            if item:IsA("Beam") then
+                item.Enabled = pathVisualsVisible
+            elseif item:IsA("Part") then
+                item.Transparency = pathVisualsVisible and 0.3 or 1
+                local billboard = item:FindFirstChildOfClass("BillboardGui")
+                if billboard then
+                    billboard.Enabled = pathVisualsVisible
+                end
             end
         end
     end
     
     if pausedHereLabel and pausedHereLabel.Parent then
-        pausedHereLabel.Transparency = transparency
+        pausedHereLabel.Transparency = pathVisualsVisible and 0.2 or 1
         local billboard = pausedHereLabel:FindFirstChildOfClass("BillboardGui")
         if billboard then
             billboard.Enabled = pathVisualsVisible
@@ -415,8 +455,13 @@ local function startPathRecording()
         
         table.insert(currentPath.points, pathPoint)
         
-        local visualPart = createPathVisual(position, movementType, false)
-        table.insert(pathVisualParts, visualPart)
+        if #currentPath.points > 1 then
+            local prevPoint = currentPath.points[#currentPath.points - 1]
+            local color = getColorFromType(movementType)
+            if movementType ~= "idle" and (position - prevPoint.position).Magnitude > 0.1 then
+                createPathSegment(prevPoint.position, position, color)
+            end
+        end
         
         if movementType == "idle" then
             if previousMovementType ~= "idle" then
@@ -567,23 +612,30 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     
     clearPathVisuals()
     
-    -- Create path visuals with clickable points every 5 meters
+    -- Create path segments
+    for i = 1, #path.points - 1 do
+        local point = path.points[i]
+        local nextPoint = path.points[i + 1]
+        local color = getColorFromType(point.movementType)
+        if point.movementType ~= "idle" and (nextPoint.position - point.position).Magnitude > 0.1 then
+            createPathSegment(point.position, nextPoint.position, color)
+        end
+    end
+    
+    -- Create markers
+    for i, marker in pairs(path.markers or {}) do
+        local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
+        table.insert(pathMarkerParts, markerPart)
+    end
+    
+    -- Create clickable points every 5 meters
     local lastClickablePosition = nil
     for i, point in pairs(path.points) do
-        local visualPart = createPathVisual(point.position, point.movementType, false)
-        table.insert(pathVisualParts, visualPart)
-        
-        -- Add clickable points every 5 meters
         if not lastClickablePosition or (point.position - lastClickablePosition).Magnitude >= CLICKABLE_RADIUS then
             local clickablePart = createPathVisual(point.position, point.movementType, false, nil, true)
             table.insert(pathMarkerParts, clickablePart)
             lastClickablePosition = point.position
         end
-    end
-    
-    for i, marker in pairs(path.markers or {}) do
-        local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
-        table.insert(pathMarkerParts, markerPart)
     end
     
     updatePathStatus()
@@ -718,9 +770,13 @@ local function undoToLastMarker()
         
         -- Update visuals - clear and recreate
         clearPathVisuals()
-        for i, point in pairs(currentPath.points) do
-            local visualPart = createPathVisual(point.position, point.movementType, false)
-            table.insert(pathVisualParts, visualPart)
+        for i = 1, #currentPath.points - 1 do
+            local point = currentPath.points[i]
+            local nextPoint = currentPath.points[i + 1]
+            local color = getColorFromType(point.movementType)
+            if point.movementType ~= "idle" and (nextPoint.position - point.position).Magnitude > 0.1 then
+                createPathSegment(point.position, nextPoint.position, color)
+            end
         end
         
         for i, marker in pairs(currentPath.markers) do
@@ -781,6 +837,18 @@ function updatePathStatus()
     
     PathStatusLabel.Text = statusText
     PathStatusLabel.Visible = statusText ~= ""
+end
+
+function updateDeleteStatus()
+    if not DeleteStatusLabel then return end
+    
+    if deleteMode then
+        DeleteStatusLabel.Text = "🗑️ Delete Mode Active"
+        DeleteStatusLabel.Visible = true
+    else
+        DeleteStatusLabel.Text = ""
+        DeleteStatusLabel.Visible = false
+    end
 end
 
 -- File system functions for paths
@@ -928,6 +996,78 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
+-- Delete Mode Functions
+local function toggleDeleteMode()
+    deleteMode = not deleteMode
+    updateDeleteStatus()
+    
+    if deleteMode then
+        clickConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                local mouse = player:GetMouse()
+                local target = mouse.Target
+                if target then
+                    showDeleteConfirmation(target)
+                end
+            end
+        end)
+    else
+        if clickConnection then
+            clickConnection:Disconnect()
+            clickConnection = nil
+        end
+    end
+end
+
+local function showDeleteConfirmation(obj)
+    local confFrame = Instance.new("Frame")
+    confFrame.Parent = ScreenGui
+    confFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    confFrame.BorderSizePixel = 0
+    confFrame.Position = UDim2.new(0.5, -150, 0.5, -50)
+    confFrame.Size = UDim2.new(0, 300, 0, 100)
+    confFrame.ZIndex = 1000
+
+    local text = Instance.new("TextLabel")
+    text.Parent = confFrame
+    text.Position = UDim2.new(0, 0, 0, 0)
+    text.Size = UDim2.new(1, 0, 0.6, 0)
+    text.BackgroundTransparency = 1
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.TextSize = 14
+    text.Font = Enum.Font.Gotham
+    text.Text = "apakah anda yakin ingin menghapus " .. obj.Name .. " ini (yes/no)"
+    text.TextWrapped = true
+
+    local yesBtn = Instance.new("TextButton")
+    yesBtn.Parent = confFrame
+    yesBtn.Position = UDim2.new(0.2, 0, 0.7, 0)
+    yesBtn.Size = UDim2.new(0.3, 0, 0.2, 0)
+    yesBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    yesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    yesBtn.Text = "Yes"
+    yesBtn.Font = Enum.Font.GothamBold
+    yesBtn.TextSize = 14
+    yesBtn.MouseButton1Click:Connect(function()
+        obj:Destroy()
+        confFrame:Destroy()
+    end)
+
+    local noBtn = Instance.new("TextButton")
+    noBtn.Parent = confFrame
+    noBtn.Position = UDim2.new(0.5, 0, 0.7, 0)
+    noBtn.Size = UDim2.new(0.3, 0, 0.2, 0)
+    noBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+    noBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    noBtn.Text = "No"
+    noBtn.Font = Enum.Font.GothamBold
+    noBtn.TextSize = 14
+    noBtn.MouseButton1Click:Connect(function()
+        confFrame:Destroy()
+    end)
+end
+
 -- UI Components
 local function initPathUI()
     if PathFrame then return end
@@ -1042,6 +1182,21 @@ local function initPathUI()
     PathStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     PathStatusLabel.Visible = false
     PathStatusLabel.ZIndex = 100
+
+    -- Delete Status Label
+    DeleteStatusLabel = Instance.new("TextLabel")
+    DeleteStatusLabel.Parent = ScreenGui
+    DeleteStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    DeleteStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    DeleteStatusLabel.BorderSizePixel = 1
+    DeleteStatusLabel.Position = UDim2.new(1, -300, 0, 40)
+    DeleteStatusLabel.Size = UDim2.new(0, 290, 0, 30)
+    DeleteStatusLabel.Font = Enum.Font.GothamBold
+    DeleteStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DeleteStatusLabel.TextSize = 9
+    DeleteStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    DeleteStatusLabel.Visible = false
+    DeleteStatusLabel.ZIndex = 100
 
     -- Event connections
     ClosePathButton.MouseButton1Click:Connect(function()
@@ -1328,6 +1483,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
     createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
+    createButton("Toggle Delete Mode", toggleDeleteMode)
 end
 
 -- Initialize function
@@ -1367,6 +1523,10 @@ function Utility.init(deps)
     -- FIXED: Load all existing files on initialization
     local pathCount = loadAllSavedPaths()
     print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
+    
+    visualFolder = Instance.new("Folder")
+    visualFolder.Name = "PathVisuals"
+    visualFolder.Parent = workspace
     
     setupKeyboardControls()
     
