@@ -34,6 +34,9 @@ local foliageStates = {}
 local processedObjects = {}
 local freecamSpeed = 50
 local mouseDelta = Vector2.new(0, 0)
+Visual.selfHighlightEnabled = false
+Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
+local selfHighlight
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
@@ -1344,6 +1347,56 @@ local function toggleUltraLowDetail(enabled)
     end
 end
 
+-- New: Self Highlight - Adds a customizable outline to the player's own character
+local function createSelfHighlight()
+    if selfHighlight then
+        selfHighlight:Destroy()
+        selfHighlight = nil
+    end
+    
+    local character = player.Character
+    if character then
+        selfHighlight = Instance.new("Highlight")
+        selfHighlight.Name = "SelfHighlight"
+        selfHighlight.OutlineColor = Visual.selfHighlightColor
+        selfHighlight.FillTransparency = 1
+        selfHighlight.OutlineTransparency = 0
+        selfHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        selfHighlight.Adornee = character
+        selfHighlight.Parent = character
+        print("Self Highlight created")
+    end
+end
+
+local function toggleSelfHighlight(enabled)
+    Visual.selfHighlightEnabled = enabled
+    print("Self Highlight:", enabled)
+    
+    if enabled then
+        createSelfHighlight()
+        
+        if connections.selfHighlightCharAdded then
+            connections.selfHighlightCharAdded:Disconnect()
+        end
+        connections.selfHighlightCharAdded = player.CharacterAdded:Connect(function()
+            if Visual.selfHighlightEnabled then
+                task.wait(0.3)
+                createSelfHighlight()
+            end
+        end)
+        
+    else
+        if selfHighlight then
+            selfHighlight:Destroy()
+            selfHighlight = nil
+        end
+        if connections.selfHighlightCharAdded then
+            connections.selfHighlightCharAdded:Disconnect()
+            connections.selfHighlightCharAdded = nil
+        end
+    end
+end
+
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
     print("Loading visual buttons")
@@ -1365,6 +1418,51 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Day Mode", toggleDay)
     createToggleButton("Evening Mode", toggleEvening)
     createToggleButton("Night Mode", toggleNight)
+    createToggleButton("Self Highlight", toggleSelfHighlight)
+
+    -- Add hex color input for self highlight
+    local colorFrame = Instance.new("Frame")
+    colorFrame.Name = "SelfHighlightColorFrame"
+    colorFrame.Size = UDim2.new(1, 0, 0, 30)
+    colorFrame.BackgroundTransparency = 1
+    colorFrame.Parent = ScrollFrame
+
+    local label = Instance.new("TextLabel")
+    label.Text = "Self Outline Color (Hex):"
+    label.Size = UDim2.new(0.6, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 14
+    label.Font = Enum.Font.SourceSans
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = colorFrame
+
+    local textBox = Instance.new("TextBox")
+    textBox.Size = UDim2.new(0.4, 0, 1, 0)
+    textBox.Position = UDim2.new(0.6, 0, 0, 0)
+    textBox.Text = "#FFFFFF"
+    textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    textBox.BorderSizePixel = 0
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.TextSize = 14
+    textBox.Parent = colorFrame
+
+    textBox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            local hex = textBox.Text
+            if hex:sub(1,1) == "#" then hex = hex:sub(2) end
+            local success, color = pcall(Color3.fromHex, hex)
+            if success then
+                Visual.selfHighlightColor = color
+                if Visual.selfHighlightEnabled then
+                    createSelfHighlight()
+                end
+                textBox.Text = "#" .. color:ToHex()
+            else
+                textBox.Text = "#FFFFFF"
+            end
+        end
+    end)
 end
 
 -- Function to reset Visual states
@@ -1379,6 +1477,7 @@ function Visual.resetStates()
     Visual.hideAllNicknames = false
     Visual.hideOwnNickname = false
     Visual.currentTimeMode = "normal"
+    Visual.selfHighlightEnabled = false
     
     if connections.timeModeMonitor then
         connections.timeModeMonitor:Disconnect()
@@ -1406,6 +1505,7 @@ function Visual.resetStates()
     toggleESP(false)
     toggleHideAllNicknames(false)
     toggleHideOwnNickname(false)
+    toggleSelfHighlight(false)
     setTimeMode("normal")
 end
 
@@ -1461,6 +1561,8 @@ function Visual.init(deps)
     Visual.hideAllNicknames = false
     Visual.hideOwnNickname = false
     Visual.currentTimeMode = "normal"
+    Visual.selfHighlightEnabled = false
+    Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
     foliageStates = {}
@@ -1491,6 +1593,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     local wasESPEnabled = Visual.espEnabled
     local wasHideAllNicknames = Visual.hideAllNicknames
     local wasHideOwnNickname = Visual.hideOwnNickname
+    local wasSelfHighlightEnabled = Visual.selfHighlightEnabled
     local currentTimeMode = Visual.currentTimeMode
     
     if wasFreecamEnabled then
@@ -1540,6 +1643,10 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     if wasHideOwnNickname then
         print("Re-enabling Hide Own Nickname after respawn")
         toggleHideOwnNickname(true)
+    end
+    if wasSelfHighlightEnabled then
+        print("Re-enabling Self Highlight after respawn")
+        toggleSelfHighlight(true)
     end
     if currentTimeMode and currentTimeMode ~= "normal" then
         print("Re-enabling Time Mode after respawn:", currentTimeMode)
