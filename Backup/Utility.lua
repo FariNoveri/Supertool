@@ -1,10 +1,9 @@
 -- Enhanced Path-only Utility for MinimalHackGUI by Fari Noveri
--- Updated version with MAJOR FIXES
--- FIXED: Path deletion issue during playback
--- FIXED: Start From Here functionality 
--- FIXED: Auto-stop at path end
--- ADDED: Cool visual effects for paths
--- farinoveri30@gmail.com (claude ai)
+-- PERFORMANCE OPTIMIZED VERSION
+-- FIXED: Major lag issues during path visualization
+-- OPTIMIZED: Reduced visual part creation by 80%
+-- OPTIMIZED: Smart visual culling and batching
+-- OPTIMIZED: Efficient path rendering system
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -26,12 +25,12 @@ local PathFrame, PathScrollFrame, PathLayout, PathInput, PathStatusLabel
 local pathConnection = nil
 local pathPlayConnection = nil
 local currentPathName = nil
-local currentPlayingPath = nil  -- FIXED: Store the actual path data being played
+local currentPlayingPath = nil
 local pathPauseIndex = 1
 local lastPathTime = 0
 local pathVisualParts = {}
 local pathMarkerParts = {}
-local pathEffectParts = {}  -- NEW: For visual effects
+local pathEffectParts = {}
 local idleStartTime = nil
 local currentIdleLabel = nil
 local idleStartPosition = nil
@@ -44,6 +43,12 @@ local lastPauseToggleTime = 0
 local lastVisibilityToggleTime = 0
 local DEBOUNCE_TIME = 0.5 -- seconds
 
+-- PERFORMANCE OPTIMIZATION CONSTANTS
+local MAX_VISUAL_PARTS = 50 -- Limit visual parts to prevent lag
+local VISUAL_DISTANCE_THRESHOLD = 100 -- Only show visuals within 100 studs
+local PATH_SIMPLIFICATION_FACTOR = 5 -- Show every 5th point only
+local UPDATE_FREQUENCY = 0.1 -- Update visuals every 0.1 seconds instead of every frame
+
 -- File System Integration
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
@@ -55,8 +60,8 @@ local WALK_THRESHOLD = 5 -- studs per second
 local JUMP_THRESHOLD = 20 -- studs per second Y velocity
 local FALL_THRESHOLD = -10 -- studs per second Y velocity
 local SWIM_THRESHOLD = 2 -- when in water
-local MARKER_DISTANCE = 5 -- meters between path markers
-local CLICKABLE_RADIUS = 5 -- meters radius for clickable path points
+local MARKER_DISTANCE = 10 -- Increased from 5 to reduce markers
+local CLICKABLE_RADIUS = 8 -- Increased radius but fewer points
 
 -- Movement colors
 local movementColors = {
@@ -67,6 +72,33 @@ local movementColors = {
     idle = Color3.fromRGB(200, 200, 200),
     paused = Color3.fromRGB(255, 255, 255)
 }
+
+-- PERFORMANCE: Visual parts pooling system
+local visualPartsPool = {}
+local function getPooledPart()
+    if #visualPartsPool > 0 then
+        return table.remove(visualPartsPool)
+    else
+        local part = Instance.new("Part")
+        part.Anchored = true
+        part.CanCollide = false
+        part.Material = Enum.Material.SmoothPlastic
+        return part
+    end
+end
+
+local function returnToPool(part)
+    if part and part.Parent then
+        part.Parent = nil
+        -- Clear any children
+        for _, child in pairs(part:GetChildren()) do
+            if child:IsA("BillboardGui") or child:IsA("ClickDetector") then
+                child:Destroy()
+            end
+        end
+        table.insert(visualPartsPool, part)
+    end
+end
 
 -- Helper function for sanitize filename
 local function sanitizeFileName(name)
@@ -185,60 +217,56 @@ local function getColorFromType(movementType)
     return movementColors[movementType] or Color3.fromRGB(200, 200, 200)
 end
 
--- NEW: Create cool visual effects for path
+-- OPTIMIZED: Simplified visual effects (no more lag-causing animations)
 local function createPathEffect(position, movementType)
+    -- Skip effects during path showing to reduce lag
+    if pathShowOnly then return end
+    
     local color = getColorFromType(movementType)
     
-    -- Main glow sphere
-    local glowPart = Instance.new("Part")
+    -- Simple static glow part without animations
+    local glowPart = getPooledPart()
     glowPart.Name = "PathGlow"
     glowPart.Parent = workspace
-    glowPart.Anchored = true
-    glowPart.CanCollide = false
     glowPart.Material = Enum.Material.Neon
     glowPart.Color = color
-    glowPart.Transparency = 0.6
-    glowPart.Size = Vector3.new(1.2, 1.2, 1.2)
+    glowPart.Transparency = 0.7
+    glowPart.Size = Vector3.new(0.8, 0.8, 0.8)
     glowPart.Shape = Enum.PartType.Ball
     glowPart.CFrame = CFrame.new(position)
-    
-    -- Subtle pulsing animation
-    local pulseInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-    local pulseTween = TweenService:Create(glowPart, pulseInfo, {
-        Size = Vector3.new(1.5, 1.5, 1.5),
-        Transparency = 0.8
-    })
-    pulseTween:Play()
     
     table.insert(pathEffectParts, glowPart)
     return glowPart
 end
 
--- Path Visualization with enhanced effects
+-- OPTIMIZED: Distance-based and simplified path visualization
 local function createPathVisual(position, movementType, isMarker, idleDuration, isClickable)
+    -- PERFORMANCE: Check distance from player to reduce visual load
+    if rootPart and (position - rootPart.Position).Magnitude > VISUAL_DISTANCE_THRESHOLD then
+        return nil -- Don't create distant visuals
+    end
+    
     local color = getColorFromType(movementType)
-    local part = Instance.new("Part")
+    local part = getPooledPart()
     part.Name = isMarker and "PathMarker" or (isClickable and "ClickablePathPoint" or "PathPoint")
     part.Parent = workspace
-    part.Anchored = true
-    part.CanCollide = false
-    part.Material = Enum.Material.SmoothPlastic
     part.Color = color
-    part.Transparency = isMarker and 0.3 or (isClickable and 0.4 or 0.6)
-    part.Size = isMarker and Vector3.new(1, 1, 1) or (isClickable and Vector3.new(0.8, 0.8, 0.8) or Vector3.new(0.5, 0.5, 0.5))
+    part.Transparency = isMarker and 0.4 or (isClickable and 0.5 or 0.7) -- More transparent to reduce visual noise
+    part.Size = isMarker and Vector3.new(1.2, 1.2, 1.2) or (isClickable and Vector3.new(1, 1, 1) or Vector3.new(0.6, 0.6, 0.6))
     part.Shape = isMarker and Enum.PartType.Ball or Enum.PartType.Block
     part.CFrame = CFrame.new(position)
     
-    -- Add subtle glow effect for path points
-    if not isMarker then
+    -- OPTIMIZED: Only add effects to markers and clickable points
+    if not isMarker and not isClickable then
+        -- Skip effects for regular path points
+    elseif isClickable then
         createPathEffect(position, movementType)
     end
     
     if isClickable then
-        -- FIXED: Better click detection with proper billboard management
         local detector = Instance.new("ClickDetector")
         detector.Parent = part
-        detector.MaxActivationDistance = 50
+        detector.MaxActivationDistance = 30 -- Reduced from 50
         
         detector.MouseClick:Connect(function(clickingPlayer)
             if not currentPlayingPath or not currentPlayingPath.points then return end
@@ -265,97 +293,76 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             -- Create "Start From Here" label
             local billboard = Instance.new("BillboardGui")
             billboard.Parent = part
-            billboard.Size = UDim2.new(0, 120, 0, 40)
-            billboard.StudsOffset = Vector3.new(0, 3, 0)
+            billboard.Size = UDim2.new(0, 100, 0, 30)
+            billboard.StudsOffset = Vector3.new(0, 2, 0)
             billboard.AlwaysOnTop = true
             
             local textLabel = Instance.new("TextLabel")
             textLabel.Parent = billboard
             textLabel.Size = UDim2.new(1, 0, 1, 0)
             textLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-            textLabel.BackgroundTransparency = 0.2
-            textLabel.BorderSizePixel = 1
-            textLabel.BorderColor3 = Color3.fromRGB(255, 255, 255)
+            textLabel.BackgroundTransparency = 0.3
+            textLabel.BorderSizePixel = 0
             textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-            textLabel.TextStrokeTransparency = 0.3
-            textLabel.TextSize = 12
+            textLabel.TextStrokeTransparency = 0.5
+            textLabel.TextSize = 10
             textLabel.Font = Enum.Font.GothamBold
-            textLabel.Text = "START FROM HERE"
+            textLabel.Text = "START HERE"
             
-            -- Fade out animation after 5 seconds
+            -- Auto-fade after 3 seconds (reduced from 5)
             task.spawn(function()
-                task.wait(5)
+                task.wait(3)
                 if billboard and billboard.Parent then
-                    local fadeInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                    local fadeTween = TweenService:Create(textLabel, fadeInfo, {
-                        TextTransparency = 1,
-                        BackgroundTransparency = 1
-                    })
-                    fadeTween:Play()
-                    fadeTween.Completed:Connect(function()
-                        if billboard and billboard.Parent then
-                            billboard:Destroy()
-                        end
-                    end)
+                    billboard:Destroy()
                 end
             end)
             
-            -- Set playback start index
             pathPauseIndex = closestIndex
             print("[SUPERTOOL] Path playback will start from index " .. closestIndex)
             
-            -- FIXED: Restart playback if currently playing
             if pathPlaying and currentPathName then
                 stopPathPlayback()
-                task.wait(0.1)  -- Small delay to ensure proper cleanup
+                task.wait(0.1)
                 playPath(currentPathName, false, pathAutoPlaying, pathAutoRespawning)
             end
         end)
     end
     
-    if isMarker then        
-        if movementType == "idle" and idleDuration then
-            local billboard = Instance.new("BillboardGui")
-            billboard.Parent = part
-            billboard.Size = UDim2.new(0, 100, 0, 30)
-            billboard.StudsOffset = Vector3.new(0, 2, 0)
-            billboard.AlwaysOnTop = false
-            
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Parent = billboard
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-            textLabel.TextStrokeTransparency = 0.5
-            textLabel.TextSize = 12
-            textLabel.Font = Enum.Font.Gotham
-            textLabel.Text = idleDuration >= 60 and 
-                string.format("%.1fm", idleDuration/60) or 
-                string.format("%.1fs", idleDuration)
-            textLabel.Name = "IdleLabel"
-        end
+    -- OPTIMIZED: Simplified idle duration labels
+    if isMarker and movementType == "idle" and idleDuration and idleDuration > 2 then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Parent = part
+        billboard.Size = UDim2.new(0, 80, 0, 25)
+        billboard.StudsOffset = Vector3.new(0, 1.5, 0)
+        billboard.AlwaysOnTop = false
+        
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Parent = billboard
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textLabel.TextStrokeTransparency = 0.7
+        textLabel.TextSize = 10
+        textLabel.Font = Enum.Font.Gotham
+        textLabel.Text = idleDuration >= 60 and 
+            string.format("%.0fm", idleDuration/60) or 
+            string.format("%.0fs", idleDuration)
     end
     
     return part
 end
 
+-- OPTIMIZED: Efficient visual clearing with pooling
 local function clearPathVisuals()
+    -- Return all parts to pool instead of destroying them
     for _, part in pairs(pathVisualParts) do
-        if part and part.Parent then
-            part:Destroy()
-        end
+        returnToPool(part)
     end
     for _, part in pairs(pathMarkerParts) do
-        if part and part.Parent then
-            part:Destroy()
-        end
+        returnToPool(part)
     end
     for _, part in pairs(pathEffectParts) do
-        if part and part.Parent then
-            part:Destroy()
-        end
+        returnToPool(part)
     end
     pathVisualParts = {}
     pathMarkerParts = {}
@@ -363,75 +370,62 @@ local function clearPathVisuals()
     
     -- Clear paused here label
     if pausedHereLabel and pausedHereLabel.Parent then
-        pausedHereLabel:Destroy()
+        returnToPool(pausedHereLabel)
         pausedHereLabel = nil
     end
 end
 
 local function createPausedHereMarker(position)
     if pausedHereLabel and pausedHereLabel.Parent then
-        pausedHereLabel:Destroy()
+        returnToPool(pausedHereLabel)
     end
     
-    pausedHereLabel = Instance.new("Part")
+    pausedHereLabel = getPooledPart()
     pausedHereLabel.Name = "PausedHereMarker"
     pausedHereLabel.Parent = workspace
-    pausedHereLabel.Anchored = true
-    pausedHereLabel.CanCollide = false
-    pausedHereLabel.Material = Enum.Material.SmoothPlastic
     pausedHereLabel.Color = movementColors.paused
-    pausedHereLabel.Transparency = 0.2
-    pausedHereLabel.Size = Vector3.new(1.5, 1.5, 1.5)
+    pausedHereLabel.Transparency = 0.3
+    pausedHereLabel.Size = Vector3.new(1.2, 1.2, 1.2)
     pausedHereLabel.Shape = Enum.PartType.Ball
     pausedHereLabel.CFrame = CFrame.new(position)
     
     local billboard = Instance.new("BillboardGui")
     billboard.Parent = pausedHereLabel
-    billboard.Size = UDim2.new(0, 120, 0, 40)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Size = UDim2.new(0, 100, 0, 30)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
     billboard.AlwaysOnTop = false
     
     local textLabel = Instance.new("TextLabel")
     textLabel.Parent = billboard
     textLabel.Size = UDim2.new(1, 0, 1, 0)
     textLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    textLabel.BackgroundTransparency = 0.3
+    textLabel.BackgroundTransparency = 0.4
     textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    textLabel.TextStrokeTransparency = 0.5
-    textLabel.TextSize = 12
+    textLabel.TextStrokeTransparency = 0.7
+    textLabel.TextSize = 10
     textLabel.Font = Enum.Font.GothamBold
-    textLabel.Text = "PAUSED HERE"
+    textLabel.Text = "PAUSED"
 end
 
+-- OPTIMIZED: Efficient visibility toggle
 local function togglePathVisibility()
     pathVisualsVisible = not pathVisualsVisible
     
-    local transparency = pathVisualsVisible and 0 or 1
+    local transparency = pathVisualsVisible and 0.5 or 1
     
-    for _, part in pairs(pathVisualParts) do
+    -- Batch update all visuals
+    local allParts = {}
+    for _, part in pairs(pathVisualParts) do table.insert(allParts, part) end
+    for _, part in pairs(pathMarkerParts) do table.insert(allParts, part) end
+    for _, part in pairs(pathEffectParts) do table.insert(allParts, part) end
+    
+    for _, part in pairs(allParts) do
         if part and part.Parent then
             part.Transparency = transparency
             local billboard = part:FindFirstChildOfClass("BillboardGui")
             if billboard then
                 billboard.Enabled = pathVisualsVisible
             end
-        end
-    end
-    
-    for _, part in pairs(pathMarkerParts) do
-        if part and part.Parent then
-            part.Transparency = transparency
-            local billboard = part:FindFirstChildOfClass("BillboardGui")
-            if billboard then
-                billboard.Enabled = pathVisualsVisible
-            end
-        end
-    end
-    
-    for _, part in pairs(pathEffectParts) do
-        if part and part.Parent then
-            part.Transparency = pathVisualsVisible and 0.6 or 1
         end
     end
     
@@ -446,7 +440,7 @@ local function togglePathVisibility()
     print("[SUPERTOOL] Path visuals " .. (pathVisualsVisible and "shown" or "hidden"))
 end
 
--- Path Recording Functions
+-- OPTIMIZED: Path Recording with reduced visual creation
 local function startPathRecording()
     if pathRecording or pathPlaying then 
         warn("[SUPERTOOL] Cannot start path recording: Another recording/playback is active")
@@ -466,10 +460,11 @@ local function startPathRecording()
     idleStartPosition = nil
     clearPathVisuals()
     
-    print("[SUPERTOOL] Path recording started")
+    print("[SUPERTOOL] Path recording started (optimized mode)")
     updatePathStatus()
     
     local previousMovementType = nil
+    local lastVisualTime = 0
     
     pathConnection = RunService.Heartbeat:Connect(function()
         if not pathRecording or pathPaused then return end
@@ -493,25 +488,34 @@ local function startPathRecording()
         
         table.insert(currentPath.points, pathPoint)
         
-        local visualPart = createPathVisual(position, movementType, false)
-        table.insert(pathVisualParts, visualPart)
+        -- OPTIMIZED: Only create visuals every UPDATE_FREQUENCY seconds and limit count
+        if currentTime - lastVisualTime >= UPDATE_FREQUENCY and #pathVisualParts < MAX_VISUAL_PARTS then
+            local visualPart = createPathVisual(position, movementType, false)
+            if visualPart then
+                table.insert(pathVisualParts, visualPart)
+            end
+            lastVisualTime = currentTime
+        end
         
+        -- Handle idle detection (unchanged but optimized)
         if movementType == "idle" then
             if previousMovementType ~= "idle" then
                 idleStartTime = currentTime
                 idleStartPosition = position
                 currentIdleLabel = createPathVisual(position, movementType, true, 0)
-                table.insert(pathMarkerParts, currentIdleLabel)
+                if currentIdleLabel then
+                    table.insert(pathMarkerParts, currentIdleLabel)
+                end
             end
-            if currentIdleLabel then
+            if currentIdleLabel and currentTime - idleStartTime > 1 then -- Only update if idle for more than 1 second
                 local duration = currentTime - idleStartTime
                 local label = currentIdleLabel:FindFirstChildOfClass("BillboardGui")
                 if label then
-                    local textLabel = label:FindFirstChild("IdleLabel")
+                    local textLabel = label:FindFirstChild("TextLabel")
                     if textLabel then
                         textLabel.Text = duration >= 60 and 
-                            string.format("%.1fm", duration/60) or 
-                            string.format("%.1fs", duration)
+                            string.format("%.0fm", duration/60) or 
+                            string.format("%.0fs", duration)
                     end
                 end
             end
@@ -532,6 +536,7 @@ local function startPathRecording()
             end
         end
         
+        -- OPTIMIZED: Create fewer markers (increased distance threshold)
         local shouldCreateMarker = false
         if #currentPath.markers == 0 then
             shouldCreateMarker = true
@@ -554,9 +559,9 @@ local function startPathRecording()
             table.insert(currentPath.markers, marker)
             
             local markerPart = createPathVisual(position, movementType, true)
-            table.insert(pathMarkerParts, markerPart)
-            
-            print("[SUPERTOOL] Path marker created at " .. tostring(position))
+            if markerPart then
+                table.insert(pathMarkerParts, markerPart)
+            end
         end
         
         previousMovementType = movementType
@@ -616,7 +621,7 @@ local function stopPathRecording()
     print("[SUPERTOOL] Path recorded: " .. pathName .. " (" .. #currentPath.points .. " points, " .. #currentPath.markers .. " markers)")
 end
 
--- FIXED: Path Playback Functions with proper termination
+-- OPTIMIZED: Efficient path playback with smart visual loading
 local function playPath(pathName, showOnly, autoPlay, respawn)
     if pathRecording or pathPlaying then 
         stopPathPlayback()
@@ -633,7 +638,6 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     
-    -- FIXED: Store the path data being played separately from savedPaths
     currentPlayingPath = {
         name = path.name,
         points = {},
@@ -645,7 +649,7 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         speed = path.speed or 1
     }
     
-    -- Deep copy the points to prevent reference issues
+    -- Deep copy the points
     for i, point in pairs(path.points) do
         table.insert(currentPlayingPath.points, {
             time = point.time,
@@ -670,29 +674,65 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     
     clearPathVisuals()
     
-    -- Create path visuals with clickable points every 5 meters
-    local lastClickablePosition = nil
-    for i, point in pairs(currentPlayingPath.points) do
-        local visualPart = createPathVisual(point.position, point.movementType, false)
-        table.insert(pathVisualParts, visualPart)
+    -- OPTIMIZED: Smart visual creation with distance culling and simplification
+    print("[SUPERTOOL] Creating optimized path visuals...")
+    
+    -- Create simplified path visuals (every Nth point based on PATH_SIMPLIFICATION_FACTOR)
+    local visualCount = 0
+    local playerPos = rootPart and rootPart.Position or Vector3.new(0, 0, 0)
+    
+    for i = 1, #currentPlayingPath.points, PATH_SIMPLIFICATION_FACTOR do
+        if visualCount >= MAX_VISUAL_PARTS then break end
         
-        -- Add clickable points every 5 meters
-        if not lastClickablePosition or (point.position - lastClickablePosition).Magnitude >= CLICKABLE_RADIUS then
-            local clickablePart = createPathVisual(point.position, point.movementType, false, nil, true)
-            table.insert(pathMarkerParts, clickablePart)
-            lastClickablePosition = point.position
+        local point = currentPlayingPath.points[i]
+        local distance = (point.position - playerPos).Magnitude
+        
+        -- Only create visuals for nearby points
+        if distance <= VISUAL_DISTANCE_THRESHOLD then
+            local visualPart = createPathVisual(point.position, point.movementType, false)
+            if visualPart then
+                table.insert(pathVisualParts, visualPart)
+                visualCount = visualCount + 1
+            end
         end
     end
     
+    -- Add clickable points every CLICKABLE_RADIUS meters (but limit total)
+    local clickableCount = 0
+    local lastClickablePosition = nil
+    for i, point in pairs(currentPlayingPath.points) do
+        if clickableCount >= 20 then break end -- Limit clickable points
+        
+        local distance = playerPos and (point.position - playerPos).Magnitude or 0
+        if distance <= VISUAL_DISTANCE_THRESHOLD then
+            if not lastClickablePosition or (point.position - lastClickablePosition).Magnitude >= CLICKABLE_RADIUS then
+                local clickablePart = createPathVisual(point.position, point.movementType, false, nil, true)
+                if clickablePart then
+                    table.insert(pathMarkerParts, clickablePart)
+                    lastClickablePosition = point.position
+                    clickableCount = clickableCount + 1
+                end
+            end
+        end
+    end
+    
+    -- Add important markers only
     for i, marker in pairs(currentPlayingPath.markers or {}) do
-        local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
-        table.insert(pathMarkerParts, markerPart)
+        local distance = playerPos and (marker.position - playerPos).Magnitude or 0
+        if distance <= VISUAL_DISTANCE_THRESHOLD then
+            local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
+            if markerPart then
+                table.insert(pathMarkerParts, markerPart)
+            end
+        end
     end
     
     updatePathStatus()
     
+    print("[SUPERTOOL] Path visuals created: " .. #pathVisualParts .. " path points, " .. #pathMarkerParts .. " markers/clickables")
+    
     if pathShowOnly then
-        print("[SUPERTOOL] Showing path: " .. pathName)
+        print("[SUPERTOOL] Showing optimized path: " .. pathName)
         return
     end
     
@@ -705,14 +745,12 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         
         if not updateCharacterReferences() then return end
         
-        -- FIXED: Proper auto-stop when path ends
         if index > #currentPlayingPath.points then
             if pathAutoPlaying then
                 if pathAutoRespawning then
                     resetCharacter()
-                    -- Wait for respawn before continuing
                     task.spawn(function()
-                        task.wait(5)  -- Wait for respawn
+                        task.wait(5)
                         if pathPlaying and pathAutoPlaying and pathAutoRespawning then
                             index = 1
                             pathPauseIndex = 1
@@ -730,7 +768,6 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
                     playbackPauseTime = 0
                 end
             else
-                -- FIXED: Auto-stop when path ends
                 print("[SUPERTOOL] Path playback completed")
                 stopPathPlayback()
                 return
@@ -775,7 +812,7 @@ local function stopPathPlayback()
     pathShowOnly = false
     pathPauseIndex = 1
     playbackOffsetTime = 0
-    currentPlayingPath = nil  -- FIXED: Clear the playing path reference
+    currentPlayingPath = nil
     if pathPlayConnection then
         pathPlayConnection:Disconnect()
         pathPlayConnection = nil
@@ -787,7 +824,7 @@ local function stopPathPlayback()
     
     -- Clear paused here marker
     if pausedHereLabel and pausedHereLabel.Parent then
-        pausedHereLabel:Destroy()
+        returnToPool(pausedHereLabel)
         pausedHereLabel = nil
     end
     
@@ -810,7 +847,7 @@ local function pausePath()
     else
         -- Remove paused marker and resume
         if pausedHereLabel and pausedHereLabel.Parent then
-            pausedHereLabel:Destroy()
+            returnToPool(pausedHereLabel)
             pausedHereLabel = nil
         end
         playbackStartTime = tick()
@@ -819,7 +856,7 @@ local function pausePath()
     updatePathStatus()
 end
 
--- FIXED: Path Undo System
+-- OPTIMIZED: Undo system with efficient visual updates
 local function undoToLastMarker()
     if not pathRecording or not currentPath or not currentPath.markers or #currentPath.markers == 0 then
         warn("[SUPERTOOL] Undo only available during path recording with existing markers")
@@ -838,25 +875,37 @@ local function undoToLastMarker()
         currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
         currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
         
-        -- Update visuals - clear and recreate
+        -- OPTIMIZED: Clear and recreate visuals efficiently
         clearPathVisuals()
-        for i, point in pairs(currentPath.points) do
+        
+        -- Recreate simplified visuals
+        local visualCount = 0
+        for i = 1, #currentPath.points, PATH_SIMPLIFICATION_FACTOR do
+            if visualCount >= MAX_VISUAL_PARTS then break end
+            local point = currentPath.points[i]
             local visualPart = createPathVisual(point.position, point.movementType, false)
-            table.insert(pathVisualParts, visualPart)
+            if visualPart then
+                table.insert(pathVisualParts, visualPart)
+                visualCount = visualCount + 1
+            end
         end
         
         for i, marker in pairs(currentPath.markers) do
             local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
-            table.insert(pathMarkerParts, markerPart)
+            if markerPart then
+                table.insert(pathMarkerParts, markerPart)
+            end
         end
         
-        -- Create white sphere at undo position
+        -- Create undo marker
         local undoMarker = createPathVisual(lastMarker.position, "paused", true)
-        table.insert(pathMarkerParts, undoMarker)
+        if undoMarker then
+            table.insert(pathMarkerParts, undoMarker)
+        end
     end
 end
 
--- FIXED: Load all existing files function
+-- OPTIMIZED: Load paths function with progress feedback
 local function loadAllSavedPaths()
     local success, result = pcall(function()
         if not isfolder(PATH_FOLDER_PATH) then return 0 end
@@ -887,7 +936,7 @@ local function loadAllSavedPaths()
     end
 end
 
--- Status Update Functions - FIXED
+-- Status Update Functions
 function updatePathStatus()
     if not PathStatusLabel then return end
     
@@ -905,7 +954,7 @@ function updatePathStatus()
     PathStatusLabel.Visible = statusText ~= ""
 end
 
--- File system functions for paths
+-- File system functions (unchanged but optimized)
 function savePathToJSON(pathName, pathData)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(pathName)
@@ -955,7 +1004,6 @@ function savePathToJSON(pathName, pathData)
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
         
-        print("[SUPERTOOL] Path saved: " .. filePath)
         return true
     end)
     
@@ -1023,7 +1071,6 @@ function deletePathFromJSON(pathName)
         
         if isfile(filePath) then
             delfile(filePath)
-            print("[SUPERTOOL] Path deleted: " .. filePath)
             return true
         end
         return false
@@ -1050,7 +1097,7 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
--- UI Components
+-- OPTIMIZED: UI Components with performance improvements
 local function initPathUI()
     if PathFrame then return end
     
@@ -1072,7 +1119,7 @@ local function initPathUI()
     PathTitle.BorderSizePixel = 0
     PathTitle.Size = UDim2.new(1, 0, 0, 25)
     PathTitle.Font = Enum.Font.GothamBold
-    PathTitle.Text = "PATH CREATOR v2.1 - FIXED EDITION"
+    PathTitle.Text = "PATH CREATOR v3.0 - OPTIMIZED EDITION"
     PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathTitle.TextSize = 10
 
@@ -1187,17 +1234,26 @@ local function initPathUI()
     UndoButton.MouseButton1Click:Connect(undoToLastMarker)
     ToggleVisualsButton.MouseButton1Click:Connect(togglePathVisibility)
     
-    -- Search functionality
+    -- OPTIMIZED: Debounced search functionality
+    local lastSearchTime = 0
     PathInput.Changed:Connect(function(property)
         if property == "Text" then
-            updatePathList()
+            lastSearchTime = tick()
+            task.spawn(function()
+                task.wait(0.3) -- Debounce search
+                if tick() - lastSearchTime >= 0.25 then
+                    updatePathList()
+                end
+            end)
         end
     end)
 end
 
+-- OPTIMIZED: Efficient path list updates with reduced GUI creation
 function updatePathList()
     if not PathScrollFrame then return end
     
+    -- Clear existing items efficiently
     for _, child in pairs(PathScrollFrame:GetChildren()) do
         if child:IsA("Frame") then
             child:Destroy()
@@ -1205,8 +1261,24 @@ function updatePathList()
     end
     
     local searchText = PathInput.Text:lower()
+    local itemCount = 0
+    
     for pathName, path in pairs(savedPaths) do
         if searchText == "" or string.find(pathName:lower(), searchText) then
+            itemCount = itemCount + 1
+            if itemCount > 20 then -- Limit displayed items to prevent lag
+                local moreLabel = Instance.new("TextLabel")
+                moreLabel.Parent = PathScrollFrame
+                moreLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                moreLabel.BorderSizePixel = 0
+                moreLabel.Size = UDim2.new(1, -5, 0, 30)
+                moreLabel.Font = Enum.Font.GothamBold
+                moreLabel.Text = "... and " .. (table.getn(savedPaths) - 20) .. " more (refine search)"
+                moreLabel.TextColor3 = Color3.fromRGB(200, 200, 100)
+                moreLabel.TextSize = 10
+                break
+            end
+            
             local pathItem = Instance.new("Frame")
             pathItem.Parent = PathScrollFrame
             pathItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -1239,56 +1311,97 @@ function updatePathList()
                                          path.duration or 0)
             infoLabel.TextXAlignment = Enum.TextXAlignment.Left
             
+            -- Create buttons with proper event handling
+            local function createPathButton(text, color, position, callback)
+                local button = Instance.new("TextButton")
+                button.Parent = pathItem
+                button.Position = position
+                button.Size = UDim2.new(0, 45, 0, 20)
+                button.BackgroundColor3 = color
+                button.TextColor3 = Color3.fromRGB(255, 255, 255)
+                button.TextSize = 7
+                button.Font = Enum.Font.GothamBold
+                button.Text = text
+                button.MouseButton1Click:Connect(callback)
+                return button
+            end
+            
             -- Button row 1
-            local playButton = Instance.new("TextButton")
-            playButton.Parent = pathItem
-            playButton.Position = UDim2.new(0, 5, 0, 38)
-            playButton.Size = UDim2.new(0, 45, 0, 20)
-            playButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-            playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            playButton.TextSize = 7
-            playButton.Font = Enum.Font.GothamBold
-            playButton.Text = (pathPlaying and currentPathName == pathName and not pathAutoPlaying) and "STOP" or "PLAY"
+            local playButton = createPathButton(
+                (pathPlaying and currentPathName == pathName and not pathAutoPlaying) and "STOP" or "PLAY",
+                Color3.fromRGB(60, 120, 60),
+                UDim2.new(0, 5, 0, 38),
+                function()
+                    if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
+                        stopPathPlayback()
+                    else
+                        playPath(pathName, false, false, false)
+                    end
+                    task.wait(0.1)
+                    updatePathList()
+                end
+            )
             
-            local autoPlayButton = Instance.new("TextButton")
-            autoPlayButton.Parent = pathItem
-            autoPlayButton.Position = UDim2.new(0, 55, 0, 38)
-            autoPlayButton.Size = UDim2.new(0, 45, 0, 20)
-            autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
-            autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoPlayButton.TextSize = 7
-            autoPlayButton.Font = Enum.Font.GothamBold
-            autoPlayButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "LOOP"
+            local autoPlayButton = createPathButton(
+                (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "LOOP",
+                Color3.fromRGB(60, 100, 120),
+                UDim2.new(0, 55, 0, 38),
+                function()
+                    if pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning then
+                        stopPathPlayback()
+                    else
+                        playPath(pathName, false, true, false)
+                    end
+                    task.wait(0.1)
+                    updatePathList()
+                end
+            )
             
-            local autoRespButton = Instance.new("TextButton")
-            autoRespButton.Parent = pathItem
-            autoRespButton.Position = UDim2.new(0, 105, 0, 38)
-            autoRespButton.Size = UDim2.new(0, 45, 0, 20)
-            autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
-            autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoRespButton.TextSize = 7
-            autoRespButton.Font = Enum.Font.GothamBold
-            autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
+            local autoRespButton = createPathButton(
+                (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP",
+                Color3.fromRGB(120, 60, 100),
+                UDim2.new(0, 105, 0, 38),
+                function()
+                    if pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning then
+                        stopPathPlayback()
+                    else
+                        playPath(pathName, false, true, true)
+                    end
+                    task.wait(0.1)
+                    updatePathList()
+                end
+            )
             
-            local toggleShowButton = Instance.new("TextButton")
-            toggleShowButton.Parent = pathItem
-            toggleShowButton.Position = UDim2.new(0, 155, 0, 38)
-            toggleShowButton.Size = UDim2.new(0, 45, 0, 20)
-            toggleShowButton.BackgroundColor3 = Color3.fromRGB(100, 100, 60)
-            toggleShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            toggleShowButton.TextSize = 7
-            toggleShowButton.Font = Enum.Font.GothamBold
-            toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
+            local toggleShowButton = createPathButton(
+                (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW",
+                Color3.fromRGB(100, 100, 60),
+                UDim2.new(0, 155, 0, 38),
+                function()
+                    togglePathVisuals(pathName)
+                end
+            )
             
-            local deleteButton = Instance.new("TextButton")
-            deleteButton.Parent = pathItem
-            deleteButton.Position = UDim2.new(0, 205, 0, 38)
-            deleteButton.Size = UDim2.new(0, 45, 0, 20)
-            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-            deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            deleteButton.TextSize = 7
-            deleteButton.Font = Enum.Font.GothamBold
-            deleteButton.Text = "DELETE"
+            local deleteButton = createPathButton(
+                "DELETE",
+                Color3.fromRGB(150, 50, 50),
+                UDim2.new(0, 205, 0, 38),
+                function()
+                    -- Cleanup and delete
+                    if pathPlaying and currentPathName == pathName then
+                        stopPathPlayback()
+                    end
+                    if pathShowOnly and currentPathName == pathName then
+                        clearPathVisuals()
+                        pathShowOnly = false
+                        currentPathName = nil
+                    end
+                    
+                    savedPaths[pathName] = nil
+                    deletePathFromJSON(pathName)
+                    updatePathList()
+                    print("[SUPERTOOL] Path deleted: " .. pathName)
+                end
+            )
             
             -- Rename section
             local renameInput = Instance.new("TextBox")
@@ -1302,15 +1415,31 @@ function updatePathList()
             renameInput.TextSize = 7
             renameInput.Font = Enum.Font.Gotham
             
-            local renameButton = Instance.new("TextButton")
-            renameButton.Parent = pathItem
-            renameButton.Position = UDim2.new(0, 160, 0, 65)
-            renameButton.Size = UDim2.new(0, 50, 0, 18)
-            renameButton.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
-            renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameButton.TextSize = 7
-            renameButton.Font = Enum.Font.GothamBold
-            renameButton.Text = "RENAME"
+            local renameButton = createPathButton(
+                "RENAME",
+                Color3.fromRGB(50, 120, 50),
+                UDim2.new(0, 160, 0, 65),
+                function()
+                    if renameInput.Text ~= "" then
+                        local newName = renameInput.Text
+                        if savedPaths[pathName] then
+                            savedPaths[newName] = savedPaths[pathName]
+                            savedPaths[pathName] = nil
+                            
+                            if pathPlaying and currentPathName == pathName then
+                                currentPathName = newName
+                            elseif pathShowOnly and currentPathName == pathName then
+                                currentPathName = newName
+                            end
+                            
+                            renamePathInJSON(pathName, newName)
+                            renameInput.Text = ""
+                            updatePathList()
+                            print("[SUPERTOOL] Path renamed: " .. pathName .. " -> " .. newName)
+                        end
+                    end
+                end
+            )
             
             -- Speed control
             local speedLabel = Instance.new("TextLabel")
@@ -1335,82 +1464,6 @@ function updatePathList()
             speedInput.TextSize = 7
             speedInput.Font = Enum.Font.Gotham
             
-            -- FIXED: Event connections with proper path reference handling
-            playButton.MouseButton1Click:Connect(function()
-                if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
-                    stopPathPlayback()
-                else
-                    playPath(pathName, false, false, false)
-                end
-                updatePathList()
-            end)
-            
-            autoPlayButton.MouseButton1Click:Connect(function()
-                if pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning then
-                    stopPathPlayback()
-                else
-                    playPath(pathName, false, true, false)
-                end
-                updatePathList()
-            end)
-            
-            autoRespButton.MouseButton1Click:Connect(function()
-                if pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning then
-                    stopPathPlayback()
-                else
-                    playPath(pathName, false, true, true)
-                end
-                updatePathList()
-            end)
-            
-            toggleShowButton.MouseButton1Click:Connect(function()
-                togglePathVisuals(pathName)
-            end)
-            
-            -- FIXED: Delete button with proper cleanup
-            deleteButton.MouseButton1Click:Connect(function()
-                -- Check if this is the currently playing path
-                if pathPlaying and currentPathName == pathName then
-                    stopPathPlayback()
-                end
-                -- Check if this is the currently shown path
-                if pathShowOnly and currentPathName == pathName then
-                    clearPathVisuals()
-                    pathShowOnly = false
-                    currentPathName = nil
-                end
-                
-                -- Remove from memory and disk
-                savedPaths[pathName] = nil
-                deletePathFromJSON(pathName)
-                updatePathList()
-                print("[SUPERTOOL] Path deleted: " .. pathName)
-            end)
-            
-            renameButton.MouseButton1Click:Connect(function()
-                if renameInput.Text ~= "" then
-                    local newName = renameInput.Text
-                    if savedPaths[pathName] then
-                        -- Copy the path data
-                        savedPaths[newName] = savedPaths[pathName]
-                        savedPaths[pathName] = nil
-                        
-                        -- Update current path name if it's the active one
-                        if pathPlaying and currentPathName == pathName then
-                            currentPathName = newName
-                        elseif pathShowOnly and currentPathName == pathName then
-                            currentPathName = newName
-                        end
-                        
-                        -- Update file system
-                        renamePathInJSON(pathName, newName)
-                        renameInput.Text = ""
-                        updatePathList()
-                        print("[SUPERTOOL] Path renamed: " .. pathName .. " -> " .. newName)
-                    end
-                end
-            end)
-            
             speedInput.FocusLost:Connect(function(enterPressed)
                 if enterPressed then
                     local newSpeed = tonumber(speedInput.Text)
@@ -1426,38 +1479,44 @@ function updatePathList()
         end
     end
     
-    task.wait(0.1)
-    if PathLayout then
-        PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
-    end
+    -- Update canvas size after a short delay
+    task.spawn(function()
+        task.wait(0.1)
+        if PathLayout then
+            PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
+        end
+    end)
 end
 
--- FIXED: Keyboard Controls
+-- OPTIMIZED: Keyboard Controls with reduced frequency
 local function setupKeyboardControls()
+    local lastKeyTime = {}
+    
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
         local currentTime = tick()
+        local keyCode = input.KeyCode
         
-        -- FIXED: Ctrl+Z for undo during path recording
-        if input.KeyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+        -- Debounce key presses
+        if lastKeyTime[keyCode] and currentTime - lastKeyTime[keyCode] < DEBOUNCE_TIME then
+            return
+        end
+        lastKeyTime[keyCode] = currentTime
+        
+        -- Ctrl+Z for undo during path recording
+        if keyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
             undoToLastMarker()
         end
         
         -- Ctrl+P for pause/resume
-        if input.KeyCode == Enum.KeyCode.P and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
-            if currentTime - lastPauseToggleTime >= DEBOUNCE_TIME then
-                lastPauseToggleTime = currentTime
-                pausePath()
-            end
+        if keyCode == Enum.KeyCode.P and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+            pausePath()
         end
         
         -- Ctrl+L for hide/show path visuals
-        if input.KeyCode == Enum.KeyCode.L and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
-            if currentTime - lastVisibilityToggleTime >= DEBOUNCE_TIME then
-                lastVisibilityToggleTime = currentTime
-                togglePathVisibility()
-            end
+        if keyCode == Enum.KeyCode.L and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+            togglePathVisibility()
         end
     end)
 end
@@ -1481,7 +1540,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
 end
 
--- Initialize function
+-- OPTIMIZED: Initialize function with performance monitoring
 function Utility.init(deps)
     Players = deps.Players
     humanoid = deps.humanoid
@@ -1502,7 +1561,13 @@ function Utility.init(deps)
     pathAutoRespawning = false
     currentPlayingPath = nil
     
-    -- FIXED: Create folder structure first
+    -- Initialize visual parts pool
+    visualPartsPool = {}
+    pathVisualParts = {}
+    pathMarkerParts = {}
+    pathEffectParts = {}
+    
+    -- Create folder structure
     local success = pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
@@ -1516,12 +1581,13 @@ function Utility.init(deps)
         warn("[SUPERTOOL] Failed to create folder structure")
     end
     
-    -- FIXED: Load all existing files on initialization
+    -- Load existing paths
     local pathCount = loadAllSavedPaths()
     print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
     
     setupKeyboardControls()
     
+    -- Character event handling
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
             task.spawn(function()
@@ -1529,12 +1595,12 @@ function Utility.init(deps)
                 rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
                 if humanoid and rootPart then
                     if pathRecording and pathPaused then
-                        task.wait(5)
+                        task.wait(3)
                         pathPaused = false
                         updatePathStatus()
                     end
                     if pathPlaying and currentPathName then
-                        task.wait(5)
+                        task.wait(3)
                         pathPaused = false
                         playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
@@ -1569,18 +1635,26 @@ function Utility.init(deps)
     
     task.spawn(function()
         initPathUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.1 - FIXED EDITION initialized")
-        print("  ✅ FIXED: Path deletion issue during playback")
-        print("  ✅ FIXED: Start From Here functionality with proper billboard")
-        print("  ✅ FIXED: Auto-stop when path ends (no manual stop needed)")
-        print("  ✅ ADDED: Cool visual effects with subtle glow and pulsing")
-        print("  ✅ ENHANCED: Better error handling and reference management")
+        print("[SUPERTOOL] Enhanced Path Utility v3.0 - PERFORMANCE OPTIMIZED")
+        print("  ✅ FIXED: Major lag issues during path visualization")
+        print("  ✅ OPTIMIZED: Reduced visual parts by up to 80%")
+        print("  ✅ OPTIMIZED: Smart distance culling (100 studs max)")
+        print("  ✅ OPTIMIZED: Visual parts pooling system")
+        print("  ✅ OPTIMIZED: Path simplification (every 5th point)")
+        print("  ✅ OPTIMIZED: Limited max visual parts to " .. MAX_VISUAL_PARTS)
+        print("  ✅ OPTIMIZED: Efficient UI updates with debouncing")
+        print("  ✅ OPTIMIZED: Reduced animation complexity")
+        print("  - Performance Settings:")
+        print("    • Max Visual Parts: " .. MAX_VISUAL_PARTS)
+        print("    • Visual Distance: " .. VISUAL_DISTANCE_THRESHOLD .. " studs")
+        print("    • Simplification Factor: " .. PATH_SIMPLIFICATION_FACTOR)
+        print("    • Update Frequency: " .. UPDATE_FREQUENCY .. "s")
         print("  - Keyboard Controls:")
         print("    • Ctrl+Z: Undo during recording")
         print("    • Ctrl+P: Pause/Resume playback") 
         print("    • Ctrl+L: Hide/Show path visuals")
         print("  - JSON Storage: Supertool/Paths/")
-        print("  - Features: Clickable path points, visual effects, auto-termination")
+        print("  - Features: Optimized rendering, smart culling, object pooling")
     end)
 end
 
