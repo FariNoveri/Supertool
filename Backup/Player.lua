@@ -1,4 +1,4 @@
--- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, bring player, and magnet player
+-- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, bring player, fling, and magnet player
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -30,213 +30,15 @@ Player.followOffset = Vector3.new(0, 2, 5)
 Player.followSpeed = 1.2
 Player.followPathfinding = nil
 
--- Variables for hide features
-Player.hideCharacterEnabled = false
-Player.hideMyCharacterEnabled = false
-Player.hiddenPlayers = {}
-Player.originalMyCharacterTransparency = {}
+-- Variables for fling feature
+Player.flingEnabled = false
+Player.flingForce = 50
+Player.flingRange = 10
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 local EmoteGuiFrame
-
--- Hide Character (all players except me)
-local function hidePlayer(targetPlayer)
-    if not targetPlayer or targetPlayer == player or not targetPlayer.Character then return end
-    
-    if not Player.hiddenPlayers[targetPlayer] then
-        Player.hiddenPlayers[targetPlayer] = {}
-    end
-    
-    for _, part in pairs(targetPlayer.Character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            if not Player.hiddenPlayers[targetPlayer][part] then
-                Player.hiddenPlayers[targetPlayer][part] = part.Transparency
-            end
-            part.Transparency = 1
-        elseif part:IsA("Decal") or part:IsA("Texture") then
-            if not Player.hiddenPlayers[targetPlayer][part] then
-                Player.hiddenPlayers[targetPlayer][part] = part.Transparency
-            end
-            part.Transparency = 1
-        elseif part:IsA("Accessory") then
-            local handle = part:FindFirstChild("Handle")
-            if handle then
-                if not Player.hiddenPlayers[targetPlayer][handle] then
-                    Player.hiddenPlayers[targetPlayer][handle] = handle.Transparency
-                end
-                handle.Transparency = 1
-                for _, mesh in pairs(handle:GetDescendants()) do
-                    if mesh:IsA("SpecialMesh") or mesh:IsA("MeshPart") then
-                        if not Player.hiddenPlayers[targetPlayer][mesh] then
-                            Player.hiddenPlayers[targetPlayer][mesh] = mesh.Transparency or 0
-                        end
-                        if mesh:IsA("MeshPart") then
-                            mesh.Transparency = 1
-                        end
-                    end
-                end
-            end
-        end
-    end
-    print("Hidden player: " .. targetPlayer.Name)
-end
-
-local function showPlayer(targetPlayer)
-    if not targetPlayer or targetPlayer == player or not targetPlayer.Character then return end
-    
-    if Player.hiddenPlayers[targetPlayer] then
-        for part, originalTransparency in pairs(Player.hiddenPlayers[targetPlayer]) do
-            if part and part.Parent then
-                part.Transparency = originalTransparency
-            end
-        end
-        Player.hiddenPlayers[targetPlayer] = nil
-    end
-    print("Shown player: " .. targetPlayer.Name)
-end
-
-local function toggleHideCharacter(enabled)
-    Player.hideCharacterEnabled = enabled
-    
-    if enabled then
-        print("Hiding all other players...")
-        Player.hiddenPlayers = {}
-        
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= player then
-                hidePlayer(p)
-            end
-        end
-        
-        connections.hidecharacter = Players.PlayerAdded:Connect(function(newPlayer)
-            if Player.hideCharacterEnabled and newPlayer ~= player then
-                newPlayer.CharacterAdded:Connect(function(character)
-                    if Player.hideCharacterEnabled then
-                        task.wait(0.5)
-                        hidePlayer(newPlayer)
-                    end
-                end)
-                if newPlayer.Character then
-                    task.wait(0.5)
-                    hidePlayer(newPlayer)
-                end
-            end
-        end)
-        
-        connections.hidecharacterrespawn = RunService.Heartbeat:Connect(function()
-            if Player.hideCharacterEnabled then
-                for _, p in pairs(Players:GetPlayers()) do
-                    if p ~= player and p.Character and not Player.hiddenPlayers[p] then
-                        hidePlayer(p)
-                    end
-                end
-            end
-        end)
-        
-        print("All other players hidden successfully")
-    else
-        print("Showing all other players...")
-        
-        if connections.hidecharacter then
-            connections.hidecharacter:Disconnect()
-            connections.hidecharacter = nil
-        end
-        
-        if connections.hidecharacterrespawn then
-            connections.hidecharacterrespawn:Disconnect()
-            connections.hidecharacterrespawn = nil
-        end
-        
-        for targetPlayer, _ in pairs(Player.hiddenPlayers) do
-            showPlayer(targetPlayer)
-        end
-        
-        Player.hiddenPlayers = {}
-        print("All other players shown successfully")
-    end
-end
-
--- Hide My Character (only local player) - FIXED
-local function hideMyCharacter()
-    if not player.Character then return end
-    
-    Player.originalMyCharacterTransparency = {}
-    
-    for _, part in pairs(player.Character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            Player.originalMyCharacterTransparency[part] = part.Transparency
-            part.Transparency = 1
-        elseif part:IsA("Decal") or part:IsA("Texture") then
-            Player.originalMyCharacterTransparency[part] = part.Transparency
-            part.Transparency = 1
-        elseif part:IsA("Accessory") then
-            local handle = part:FindFirstChild("Handle")
-            if handle then
-                Player.originalMyCharacterTransparency[handle] = handle.Transparency
-                handle.Transparency = 1
-                -- Fix for accessory meshes
-                for _, mesh in pairs(handle:GetDescendants()) do
-                    if mesh:IsA("SpecialMesh") then
-                        -- SpecialMesh doesn't have Transparency property, skip it
-                    elseif mesh:IsA("MeshPart") then
-                        Player.originalMyCharacterTransparency[mesh] = mesh.Transparency
-                        mesh.Transparency = 1
-                    elseif mesh:IsA("SurfaceGui") then
-                        Player.originalMyCharacterTransparency[mesh] = mesh.Enabled
-                        mesh.Enabled = false
-                    end
-                end
-            end
-        end
-    end
-    print("Hidden my character")
-end
-
-local function showMyCharacter()
-    if not player.Character then return end
-    
-    for part, originalValue in pairs(Player.originalMyCharacterTransparency) do
-        if part and part.Parent then
-            if part:IsA("SurfaceGui") then
-                part.Enabled = originalValue
-            else
-                part.Transparency = originalValue
-            end
-        end
-    end
-    Player.originalMyCharacterTransparency = {}
-    print("Shown my character")
-end
-
-local function toggleHideMyCharacter(enabled)
-    Player.hideMyCharacterEnabled = enabled
-    
-    if enabled then
-        print("Hiding my character...")
-        hideMyCharacter()
-        
-        connections.hidemycharacter = player.CharacterAdded:Connect(function(character)
-            if Player.hideMyCharacterEnabled then
-                task.wait(0.5)
-                hideMyCharacter()
-            end
-        end)
-        
-        print("My character hidden successfully")
-    else
-        print("Showing my character...")
-        
-        if connections.hidemycharacter then
-            connections.hidemycharacter:Disconnect()
-            connections.hidemycharacter = nil
-        end
-        
-        showMyCharacter()
-        print("My character shown successfully")
-    end
-end
 
 -- Force Field (God Mode replacement)
 local function toggleForceField(enabled)
@@ -515,6 +317,108 @@ local function bringPlayer(targetPlayer)
     end
 end
 
+-- Fling Feature - New Addition
+local function flingPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot fling: Invalid target player")
+        return
+    end
+    
+    if not Player.rootPart then
+        print("Cannot fling: Local player missing HumanoidRootPart")
+        return
+    end
+    
+    local success, result = pcall(function()
+        local targetCharacter = targetPlayer.Character
+        if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") then
+            print("Cannot fling: Target player has no character or HumanoidRootPart")
+            return
+        end
+        
+        local targetRootPart = targetCharacter.HumanoidRootPart
+        local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
+        
+        if distance > Player.flingRange then
+            print("Cannot fling: Target too far away (distance: " .. math.floor(distance) .. ")")
+            return
+        end
+        
+        local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
+        local flingVelocity = direction * Player.flingForce
+        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.5, 0) -- Add upward force
+        
+        targetRootPart.Anchored = false
+        targetRootPart.AssemblyLinearVelocity = flingVelocity
+        targetRootPart.AssemblyAngularVelocity = Vector3.new(
+            math.random(-10, 10),
+            math.random(-10, 10),
+            math.random(-10, 10)
+        )
+        
+        print("Flung player: " .. targetPlayer.Name)
+    end)
+    
+    if not success then
+        warn("Failed to fling player: " .. tostring(result))
+    end
+end
+
+-- Toggle Fling Mode - Continuously fling nearby players
+local function toggleFling(enabled)
+    Player.flingEnabled = enabled
+    
+    if enabled then
+        print("Fling mode enabled - will fling nearby players")
+        
+        connections.fling = RunService.Heartbeat:Connect(function()
+            if not Player.flingEnabled or not Player.rootPart then return end
+            
+            for _, targetPlayer in pairs(Players:GetPlayers()) do
+                if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetRootPart = targetPlayer.Character.HumanoidRootPart
+                    local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
+                    
+                    if distance <= Player.flingRange then
+                        local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
+                        local flingVelocity = direction * Player.flingForce
+                        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.3, 0)
+                        
+                        targetRootPart.Anchored = false
+                        targetRootPart.AssemblyLinearVelocity = flingVelocity
+                        targetRootPart.AssemblyAngularVelocity = Vector3.new(
+                            math.random(-5, 5),
+                            math.random(-5, 5),
+                            math.random(-5, 5)
+                        )
+                    end
+                end
+            end
+        end)
+        
+        connections.flingRespawn = player.CharacterAdded:Connect(function(character)
+            if Player.flingEnabled then
+                task.wait(0.5)
+                Player.rootPart = character:FindFirstChild("HumanoidRootPart")
+            end
+        end)
+        
+        print("Fling mode activated successfully")
+    else
+        if connections.fling then
+            connections.fling:Disconnect()
+            connections.fling = nil
+        end
+        
+        if connections.flingRespawn then
+            connections.flingRespawn:Disconnect()
+            connections.flingRespawn = nil
+        end
+        
+        print("Fling mode disabled")
+    end
+end
+
 -- Magnet Players
 local function toggleMagnetPlayers(enabled)
     Player.magnetEnabled = enabled
@@ -695,11 +599,6 @@ local function setupPlayerMonitoring(targetPlayer)
             end
         end
         
-        if Player.hideCharacterEnabled then
-            hidePlayer(targetPlayer)
-            print("Re-hidden respawned player: " .. targetPlayer.Name)
-        end
-        
         if Player.selectedPlayer == targetPlayer then
             task.wait(0.5)
             spectatePlayer(targetPlayer)
@@ -721,10 +620,6 @@ local function setupPlayerMonitoring(targetPlayer)
     if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart
         print("Magnet applied to player: " .. targetPlayer.Name)
-    end
-    
-    if Player.hideCharacterEnabled then
-        hidePlayer(targetPlayer)
     end
     
     if Player.noDeathAnimationEnabled then
@@ -754,7 +649,6 @@ local function cleanupPlayerMonitoring(targetPlayer)
     
     Player.frozenPlayerPositions[targetPlayer] = nil
     Player.magnetPlayerPositions[targetPlayer] = nil
-    Player.hiddenPlayers[targetPlayer] = nil
 end
 
 -- Freeze Players
@@ -900,6 +794,7 @@ local function spectatePlayer(targetPlayer)
         return
     end
     
+    -- Stop current spectating first
     for _, connection in pairs(Player.spectateConnections) do
         if connection then
             connection:Disconnect()
@@ -908,59 +803,88 @@ local function spectatePlayer(targetPlayer)
     Player.spectateConnections = {}
     
     local success, result = pcall(function()
-        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-            local targetHumanoid = targetPlayer.Character.Humanoid
-            Workspace.CurrentCamera.CameraSubject = targetHumanoid
-            Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-            
-            Player.selectedPlayer = targetPlayer
-            Player.currentSpectateIndex = table.find(Player.spectatePlayerList, targetPlayer) or 0
-            if SelectedPlayerLabel then
-                SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
-            end
-            print("Spectating: " .. targetPlayer.Name)
-            
-            Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
-                if Player.selectedPlayer == targetPlayer then
-                    local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
-                    if newHumanoid then
-                        task.wait(0.5)
-                        Workspace.CurrentCamera.CameraSubject = newHumanoid
-                        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-                        print("Spectated player respawned, continuing spectate: " .. targetPlayer.Name)
-                    else
-                        stopSpectating()
-                    end
-                end
-            end)
-            
-            Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
-                if Player.selectedPlayer == targetPlayer then
-                    print("Spectated player died, waiting for respawn: " .. targetPlayer.Name)
-                end
-            end)
-            
-            if PlayerListScrollFrame then
-                for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
-                    if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
-                        if item.Name == targetPlayer.Name .. "Item" then
-                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                            item.SelectButton.Text = "SELECTED"
-                        else
-                            item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                            item.SelectButton.Text = "SELECT PLAYER"
-                        end
-                    end
-                end
-            end
-        else
-            stopSpectating()
+        -- Check if target player has valid character
+        if not targetPlayer.Character then
+            print("Cannot spectate: Target player has no character")
+            return false
         end
+        
+        local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+        if not targetHumanoid then
+            print("Cannot spectate: Target player has no humanoid")
+            return false
+        end
+        
+        -- Set camera to spectate target
+        Workspace.CurrentCamera.CameraSubject = targetHumanoid
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        
+        Player.selectedPlayer = targetPlayer
+        
+        -- Find the target in spectate list and set index
+        for i, p in ipairs(Player.spectatePlayerList) do
+            if p == targetPlayer then
+                Player.currentSpectateIndex = i
+                break
+            end
+        end
+        
+        if SelectedPlayerLabel then
+            SelectedPlayerLabel.Text = "SELECTED: " .. targetPlayer.Name:upper()
+        end
+        print("Spectating: " .. targetPlayer.Name)
+        
+        -- Setup connections for spectating
+        Player.spectateConnections.characterAdded = targetPlayer.CharacterAdded:Connect(function(newCharacter)
+            if Player.selectedPlayer == targetPlayer then
+                local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+                if newHumanoid then
+                    task.wait(0.5)
+                    Workspace.CurrentCamera.CameraSubject = newHumanoid
+                    Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+                    print("Spectated player respawned, continuing spectate: " .. targetPlayer.Name)
+                else
+                    print("Failed to get humanoid after respawn, stopping spectate")
+                    stopSpectating()
+                end
+            end
+        end)
+        
+        Player.spectateConnections.died = targetHumanoid.Died:Connect(function()
+            if Player.selectedPlayer == targetPlayer then
+                print("Spectated player died, waiting for respawn: " .. targetPlayer.Name)
+            end
+        end)
+        
+        Player.spectateConnections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            if leavingPlayer == targetPlayer and Player.selectedPlayer == targetPlayer then
+                print("Spectated player left the game")
+                stopSpectating()
+            end
+        end)
+        
+        -- Update UI
+        if PlayerListScrollFrame then
+            for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                    if item.Name == targetPlayer.Name .. "Item" then
+                        item.SelectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                        item.SelectButton.Text = "SELECTED"
+                    else
+                        item.SelectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                        item.SelectButton.Text = "SELECT PLAYER"
+                    end
+                end
+            end
+        end
+        
+        return true
     end)
     
     if not success then
         warn("Failed to spectate player: " .. tostring(result))
         stopSpectating()
+        return
     end
     
     updateSpectateButtons()
@@ -981,7 +905,7 @@ local function spectateNextPlayer()
         Player.currentSpectateIndex = (Player.currentSpectateIndex % #Player.spectatePlayerList) + 1
         local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
         
-        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+        if targetPlayer and targetPlayer.Parent == Players and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
             spectatePlayer(targetPlayer)
             return
         end
@@ -1012,7 +936,7 @@ local function spectatePrevPlayer()
         
         local targetPlayer = Player.spectatePlayerList[Player.currentSpectateIndex]
         
-        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+        if targetPlayer and targetPlayer.Parent == Players and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
             spectatePlayer(targetPlayer)
             return
         end
@@ -1047,7 +971,7 @@ function Player.updatePlayerList()
     local validPlayers = {}
     
     for _, p in pairs(allPlayers) do
-        if p ~= player then
+        if p ~= player and p.Parent == Players then -- Check if player is still in game
             table.insert(validPlayers, p)
             table.insert(Player.spectatePlayerList, p)
         end
@@ -1074,7 +998,7 @@ function Player.updatePlayerList()
             playerItem.Parent = PlayerListScrollFrame
             playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             playerItem.BorderSizePixel = 0
-            playerItem.Size = UDim2.new(1, -5, 0, 210)
+            playerItem.Size = UDim2.new(1, -5, 0, 240) -- Increased height for fling button
             playerItem.LayoutOrder = playerCount
             playerItem.ZIndex = 1
             
@@ -1205,41 +1129,28 @@ function Player.updatePlayerList()
             magnetButton.ZIndex = 2
             magnetButton.Active = true
             
-            local hideButton = Instance.new("TextButton")
-            hideButton.Name = "HideButton"
-            hideButton.Parent = playerItem
-            hideButton.BackgroundColor3 = Player.hiddenPlayers[p] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(80, 60, 40)
-            hideButton.BorderSizePixel = 0
-            hideButton.Position = UDim2.new(0, 5, 0, 150)
-            hideButton.Size = UDim2.new(0, 70, 0, 25)
-            hideButton.Font = Enum.Font.Gotham
-            hideButton.Text = Player.hiddenPlayers[p] and "SHOW" or "HIDE"
-            hideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            hideButton.TextSize = 9
-            hideButton.ZIndex = 2
-            hideButton.Active = true
-            
-            local showButton = Instance.new("TextButton")
-            showButton.Name = "ShowButton"
-            showButton.Parent = playerItem
-            showButton.BackgroundColor3 = Color3.fromRGB(40, 80, 60)
-            showButton.BorderSizePixel = 0
-            showButton.Position = UDim2.new(0, 80, 0, 150)
-            showButton.Size = UDim2.new(0, 70, 0, 25)
-            showButton.Font = Enum.Font.Gotham
-            showButton.Text = "VISIBLE"
-            showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            showButton.TextSize = 8
-            showButton.ZIndex = 2
-            showButton.Active = true
+            -- New Fling Button
+            local flingButton = Instance.new("TextButton")
+            flingButton.Name = "FlingButton"
+            flingButton.Parent = playerItem
+            flingButton.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
+            flingButton.BorderSizePixel = 0
+            flingButton.Position = UDim2.new(0, 5, 0, 150)
+            flingButton.Size = UDim2.new(0, 70, 0, 25)
+            flingButton.Font = Enum.Font.Gotham
+            flingButton.Text = "FLING"
+            flingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            flingButton.TextSize = 9
+            flingButton.ZIndex = 2
+            flingButton.Active = true
             
             local freezeIndividualButton = Instance.new("TextButton")
             freezeIndividualButton.Name = "FreezeIndividualButton"
             freezeIndividualButton.Parent = playerItem
             freezeIndividualButton.BackgroundColor3 = Player.frozenPlayerPositions[p] and Color3.fromRGB(80, 80, 40) or Color3.fromRGB(40, 40, 100)
             freezeIndividualButton.BorderSizePixel = 0
-            freezeIndividualButton.Position = UDim2.new(0, 155, 0, 150)
-            freezeIndividualButton.Size = UDim2.new(1, -160, 0, 25)
+            freezeIndividualButton.Position = UDim2.new(0, 80, 0, 150)
+            freezeIndividualButton.Size = UDim2.new(1, -85, 0, 25)
             freezeIndividualButton.Font = Enum.Font.Gotham
             freezeIndividualButton.Text = Player.frozenPlayerPositions[p] and "UNFREEZE" or "FREEZE"
             freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1342,24 +1253,9 @@ function Player.updatePlayerList()
                 end
             end)
             
-            hideButton.MouseButton1Click:Connect(function()
-                if Player.hiddenPlayers[currentPlayer] then
-                    showPlayer(currentPlayer)
-                    hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-                    hideButton.Text = "HIDE"
-                else
-                    hidePlayer(currentPlayer)
-                    hideButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
-                    hideButton.Text = "SHOW"
-                end
-            end)
-            
-            showButton.MouseButton1Click:Connect(function()
-                if Player.hiddenPlayers[currentPlayer] then
-                    showPlayer(currentPlayer)
-                    hideButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-                    hideButton.Text = "HIDE"
-                end
+            -- Fling button event
+            flingButton.MouseButton1Click:Connect(function()
+                flingPlayer(currentPlayer)
             end)
             
             freezeIndividualButton.MouseButton1Click:Connect(function()
@@ -1404,11 +1300,19 @@ function Player.updatePlayerList()
             teleportButton.MouseLeave:Connect(function()
                 teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
             end)
+            
+            flingButton.MouseEnter:Connect(function()
+                flingButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+            end)
+            
+            flingButton.MouseLeave:Connect(function()
+                flingButton.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
+            end)
         end
     end
     
     -- Restore previous selected player if they still exist
-    if previousSelectedPlayer then
+    if previousSelectedPlayer and previousSelectedPlayer.Parent == Players then
         local stillExists = table.find(Player.spectatePlayerList, previousSelectedPlayer)
         if stillExists then
             Player.selectedPlayer = previousSelectedPlayer
@@ -1705,8 +1609,7 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
     createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
     createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
-    createToggleButton("Hide Character", toggleHideCharacter, "Player")
-    createToggleButton("Hide My Character", toggleHideMyCharacter, "Player")
+    createToggleButton("Fling Mode", toggleFling, "Player")
     print("Player buttons loaded successfully")
 end
 
@@ -1720,8 +1623,7 @@ function Player.resetStates()
     Player.fastRespawnEnabled = false
     Player.noDeathAnimationEnabled = false
     Player.magnetEnabled = false
-    Player.hideCharacterEnabled = false
-    Player.hideMyCharacterEnabled = false
+    Player.flingEnabled = false
     
     toggleForceField(false)
     toggleAntiAFK(false)
@@ -1729,8 +1631,7 @@ function Player.resetStates()
     toggleFastRespawn(false)
     toggleNoDeathAnimation(false)
     toggleMagnetPlayers(false)
-    toggleHideCharacter(false)
-    toggleHideMyCharacter(false)
+    toggleFling(false)
     stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
@@ -2049,10 +1950,6 @@ local function initConnections()
         if not Player.rootPart or not humanoid then
             warn("Failed to initialize local player character parts")
         end
-        if Player.hideMyCharacterEnabled then
-            task.wait(0.5)
-            hideMyCharacter()
-        end
         if Player.forceFieldEnabled then
             task.wait(0.1)
             toggleForceField(true)
@@ -2177,8 +2074,6 @@ function Player.cleanup()
     Player.playerListVisible = false
     Player.frozenPlayerPositions = {}
     Player.magnetPlayerPositions = {}
-    Player.hiddenPlayers = {}
-    Player.originalMyCharacterTransparency = {}
     
     print("Player module cleaned up successfully")
 end
