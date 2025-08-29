@@ -1420,48 +1420,166 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Night Mode", toggleNight)
     createToggleButton("Self Highlight", toggleSelfHighlight)
 
-    -- Add hex color input for self highlight
-    local colorFrame = Instance.new("Frame")
-    colorFrame.Name = "SelfHighlightColorFrame"
-    colorFrame.Size = UDim2.new(1, 0, 0, 30)
-    colorFrame.BackgroundTransparency = 1
-    colorFrame.Parent = ScrollFrame
+    -- Helper function to convert Color3 to Hex string
+    local function toHex(color)
+        local r = math.floor(color.R * 255 + 0.5)
+        local g = math.floor(color.G * 255 + 0.5)
+        local b = math.floor(color.B * 255 + 0.5)
+        return string.format("%02X%02X%02X", r, g, b)
+    end
 
-    local label = Instance.new("TextLabel")
-    label.Text = "Self Outline Color (Hex):"
-    label.Size = UDim2.new(0.6, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextSize = 14
-    label.Font = Enum.Font.SourceSans
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = colorFrame
+    -- Self Highlight Color Picker Button
+    local colorButton = Instance.new("TextButton")
+    colorButton.Name = "SelfHighlightColorButton"
+    colorButton.Size = UDim2.new(1, 0, 0, 30)
+    colorButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    colorButton.Text = "Self Outline Color: #" .. toHex(Visual.selfHighlightColor)
+    colorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    colorButton.TextSize = 14
+    colorButton.Font = Enum.Font.SourceSans
+    colorButton.Parent = ScrollFrame
 
-    local textBox = Instance.new("TextBox")
-    textBox.Size = UDim2.new(0.4, 0, 1, 0)
-    textBox.Position = UDim2.new(0.6, 0, 0, 0)
-    textBox.Text = "#FFFFFF"
-    textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    textBox.BorderSizePixel = 0
-    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textBox.TextSize = 14
-    textBox.Parent = colorFrame
+    -- Create color picker GUI
+    local colorPicker = Instance.new("Frame")
+    colorPicker.Name = "ColorPicker"
+    colorPicker.Size = UDim2.new(0, 200, 0, 200)
+    colorPicker.Position = UDim2.new(0.5, -100, 0.5, -100)
+    colorPicker.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    colorPicker.BorderSizePixel = 0
+    colorPicker.Visible = false
+    colorPicker.ZIndex = 100
+    colorPicker.Parent = ScreenGui
 
-    textBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            local hex = textBox.Text
-            if hex:sub(1,1) == "#" then hex = hex:sub(2) end
-            local success, color = pcall(Color3.fromHex, hex)
-            if success then
-                Visual.selfHighlightColor = color
-                if Visual.selfHighlightEnabled then
-                    createSelfHighlight()
-                end
-                textBox.Text = "#" .. color:ToHex()
-            else
-                textBox.Text = "#FFFFFF"
-            end
+    local title = Instance.new("TextLabel")
+    title.Text = "Color Picker (RGB 0-255)"
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 16
+    title.Font = Enum.Font.SourceSansBold
+    title.Parent = colorPicker
+
+    -- R
+    local rLabel = Instance.new("TextLabel")
+    rLabel.Text = "R:"
+    rLabel.Size = UDim2.new(0.2, 0, 0, 30)
+    rLabel.Position = UDim2.new(0, 0, 0.15, 0)
+    rLabel.BackgroundTransparency = 1
+    rLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rLabel.Parent = colorPicker
+
+    local rBox = Instance.new("TextBox")
+    rBox.Size = UDim2.new(0.8, 0, 0, 30)
+    rBox.Position = UDim2.new(0.2, 0, 0.15, 0)
+    rBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    rBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rBox.Text = "255"
+    rBox.Parent = colorPicker
+
+    -- G
+    local gLabel = Instance.new("TextLabel")
+    gLabel.Text = "G:"
+    gLabel.Size = UDim2.new(0.2, 0, 0, 30)
+    gLabel.Position = UDim2.new(0, 0, 0.3, 0)
+    gLabel.BackgroundTransparency = 1
+    gLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    gLabel.Parent = colorPicker
+
+    local gBox = Instance.new("TextBox")
+    gBox.Size = UDim2.new(0.8, 0, 0, 30)
+    gBox.Position = UDim2.new(0.2, 0, 0.3, 0)
+    gBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    gBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    gBox.Text = "255"
+    gBox.Parent = colorPicker
+
+    -- B
+    local bLabel = Instance.new("TextLabel")
+    bLabel.Text = "B:"
+    bLabel.Size = UDim2.new(0.2, 0, 0, 30)
+    bLabel.Position = UDim2.new(0, 0, 0.45, 0)
+    bLabel.BackgroundTransparency = 1
+    bLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    bLabel.Parent = colorPicker
+
+    local bBox = Instance.new("TextBox")
+    bBox.Size = UDim2.new(0.8, 0, 0, 30)
+    bBox.Position = UDim2.new(0.2, 0, 0.45, 0)
+    bBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    bBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    bBox.Text = "255"
+    bBox.Parent = colorPicker
+
+    -- Preview
+    local preview = Instance.new("Frame")
+    preview.Size = UDim2.new(0.5, 0, 0.2, 0)
+    preview.Position = UDim2.new(0.25, 0, 0.6, 0)
+    preview.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    preview.BorderSizePixel = 0
+    preview.Parent = colorPicker
+
+    -- Confirm
+    local confirm = Instance.new("TextButton")
+    confirm.Text = "Confirm"
+    confirm.Size = UDim2.new(0.5, 0, 0, 30)
+    confirm.Position = UDim2.new(0, 0, 0.85, 0)
+    confirm.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    confirm.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirm.Parent = colorPicker
+
+    -- Cancel
+    local cancel = Instance.new("TextButton")
+    cancel.Text = "Cancel"
+    cancel.Size = UDim2.new(0.5, 0, 0, 30)
+    cancel.Position = UDim2.new(0.5, 0, 0.85, 0)
+    cancel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    cancel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cancel.Parent = colorPicker
+
+    -- Update preview function
+    local function updatePreview()
+        local r = tonumber(rBox.Text) or 0
+        local g = tonumber(gBox.Text) or 0
+        local b = tonumber(bBox.Text) or 0
+        r = math.clamp(r, 0, 255)
+        g = math.clamp(g, 0, 255)
+        b = math.clamp(b, 0, 255)
+        preview.BackgroundColor3 = Color3.fromRGB(r, g, b)
+    end
+
+    rBox.Changed:Connect(updatePreview)
+    gBox.Changed:Connect(updatePreview)
+    bBox.Changed:Connect(updatePreview)
+
+    -- Open color picker
+    colorButton.MouseButton1Click:Connect(function()
+        local currentColor = Visual.selfHighlightColor
+        rBox.Text = tostring(math.floor(currentColor.R * 255))
+        gBox.Text = tostring(math.floor(currentColor.G * 255))
+        bBox.Text = tostring(math.floor(currentColor.B * 255))
+        updatePreview()
+        colorPicker.Visible = true
+    end)
+
+    -- Confirm
+    confirm.MouseButton1Click:Connect(function()
+        local r = tonumber(rBox.Text) or 255
+        local g = tonumber(gBox.Text) or 255
+        local b = tonumber(bBox.Text) or 255
+        r = math.clamp(r, 0, 255)
+        g = math.clamp(g, 0, 255)
+        b = math.clamp(b, 0, 255)
+        Visual.selfHighlightColor = Color3.fromRGB(r, g, b)
+        if Visual.selfHighlightEnabled then
+            createSelfHighlight()
         end
+        colorButton.Text = "Self Outline Color: #" .. toHex(Visual.selfHighlightColor)
+        colorPicker.Visible = false
+    end)
+
+    -- Cancel
+    cancel.MouseButton1Click:Connect(function()
+        colorPicker.Visible = false
     end)
 end
 
