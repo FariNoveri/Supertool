@@ -34,6 +34,7 @@ Player.followPathfinding = nil
 Player.flingEnabled = false
 Player.flingForce = 50
 Player.flingRange = 10
+Player.flungPlayers = {}
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
@@ -344,6 +345,20 @@ local function flingPlayer(targetPlayer)
             return
         end
         
+        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+        if targetHumanoid then
+            targetHumanoid.PlatformStand = true
+            targetHumanoid.WalkSpeed = 0
+            targetHumanoid.JumpPower = 0
+            task.delay(1, function()
+                if targetHumanoid then
+                    targetHumanoid.PlatformStand = false
+                    targetHumanoid.WalkSpeed = 16
+                    targetHumanoid.JumpPower = 50
+                end
+            end)
+        end
+        
         local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
         local flingVelocity = direction * Player.flingForce
         flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.5, 0) -- Add upward force
@@ -379,7 +394,19 @@ local function toggleFling(enabled)
                     local targetRootPart = targetPlayer.Character.HumanoidRootPart
                     local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
                     
+                    local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                    
                     if distance <= Player.flingRange then
+                        if not Player.flungPlayers[targetPlayer] then
+                            Player.flungPlayers[targetPlayer] = true
+                        end
+                        
+                        if targetHumanoid then
+                            targetHumanoid.PlatformStand = true
+                            targetHumanoid.WalkSpeed = 0
+                            targetHumanoid.JumpPower = 0
+                        end
+                        
                         local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
                         local flingVelocity = direction * Player.flingForce
                         flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.3, 0)
@@ -391,6 +418,15 @@ local function toggleFling(enabled)
                             math.random(-5, 5),
                             math.random(-5, 5)
                         )
+                    else
+                        if Player.flungPlayers[targetPlayer] then
+                            if targetHumanoid then
+                                targetHumanoid.PlatformStand = false
+                                targetHumanoid.WalkSpeed = 16
+                                targetHumanoid.JumpPower = 50
+                            end
+                            Player.flungPlayers[targetPlayer] = nil
+                        end
                     end
                 end
             end
@@ -414,6 +450,18 @@ local function toggleFling(enabled)
             connections.flingRespawn:Disconnect()
             connections.flingRespawn = nil
         end
+        
+        for targetPlayer, _ in pairs(Player.flungPlayers) do
+            if targetPlayer.Character then
+                local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                if targetHumanoid then
+                    targetHumanoid.PlatformStand = false
+                    targetHumanoid.WalkSpeed = 16
+                    targetHumanoid.JumpPower = 50
+                end
+            end
+        end
+        Player.flungPlayers = {}
         
         print("Fling mode disabled")
     end
