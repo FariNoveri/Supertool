@@ -259,14 +259,14 @@ end
 
 -- Handle mouse input for camera rotation
 local function handleMouseInput(input, processed)
-    if not (Visual.freecamEnabled) or processed then return end
+    if not Visual.freecamEnabled or processed then return end
     
     if input.UserInputType == Enum.UserInputType.MouseMovement then
         mouseDelta = Vector2.new(input.Delta.X, input.Delta.Y)
     end
 end
 
--- FIXED: Hide All Nicknames - Hides all nicknames except player's own
+-- Hide All Nicknames - Hides all nicknames except player's own
 local function toggleHideAllNicknames(enabled)
     Visual.hideAllNicknames = enabled
     print("Hide All Nicknames:", enabled)
@@ -284,7 +284,7 @@ local function toggleHideAllNicknames(enabled)
     end
 end
 
--- FIXED: Hide Own Nickname - Hides only the player's nickname
+-- Hide Own Nickname - Hides only the player's nickname
 local function toggleHideOwnNickname(enabled)
     Visual.hideOwnNickname = enabled
     print("Hide Own Nickname:", enabled)
@@ -301,7 +301,7 @@ local function toggleHideOwnNickname(enabled)
     end
 end
 
--- FIXED: NoClipCamera - Camera passes through objects while maintaining normal movement
+-- NoClipCamera - Camera passes through objects while maintaining normal movement
 local function toggleNoClipCamera(enabled)
     Visual.noClipCameraEnabled = enabled
     print("NoClipCamera:", enabled)
@@ -544,7 +544,7 @@ local function toggleESP(enabled)
     end
 end
 
--- FIXED: Freecam - Native Roblox-like behavior (Shift+P style)
+-- FIXED: Freecam - Improved for PC with proper mouse handling
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -572,12 +572,15 @@ local function toggleFreecam(enabled)
         -- Initialize freecam position from current camera
         freecamCFrame = camera.CFrame
         local x, y, z = freecamCFrame:ToEulerAnglesXYZ()
-        freecamYaw = -y -- Negative because Roblox camera yaw is inverted
-        freecamPitch = -x -- Negative because Roblox camera pitch is inverted
+        freecamYaw = -y
+        freecamPitch = -x
         
         -- Set camera to scriptable mode
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
+        
+        -- Lock mouse cursor for PC
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
         
@@ -594,9 +597,9 @@ local function toggleFreecam(enabled)
                 local camera = Workspace.CurrentCamera
                 local moveSpeed = freecamSpeed * deltaTime
                 
-                -- Handle mouse rotation (like native freecam)
+                -- Handle mouse rotation
                 if mouseDelta.Magnitude > 0 then
-                    local sensitivity = 0.002 -- Similar to Roblox's sensitivity
+                    local sensitivity = 0.002
                     freecamYaw = freecamYaw - mouseDelta.X * sensitivity
                     freecamPitch = math.clamp(freecamPitch - mouseDelta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
                     mouseDelta = Vector2.new(0, 0)
@@ -614,7 +617,7 @@ local function toggleFreecam(enabled)
                 local movement = Vector3.new(0, 0, 0)
                 local currentPos = freecamCFrame.Position
                 
-                -- WASD movement (like native freecam)
+                -- WASD movement
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then
                     movement = movement + freecamLookVector
                 end
@@ -645,13 +648,13 @@ local function toggleFreecam(enabled)
                     currentPos = currentPos + movement
                 end
                 
-                -- Update camera CFrame with new position and rotation
+                -- Update camera CFrame
                 freecamCFrame = CFrame.new(currentPos) * CFrame.Angles(-freecamPitch, freecamYaw, 0)
                 camera.CFrame = freecamCFrame
             end
         end)
         
-        -- Enable input connections for joystick and mouse
+        -- Enable input connections
         if not connections.touchInput then
             connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
                 if input.UserInputType == Enum.UserInputType.Touch then
@@ -710,6 +713,9 @@ local function toggleFreecam(enabled)
         elseif currentHumanoid then
             camera.CameraSubject = currentHumanoid
         end
+        
+        -- Reset mouse behavior
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         
         -- Reset freecam variables
         freecamCFrame = nil
@@ -928,7 +934,7 @@ local function toggleFlashlight(enabled)
     end
 end
 
--- FIXED: Low Detail Mode - Destroys trees, leaves, grass, clears sky, removes shaders and lights
+-- Low Detail Mode - Destroys trees, leaves, grass, clears sky, removes shaders and lights
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
@@ -1196,7 +1202,7 @@ local function toggleLowDetail(enabled)
     end
 end
 
--- FIXED: Ultra Low Detail Mode - Makes objects invisible but not destroyed
+-- Ultra Low Detail Mode - Makes objects invisible but not destroyed
 local function toggleUltraLowDetail(enabled)
     Visual.ultraLowDetailEnabled = enabled
     print("Ultra Low Detail Mode:", enabled)
@@ -1347,7 +1353,7 @@ local function toggleUltraLowDetail(enabled)
     end
 end
 
--- New: Self Highlight - Adds a customizable outline to the player's own character
+-- Self Highlight - Adds a customizable outline to the player's own character
 local function createSelfHighlight()
     if selfHighlight then
         selfHighlight:Destroy()
@@ -1439,19 +1445,23 @@ function Visual.loadVisualButtons(createToggleButton)
     colorButton.Font = Enum.Font.SourceSans
     colorButton.Parent = ScrollFrame
 
-    -- Create color picker GUI
+    -- Create color picker GUI with sliders
     local colorPicker = Instance.new("Frame")
     colorPicker.Name = "ColorPicker"
-    colorPicker.Size = UDim2.new(0, 200, 0, 200)
-    colorPicker.Position = UDim2.new(0.5, -100, 0.5, -100)
+    colorPicker.Size = UDim2.new(0, 250, 0, 300)
+    colorPicker.Position = UDim2.new(0.5, -125, 0.5, -150)
     colorPicker.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     colorPicker.BorderSizePixel = 0
     colorPicker.Visible = false
     colorPicker.ZIndex = 100
     colorPicker.Parent = ScreenGui
 
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = colorPicker
+
     local title = Instance.new("TextLabel")
-    title.Text = "Color Picker (RGB 0-255)"
+    title.Text = "Self Highlight Color Picker"
     title.Size = UDim2.new(1, 0, 0, 30)
     title.BackgroundTransparency = 1
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1459,116 +1469,133 @@ function Visual.loadVisualButtons(createToggleButton)
     title.Font = Enum.Font.SourceSansBold
     title.Parent = colorPicker
 
-    -- R
-    local rLabel = Instance.new("TextLabel")
-    rLabel.Text = "R:"
-    rLabel.Size = UDim2.new(0.2, 0, 0, 30)
-    rLabel.Position = UDim2.new(0, 0, 0.15, 0)
-    rLabel.BackgroundTransparency = 1
-    rLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rLabel.Parent = colorPicker
-
-    local rBox = Instance.new("TextBox")
-    rBox.Size = UDim2.new(0.8, 0, 0, 30)
-    rBox.Position = UDim2.new(0.2, 0, 0.15, 0)
-    rBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    rBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rBox.Text = "255"
-    rBox.Parent = colorPicker
-
-    -- G
-    local gLabel = Instance.new("TextLabel")
-    gLabel.Text = "G:"
-    gLabel.Size = UDim2.new(0.2, 0, 0, 30)
-    gLabel.Position = UDim2.new(0, 0, 0.3, 0)
-    gLabel.BackgroundTransparency = 1
-    gLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    gLabel.Parent = colorPicker
-
-    local gBox = Instance.new("TextBox")
-    gBox.Size = UDim2.new(0.8, 0, 0, 30)
-    gBox.Position = UDim2.new(0.2, 0, 0.3, 0)
-    gBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    gBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    gBox.Text = "255"
-    gBox.Parent = colorPicker
-
-    -- B
-    local bLabel = Instance.new("TextLabel")
-    bLabel.Text = "B:"
-    bLabel.Size = UDim2.new(0.2, 0, 0, 30)
-    bLabel.Position = UDim2.new(0, 0, 0.45, 0)
-    bLabel.BackgroundTransparency = 1
-    bLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    bLabel.Parent = colorPicker
-
-    local bBox = Instance.new("TextBox")
-    bBox.Size = UDim2.new(0.8, 0, 0, 30)
-    bBox.Position = UDim2.new(0.2, 0, 0.45, 0)
-    bBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    bBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    bBox.Text = "255"
-    bBox.Parent = colorPicker
-
-    -- Preview
+    -- Color preview
     local preview = Instance.new("Frame")
-    preview.Size = UDim2.new(0.5, 0, 0.2, 0)
-    preview.Position = UDim2.new(0.25, 0, 0.6, 0)
-    preview.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    preview.Size = UDim2.new(0.4, 0, 0.2, 0)
+    preview.Position = UDim2.new(0.3, 0, 0.75, 0)
+    preview.BackgroundColor3 = Visual.selfHighlightColor
     preview.BorderSizePixel = 0
     preview.Parent = colorPicker
 
-    -- Confirm
+    -- Slider creation function
+    local function createSlider(name, position, color)
+        local sliderFrame = Instance.new("Frame")
+        sliderFrame.Name = name .. "Slider"
+        sliderFrame.Size = UDim2.new(0.8, 0, 0, 30)
+        sliderFrame.Position = position
+        sliderFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        sliderFrame.Parent = colorPicker
+
+        local sliderCorner = Instance.new("UICorner")
+        sliderCorner.CornerRadius = UDim.new(0, 4)
+        sliderCorner.Parent = sliderFrame
+
+        local label = Instance.new("TextLabel")
+        label.Text = name .. ":"
+        label.Size = UDim2.new(0.2, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = sliderFrame
+
+        local fill = Instance.new("Frame")
+        fill.Name = "Fill"
+        fill.Size = UDim2.new(0, 0, 1, 0)
+        fill.BackgroundColor3 = color
+        fill.BorderSizePixel = 0
+        fill.Parent = sliderFrame
+
+        local fillCorner = Instance.new("UICorner")
+        fillCorner.CornerRadius = UDim.new(0, 4)
+        fillCorner.Parent = fill
+
+        return sliderFrame, fill
+    end
+
+    local rSlider, rFill = createSlider("R", UDim2.new(0.1, 0, 0.15, 0), Color3.fromRGB(255, 0, 0))
+    local gSlider, gFill = createSlider("G", UDim2.new(0.1, 0, 0.25, 0), Color3.fromRGB(0, 255, 0))
+    local bSlider, bFill = createSlider("B", UDim2.new(0.1, 0, 0.35, 0), Color3.fromRGB(0, 0, 255))
+
+    -- Confirm and Cancel buttons
     local confirm = Instance.new("TextButton")
     confirm.Text = "Confirm"
-    confirm.Size = UDim2.new(0.5, 0, 0, 30)
-    confirm.Position = UDim2.new(0, 0, 0.85, 0)
-    confirm.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    confirm.Size = UDim2.new(0.45, 0, 0, 30)
+    confirm.Position = UDim2.new(0.05, 0, 0.85, 0)
+    confirm.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
     confirm.TextColor3 = Color3.fromRGB(255, 255, 255)
     confirm.Parent = colorPicker
 
-    -- Cancel
     local cancel = Instance.new("TextButton")
     cancel.Text = "Cancel"
-    cancel.Size = UDim2.new(0.5, 0, 0, 30)
+    cancel.Size = UDim2.new(0.45, 0, 0, 30)
     cancel.Position = UDim2.new(0.5, 0, 0.85, 0)
-    cancel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    cancel.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
     cancel.TextColor3 = Color3.fromRGB(255, 255, 255)
     cancel.Parent = colorPicker
 
-    -- Update preview function
+    -- Slider interaction
+    local currentSlider = nil
+    local function updateSlider(slider, fill, position)
+        local relativeX = math.clamp((position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
+        fill.Size = UDim2.new(relativeX, 0, 1, 0)
+        return relativeX * 255
+    end
+
     local function updatePreview()
-        local r = tonumber(rBox.Text) or 0
-        local g = tonumber(gBox.Text) or 0
-        local b = tonumber(bBox.Text) or 0
-        r = math.clamp(r, 0, 255)
-        g = math.clamp(g, 0, 255)
-        b = math.clamp(b, 0, 255)
+        local r = rFill.Size.X.Scale * 255
+        local g = gFill.Size.X.Scale * 255
+        local b = bFill.Size.X.Scale * 255
         preview.BackgroundColor3 = Color3.fromRGB(r, g, b)
     end
 
-    rBox.Changed:Connect(updatePreview)
-    gBox.Changed:Connect(updatePreview)
-    bBox.Changed:Connect(updatePreview)
+    -- Slider input handling
+    local function handleSliderInput(slider, fill)
+        return function(input, processed)
+            if processed then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                if input.UserInputState == Enum.UserInputState.Begin then
+                    currentSlider = {slider = slider, fill = fill}
+                elseif input.UserInputState == Enum.UserInputState.End then
+                    currentSlider = nil
+                end
+            elseif input.UserInputType == Enum.UserInputType.MouseMovement and currentSlider and currentSlider.slider == slider then
+                updateSlider(slider, fill, input.Position)
+                updatePreview()
+            end
+        end
+    end
+
+    rSlider.InputBegan:Connect(handleSliderInput(rSlider, rFill))
+    rSlider.InputChanged:Connect(handleSliderInput(rSlider, rFill))
+    rSlider.InputEnded:Connect(handleSliderInput(rSlider, rFill))
+    
+    gSlider.InputBegan:Connect(handleSliderInput(gSlider, gFill))
+    gSlider.InputChanged:Connect(handleSliderInput(gSlider, gFill))
+    gSlider.InputEnded:Connect(handleSliderInput(gSlider, gFill))
+    
+    bSlider.InputBegan:Connect(handleSliderInput(bSlider, bFill))
+    bSlider.InputChanged:Connect(handleSliderInput(bSlider, bFill))
+    bSlider.InputEnded:Connect(handleSliderInput(bSlider, bFill))
+
+    -- Initialize slider positions
+    local function setSliderValues(color)
+        rFill.Size = UDim2.new(color.R, 0, 1, 0)
+        gFill.Size = UDim2.new(color.G, 0, 1, 0)
+        bFill.Size = UDim2.new(color.B, 0, 1, 0)
+        updatePreview()
+    end
 
     -- Open color picker
     colorButton.MouseButton1Click:Connect(function()
-        local currentColor = Visual.selfHighlightColor
-        rBox.Text = tostring(math.floor(currentColor.R * 255))
-        gBox.Text = tostring(math.floor(currentColor.G * 255))
-        bBox.Text = tostring(math.floor(currentColor.B * 255))
-        updatePreview()
+        setSliderValues(Visual.selfHighlightColor)
         colorPicker.Visible = true
     end)
 
     -- Confirm
     confirm.MouseButton1Click:Connect(function()
-        local r = tonumber(rBox.Text) or 255
-        local g = tonumber(gBox.Text) or 255
-        local b = tonumber(bBox.Text) or 255
-        r = math.clamp(r, 0, 255)
-        g = math.clamp(g, 0, 255)
-        b = math.clamp(b, 0, 255)
+        local r = rFill.Size.X.Scale * 255
+        local g = gFill.Size.X.Scale * 255
+        local b = bFill.Size.X.Scale * 255
         Visual.selfHighlightColor = Color3.fromRGB(r, g, b)
         if Visual.selfHighlightEnabled then
             createSelfHighlight()
@@ -1667,19 +1694,7 @@ function Visual.init(deps)
     player = deps.player
     Visual.character = deps.character or (player and player.Character)
     
-    Visual.freecamEnabled = false
-    Visual.freecamConnection = nil
-    Visual.noClipCameraEnabled = false
-    Visual.noClipCameraConnection = nil
-    Visual.fullbrightEnabled = false
-    Visual.flashlightEnabled = false
-    Visual.lowDetailEnabled = false
-    Visual.ultraLowDetailEnabled = false
-    Visual.espEnabled = false
-    Visual.hideAllNicknames = false
-    Visual.hideOwnNickname = false
-    Visual.currentTimeMode = "normal"
-    Visual.selfHighlightEnabled = false
+    Visual.freeselfHighlightEnabled = false
     Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
