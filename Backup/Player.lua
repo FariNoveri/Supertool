@@ -1,4 +1,5 @@
 -- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, bring player, fling, and magnet player
+-- Enhanced with Physics Control and Improved Fling System
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -30,11 +31,17 @@ Player.followOffset = Vector3.new(0, 2, 5)
 Player.followSpeed = 1.2
 Player.followPathfinding = nil
 
--- Variables for fling feature
+-- Variables for enhanced fling feature
 Player.flingEnabled = false
 Player.flingForce = 50
 Player.flingRange = 10
 Player.flungPlayers = {}
+
+-- Variables for physics control
+Player.physicsEnabled = false
+Player.physicsConnections = {}
+Player.physicsPlayers = {}
+Player.spinSpeed = 20
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
@@ -269,6 +276,421 @@ local function toggleNoDeathAnimation(enabled)
     end
 end
 
+-- Physics Control for Players - New Feature
+local function enablePhysicsForPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot enable physics: Invalid target player")
+        return
+    end
+    
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        print("Cannot enable physics: Target player has no character")
+        return
+    end
+    
+    local success, result = pcall(function()
+        local character = targetPlayer.Character
+        local humanoid = character:FindFirstChild("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        
+        if not humanoid or not rootPart then
+            print("Cannot enable physics: Missing parts")
+            return
+        end
+        
+        -- Enable physics by making parts non-anchored and disabling humanoid control
+        rootPart.Anchored = false
+        
+        -- Disable humanoid states that interfere with physics
+        humanoid.PlatformStand = true
+        humanoid.WalkSpeed = 0
+        humanoid.JumpPower = 0
+        humanoid.Sit = false
+        
+        -- Make all body parts non-anchored for better physics
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part ~= rootPart then
+                part.Anchored = false
+                
+                -- Add some mass for better physics interactions
+                if part.Name == "Head" or part.Name == "Torso" or part.Name == "UpperTorso" then
+                    local bodyVelocity = part:FindFirstChild("BodyVelocity")
+                    if not bodyVelocity then
+                        bodyVelocity = Instance.new("BodyVelocity")
+                        bodyVelocity.MaxForce = Vector3.new(0, 0, 0)
+                        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                        bodyVelocity.Parent = part
+                    end
+                end
+            end
+        end
+        
+        -- Store physics data
+        Player.physicsPlayers[targetPlayer] = {
+            humanoid = humanoid,
+            rootPart = rootPart,
+            character = character,
+            originalWalkSpeed = 16,
+            originalJumpPower = 50
+        }
+        
+        print("Physics enabled for: " .. targetPlayer.Name)
+    end)
+    
+    if not success then
+        warn("Failed to enable physics: " .. tostring(result))
+    end
+end
+
+-- Disable physics for a player
+local function disablePhysicsForPlayer(targetPlayer)
+    if not targetPlayer or not Player.physicsPlayers[targetPlayer] then
+        return
+    end
+    
+    local success, result = pcall(function()
+        local physicsData = Player.physicsPlayers[targetPlayer]
+        local humanoid = physicsData.humanoid
+        local rootPart = physicsData.rootPart
+        local character = physicsData.character
+        
+        if humanoid and humanoid.Parent then
+            humanoid.PlatformStand = false
+            humanoid.WalkSpeed = physicsData.originalWalkSpeed
+            humanoid.JumpPower = physicsData.originalJumpPower
+        end
+        
+        -- Clean up body movers
+        if character then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BodyVelocity") or part:IsA("BodyAngularVelocity") or part:IsA("BodyPosition") then
+                    part:Destroy()
+                end
+            end
+        end
+        
+        Player.physicsPlayers[targetPlayer] = nil
+        print("Physics disabled for: " .. targetPlayer.Name)
+    end)
+    
+    if not success then
+        warn("Failed to disable physics: " .. tostring(result))
+    end
+end
+
+-- Toggle Physics Control
+local function togglePhysicsControl(enabled)
+    Player.physicsEnabled = enabled
+    
+    if enabled then
+        print("Activating physics control...")
+        
+        -- Enable physics for all players
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player then
+                enablePhysicsForPlayer(p)
+            end
+        end
+        
+        -- Monitor new players
+        connections.physicsNewPlayers = Players.PlayerAdded:Connect(function(newPlayer)
+            if Player.physicsEnabled and newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function(character)
+                    task.wait(0.5)
+                    enablePhysicsForPlayer(newPlayer)
+                end)
+                
+                if newPlayer.Character then
+                    task.wait(0.5)
+                    enablePhysicsForPlayer(newPlayer)
+                end
+            end
+        end)
+        
+        -- Monitor respawns
+        connections.physicsRespawn = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            if Player.physicsPlayers[leavingPlayer] then
+                Player.physicsPlayers[leavingPlayer] = nil
+            end
+        end)
+        
+        print("Physics control activated successfully")
+    else
+        print("Deactivating physics control...")
+        
+        if connections.physicsNewPlayers then
+            connections.physicsNewPlayers:Disconnect()
+            connections.physicsNewPlayers = nil
+        end
+        
+        if connections.physicsRespawn then
+            connections.physicsRespawn:Disconnect()
+            connections.physicsRespawn = nil
+        end
+        
+        -- Disable physics for all controlled players
+        for targetPlayer, _ in pairs(Player.physicsPlayers) do
+            disablePhysicsForPlayer(targetPlayer)
+        end
+        
+        Player.physicsPlayers = {}
+        print("Physics control deactivated successfully")
+    end
+end
+
+-- Enhanced Fling Feature with Spinning
+local function enhancedFlingPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot fling: Invalid target player")
+        return
+    end
+    
+    if not Player.rootPart then
+        print("Cannot fling: Local player missing HumanoidRootPart")
+        return
+    end
+    
+    local success, result = pcall(function()
+        local targetCharacter = targetPlayer.Character
+        if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") then
+            print("Cannot fling: Target player has no character or HumanoidRootPart")
+            return
+        end
+        
+        local targetRootPart = targetCharacter.HumanoidRootPart
+        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+        local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
+        
+        if distance > Player.flingRange then
+            print("Cannot fling: Target too far away (distance: " .. math.floor(distance) .. ")")
+            return
+        end
+        
+        -- Enable physics first for better control
+        enablePhysicsForPlayer(targetPlayer)
+        
+        -- Make our character spin for the fling effect
+        if Player.rootPart then
+            local spin = Instance.new("BodyAngularVelocity")
+            spin.AngularVelocity = Vector3.new(0, Player.spinSpeed, 0)
+            spin.MaxTorque = Vector3.new(0, math.huge, 0)
+            spin.Parent = Player.rootPart
+            
+            -- Remove spin after a short time
+            task.delay(0.5, function()
+                if spin and spin.Parent then
+                    spin:Destroy()
+                end
+            end)
+        end
+        
+        -- Apply powerful fling forces
+        local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
+        local flingVelocity = direction * Player.flingForce
+        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.8, 0) -- Strong upward force
+        
+        -- Make target non-anchored and apply forces
+        targetRootPart.Anchored = false
+        targetRootPart.AssemblyLinearVelocity = flingVelocity
+        
+        -- Add spinning to the target
+        local targetSpin = Instance.new("BodyAngularVelocity")
+        targetSpin.AngularVelocity = Vector3.new(
+            math.random(-Player.spinSpeed, Player.spinSpeed),
+            math.random(-Player.spinSpeed, Player.spinSpeed),
+            math.random(-Player.spinSpeed, Player.spinSpeed)
+        )
+        targetSpin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        targetSpin.Parent = targetRootPart
+        
+        -- Create additional body parts forces for more realistic fling
+        for _, part in pairs(targetCharacter:GetDescendants()) do
+            if part:IsA("BasePart") and part ~= targetRootPart and part.Name ~= "HumanoidRootPart" then
+                local bodyVel = part:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity")
+                bodyVel.MaxForce = Vector3.new(4000, 4000, 4000)
+                bodyVel.Velocity = flingVelocity * math.random(0.7, 1.3)
+                bodyVel.Parent = part
+                
+                -- Clean up after some time
+                task.delay(2, function()
+                    if bodyVel and bodyVel.Parent then
+                        bodyVel:Destroy()
+                    end
+                end)
+            end
+        end
+        
+        -- Clean up spin after some time
+        task.delay(1.5, function()
+            if targetSpin and targetSpin.Parent then
+                targetSpin:Destroy()
+            end
+        end)
+        
+        -- Reset target after a while
+        task.delay(3, function()
+            if targetHumanoid and targetHumanoid.Parent then
+                targetHumanoid.PlatformStand = false
+                targetHumanoid.WalkSpeed = 16
+                targetHumanoid.JumpPower = 50
+            end
+        end)
+        
+        print("Enhanced fling applied to: " .. targetPlayer.Name)
+    end)
+    
+    if not success then
+        warn("Failed to fling player: " .. tostring(result))
+    end
+end
+
+local function flingPlayer(targetPlayer)
+    enhancedFlingPlayer(targetPlayer)
+end
+
+-- Toggle Enhanced Fling Mode - Continuously fling nearby players with spin
+local function toggleFling(enabled)
+    Player.flingEnabled = enabled
+    
+    if enabled then
+        print("Enhanced Fling mode enabled - will fling nearby players with spin")
+        
+        connections.fling = RunService.Heartbeat:Connect(function()
+            if not Player.flingEnabled or not Player.rootPart then return end
+            
+            -- Make our character spin when fling mode is active
+            local ourBodyAngularVel = Player.rootPart:FindFirstChild("FlingSpinVel")
+            if not ourBodyAngularVel then
+                ourBodyAngularVel = Instance.new("BodyAngularVelocity")
+                ourBodyAngularVel.Name = "FlingSpinVel"
+                ourBodyAngularVel.AngularVelocity = Vector3.new(0, Player.spinSpeed, 0)
+                ourBodyAngularVel.MaxTorque = Vector3.new(0, math.huge, 0)
+                ourBodyAngularVel.Parent = Player.rootPart
+            end
+            
+            for _, targetPlayer in pairs(Players:GetPlayers()) do
+                if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetRootPart = targetPlayer.Character.HumanoidRootPart
+                    local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
+                    
+                    if distance <= Player.flingRange then
+                        enablePhysicsForPlayer(targetPlayer)
+                        
+                        if not Player.flungPlayers[targetPlayer] then
+                            Player.flungPlayers[targetPlayer] = true
+                        end
+                        
+                        -- Apply continuous fling forces
+                        local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
+                        local flingVelocity = direction * Player.flingForce
+                        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.4, 0)
+                        
+                        targetRootPart.Anchored = false
+                        targetRootPart.AssemblyLinearVelocity = flingVelocity
+                        
+                        -- Add spinning effect to target
+                        local targetBodyAngularVel = targetRootPart:FindFirstChild("TargetSpinVel")
+                        if not targetBodyAngularVel then
+                            targetBodyAngularVel = Instance.new("BodyAngularVelocity")
+                            targetBodyAngularVel.Name = "TargetSpinVel"
+                            targetBodyAngularVel.AngularVelocity = Vector3.new(
+                                math.random(-Player.spinSpeed, Player.spinSpeed),
+                                math.random(-Player.spinSpeed, Player.spinSpeed),
+                                math.random(-Player.spinSpeed, Player.spinSpeed)
+                            )
+                            targetBodyAngularVel.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                            targetBodyAngularVel.Parent = targetRootPart
+                        end
+                        
+                        -- Apply forces to other body parts for more realistic effect
+                        for _, part in pairs(targetPlayer.Character:GetDescendants()) do
+                            if part:IsA("BasePart") and part ~= targetRootPart then
+                                local bodyVel = part:FindFirstChild("FlingBodyVel")
+                                if not bodyVel then
+                                    bodyVel = Instance.new("BodyVelocity")
+                                    bodyVel.Name = "FlingBodyVel"
+                                    bodyVel.MaxForce = Vector3.new(2000, 2000, 2000)
+                                    bodyVel.Parent = part
+                                end
+                                bodyVel.Velocity = flingVelocity * math.random(0.8, 1.2)
+                            end
+                        end
+                    else
+                        if Player.flungPlayers[targetPlayer] then
+                            -- Clean up when player moves away
+                            for _, part in pairs(targetPlayer.Character:GetDescendants()) do
+                                local spinVel = part:FindFirstChild("TargetSpinVel") or part:FindFirstChild("FlingBodyVel")
+                                if spinVel then
+                                    spinVel:Destroy()
+                                end
+                            end
+                            
+                            local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                            if targetHumanoid then
+                                targetHumanoid.PlatformStand = false
+                                targetHumanoid.WalkSpeed = 16
+                                targetHumanoid.JumpPower = 50
+                            end
+                            Player.flungPlayers[targetPlayer] = nil
+                        end
+                    end
+                end
+            end
+        end)
+        
+        connections.flingRespawn = player.CharacterAdded:Connect(function(character)
+            if Player.flingEnabled then
+                task.wait(0.5)
+                Player.rootPart = character:FindFirstChild("HumanoidRootPart")
+            end
+        end)
+        
+        print("Enhanced Fling mode activated successfully")
+    else
+        -- Clean up our spinning
+        if Player.rootPart then
+            local ourSpinVel = Player.rootPart:FindFirstChild("FlingSpinVel")
+            if ourSpinVel then
+                ourSpinVel:Destroy()
+            end
+        end
+        
+        if connections.fling then
+            connections.fling:Disconnect()
+            connections.fling = nil
+        end
+        
+        if connections.flingRespawn then
+            connections.flingRespawn:Disconnect()
+            connections.flingRespawn = nil
+        end
+        
+        -- Clean up all flung players
+        for targetPlayer, _ in pairs(Player.flungPlayers) do
+            if targetPlayer.Character then
+                for _, part in pairs(targetPlayer.Character:GetDescendants()) do
+                    local spinVel = part:FindFirstChild("TargetSpinVel") or part:FindFirstChild("FlingBodyVel")
+                    if spinVel then
+                        spinVel:Destroy()
+                    end
+                end
+                
+                local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                if targetHumanoid then
+                    targetHumanoid.PlatformStand = false
+                    targetHumanoid.WalkSpeed = 16
+                    targetHumanoid.JumpPower = 50
+                end
+                
+                disablePhysicsForPlayer(targetPlayer)
+            end
+        end
+        Player.flungPlayers = {}
+        
+        print("Enhanced Fling mode disabled")
+    end
+end
+
 -- Bring Player (Fixed)
 local function bringPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
@@ -315,155 +737,6 @@ local function bringPlayer(targetPlayer)
     
     if not success then
         warn("Failed to bring player: " .. tostring(result))
-    end
-end
-
--- Fling Feature - New Addition
-local function flingPlayer(targetPlayer)
-    if not targetPlayer or targetPlayer == player then
-        print("Cannot fling: Invalid target player")
-        return
-    end
-    
-    if not Player.rootPart then
-        print("Cannot fling: Local player missing HumanoidRootPart")
-        return
-    end
-    
-    local success, result = pcall(function()
-        local targetCharacter = targetPlayer.Character
-        if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") then
-            print("Cannot fling: Target player has no character or HumanoidRootPart")
-            return
-        end
-        
-        local targetRootPart = targetCharacter.HumanoidRootPart
-        local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
-        
-        if distance > Player.flingRange then
-            print("Cannot fling: Target too far away (distance: " .. math.floor(distance) .. ")")
-            return
-        end
-        
-        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if targetHumanoid then
-            targetHumanoid.PlatformStand = true
-            targetHumanoid.WalkSpeed = 0
-            targetHumanoid.JumpPower = 0
-            task.delay(1, function()
-                if targetHumanoid then
-                    targetHumanoid.PlatformStand = false
-                    targetHumanoid.WalkSpeed = 16
-                    targetHumanoid.JumpPower = 50
-                end
-            end)
-        end
-        
-        local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
-        local flingVelocity = direction * Player.flingForce
-        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.5, 0) -- Add upward force
-        
-        targetRootPart.Anchored = false
-        targetRootPart.AssemblyLinearVelocity = flingVelocity
-        targetRootPart.AssemblyAngularVelocity = Vector3.new(
-            math.random(-10, 10),
-            math.random(-10, 10),
-            math.random(-10, 10)
-        )
-        
-        print("Flung player: " .. targetPlayer.Name)
-    end)
-    
-    if not success then
-        warn("Failed to fling player: " .. tostring(result))
-    end
-end
-
--- Toggle Fling Mode - Continuously fling nearby players
-local function toggleFling(enabled)
-    Player.flingEnabled = enabled
-    
-    if enabled then
-        print("Fling mode enabled - will fling nearby players")
-        
-        connections.fling = RunService.Heartbeat:Connect(function()
-            if not Player.flingEnabled or not Player.rootPart then return end
-            
-            for _, targetPlayer in pairs(Players:GetPlayers()) do
-                if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    local targetRootPart = targetPlayer.Character.HumanoidRootPart
-                    local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
-                    
-                    local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
-                    
-                    if distance <= Player.flingRange then
-                        if not Player.flungPlayers[targetPlayer] then
-                            Player.flungPlayers[targetPlayer] = true
-                        end
-                        
-                        if targetHumanoid then
-                            targetHumanoid.PlatformStand = true
-                            targetHumanoid.WalkSpeed = 0
-                            targetHumanoid.JumpPower = 0
-                        end
-                        
-                        local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
-                        local flingVelocity = direction * Player.flingForce
-                        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.3, 0)
-                        
-                        targetRootPart.Anchored = false
-                        targetRootPart.AssemblyLinearVelocity = flingVelocity
-                        targetRootPart.AssemblyAngularVelocity = Vector3.new(
-                            math.random(-5, 5),
-                            math.random(-5, 5),
-                            math.random(-5, 5)
-                        )
-                    else
-                        if Player.flungPlayers[targetPlayer] then
-                            if targetHumanoid then
-                                targetHumanoid.PlatformStand = false
-                                targetHumanoid.WalkSpeed = 16
-                                targetHumanoid.JumpPower = 50
-                            end
-                            Player.flungPlayers[targetPlayer] = nil
-                        end
-                    end
-                end
-            end
-        end)
-        
-        connections.flingRespawn = player.CharacterAdded:Connect(function(character)
-            if Player.flingEnabled then
-                task.wait(0.5)
-                Player.rootPart = character:FindFirstChild("HumanoidRootPart")
-            end
-        end)
-        
-        print("Fling mode activated successfully")
-    else
-        if connections.fling then
-            connections.fling:Disconnect()
-            connections.fling = nil
-        end
-        
-        if connections.flingRespawn then
-            connections.flingRespawn:Disconnect()
-            connections.flingRespawn = nil
-        end
-        
-        for targetPlayer, _ in pairs(Player.flungPlayers) do
-            if targetPlayer.Character then
-                local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
-                if targetHumanoid then
-                    targetHumanoid.PlatformStand = false
-                    targetHumanoid.WalkSpeed = 16
-                    targetHumanoid.JumpPower = 50
-                end
-            end
-        end
-        Player.flungPlayers = {}
-        
-        print("Fling mode disabled")
     end
 end
 
@@ -647,6 +920,11 @@ local function setupPlayerMonitoring(targetPlayer)
             end
         end
         
+        if Player.physicsEnabled then
+            enablePhysicsForPlayer(targetPlayer)
+            print("Physics applied to respawned player: " .. targetPlayer.Name)
+        end
+        
         if Player.selectedPlayer == targetPlayer then
             task.wait(0.5)
             spectatePlayer(targetPlayer)
@@ -668,6 +946,10 @@ local function setupPlayerMonitoring(targetPlayer)
     if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart
         print("Magnet applied to player: " .. targetPlayer.Name)
+    end
+    
+    if Player.physicsEnabled then
+        enablePhysicsForPlayer(targetPlayer)
     end
     
     if Player.noDeathAnimationEnabled then
@@ -697,6 +979,7 @@ local function cleanupPlayerMonitoring(targetPlayer)
     
     Player.frozenPlayerPositions[targetPlayer] = nil
     Player.magnetPlayerPositions[targetPlayer] = nil
+    disablePhysicsForPlayer(targetPlayer)
 end
 
 -- Freeze Players
@@ -1046,7 +1329,7 @@ function Player.updatePlayerList()
             playerItem.Parent = PlayerListScrollFrame
             playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             playerItem.BorderSizePixel = 0
-            playerItem.Size = UDim2.new(1, -5, 0, 240) -- Increased height for fling button
+            playerItem.Size = UDim2.new(1, -5, 0, 270) -- Increased height for physics button
             playerItem.LayoutOrder = playerCount
             playerItem.ZIndex = 1
             
@@ -1192,13 +1475,28 @@ function Player.updatePlayerList()
             flingButton.ZIndex = 2
             flingButton.Active = true
             
+            -- New Physics Button
+            local physicsButton = Instance.new("TextButton")
+            physicsButton.Name = "PhysicsButton"
+            physicsButton.Parent = playerItem
+            physicsButton.BackgroundColor3 = Player.physicsPlayers[p] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(40, 80, 80)
+            physicsButton.BorderSizePixel = 0
+            physicsButton.Position = UDim2.new(0, 80, 0, 150)
+            physicsButton.Size = UDim2.new(1, -85, 0, 25)
+            physicsButton.Font = Enum.Font.Gotham
+            physicsButton.Text = Player.physicsPlayers[p] and "DISABLE PHYSICS" or "ENABLE PHYSICS"
+            physicsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            physicsButton.TextSize = 8
+            physicsButton.ZIndex = 2
+            physicsButton.Active = true
+            
             local freezeIndividualButton = Instance.new("TextButton")
             freezeIndividualButton.Name = "FreezeIndividualButton"
             freezeIndividualButton.Parent = playerItem
             freezeIndividualButton.BackgroundColor3 = Player.frozenPlayerPositions[p] and Color3.fromRGB(80, 80, 40) or Color3.fromRGB(40, 40, 100)
             freezeIndividualButton.BorderSizePixel = 0
-            freezeIndividualButton.Position = UDim2.new(0, 80, 0, 150)
-            freezeIndividualButton.Size = UDim2.new(1, -85, 0, 25)
+            freezeIndividualButton.Position = UDim2.new(0, 5, 0, 180)
+            freezeIndividualButton.Size = UDim2.new(1, -10, 0, 25)
             freezeIndividualButton.Font = Enum.Font.Gotham
             freezeIndividualButton.Text = Player.frozenPlayerPositions[p] and "UNFREEZE" or "FREEZE"
             freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1301,9 +1599,22 @@ function Player.updatePlayerList()
                 end
             end)
             
-            -- Fling button event
+            -- Enhanced Fling button event
             flingButton.MouseButton1Click:Connect(function()
-                flingPlayer(currentPlayer)
+                enhancedFlingPlayer(currentPlayer)
+            end)
+            
+            -- Physics button event
+            physicsButton.MouseButton1Click:Connect(function()
+                if Player.physicsPlayers[currentPlayer] then
+                    disablePhysicsForPlayer(currentPlayer)
+                    physicsButton.BackgroundColor3 = Color3.fromRGB(40, 80, 80)
+                    physicsButton.Text = "ENABLE PHYSICS"
+                else
+                    enablePhysicsForPlayer(currentPlayer)
+                    physicsButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
+                    physicsButton.Text = "DISABLE PHYSICS"
+                end
             end)
             
             freezeIndividualButton.MouseButton1Click:Connect(function()
@@ -1355,6 +1666,14 @@ function Player.updatePlayerList()
             
             flingButton.MouseLeave:Connect(function()
                 flingButton.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
+            end)
+            
+            physicsButton.MouseEnter:Connect(function()
+                physicsButton.BackgroundColor3 = Player.physicsPlayers[currentPlayer] and Color3.fromRGB(100, 50, 100) or Color3.fromRGB(50, 100, 100)
+            end)
+            
+            physicsButton.MouseLeave:Connect(function()
+                physicsButton.BackgroundColor3 = Player.physicsPlayers[currentPlayer] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(40, 80, 80)
             end)
         end
     end
@@ -1656,6 +1975,7 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Freeze Players", toggleFreezePlayers, "Player")
     createToggleButton("Fast Respawn", toggleFastRespawn, "Player")
     createToggleButton("No Death Animation", toggleNoDeathAnimation, "Player")
+    createToggleButton("Physics Control", togglePhysicsControl, "Player")
     createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
     createToggleButton("Fling Mode", toggleFling, "Player")
     print("Player buttons loaded successfully")
@@ -1672,6 +1992,7 @@ function Player.resetStates()
     Player.noDeathAnimationEnabled = false
     Player.magnetEnabled = false
     Player.flingEnabled = false
+    Player.physicsEnabled = false
     
     toggleForceField(false)
     toggleAntiAFK(false)
@@ -1680,6 +2001,7 @@ function Player.resetStates()
     toggleNoDeathAnimation(false)
     toggleMagnetPlayers(false)
     toggleFling(false)
+    togglePhysicsControl(false)
     stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
@@ -2096,6 +2418,11 @@ function Player.cleanup()
         end
     end
     Player.deathAnimationConnections = {}
+    
+    for targetPlayer, _ in pairs(Player.physicsPlayers) do
+        disablePhysicsForPlayer(targetPlayer)
+    end
+    Player.physicsPlayers = {}
     
     if PlayerListFrame then
         PlayerListFrame:Destroy()
