@@ -2,6 +2,7 @@
 -- Updated version with fixed Ctrl+Z, JSON loading, status display, and enhanced path features
 -- REMOVED: All macro functionality
 -- ADDED: Top-right status display, pause/resume with markers, clickable path points
+-- FIXED: Death/respawn handling, show/play separation, undo issues
 -- farinoveri30@gmail.com (claude ai)
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -39,6 +40,16 @@ local pathVisualsVisible = true
 local lastPauseToggleTime = 0
 local lastVisibilityToggleTime = 0
 local DEBOUNCE_TIME = 0.5 -- seconds
+
+-- NEW: Separate variables for show-only paths
+local showOnlyPathName = nil
+local showOnlyVisualParts = {}
+local showOnlyMarkerParts = {}
+
+-- NEW: Undo protection variables
+local lastUndoTime = 0
+local isUndoInProgress = false
+local UNDO_DEBOUNCE_TIME = 1.0 -- seconds between undos
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -275,6 +286,7 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
     return part
 end
 
+-- FIXED: Separate functions for clearing different types of visuals
 local function clearPathVisuals()
     for _, part in pairs(pathVisualParts) do
         if part and part.Parent then
@@ -294,6 +306,26 @@ local function clearPathVisuals()
         pausedHereLabel:Destroy()
         pausedHereLabel = nil
     end
+end
+
+local function clearShowOnlyVisuals()
+    for _, part in pairs(showOnlyVisualParts) do
+        if part and part.Parent then
+            part:Destroy()
+        end
+    end
+    for _, part in pairs(showOnlyMarkerParts) do
+        if part and part.Parent then
+            part:Destroy()
+        end
+    end
+    showOnlyVisualParts = {}
+    showOnlyMarkerParts = {}
+end
+
+local function clearAllVisuals()
+    clearPathVisuals()
+    clearShowOnlyVisuals()
 end
 
 local function createPausedHereMarker(position)
@@ -348,6 +380,26 @@ local function togglePathVisibility()
     end
     
     for _, part in pairs(pathMarkerParts) do
+        if part and part.Parent then
+            part.Transparency = transparency
+            local billboard = part:FindFirstChildOfClass("BillboardGui")
+            if billboard then
+                billboard.Enabled = pathVisualsVisible
+            end
+        end
+    end
+    
+    for _, part in pairs(showOnlyVisualParts) do
+        if part and part.Parent then
+            part.Transparency = transparency
+            local billboard = part:FindFirstChildOfClass("BillboardGui")
+            if billboard then
+                billboard.Enabled = pathVisualsVisible
+            end
+        end
+    end
+    
+    for _, part in pairs(showOnlyMarkerParts) do
         if part and part.Parent then
             part.Transparency = transparency
             local billboard = part:FindFirstChildOfClass("BillboardGui")
@@ -538,10 +590,41 @@ local function stopPathRecording()
     print("[SUPERTOOL] Path recorded: " .. pathName .. " (" .. #currentPath.points .. " points, " .. #currentPath.markers .. " markers)")
 end
 
+-- FIXED: Separate show-only function
+local function showPathOnly(pathName)
+    local path = savedPaths[pathName] or loadPathFromJSON(pathName)
+    if not path or not path.points or #path.points == 0 then
+        warn("[SUPERTOOL] Cannot show path: Invalid path data")
+        return
+    end
+    
+    clearShowOnlyVisuals()
+    showOnlyPathName = pathName
+    
+    -- Create path visuals
+    for i, point in pairs(path.points) do
+        local visualPart = createPathVisual(point.position, point.movementType, false)
+        table.insert(showOnlyVisualParts, visualPart)
+    end
+    
+    for i, marker in pairs(path.markers or {}) do
+        local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
+        table.insert(showOnlyMarkerParts, markerPart)
+    end
+    
+    print("[SUPERTOOL] Showing path: " .. pathName)
+    updatePathStatus()
+end
+
 -- Path Playback Functions
 local function playPath(pathName, showOnly, autoPlay, respawn)
     if pathRecording or pathPlaying then 
         stopPathPlayback()
+    end
+    
+    if showOnly then
+        showPathOnly(pathName)
+        return
     end
     
     if not updateCharacterReferences() then
@@ -556,7 +639,7 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     end
     
     pathPlaying = true
-    pathShowOnly = showOnly or false
+    pathShowOnly = false
     pathAutoPlaying = autoPlay or false
     pathAutoRespawning = respawn or false
     currentPathName = pathName
@@ -587,11 +670,6 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     end
     
     updatePathStatus()
-    
-    if pathShowOnly then
-        print("[SUPERTOOL] Showing path: " .. pathName)
-        return
-    end
     
     print("[SUPERTOOL] Playing path: " .. pathName)
     
@@ -634,14 +712,14 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     end)
 end
 
-local function togglePathVisuals(pathName)
-    if pathShowOnly and currentPathName == pathName then
-        clearPathVisuals()
-        pathShowOnly = false
-        currentPathName = nil
+-- FIXED: Separate toggle function for show-only
+local function toggleShowPath(pathName)
+    if showOnlyPathName == pathName then
+        clearShowOnlyVisuals()
+        showOnlyPathName = nil
         updatePathStatus()
     else
-        playPath(pathName, true, false, false)
+        showPathOnly(pathName)
     end
     updatePathList()
 end
@@ -697,24 +775,62 @@ local function pausePath()
     updatePathStatus()
 end
 
--- FIXED: Path Undo System
+-- FIXED: Improved undo system with better protection
 local function undoToLastMarker()
+    local currentTime = tick()
+    
+    -- Check debounce time to prevent spam
+    if currentTime - lastUndoTime < UNDO_DEBOUNCE_TIME then
+        warn("[SUPERTOOL] Undo too frequent, please wait " .. string.format("%.1f", UNDO_DEBOUNCE_TIME - (currentTime - lastUndoTime)) .. " seconds")
+        return
+    end
+    
     if not pathRecording or not currentPath or not currentPath.markers or #currentPath.markers == 0 then
         warn("[SUPERTOOL] Undo only available during path recording with existing markers")
         return
     end
     
+    if isUndoInProgress then
+        warn("[SUPERTOOL] Undo already in progress")
+        return
+    end
+    
+    isUndoInProgress = true
+    lastUndoTime = currentTime
+    
     local lastMarkerIndex = #currentPath.markers
     local lastMarker = currentPath.markers[lastMarkerIndex]
     
     if lastMarker and updateCharacterReferences() then
+        -- FIXED: Stop character movement immediately
+        rootPart.Velocity = Vector3.new(0, 0, 0)
+        rootPart.RotVelocity = Vector3.new(0, 0, 0)
+        
+        -- Wait a moment for physics to settle
+        task.wait(0.1)
+        
         -- Teleport to last marker
         rootPart.CFrame = lastMarker.cframe
+        rootPart.Velocity = Vector3.new(0, 0, 0)
+        
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
         
-        -- Remove points and markers after the last marker
-        currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
-        currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
+        -- FIXED: Properly remove points and markers after the last marker
+        local newPoints = {}
+        for i = 1, lastMarker.pathIndex do
+            if currentPath.points[i] then
+                table.insert(newPoints, currentPath.points[i])
+            end
+        end
+        currentPath.points = newPoints
+        
+        local newMarkers = {}
+        for i = 1, lastMarkerIndex - 1 do
+            if currentPath.markers[i] then
+                table.insert(newMarkers, currentPath.markers[i])
+            end
+        end
+        currentPath.markers = newMarkers
         
         -- Update visuals - clear and recreate
         clearPathVisuals()
@@ -731,7 +847,12 @@ local function undoToLastMarker()
         -- Create white sphere at undo position
         local undoMarker = createPathVisual(lastMarker.position, "paused", true)
         table.insert(pathMarkerParts, undoMarker)
+        
+        print("[SUPERTOOL] Removed " .. (#currentPath.points - #newPoints) .. " points and " .. (#currentPath.markers - #newMarkers) .. " markers")
     end
+    
+    task.wait(0.5) -- Additional wait to prevent spam
+    isUndoInProgress = false
 end
 
 -- FIXED: Load all existing files function
@@ -765,7 +886,7 @@ local function loadAllSavedPaths()
     end
 end
 
--- Status Update Functions - FIXED
+-- FIXED: Status Update Functions
 function updatePathStatus()
     if not PathStatusLabel then return end
     
@@ -773,10 +894,11 @@ function updatePathStatus()
     if pathRecording then
         statusText = pathPaused and "🔴 Recording Paused" or "🔴 Recording Path..."
     elseif pathPlaying and currentPathName then
-        local statusPrefix = pathShowOnly and "👁️ Showing: " or "🛤️ Playing: "
         local modeText = pathAutoRespawning and "Auto-Respawn" or (pathAutoPlaying and "Auto-Loop" or "Single Play")
-        statusText = (pathPaused and "⏸️ Paused: " or statusPrefix) .. currentPathName .. 
-                    (pathShowOnly and "" or " (" .. modeText .. ")")
+        statusText = (pathPaused and "⏸️ Paused: " or "🛤️ Playing: ") .. currentPathName .. 
+                    " (" .. modeText .. ")"
+    elseif showOnlyPathName then
+        statusText = "👁️ Showing: " .. showOnlyPathName
     end
     
     PathStatusLabel.Text = statusText
@@ -950,7 +1072,7 @@ local function initPathUI()
     PathTitle.BorderSizePixel = 0
     PathTitle.Size = UDim2.new(1, 0, 0, 25)
     PathTitle.Font = Enum.Font.GothamBold
-    PathTitle.Text = "PATH CREATOR v2.0 - Enhanced"
+    PathTitle.Text = "PATH CREATOR v2.1 - Fixed"
     PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathTitle.TextSize = 10
 
@@ -1013,7 +1135,7 @@ local function initPathUI()
     ClearVisualsButton.Position = UDim2.new(0, 90, 0, 2.5)
     ClearVisualsButton.Size = UDim2.new(0, 80, 0, 25)
     ClearVisualsButton.Font = Enum.Font.GothamBold
-    ClearVisualsButton.Text = "CLEAR"
+    ClearVisualsButton.Text = "CLEAR ALL"
     ClearVisualsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     ClearVisualsButton.TextSize = 8
 
@@ -1050,7 +1172,7 @@ local function initPathUI()
     end)
 
     PathPauseButton.MouseButton1Click:Connect(pausePath)
-    ClearVisualsButton.MouseButton1Click:Connect(clearPathVisuals)
+    ClearVisualsButton.MouseButton1Click:Connect(clearAllVisuals)
     UndoButton.MouseButton1Click:Connect(undoToLastMarker)
     
     -- Search functionality
@@ -1144,7 +1266,7 @@ function updatePathList()
             toggleShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             toggleShowButton.TextSize = 7
             toggleShowButton.Font = Enum.Font.GothamBold
-            toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
+            toggleShowButton.Text = (showOnlyPathName == pathName) and "HIDE" or "SHOW"
             
             local deleteButton = Instance.new("TextButton")
             deleteButton.Parent = pathItem
@@ -1230,17 +1352,20 @@ function updatePathList()
             end)
             
             toggleShowButton.MouseButton1Click:Connect(function()
-                togglePathVisuals(pathName)
+                toggleShowPath(pathName)
             end)
             
             deleteButton.MouseButton1Click:Connect(function()
                 if pathPlaying and currentPathName == pathName then
                     stopPathPlayback()
                 end
+                if showOnlyPathName == pathName then
+                    clearShowOnlyVisuals()
+                    showOnlyPathName = nil
+                end
                 savedPaths[pathName] = nil
                 deletePathFromJSON(pathName)
                 updatePathList()
-                clearPathVisuals()
             end)
             
             renameButton.MouseButton1Click:Connect(function()
@@ -1252,6 +1377,10 @@ function updatePathList()
                         
                         if pathPlaying and currentPathName == pathName then
                             currentPathName = newName
+                        end
+                        
+                        if showOnlyPathName == pathName then
+                            showOnlyPathName = newName
                         end
                         
                         renamePathInJSON(pathName, newName)
@@ -1322,15 +1451,15 @@ function Utility.loadUtilityButtons(createButton)
         if pathFrameVisible then
             updatePathList()
         end
-    end)-
+    end)
     
-    createButton("Clear Visuals", clearPathVisuals)
+    createButton("Clear Visuals", clearAllVisuals)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
     createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
 end
 
--- Initialize function
+-- FIXED: Initialize function with better death/respawn handling
 function Utility.init(deps)
     Players = deps.Players
     humanoid = deps.humanoid
@@ -1370,45 +1499,56 @@ function Utility.init(deps)
     
     setupKeyboardControls()
     
+    -- FIXED: Better character death/respawn handling
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
             task.spawn(function()
                 humanoid = newCharacter:WaitForChild("Humanoid", 30)
                 rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
                 if humanoid and rootPart then
+                    -- FIXED: Resume recording after respawn instead of stopping
                     if pathRecording and pathPaused then
-                        task.wait(5)
+                        task.wait(3) -- Wait for character to fully load
                         pathPaused = false
+                        print("[SUPERTOOL] Recording resumed after respawn")
                         updatePathStatus()
                     end
-                    if pathPlaying and currentPathName then
-                        task.wait(5)
+                    -- Resume playback after respawn
+                    if pathPlaying and currentPathName and pathPaused then
+                        task.wait(3) -- Wait for character to fully load
                         pathPaused = false
-                        playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
+                        print("[SUPERTOOL] Playback resumed after respawn")
+                        updatePathStatus()
                     end
                 end
             end)
         end)
         
         player.CharacterRemoving:Connect(function()
+            -- FIXED: Only pause, don't stop recording/playback
             if pathRecording then
                 pathPaused = true
+                print("[SUPERTOOL] Recording paused due to character death/removal")
                 updatePathStatus()
             end
             if pathPlaying then
                 pathPaused = true
+                print("[SUPERTOOL] Playback paused due to character death/removal")
                 updatePathStatus()
             end
         end)
         
         if humanoid then
             humanoid.Died:Connect(function()
+                -- FIXED: Only pause, don't stop recording/playback
                 if pathRecording then
                     pathPaused = true
+                    print("[SUPERTOOL] Recording paused due to death")
                     updatePathStatus()
                 end
                 if pathPlaying then
                     pathPaused = true
+                    print("[SUPERTOOL] Playback paused due to death")
                     updatePathStatus()
                 end
             end)
@@ -1417,15 +1557,13 @@ function Utility.init(deps)
     
     task.spawn(function()
         initPathUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized")
-        print("  - REMOVED: All macro functionality")
-        print("  - FIXED: Ctrl+Z undo function")
-        print("  - FIXED: JSON path loading after relog")
-        print("  - ADDED: Top-right status display")
-        print("  - ADDED: Clickable path points every 5 meters")
-        print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
-        print("  - ENHANCED: Better UI with improved controls")
-        print("  - Keyboard Controls: Ctrl+Z (undo during recording)")
+        print("[SUPERTOOL] Enhanced Path Utility v2.1 initialized")
+        print("  - FIXED: Death/respawn now pauses instead of stopping")
+        print("  - FIXED: Show button is separate from Play (show-only mode)")
+        print("  - FIXED: Undo spam protection and proper point removal")
+        print("  - FIXED: Undo now properly forgets previous path data")
+        print("  - ENHANCED: Better separation of recording and playback visuals")
+        print("  - Keyboard Controls: Ctrl+Z (undo), Ctrl+P (pause), Ctrl+L (toggle visuals)")
         print("  - JSON Storage: Supertool/Paths/")
     end)
 end
