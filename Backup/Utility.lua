@@ -39,8 +39,6 @@ local pathVisualsVisible = true
 local lastPauseToggleTime = 0
 local lastVisibilityToggleTime = 0
 local DEBOUNCE_TIME = 0.5 -- seconds
-local totalRecordingPausedTime = 0
-local pauseStartTime = nil
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -384,8 +382,6 @@ local function startPathRecording()
     
     pathRecording = true
     currentPath = {points = {}, startTime = tick(), markers = {}}
-    totalRecordingPausedTime = 0
-    pauseStartTime = nil
     lastPathTime = 0
     idleStartTime = nil
     currentIdleLabel = nil
@@ -402,7 +398,7 @@ local function startPathRecording()
         
         if not updateCharacterReferences() then return end
         
-        local currentTime = tick() - currentPath.startTime - totalRecordingPausedTime
+        local currentTime = tick() - currentPath.startTime
         local position = rootPart.Position
         local velocity = rootPart.Velocity
         local movementType = detectMovementType(velocity, position)
@@ -493,7 +489,7 @@ local function stopPathRecording()
     if not pathRecording then return end
     
     if idleStartTime then
-        local duration = (tick() - currentPath.startTime - totalRecordingPausedTime) - idleStartTime
+        local duration = (tick() - currentPath.startTime) - idleStartTime
         table.insert(currentPath.markers, {
             time = idleStartTime,
             position = idleStartPosition,
@@ -559,6 +555,7 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     
+    pathPlaying = true
     pathShowOnly = showOnly or false
     pathAutoPlaying = autoPlay or false
     pathAutoRespawning = respawn or false
@@ -596,7 +593,6 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     
-    pathPlaying = true
     print("[SUPERTOOL] Playing path: " .. pathName)
     
     local index = pathPauseIndex
@@ -714,17 +710,11 @@ local function undoToLastMarker()
     if lastMarker and updateCharacterReferences() then
         -- Teleport to last marker
         rootPart.CFrame = lastMarker.cframe
-        rootPart.Velocity = Vector3.new(0, 0, 0)
         print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
         
         -- Remove points and markers after the last marker
         currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
         currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
-        
-        -- Collapse time gap from undone segment
-        local lastTime = #currentPath.points > 0 and currentPath.points[#currentPath.points].time or 0
-        local timeSpentOnUndone = tick() - currentPath.startTime - totalRecordingPausedTime - lastTime
-        totalRecordingPausedTime += timeSpentOnUndone
         
         -- Update visuals - clear and recreate
         clearPathVisuals()
@@ -1389,10 +1379,6 @@ function Utility.init(deps)
                     if pathRecording and pathPaused then
                         task.wait(5)
                         pathPaused = false
-                        if pathRecording and pauseStartTime then
-                            totalRecordingPausedTime += tick() - pauseStartTime
-                            pauseStartTime = nil
-                        end
                         updatePathStatus()
                     end
                     if pathPlaying and currentPathName then
@@ -1407,7 +1393,6 @@ function Utility.init(deps)
         player.CharacterRemoving:Connect(function()
             if pathRecording then
                 pathPaused = true
-                pauseStartTime = tick()
                 updatePathStatus()
             end
             if pathPlaying then
@@ -1420,7 +1405,6 @@ function Utility.init(deps)
             humanoid.Died:Connect(function()
                 if pathRecording then
                     pathPaused = true
-                    pauseStartTime = tick()
                     updatePathStatus()
                 end
                 if pathPlaying then
