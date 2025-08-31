@@ -1322,7 +1322,7 @@ function Utility.loadUtilityButtons(createButton)
         if pathFrameVisible then
             updatePathList()
         end
-    end)
+    end)-
     
     createButton("Clear Visuals", clearPathVisuals)
     createButton("Kill Player", killPlayer)
