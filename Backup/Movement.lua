@@ -1,4 +1,4 @@
--- Movement.lua - Enhanced version with sprint feature, no cooldown boost, and removed ladder climb
+-- Movement.lua - Fixed version with proper state synchronization and settings integration
 -- Movement-related features for MinimalHackGUI by Fari Noveri, mobile-friendly with robust respawn handling
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -7,7 +7,7 @@ local Players, RunService, Workspace, UserInputService, humanoid, rootPart, conn
 -- Initialize module
 local Movement = {}
 
--- Movement states
+-- Movement states (these need to persist across respawns)
 Movement.speedEnabled = false
 Movement.jumpEnabled = false
 Movement.flyEnabled = false
@@ -51,6 +51,9 @@ local positionHistory = {}
 local maxHistorySize = 180 -- 6 seconds at 30 fps
 local isBoostActive = false
 
+-- State synchronization flag
+local isRespawning = false
+
 -- Scroll frame for UI
 local function setupScrollFrame()
     if ScrollFrame then
@@ -85,6 +88,17 @@ local function getSettingValue(settingName, defaultValue)
         return settings[settingName].value
     end
     return defaultValue
+end
+
+-- Function to update button visual state
+local function updateButtonState(featureName, enabled)
+    if buttonStates and buttonStates[featureName] then
+        local button = buttonStates[featureName]
+        if button and button.Parent then
+            button.BackgroundColor3 = enabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(40, 40, 40)
+            button.TextColor3 = enabled and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
+        end
+    end
 end
 
 -- Create virtual controls with better positioning and white style
@@ -259,9 +273,10 @@ local function handleFlyJoystick(input, gameProcessed)
     end
 end
 
--- Speed Hack with settings integration
+-- Speed Hack with settings integration and proper sync
 local function toggleSpeed(enabled)
     Movement.speedEnabled = enabled
+    updateButtonState("Speed Hack", enabled)
     print("Speed Hack:", enabled)
     
     if enabled then
@@ -288,9 +303,10 @@ local function toggleSpeed(enabled)
     end
 end
 
--- Jump Hack with settings integration
+-- Jump Hack with settings integration and proper sync
 local function toggleJump(enabled)
     Movement.jumpEnabled = enabled
+    updateButtonState("Jump Hack", enabled)
     print("Jump Hack:", enabled)
     
     if enabled then
@@ -328,6 +344,7 @@ end
 -- Slow Fall with no fall damage (automatic)
 local function toggleSlowFall(enabled)
     Movement.slowFallEnabled = enabled
+    updateButtonState("Slow Fall", enabled)
     print("Slow Fall:", enabled)
     
     if connections.slowFall then
@@ -359,6 +376,7 @@ end
 -- Fast Fall with no fall damage (automatic)
 local function toggleFastFall(enabled)
     Movement.fastFallEnabled = enabled
+    updateButtonState("Fast Fall", enabled)
     print("Fast Fall:", enabled)
     
     if connections.fastFall then
@@ -387,9 +405,10 @@ local function toggleFastFall(enabled)
     end
 end
 
--- Sprint feature with toggle
+-- Sprint feature with toggle and proper sync
 local function toggleSprint(enabled)
     Movement.sprintEnabled = enabled
+    updateButtonState("Sprint", enabled)
     print("Sprint:", enabled)
     
     if connections.sprint then
@@ -419,7 +438,7 @@ local function toggleSprint(enabled)
                 sprintButton.BackgroundTransparency = isSprinting and 0.2 or 0.5
                 sprintButton.Text = isSprinting and "SPRINTING!" or "SPRINT"
                 
-                humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or Movement.defaultWalkSpeed
+                humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
             end
         end)
         
@@ -432,7 +451,7 @@ local function toggleSprint(enabled)
                     sprintButton.BackgroundTransparency = isSprinting and 0.2 or 0.5
                     sprintButton.Text = isSprinting and "SPRINTING!" or "SPRINT"
                     
-                    humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or Movement.defaultWalkSpeed
+                    humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
                 end
             end
         end)
@@ -444,14 +463,15 @@ local function toggleSprint(enabled)
             sprintButton.Text = "SPRINT"
         end
         if refreshReferences() and humanoid then
-            humanoid.WalkSpeed = Movement.defaultWalkSpeed
+            humanoid.WalkSpeed = Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed
         end
     end
 end
 
--- Fixed Float Hack (horizontal movement only)
+-- Fixed Float Hack (horizontal movement only) with proper sync
 local function toggleFloat(enabled)
     Movement.floatEnabled = enabled
+    updateButtonState("Float", enabled)
     print("Float toggle:", enabled)
     
     local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded"}
@@ -473,6 +493,7 @@ local function toggleFloat(enabled)
             if not refreshReferences() or not rootPart or not humanoid then
                 print("Failed to get references for float")
                 Movement.floatEnabled = false
+                updateButtonState("Float", false)
                 return
             end
             
@@ -538,7 +559,7 @@ local function toggleFloat(enabled)
     end
 end
 
--- Boost (NOS-like effect, no cooldown)
+-- Boost (NOS-like effect, no cooldown) with proper sync
 local function createBoostButton()
     if boostButton then boostButton:Destroy() end
     
@@ -564,6 +585,7 @@ end
 
 local function toggleBoost(enabled)
     Movement.boostEnabled = enabled
+    updateButtonState("Boost (NOS)", enabled)
     
     if connections.boost then
         connections.boost:Disconnect()
@@ -654,7 +676,7 @@ local function toggleBoost(enabled)
     end
 end
 
--- Improved Rewind Movement (follows exact path with rotations)
+-- Improved Rewind Movement (follows exact path with rotations) with proper sync
 local function createRewindButton()
     if rewindButton then rewindButton:Destroy() end
     
@@ -680,6 +702,7 @@ end
 
 local function toggleRewind(enabled)
     Movement.rewindEnabled = enabled
+    updateButtonState("Smooth Rewind", enabled)
     
     if connections.rewind then
         connections.rewind:Disconnect()
@@ -788,9 +811,12 @@ local function toggleRewind(enabled)
     end
 end
 
--- Moon Gravity
+-- Moon Gravity with proper sync
 local function toggleMoonGravity(enabled)
     Movement.moonGravityEnabled = enabled
+    updateButtonState("Moon Gravity", enabled)
+    print("Moon Gravity:", enabled)
+    
     if enabled then
         Workspace.Gravity = Movement.defaultGravity / 6
     else
@@ -798,9 +824,10 @@ local function toggleMoonGravity(enabled)
     end
 end
 
--- Double Jump with improved respawn handling
+-- Double Jump with improved respawn handling and sync
 local function toggleDoubleJump(enabled)
     Movement.doubleJumpEnabled = enabled
+    updateButtonState("Double Jump", enabled)
     
     if connections.doubleJump then
         connections.doubleJump:Disconnect()
@@ -824,9 +851,10 @@ local function toggleDoubleJump(enabled)
     end
 end
 
--- Infinite Jump with improved respawn handling
+-- Infinite Jump with improved respawn handling and sync
 local function toggleInfiniteJump(enabled)
     Movement.infiniteJumpEnabled = enabled
+    updateButtonState("Infinite Jump", enabled)
     
     if connections.infiniteJump then
         connections.infiniteJump:Disconnect()
@@ -842,9 +870,10 @@ local function toggleInfiniteJump(enabled)
     end
 end
 
--- Wall Climbing with improved respawn handling
+-- Wall Climbing with improved respawn handling and sync
 local function toggleWallClimb(enabled)
     Movement.wallClimbEnabled = enabled
+    updateButtonState("Wall Climb", enabled)
     
     if connections.wallClimb then
         connections.wallClimb:Disconnect()
@@ -890,15 +919,17 @@ local function toggleWallClimb(enabled)
             if gameProcessed then return end
             if input.KeyCode == Enum.KeyCode.C then
                 Movement.wallClimbEnabled = not Movement.wallClimbEnabled
+                updateButtonState("Wall Climb", Movement.wallClimbEnabled)
                 print("Wall Climb:", Movement.wallClimbEnabled)
             end
         end)
     end
 end
 
--- Fly Hack with settings integration
+-- Fly Hack with settings integration and proper sync
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
+    updateButtonState("Fly", enabled)
     print("Fly toggle:", enabled)
     
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
@@ -920,6 +951,7 @@ local function toggleFly(enabled)
             if not refreshReferences() or not rootPart or not humanoid then
                 print("Failed to get rootPart for fly")
                 Movement.flyEnabled = false
+                updateButtonState("Fly", false)
                 return
             end
             
@@ -1024,9 +1056,10 @@ local function toggleFly(enabled)
     end
 end
 
--- NoClip with better respawn handling
+-- NoClip with better respawn handling and sync
 local function toggleNoclip(enabled)
     Movement.noclipEnabled = enabled
+    updateButtonState("NoClip", enabled)
     
     if connections.noclip then
         connections.noclip:Disconnect()
@@ -1055,9 +1088,10 @@ local function toggleNoclip(enabled)
     end
 end
 
--- Walk on Water with better respawn handling
+-- Walk on Water with better respawn handling and sync
 local function toggleWalkOnWater(enabled)
     Movement.walkOnWaterEnabled = enabled
+    updateButtonState("Walk on Water", enabled)
     
     if connections.walkOnWater then
         connections.walkOnWater:Disconnect()
@@ -1091,9 +1125,10 @@ local function toggleWalkOnWater(enabled)
     end
 end
 
--- Enhanced Player NoClip with Anti-Fling Protection
+-- Enhanced Player NoClip with Anti-Fling Protection and sync
 local function togglePlayerNoclip(enabled)
     Movement.playerNoclipEnabled = enabled
+    updateButtonState("Player NoClip", enabled)
     
     if connections.playerNoclip then
         connections.playerNoclip:Disconnect()
@@ -1167,9 +1202,10 @@ local function togglePlayerNoclip(enabled)
     end
 end
 
--- Super Swim with better reference handling
+-- Super Swim with better reference handling and sync
 local function toggleSwim(enabled)
     Movement.swimEnabled = enabled
+    updateButtonState("Super Swim", enabled)
     
     local function applySwim()
         if refreshReferences() and humanoid then
@@ -1181,7 +1217,7 @@ local function toggleSwim(enabled)
             else
                 pcall(function()
                     humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
-                    humanoid.WalkSpeed = Movement.defaultWalkSpeed
+                    humanoid.WalkSpeed = Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed
                 end)
             end
             return true
@@ -1243,36 +1279,35 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Sprint", toggleSprint)
 end
 
--- Enhanced reset function
+-- Enhanced reset function with proper state sync
 function Movement.resetStates()
     print("Resetting Movement states")
     
-    Movement.speedEnabled = false
-    Movement.jumpEnabled = false
-    Movement.flyEnabled = false
-    Movement.noclipEnabled = false
-    Movement.infiniteJumpEnabled = false
-    Movement.walkOnWaterEnabled = false
-    Movement.swimEnabled = false
-    Movement.moonGravityEnabled = false
-    Movement.doubleJumpEnabled = false
-    Movement.wallClimbEnabled = false
-    Movement.playerNoclipEnabled = false
-    Movement.floatEnabled = false
-    Movement.rewindEnabled = false
-    Movement.boostEnabled = false
-    Movement.slowFallEnabled = false
-    Movement.fastFallEnabled = false
-    Movement.sprintEnabled = false
+    -- Store current states before reset
+    local currentStates = {
+        speedEnabled = Movement.speedEnabled,
+        jumpEnabled = Movement.jumpEnabled,
+        flyEnabled = Movement.flyEnabled,
+        noclipEnabled = Movement.noclipEnabled,
+        infiniteJumpEnabled = Movement.infiniteJumpEnabled,
+        walkOnWaterEnabled = Movement.walkOnWaterEnabled,
+        swimEnabled = Movement.swimEnabled,
+        moonGravityEnabled = Movement.moonGravityEnabled,
+        doubleJumpEnabled = Movement.doubleJumpEnabled,
+        wallClimbEnabled = Movement.wallClimbEnabled,
+        playerNoclipEnabled = Movement.playerNoclipEnabled,
+        floatEnabled = Movement.floatEnabled,
+        rewindEnabled = Movement.rewindEnabled,
+        boostEnabled = Movement.boostEnabled,
+        slowFallEnabled = Movement.slowFallEnabled,
+        fastFallEnabled = Movement.fastFallEnabled,
+        sprintEnabled = Movement.sprintEnabled
+    }
     
-    Movement.jumpCount = 0
-    joystickDelta = Vector2.new(0, 0)
-    isTouchingJoystick = false
-    joystickTouchId = nil
+    -- Set flag to indicate we're resetting (not actually disabling)
+    isRespawning = true
     
-    positionHistory = {}
-    isBoostActive = false
-    
+    -- Disconnect all connections
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
         "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", 
@@ -1293,6 +1328,15 @@ function Movement.resetStates()
         flyBodyVelocity = nil
     end
     
+    -- Reset temporary variables but keep feature states
+    Movement.jumpCount = 0
+    joystickDelta = Vector2.new(0, 0)
+    isTouchingJoystick = false
+    joystickTouchId = nil
+    positionHistory = {}
+    isBoostActive = false
+    
+    -- Reset physics if character exists
     if refreshReferences() then
         if humanoid then
             humanoid.WalkSpeed = Movement.defaultWalkSpeed
@@ -1317,8 +1361,12 @@ function Movement.resetStates()
         end
     end
     
-    Workspace.Gravity = Movement.defaultGravity
+    -- Reset workspace gravity if moon gravity was disabled
+    if not currentStates.moonGravityEnabled then
+        Workspace.Gravity = Movement.defaultGravity
+    end
     
+    -- Reset player collisions
     for _, otherPlayer in pairs(Players:GetPlayers()) do
         if otherPlayer ~= player and otherPlayer.Character then
             for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -1329,6 +1377,7 @@ function Movement.resetStates()
         end
     end
     
+    -- Hide mobile controls temporarily
     if flyJoystickFrame then
         flyJoystickFrame.Visible = false
         flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
@@ -1353,9 +1402,14 @@ function Movement.resetStates()
         sprintButton.Visible = false
         sprintButton.Text = "SPRINT"
     end
+    
+    -- Clear respawn flag
+    isRespawning = false
+    
+    print("Movement reset complete, states preserved for reapplication")
 end
 
--- Enhanced reference update function
+-- Enhanced reference update function with proper state restoration
 function Movement.updateReferences(newHumanoid, newRootPart)
     print("Updating Movement references")
     humanoid = newHumanoid
@@ -1374,8 +1428,10 @@ function Movement.updateReferences(newHumanoid, newRootPart)
     
     createMobileControls()
     
+    -- Reapply all active states after a short delay
     task.spawn(function()
-        task.wait(0.2)
+        task.wait(0.3) -- Give time for character to fully load
+        
         local statesToReapply = {
             {Movement.speedEnabled, toggleSpeed, "Speed"},
             {Movement.jumpEnabled, toggleJump, "Jump"},
@@ -1401,6 +1457,29 @@ function Movement.updateReferences(newHumanoid, newRootPart)
                 print("Reapplying", state[3])
                 state[2](true)
             end
+        end
+        
+        -- Update all button states to reflect current status
+        for featureName, enabled in pairs({
+            ["Speed Hack"] = Movement.speedEnabled,
+            ["Jump Hack"] = Movement.jumpEnabled,
+            ["Moon Gravity"] = Movement.moonGravityEnabled,
+            ["Double Jump"] = Movement.doubleJumpEnabled,
+            ["Infinite Jump"] = Movement.infiniteJumpEnabled,
+            ["Wall Climb"] = Movement.wallClimbEnabled,
+            ["Player NoClip"] = Movement.playerNoclipEnabled,
+            ["Fly"] = Movement.flyEnabled,
+            ["NoClip"] = Movement.noclipEnabled,
+            ["Walk on Water"] = Movement.walkOnWaterEnabled,
+            ["Super Swim"] = Movement.swimEnabled,
+            ["Float"] = Movement.floatEnabled,
+            ["Smooth Rewind"] = Movement.rewindEnabled,
+            ["Boost (NOS)"] = Movement.boostEnabled,
+            ["Slow Fall"] = Movement.slowFallEnabled,
+            ["Fast Fall"] = Movement.fastFallEnabled,
+            ["Sprint"] = Movement.sprintEnabled
+        }) do
+            updateButtonState(featureName, enabled)
         end
     end)
 end
@@ -1441,6 +1520,7 @@ function Movement.init(deps)
     end
     Movement.defaultGravity = Workspace.Gravity or 196.2
     
+    -- Initialize all states as false (they will be set by button toggles)
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -1466,6 +1546,7 @@ function Movement.init(deps)
     
     positionHistory = {}
     isBoostActive = false
+    isRespawning = false
     
     createMobileControls()
     setupScrollFrame()
@@ -1499,6 +1580,7 @@ function Movement.debug()
     print("New Feature Data:")
     print("  positionHistory entries:", #positionHistory)
     print("  isBoostActive:", isBoostActive)
+    print("  isRespawning:", isRespawning)
     
     print("References:")
     print("  player:", player ~= nil)
@@ -1523,6 +1605,16 @@ function Movement.debug()
     print("  rewindButton:", rewindButton ~= nil)
     print("  boostButton:", boostButton ~= nil)
     print("  sprintButton:", sprintButton ~= nil)
+    
+    print("Button States:")
+    if buttonStates then
+        for name, button in pairs(buttonStates) do
+            if button and button.Parent then
+                local isGreen = button.BackgroundColor3 == Color3.fromRGB(0, 255, 0)
+                print("  " .. name .. ": " .. (isGreen and "ACTIVE" or "INACTIVE"))
+            end
+        end
+    end
     
     print("Active Connections:")
     local activeConnections = 0
@@ -1560,6 +1652,7 @@ function Movement.cleanup()
     
     positionHistory = {}
     isBoostActive = false
+    isRespawning = false
     
     print("Movement module cleaned up")
 end

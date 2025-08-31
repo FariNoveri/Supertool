@@ -1,4 +1,4 @@
--- settings.lua
+-- settings.lua - Fixed version with proper settings integration and UI fixes
 -- Settings-related features for MinimalHackGUI by Fari Noveri
 
 -- Dependencies: These must be passed from mainloader.lua
@@ -177,7 +177,7 @@ local function updateSliderUI(name, newValue)
     slider.valueLabel.Text = tostring(newValue)
 end
 
--- Apply current settings to active features
+-- Apply current settings to active features with immediate sync
 function Settings.applySettings()
     if not Movement then return end
     
@@ -191,6 +191,7 @@ function Settings.applySettings()
     -- Apply Walk Speed if Speed Hack is enabled
     if Movement.speedEnabled and settings.WalkSpeed then
         humanoid.WalkSpeed = settings.WalkSpeed.value
+        print("Applied WalkSpeed:", settings.WalkSpeed.value)
     end
     
     -- Apply Jump Height if Jump Hack is enabled
@@ -200,10 +201,19 @@ function Settings.applySettings()
         else
             humanoid.JumpPower = settings.JumpHeight.value * 2.4
         end
+        print("Applied JumpHeight:", settings.JumpHeight.value)
+    end
+    
+    -- Apply Sprint Speed if Sprint is enabled
+    if Movement.sprintEnabled and settings.SprintSpeed then
+        -- This will be handled by the sprint toggle function in Movement.lua
+        print("Sprint Speed setting updated:", settings.SprintSpeed.value)
     end
     
     -- Note: Fly Speed and Freecam Speed are applied directly in their respective modules
-    print("Settings applied - WalkSpeed:", settings.WalkSpeed.value, "JumpHeight:", settings.JumpHeight.value)
+    print("Settings applied - WalkSpeed:", settings.WalkSpeed and settings.WalkSpeed.value or "N/A", 
+          "JumpHeight:", settings.JumpHeight and settings.JumpHeight.value or "N/A",
+          "SprintSpeed:", settings.SprintSpeed and settings.SprintSpeed.value or "N/A")
 end
 
 -- Show Settings UI
@@ -220,12 +230,15 @@ local function showSettings()
     for name, slider in pairs(sliders) do
         updateSliderUI(name, slider.setting.value)
     end
+    
+    print("Settings UI opened")
 end
 
 -- Hide Settings UI
 local function hideSettings()
     if SettingsFrame then
         SettingsFrame.Visible = false
+        print("Settings UI closed")
     end
 end
 
@@ -244,11 +257,11 @@ local function initUI()
     SettingsFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
     SettingsFrame.BorderSizePixel = 2
     SettingsFrame.Position = UDim2.new(0.5, -175, 0.2, 0)
-    SettingsFrame.Size = UDim2.new(0, 350, 0, 400)
+    SettingsFrame.Size = UDim2.new(0, 350, 0, 450)  -- Increased height for more sliders
     SettingsFrame.Visible = false
     SettingsFrame.Active = true
     SettingsFrame.Draggable = true
-    SettingsFrame.ZIndex = 10
+    SettingsFrame.ZIndex = 100  -- Higher z-index to ensure visibility
 
     -- Add rounded corners to settings frame
     local frameCorner = Instance.new("UICorner")
@@ -267,14 +280,14 @@ local function initUI()
     SettingsTitle.Text = "⚙️ SETTINGS"
     SettingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     SettingsTitle.TextSize = 14
-    SettingsTitle.ZIndex = 11
+    SettingsTitle.ZIndex = 101
     
     -- Add rounded corners to title
     local titleCorner = Instance.new("UICorner")
     titleCorner.CornerRadius = UDim.new(0, 8)
     titleCorner.Parent = SettingsTitle
 
-    -- Close Settings Button
+    -- Close Settings Button - Fixed with proper event handling
     local CloseSettingsButton = Instance.new("TextButton")
     CloseSettingsButton.Name = "CloseButton"
     CloseSettingsButton.Parent = SettingsFrame
@@ -285,7 +298,8 @@ local function initUI()
     CloseSettingsButton.Text = "✕"
     CloseSettingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     CloseSettingsButton.TextSize = 12
-    CloseSettingsButton.ZIndex = 12
+    CloseSettingsButton.ZIndex = 102  -- Higher z-index than title
+    CloseSettingsButton.Active = true  -- Make sure it's active
     
     -- Add rounded corners to close button
     local closeCorner = Instance.new("UICorner")
@@ -305,7 +319,8 @@ local function initUI()
     SettingsScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
     SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     SettingsScrollFrame.BorderSizePixel = 0
-    SettingsScrollFrame.ZIndex = 11
+    SettingsScrollFrame.ZIndex = 101
+    SettingsScrollFrame.Active = false  -- Don't block input to children
 
     -- Settings Layout
     SettingsLayout = Instance.new("UIListLayout")
@@ -314,21 +329,47 @@ local function initUI()
     SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
     SettingsLayout.FillDirection = Enum.FillDirection.Vertical
 
-    -- Create sliders for settings
-    createSlider("Walk Speed", settings.WalkSpeed, settings.WalkSpeed.min, settings.WalkSpeed.max, settings.WalkSpeed.default)
-    createSlider("Jump Height", settings.JumpHeight, settings.JumpHeight.min, settings.JumpHeight.max, settings.JumpHeight.default)
-    createSlider("Fly Speed", settings.FlySpeed, settings.FlySpeed.min, settings.FlySpeed.max, settings.FlySpeed.default)
-    createSlider("Freecam Speed", settings.FreecamSpeed, settings.FreecamSpeed.min, settings.FreecamSpeed.max, settings.FreecamSpeed.default)
+    -- Create sliders for all settings
+    if settings.WalkSpeed then
+        createSlider("Walk Speed", settings.WalkSpeed, settings.WalkSpeed.min, settings.WalkSpeed.max, settings.WalkSpeed.default)
+    end
+    if settings.JumpHeight then
+        createSlider("Jump Height", settings.JumpHeight, settings.JumpHeight.min, settings.JumpHeight.max, settings.JumpHeight.default)
+    end
+    if settings.SprintSpeed then
+        createSlider("Sprint Speed", settings.SprintSpeed, settings.SprintSpeed.min, settings.SprintSpeed.max, settings.SprintSpeed.default)
+    end
+    if settings.FlySpeed then
+        createSlider("Fly Speed", settings.FlySpeed, settings.FlySpeed.min, settings.FlySpeed.max, settings.FlySpeed.default)
+    end
+    if settings.FreecamSpeed then
+        createSlider("Freecam Speed", settings.FreecamSpeed, settings.FreecamSpeed.min, settings.FreecamSpeed.max, settings.FreecamSpeed.default)
+    end
 
-    -- Connect Close Settings Button
-    CloseSettingsButton.MouseButton1Click:Connect(hideSettings)
+    -- Connect Close Settings Button - Multiple event types for reliability
+    CloseSettingsButton.MouseButton1Click:Connect(function()
+        print("Close button clicked (Mouse)")
+        hideSettings()
+    end)
+    
+    -- Also handle touch for mobile
+    CloseSettingsButton.TouchTap:Connect(function()
+        print("Close button tapped (Touch)")
+        hideSettings()
+    end)
+    
+    -- Backup method using Activated event
+    CloseSettingsButton.Activated:Connect(function()
+        print("Close button activated")
+        hideSettings()
+    end)
     
     -- Update canvas size after layout change
     SettingsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, SettingsLayout.AbsoluteContentSize.Y + 20)
     end)
     
-    print("Settings UI initialized successfully")
+    print("Settings UI initialized successfully with all sliders")
 end
 
 -- Function to create buttons for Settings features
@@ -350,10 +391,11 @@ function Settings.resetStates()
     end
     
     -- Reset all settings to defaults
-    settings.FlySpeed.value = settings.FlySpeed.default
-    settings.FreecamSpeed.value = settings.FreecamSpeed.default
-    settings.JumpHeight.value = settings.JumpHeight.default
-    settings.WalkSpeed.value = settings.WalkSpeed.default
+    if settings.WalkSpeed then settings.WalkSpeed.value = settings.WalkSpeed.default end
+    if settings.JumpHeight then settings.JumpHeight.value = settings.JumpHeight.default end
+    if settings.SprintSpeed then settings.SprintSpeed.value = settings.SprintSpeed.default end
+    if settings.FlySpeed then settings.FlySpeed.value = settings.FlySpeed.default end
+    if settings.FreecamSpeed then settings.FreecamSpeed.value = settings.FreecamSpeed.default end
     
     -- Update slider UIs
     for name, slider in pairs(sliders) do
@@ -396,6 +438,13 @@ function Settings.setSetting(settingName, value)
     return false
 end
 
+-- Function to refresh all sliders (useful when settings are updated externally)
+function Settings.refreshSliders()
+    for name, slider in pairs(sliders) do
+        updateSliderUI(name, slider.setting.value)
+    end
+end
+
 -- Function to set dependencies and initialize UI
 function Settings.init(deps)
     print("Initializing Settings module")
@@ -420,6 +469,32 @@ function Settings.init(deps)
         return false
     end
     
+    -- Ensure all required settings exist with proper defaults
+    if not settings.WalkSpeed then
+        settings.WalkSpeed = {value = 16, min = 16, max = 200, default = 16}
+        print("Created default WalkSpeed setting")
+    end
+    
+    if not settings.JumpHeight then
+        settings.JumpHeight = {value = 7.2, min = 7.2, max = 100, default = 7.2}
+        print("Created default JumpHeight setting")
+    end
+    
+    if not settings.SprintSpeed then
+        settings.SprintSpeed = {value = 80, min = 20, max = 300, default = 80}
+        print("Created default SprintSpeed setting")
+    end
+    
+    if not settings.FlySpeed then
+        settings.FlySpeed = {value = 50, min = 10, max = 200, default = 50}
+        print("Created default FlySpeed setting")
+    end
+    
+    if not settings.FreecamSpeed then
+        settings.FreecamSpeed = {value = 1, min = 0.1, max = 10, default = 1}
+        print("Created default FreecamSpeed setting")
+    end
+    
     -- Initialize UI elements
     initUI()
     
@@ -433,18 +508,46 @@ function Settings.debug()
     print("ScreenGui:", ScreenGui ~= nil)
     print("SettingsFrame:", SettingsFrame ~= nil)
     print("Settings object:", settings ~= nil)
+    print("Movement reference:", Movement ~= nil)
     
     if settings then
         print("Current Settings Values:")
-        for name, setting in pairs(settings) do
-            print("  " .. name .. ":", setting.value, "(min:", setting.min, "max:", setting.max, "default:", setting.default, ")")
+        local settingsList = {"WalkSpeed", "JumpHeight", "SprintSpeed", "FlySpeed", "FreecamSpeed"}
+        for _, name in ipairs(settingsList) do
+            if settings[name] then
+                print("  " .. name .. ":", settings[name].value, 
+                      "(min:", settings[name].min, 
+                      "max:", settings[name].max, 
+                      "default:", settings[name].default, ")")
+            else
+                print("  " .. name .. ": NOT FOUND")
+            end
         end
     end
     
-    print("Active Sliders:", #sliders)
-    for name, _ in pairs(sliders) do
-        print("  " .. name)
+    print("Active Sliders:")
+    local sliderCount = 0
+    for name, slider in pairs(sliders) do
+        sliderCount = sliderCount + 1
+        local isVisible = slider.frame and slider.frame.Parent and slider.frame.Visible
+        print("  " .. name .. ":", isVisible and "VISIBLE" or "HIDDEN")
     end
+    print("  Total sliders:", sliderCount)
+    
+    print("UI State:")
+    print("  SettingsFrame visible:", SettingsFrame and SettingsFrame.Visible or false)
+    print("  SettingsScrollFrame:", SettingsScrollFrame ~= nil)
+    print("  Close button exists:", SettingsFrame and SettingsFrame:FindFirstChild("CloseButton") ~= nil)
+    
+    if SettingsFrame and SettingsFrame:FindFirstChild("CloseButton") then
+        local closeBtn = SettingsFrame.CloseButton
+        print("  Close button properties:")
+        print("    Active:", closeBtn.Active)
+        print("    ZIndex:", closeBtn.ZIndex)
+        print("    Size:", closeBtn.Size)
+        print("    Position:", closeBtn.Position)
+    end
+    
     print("=============================")
 end
 
@@ -462,6 +565,56 @@ function Settings.cleanup()
     sliders = {}
     
     print("Settings module cleaned up")
+end
+
+-- Function to handle settings changes from external sources (like mainloader)
+function Settings.onSettingChanged(settingName, newValue)
+    if settings and settings[settingName] then
+        settings[settingName].value = newValue
+        updateSliderUI(settingName, newValue)
+        Settings.applySettings()
+        print("Setting changed externally:", settingName, "=", newValue)
+    end
+end
+
+-- Function to get all current setting values as a table
+function Settings.getAllSettings()
+    local currentSettings = {}
+    if settings then
+        for name, setting in pairs(settings) do
+            currentSettings[name] = setting.value
+        end
+    end
+    return currentSettings
+end
+
+-- Function to force refresh of all UI elements
+function Settings.refreshUI()
+    if not SettingsFrame then return end
+    
+    -- Update canvas size
+    if SettingsScrollFrame and SettingsLayout then
+        SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, SettingsLayout.AbsoluteContentSize.Y + 20)
+    end
+    
+    -- Refresh all sliders
+    Settings.refreshSliders()
+    
+    print("Settings UI refreshed")
+end
+
+-- Function to check if settings UI is currently visible
+function Settings.isVisible()
+    return SettingsFrame and SettingsFrame.Visible or false
+end
+
+-- Function to toggle settings visibility
+function Settings.toggle()
+    if Settings.isVisible() then
+        hideSettings()
+    else
+        showSettings()
+    end
 end
 
 return Settings
