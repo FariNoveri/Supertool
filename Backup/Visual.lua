@@ -37,7 +37,7 @@ local mouseDelta = Vector2.new(0, 0)
 Visual.selfHighlightEnabled = false
 Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
 local selfHighlight
-local colorPicker = nil  -- Moved to module level to fix scope issue
+local colorPicker = nil
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
@@ -51,24 +51,24 @@ local freecamInputConnection = nil
 -- Function to get enemy health and determine color
 local function getHealthColor(enemy)
     if not enemy or not enemy.Character then
-        return Color3.fromRGB(0, 0, 0) -- Black for dead/no character
+        return Color3.fromRGB(0, 0, 0)
     end
     
     local humanoid = enemy.Character:FindFirstChild("Humanoid")
     if not humanoid then
-        return Color3.fromRGB(0, 0, 0) -- Black for no humanoid
+        return Color3.fromRGB(0, 0, 0)
     end
     
     local healthPercent = humanoid.Health / humanoid.MaxHealth
     
     if humanoid.Health <= 0 then
-        return Color3.fromRGB(0, 0, 0) -- Black for dead
+        return Color3.fromRGB(0, 0, 0)
     elseif healthPercent >= 0.8 then
-        return Color3.fromRGB(0, 100, 255) -- Blue for full health
+        return Color3.fromRGB(0, 100, 255)
     elseif healthPercent >= 0.4 then
-        return Color3.fromRGB(255, 255, 0) -- Yellow for half health
+        return Color3.fromRGB(255, 255, 0)
     else
-        return Color3.fromRGB(255, 0, 0) -- Red for low health
+        return Color3.fromRGB(255, 0, 0)
     end
 end
 
@@ -306,11 +306,9 @@ local function toggleNoClipCamera(enabled)
             Visual.toggleFreecam(false)
         end
         
-        -- Store original settings but don't change camera behavior
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
         
-        -- Keep normal camera behavior but disable collision detection
         if connections and type(connections) == "table" and connections.noClipCameraConnection then
             connections.noClipCameraConnection:Disconnect()
             connections.noClipCameraConnection = nil
@@ -318,28 +316,22 @@ local function toggleNoClipCamera(enabled)
         
         Visual.noClipCameraConnection = RunService.RenderStepped:Connect(function()
             if Visual.noClipCameraEnabled then
-                -- Raycast from camera position in look direction to detect what should be behind
                 local camera = Workspace.CurrentCamera
                 local rayOrigin = camera.CFrame.Position
                 local rayDirection = camera.CFrame.LookVector * 1000
                 
-                -- Create raycast params
                 local raycastParams = RaycastParams.new()
                 raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
                 raycastParams.FilterDescendantsInstances = {player.Character}
                 
-                -- Perform raycast
                 local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
                 
-                -- If we hit something close to the camera, make camera ignore collision
                 if raycastResult and raycastResult.Distance < 5 then
                     local hitPart = raycastResult.Instance
                     if hitPart and hitPart:IsA("BasePart") then
-                        -- Temporarily disable collision for the part the camera is close to
                         local originalCanCollide = hitPart.CanCollide
                         hitPart.CanCollide = false
                         
-                        -- Re-enable collision after a short delay
                         task.wait(0.1)
                         pcall(function()
                             if hitPart and hitPart.Parent then
@@ -361,7 +353,6 @@ local function toggleNoClipCamera(enabled)
         end
         Visual.noClipCameraConnection = nil
         
-        -- Restore original camera settings
         local camera = Workspace.CurrentCamera
         if Visual.originalCameraType then
             camera.CameraType = Visual.originalCameraType
@@ -544,7 +535,7 @@ local function toggleESP(enabled)
     end
 end
 
--- FIXED: Freecam - Kamera bebas gerak tanpa lock mouse, karakter tetap diam
+-- Freecam
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -565,21 +556,17 @@ local function toggleFreecam(enabled)
             return
         end
         
-        -- Store original settings
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
         
-        -- Initialize freecam position from current camera
         freecamCFrame = camera.CFrame
         local x, y, z = freecamCFrame:ToEulerAnglesXYZ()
         freecamYaw = -y
         freecamPitch = -x
         
-        -- Set camera to scriptable mode
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
         
-        -- DON'T lock mouse cursor - keep default behavior
         if UserInputService then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
@@ -599,7 +586,6 @@ local function toggleFreecam(enabled)
                 local camera = Workspace.CurrentCamera
                 local moveSpeed = freecamSpeed * deltaTime
                 
-                -- Calculate look vectors from yaw and pitch
                 local yawCFrame = CFrame.Angles(0, freecamYaw, 0)
                 local pitchCFrame = CFrame.Angles(freecamPitch, 0, 0)
                 local rotationCFrame = yawCFrame * pitchCFrame
@@ -611,7 +597,6 @@ local function toggleFreecam(enabled)
                 local movement = Vector3.new(0, 0, 0)
                 local currentPos = freecamCFrame.Position
                 
-                -- WASD movement
                 if UserInputService then
                     if UserInputService:IsKeyDown(Enum.KeyCode.W) then
                         movement = movement + freecamLookVector
@@ -633,18 +618,15 @@ local function toggleFreecam(enabled)
                     end
                 end
                 
-                -- Mobile joystick support
                 if Visual.joystickDelta.Magnitude > 0 then
                     movement = movement + (freecamRightVector * Visual.joystickDelta.X + freecamLookVector * -Visual.joystickDelta.Y)
                 end
                 
-                -- Apply movement
                 if movement.Magnitude > 0 then
                     movement = movement.Unit * moveSpeed
                     currentPos = currentPos + movement
                 end
                 
-                -- Update camera CFrame
                 freecamCFrame = CFrame.new(currentPos) * CFrame.Angles(-freecamPitch, freecamYaw, 0)
                 camera.CFrame = freecamCFrame
             end
@@ -653,7 +635,6 @@ local function toggleFreecam(enabled)
             connections.freecamConnection = Visual.freecamConnection
         end
         
-        -- Mouse input for camera rotation - normal mouse behavior
         if freecamInputConnection then
             freecamInputConnection:Disconnect()
         end
@@ -663,7 +644,6 @@ local function toggleFreecam(enabled)
                 if not Visual.freecamEnabled or processed then return end
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    -- Check if right mouse button is held for camera rotation
                     if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
                         local sensitivity = 0.003
                         freecamYaw = freecamYaw - input.Delta.X * sensitivity
@@ -676,7 +656,6 @@ local function toggleFreecam(enabled)
             end
         end
         
-        -- Enable input connections for mobile
         if UserInputService then
             if connections and type(connections) == "table" and not connections.touchInput then
                 connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
@@ -727,7 +706,6 @@ local function toggleFreecam(enabled)
         
         local camera = Workspace.CurrentCamera
         
-        -- Restore original camera settings
         if Visual.originalCameraType then
             camera.CameraType = Visual.originalCameraType
         else
@@ -743,12 +721,10 @@ local function toggleFreecam(enabled)
             camera.CameraSubject = currentHumanoid
         end
         
-        -- Reset mouse behavior
         if UserInputService then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
         
-        -- Reset freecam variables
         freecamCFrame = nil
         freecamYaw = 0
         freecamPitch = 0
@@ -964,7 +940,7 @@ local function toggleFlashlight(enabled)
     end
 end
 
--- Low Detail Mode - Destroys trees, leaves, grass, clears sky, removes shaders and lights
+-- Low Detail Mode
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
@@ -972,14 +948,12 @@ local function toggleLowDetail(enabled)
     storeOriginalLightingSettings()
     
     if enabled then
-        -- Remove fog completely
         Lighting.GlobalShadows = false
         Lighting.Brightness = 2
         Lighting.FogEnd = 100000
         Lighting.FogStart = 100000
         Lighting.FogColor = Color3.fromRGB(255, 255, 255)
         
-        -- Clear sky
         pcall(function()
             local sky = Lighting:FindFirstChildOfClass("Sky")
             if sky then
@@ -988,7 +962,6 @@ local function toggleLowDetail(enabled)
             end
         end)
         
-        -- Remove all post-processing effects (shaders)
         pcall(function()
             for _, effect in pairs(Lighting:GetChildren()) do
                 if effect:IsA("PostEffect") then
@@ -998,7 +971,6 @@ local function toggleLowDetail(enabled)
             end
         end)
         
-        -- Set lowest quality settings
         pcall(function()
             local renderSettings = game:GetService("Settings").Rendering
             renderSettings.QualityLevel = Enum.QualityLevel.Level01
@@ -1010,7 +982,6 @@ local function toggleLowDetail(enabled)
             gameSettings.RenderDistance = 50
         end)
         
-        -- Remove terrain decorations (grass)
         pcall(function()
             local terrain = Workspace.Terrain
             if not foliageStates.terrainSettings then
@@ -1021,7 +992,7 @@ local function toggleLowDetail(enabled)
                     WaterReflectance = terrain.WaterReflectance,
                     WaterTransparency = terrain.WaterTransparency
                 }
-            end
+            }
             
             terrain.Decoration = false
             terrain.WaterWaveSize = 0
@@ -1030,7 +1001,6 @@ local function toggleLowDetail(enabled)
             terrain.WaterTransparency = 0.9
         end)
         
-        -- Destroy trees, leaves, grass, and all lights except player's flashlight
         spawn(function()
             local processCount = 0
             local pixelMaterial = Enum.Material.SmoothPlastic
@@ -1230,7 +1200,7 @@ local function toggleLowDetail(enabled)
     end
 end
 
--- Ultra Low Detail Mode - Makes objects invisible but not destroyed
+-- Ultra Low Detail Mode
 local function toggleUltraLowDetail(enabled)
     Visual.ultraLowDetailEnabled = enabled
     print("Ultra Low Detail Mode:", enabled)
@@ -1381,7 +1351,7 @@ local function toggleUltraLowDetail(enabled)
     end
 end
 
--- Self Highlight - Adds a customizable outline to the player's own character
+-- Self Highlight
 local function createSelfHighlight()
     if selfHighlight then
         selfHighlight:Destroy()
@@ -1431,18 +1401,80 @@ local function toggleSelfHighlight(enabled)
     end
 end
 
+-- Initialize module
+function Visual.init(deps)
+    print("Initializing Visual module")
+    if not deps then
+        warn("Error: No dependencies provided!")
+        return false
+    end
+    
+    -- Set dependencies with strict fallbacks
+    Players = deps.Players or game:GetService("Players")
+    UserInputService = deps.UserInputService or game:GetService("UserInputService")
+    RunService = deps.RunService or game:GetService("RunService")
+    Workspace = deps.Workspace or game:GetService("Workspace")
+    Lighting = deps.Lighting or game:GetService("Lighting")
+    RenderSettings = deps.RenderSettings or game:GetService("Settings").Rendering
+    ContextActionService = game:GetService("ContextActionService")
+    connections = deps.connections or {}
+    if type(connections) ~= "table" then
+        warn("Warning: connections is not a table, initializing as empty table")
+        connections = {}
+    end
+    buttonStates = deps.buttonStates or {}
+    ScrollFrame = deps.ScrollFrame
+    ScreenGui = deps.ScreenGui
+    settings = deps.settings or {}
+    humanoid = deps.humanoid
+    rootPart = deps.rootPart
+    player = deps.player
+    Visual.character = deps.character or (player and player.Character)
+    
+    -- Debug dependency initialization
+    print("Dependencies initialized:")
+    print("Players:", Players, "Type:", type(Players))
+    print("UserInputService:", UserInputService, "Type:", type(UserInputService))
+    print("RunService:", RunService, "Type:", type(RunService))
+    print("Workspace:", Workspace, "Type:", type(Workspace))
+    print("Lighting:", Lighting, "Type:", type(Lighting))
+    print("Connections:", connections, "Type:", type(connections))
+    
+    if not UserInputService then
+        warn("Error: UserInputService is nil after initialization, input features may not work")
+    end
+    
+    Visual.selfHighlightEnabled = false
+    Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
+    
+    -- Create joystick if ScreenGui is available
+    if ScreenGui then
+        createJoystick()
+    else
+        warn("Error: ScreenGui is nil, joystick cannot be created")
+    end
+    
+    return true
+end
+
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
     print("Loading visual buttons")
     print("Connections state:", connections, "Type:", type(connections))
+    print("UserInputService state:", UserInputService, "Type:", type(UserInputService))
+    
     if not createToggleButton then
         warn("Error: createToggleButton not provided! Buttons will not be created.")
         return
     end
     
-    -- Ensure connections is a table
+    if not ScrollFrame then
+        warn("Error: ScrollFrame is nil, cannot create buttons")
+        return
+    end
+    
     if not connections or type(connections) ~= "table" then
-        warn("Warning: connections is nil or not a table in loadVisualButtons, initializing as empty table")
+        warn("Warning: connections is nil or not a table, initializing as empty table")
         connections = {}
     end
     
@@ -1461,7 +1493,6 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Night Mode", toggleNight)
     createToggleButton("Self Highlight", toggleSelfHighlight)
 
-    -- Helper function to convert Color3 to Hex string
     local function toHex(color)
         local r = math.floor(color.R * 255 + 0.5)
         local g = math.floor(color.G * 255 + 0.5)
@@ -1469,7 +1500,6 @@ function Visual.loadVisualButtons(createToggleButton)
         return string.format("%02X%02X%02X", r, g, b)
     end
 
-    -- Self Highlight Color Picker Button
     local colorButton = Instance.new("TextButton")
     colorButton.Name = "SelfHighlightColorButton"
     colorButton.Size = UDim2.new(1, 0, 0, 30)
@@ -1485,7 +1515,11 @@ function Visual.loadVisualButtons(createToggleButton)
     colorCorner.CornerRadius = UDim.new(0, 4)
     colorCorner.Parent = colorButton
 
-    -- Create color picker GUI with sliders
+    if not ScreenGui then
+        warn("Error: ScreenGui is nil, cannot create color picker")
+        return
+    end
+
     colorPicker = Instance.new("Frame")
     colorPicker.Name = "ColorPicker"
     colorPicker.Size = UDim2.new(0, 300, 0, 350)
@@ -1500,7 +1534,6 @@ function Visual.loadVisualButtons(createToggleButton)
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = colorPicker
 
-    -- Add shadow/border effect
     local shadow = Instance.new("Frame")
     shadow.Name = "Shadow"
     shadow.Size = UDim2.new(1, 6, 1, 6)
@@ -1524,7 +1557,6 @@ function Visual.loadVisualButtons(createToggleButton)
     title.ZIndex = 101
     title.Parent = colorPicker
 
-    -- Color preview with current color
     local preview = Instance.new("Frame")
     preview.Name = "Preview"
     preview.Size = UDim2.new(0.6, 0, 0, 50)
@@ -1538,10 +1570,8 @@ function Visual.loadVisualButtons(createToggleButton)
     previewCorner.CornerRadius = UDim.new(0, 4)
     previewCorner.Parent = preview
 
-    -- RGB sliders
     local sliderY = 0.25
 
-    -- Slider creation function with better styling
     local function createSlider(name, position, color, initialValue)
         local sliderContainer = Instance.new("Frame")
         sliderContainer.Name = name .. "Container"
@@ -1608,7 +1638,6 @@ function Visual.loadVisualButtons(createToggleButton)
     local gContainer, gTrack, gFill, gKnob, gLabel = createSlider("G", UDim2.new(0.05, 0, sliderY + 0.15, 0), Color3.fromRGB(100, 255, 100), Visual.selfHighlightColor.G)
     local bContainer, bTrack, bFill, bKnob, bLabel = createSlider("B", UDim2.new(0.05, 0, sliderY + 0.30, 0), Color3.fromRGB(100, 100, 255), Visual.selfHighlightColor.B)
 
-    -- Buttons
     local buttonY = 0.8
     local confirm = Instance.new("TextButton")
     confirm.Name = "Confirm"
@@ -1644,7 +1673,6 @@ function Visual.loadVisualButtons(createToggleButton)
     cancelCorner.CornerRadius = UDim.new(0, 4)
     cancelCorner.Parent = cancel
 
-    -- Slider interaction logic
     local currentSlider = nil
     local isDragging = false
 
@@ -1707,7 +1735,7 @@ function Visual.loadVisualButtons(createToggleButton)
                 connections[colorName .. "SliderInputEnded"] = connection3
             end
         else
-            warn("Error: UserInputService is nil, cannot connect InputEnded for slider")
+            warn("Error: UserInputService is nil, cannot connect InputEnded for slider: " .. colorName)
         end
 
         if connections and type(connections) == "table" then
@@ -1718,12 +1746,10 @@ function Visual.loadVisualButtons(createToggleButton)
         return connection1, connection2, connection3
     end
 
-    -- Setup slider interactions
     handleSliderInput(rTrack, rFill, rKnob, rLabel, "R")
     handleSliderInput(gTrack, gFill, gKnob, gLabel, "G")
     handleSliderInput(bTrack, bFill, bKnob, bLabel, "B")
 
-    -- Initialize slider values
     local function setSliderValues(color)
         updateSlider(rTrack, rFill, rKnob, rLabel, color.R, "R")
         updateSlider(gTrack, gFill, gKnob, gLabel, color.G, "G")
@@ -1731,14 +1757,12 @@ function Visual.loadVisualButtons(createToggleButton)
         updatePreview()
     end
 
-    -- Open color picker
     colorButton.MouseButton1Click:Connect(function()
         setSliderValues(Visual.selfHighlightColor)
         colorPicker.Visible = true
         print("Color picker opened")
     end)
 
-    -- Confirm button
     confirm.MouseButton1Click:Connect(function()
         local r = rFill.Size.X.Scale * 255
         local g = gFill.Size.X.Scale * 255
@@ -1754,13 +1778,11 @@ function Visual.loadVisualButtons(createToggleButton)
         print("Color applied:", toHex(Visual.selfHighlightColor))
     end)
 
-    -- Cancel button
     cancel.MouseButton1Click:Connect(function()
         colorPicker.Visible = false
         print("Color picker cancelled")
     end)
 
-    -- Close picker when clicking outside - Fixed colorPicker reference
     if connections and type(connections) == "table" and connections.colorPickerClose then
         connections.colorPickerClose:Disconnect()
         connections.colorPickerClose = nil
@@ -1773,7 +1795,6 @@ function Visual.loadVisualButtons(createToggleButton)
                     local pickerPos = colorPicker.AbsolutePosition
                     local pickerSize = colorPicker.AbsoluteSize
                     
-                    -- Check if click is outside the color picker
                     if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
                        mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
                         colorPicker.Visible = false
@@ -1809,7 +1830,7 @@ function Visual.resetStates()
             end
         end
     end
-    connections = {} -- Reset to empty table
+    connections = {}
     
     toggleFreecam(false)
     toggleNoClipCamera(false)
@@ -1823,45 +1844,43 @@ function Visual.resetStates()
     toggleSelfHighlight(false)
     setTimeMode("normal")
     
-    -- Clean up color picker
     if colorPicker then
         colorPicker:Destroy()
         colorPicker = nil
     end
 end
 
--- Function to update references when character respawns
-function Visual.updateReferences(newHumanoid, newRootPart)
-    humanoid = newHumanoid
-    rootPart = newRootPart
-    Visual.character = newHumanoid and newHumanoid.Parent
+-- Function to update references after character respawn
+function Visual.updateReferences()
+    print("Updating Visual module references")
     
-    print("Updating Visual module references for respawn")
+    -- Update character, humanoid, and rootPart
+    Visual.character = player and player.Character
+    humanoid = Visual.character and Visual.character:FindFirstChild("Humanoid")
+    rootPart = Visual.character and Visual.character:FindFirstChild("HumanoidRootPart")
     
+    -- Debug references
+    print("Updated character:", Visual.character)
+    print("Updated humanoid:", humanoid)
+    print("Updated rootPart:", rootPart)
+    
+    -- Restore feature states
     local wasFreecamEnabled = Visual.freecamEnabled
     local wasNoClipCameraEnabled = Visual.noClipCameraEnabled
     local wasFullbrightEnabled = Visual.fullbrightEnabled
     local wasFlashlightEnabled = Visual.flashlightEnabled
     local wasLowDetailEnabled = Visual.lowDetailEnabled
     local wasUltraLowDetailEnabled = Visual.ultraLowDetailEnabled
-    local wasESPEnabled = Visual.espEnabled
+    local wasEspEnabled = Visual.espEnabled
     local wasHideAllNicknames = Visual.hideAllNicknames
     local wasHideOwnNickname = Visual.hideOwnNickname
     local wasSelfHighlightEnabled = Visual.selfHighlightEnabled
     local currentTimeMode = Visual.currentTimeMode
     
-    if wasFreecamEnabled then
-        toggleFreecam(false)
-    end
-    if wasNoClipCameraEnabled then
-        toggleNoClipCamera(false)
-    end
-    if wasFlashlightEnabled then
-        toggleFlashlight(false)
-    end
+    -- Reset states to ensure clean slate
+    Visual.resetStates()
     
-    task.wait(0.5)
-    
+    -- Re-enable features that were active
     if wasFreecamEnabled then
         print("Re-enabling Freecam after respawn")
         toggleFreecam(true)
@@ -1886,7 +1905,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         print("Re-enabling Ultra Low Detail Mode after respawn")
         toggleUltraLowDetail(true)
     end
-    if wasESPEnabled then
+    if wasEspEnabled then
         print("Re-enabling ESP after respawn")
         toggleESP(true)
     end
@@ -1895,7 +1914,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         toggleHideAllNicknames(true)
     end
     if wasHideOwnNickname then
-                print("Re-enabling Hide Own Nickname after respawn")
+        print("Re-enabling Hide Own Nickname after respawn")
         toggleHideOwnNickname(true)
     end
     if wasSelfHighlightEnabled then
@@ -1914,6 +1933,7 @@ end
 function Visual.cleanup()
     print("Cleaning up Visual module")
     
+    -- Reset all states
     Visual.resetStates()
     
     -- Clean up joystick
@@ -1974,12 +1994,35 @@ function Visual.cleanup()
         colorPicker = nil
     end
     
+    -- Disconnect any remaining connections
+    if connections and type(connections) == "table" then
+        for key, connection in pairs(connections) do
+            if connection then
+                pcall(function() connection:Disconnect() end)
+                connections[key] = nil
+            end
+        end
+    end
+    connections = {}
+    
     print("Visual module cleanup completed")
 end
 
 -- Function to check if module is initialized
 function Visual.isInitialized()
-    return Players and UserInputService and RunService and Workspace and Lighting and ScrollFrame and ScreenGui and player
+    local isInitialized = Players and UserInputService and RunService and Workspace and Lighting and ScrollFrame and ScreenGui and player
+    if not isInitialized then
+        warn("Visual module not fully initialized. Missing dependencies:")
+        print("Players:", Players)
+        print("UserInputService:", UserInputService)
+        print("RunService:", RunService)
+        print("Workspace:", Workspace)
+        print("Lighting:", Lighting)
+        print("ScrollFrame:", ScrollFrame)
+        print("ScreenGui:", ScreenGui)
+        print("player:", player)
+    end
+    return isInitialized
 end
 
 -- Function to get current state of all features
