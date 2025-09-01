@@ -1454,18 +1454,20 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Night Mode", toggleNight)
     createToggleButton("Self Highlight", toggleSelfHighlight)
 
+    -- Helper function to convert Color3 to hex
     local function toHex(color)
         local r = math.floor(color.R * 255 + 0.5)
         local g = math.floor(color.G * 255 + 0.5)
         local b = math.floor(color.B * 255 + 0.5)
-        return string.format("%02X%02X%02X", r, g, b)
+        return string.format("#%02X%02X%02X", r, g, b)
     end
 
+    -- Create color picker button
     local colorButton = Instance.new("TextButton")
     colorButton.Name = "SelfHighlightColorButton"
     colorButton.Size = UDim2.new(1, 0, 0, 30)
     colorButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    colorButton.Text = "Self Outline Color: #" .. toHex(Visual.selfHighlightColor)
+    colorButton.Text = "Self Outline Color: " .. toHex(Visual.selfHighlightColor)
     colorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     colorButton.TextSize = 14
     colorButton.Font = Enum.Font.SourceSans
@@ -1476,278 +1478,325 @@ function Visual.loadVisualButtons(createToggleButton)
     colorCorner.CornerRadius = UDim.new(0, 4)
     colorCorner.Parent = colorButton
 
-    local espColorButton = Instance.new("TextButton")
-    espColorButton.Name = "EspColorButton"
-    espColorButton.Size = UDim2.new(1, 0, 0, 30)
-    espColorButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    espColorButton.Text = "ESP Fill Color: #" .. toHex(Visual.espColor)
-    espColorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    espColorButton.TextSize = 14
-    espColorButton.Font = Enum.Font.SourceSans
-    espColorButton.BorderSizePixel = 0
-    espColorButton.Parent = ScrollFrame
-
-    local espColorCorner = Instance.new("UICorner")
-    espColorCorner.CornerRadius = UDim.new(0, 4)
-    espColorCorner.Parent = espColorButton
-
     if not ScreenGui then
         warn("Error: ScreenGui is nil, cannot create color picker")
         return
     end
 
-    local function createColorPicker(name, initialColor, onColorChanged)
-        local picker = Instance.new("Frame")
-        picker.Name = name
-        picker.Size = UDim2.new(0, 300, 0, 350)
-        picker.Position = UDim2.new(0.5, -150, 0.5, -175)
-        picker.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        picker.BorderSizePixel = 0
-        picker.Visible = false
-        picker.ZIndex = 100
-        picker.Parent = ScreenGui
+    -- Create new color picker GUI
+    local colorPicker = Instance.new("Frame")
+    colorPicker.Name = "ColorPicker"
+    colorPicker.Size = UDim2.new(0, 300, 0, 400)
+    colorPicker.Position = UDim2.new(0.5, -150, 0.5, -200)
+    colorPicker.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    colorPicker.BorderSizePixel = 0
+    colorPicker.Visible = false
+    colorPicker.ZIndex = 100
+    colorPicker.Parent = ScreenGui
 
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = picker
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = colorPicker
 
-        local shadow = Instance.new("Frame")
-        shadow.Name = "Shadow"
-        shadow.Size = UDim2.new(1, 6, 1, 6)
-        shadow.Position = UDim2.new(0, -3, 0, -3)
-        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        shadow.BackgroundTransparency = 0.5
-        shadow.ZIndex = 99
-        shadow.Parent = picker
-        
-        local shadowCorner = Instance.new("UICorner")
-        shadowCorner.CornerRadius = UDim.new(0, 8)
-        shadowCorner.Parent = shadow
+    local shadow = Instance.new("Frame")
+    shadow.Name = "Shadow"
+    shadow.Size = UDim2.new(1, 10, 1, 10)
+    shadow.Position = UDim2.new(0, -5, 0, -5)
+    shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.BackgroundTransparency = 0.6
+    shadow.ZIndex = 99
+    shadow.Parent = colorPicker
+    
+    local shadowCorner = Instance.new("UICorner")
+    shadowCorner.CornerRadius = UDim.new(0, 8)
+    shadowCorner.Parent = shadow
 
-        local title = Instance.new("TextLabel")
-        title.Text = name .. " Color Picker"
-        title.Size = UDim2.new(1, 0, 0, 40)
-        title.BackgroundTransparency = 1
-        title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        title.TextSize = 18
-        title.Font = Enum.Font.SourceSansBold
-        title.ZIndex = 101
-        title.Parent = picker
+    local title = Instance.new("TextLabel")
+    title.Text = "Choose Highlight Color"
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 18
+    title.Font = Enum.Font.SourceSansBold
+    title.ZIndex = 101
+    title.Parent = colorPicker
 
-        local preview = Instance.new("Frame")
-        preview.Name = "Preview"
-        preview.Size = UDim2.new(0.6, 0, 0, 50)
-        preview.Position = UDim2.new(0.2, 0, 0.12, 0)
-        preview.BackgroundColor3 = initialColor
-        preview.BorderSizePixel = 0
-        preview.ZIndex = 101
-        preview.Parent = picker
+    local preview = Instance.new("Frame")
+    preview.Name = "Preview"
+    preview.Size = UDim2.new(0.8, 0, 0, 50)
+    preview.Position = UDim2.new(0.1, 0, 0.12, 0)
+    preview.BackgroundColor3 = Visual.selfHighlightColor
+    preview.BorderSizePixel = 0
+    preview.ZIndex = 101
+    preview.Parent = colorPicker
 
-        local previewCorner = Instance.new("UICorner")
-        previewCorner.CornerRadius = UDim.new(0, 4)
-        previewCorner.Parent = preview
+    local previewCorner = Instance.new("UICorner")
+    previewCorner.CornerRadius = UDim.new(0, 4)
+    previewCorner.Parent = preview
 
-        local sliderY = 0.25
+    -- Preset colors grid
+    local presetFrame = Instance.new("Frame")
+    presetFrame.Name = "PresetFrame"
+    presetFrame.Size = UDim2.new(0.8, 0, 0, 100)
+    presetFrame.Position = UDim2.new(0.1, 0, 0.25, 0)
+    presetFrame.BackgroundTransparency = 1
+    presetFrame.ZIndex = 101
+    presetFrame.Parent = colorPicker
 
-        local function createSlider(sliderName, position, color, initialValue)
-            local sliderContainer = Instance.new("Frame")
-            sliderContainer.Name = sliderName .. "Container"
-            sliderContainer.Size = UDim2.new(0.9, 0, 0, 50)
-            sliderContainer.Position = position
-            sliderContainer.BackgroundTransparency = 1
-            sliderContainer.ZIndex = 101
-            sliderContainer.Parent = picker
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0, 40, 0, 40)
+    gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.Parent = presetFrame
 
-            local label = Instance.new("TextLabel")
-            label.Text = sliderName .. ": " .. math.floor(initialValue * 255)
-            label.Size = UDim2.new(0.25, 0, 1, 0)
-            label.Position = UDim2.new(0, 0, 0, 0)
-            label.BackgroundTransparency = 1
-            label.TextColor3 = Color3.fromRGB(255, 255, 255)
-            label.TextSize = 14
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.ZIndex = 102
-            label.Parent = sliderContainer
+    local presetColors = {
+        Color3.fromRGB(255, 255, 255), -- White (default)
+        Color3.fromRGB(255, 0, 0), -- Red
+        Color3.fromRGB(0, 255, 0), -- Green
+        Color3.fromRGB(0, 0, 255), -- Blue
+        Color3.fromRGB(255, 255, 0), -- Yellow
+        Color3.fromRGB(255, 0, 255), -- Magenta
+        Color3.fromRGB(0, 255, 255), -- Cyan
+        Color3.fromRGB(255, 165, 0), -- Orange
+        Color3.fromRGB(128, 0, 128) -- Purple
+    }
 
-            local sliderTrack = Instance.new("Frame")
-            sliderTrack.Name = "Track"
-            sliderTrack.Size = UDim2.new(0.7, 0, 0, 20)
-            sliderTrack.Position = UDim2.new(0.25, 10, 0, 15)
-            sliderTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-            sliderTrack.BorderSizePixel = 0
-            sliderTrack.ZIndex = 101
-            sliderTrack.Parent = sliderContainer
+    for i, color in ipairs(presetColors) do
+        local presetButton = Instance.new("TextButton")
+        presetButton.Size = UDim2.new(0, 40, 0, 40)
+        presetButton.BackgroundColor3 = color
+        presetButton.BorderSizePixel = 0
+        presetButton.Text = ""
+        presetButton.ZIndex = 102
+        presetButton.Parent = presetFrame
 
-            local trackCorner = Instance.new("UICorner")
-            trackCorner.CornerRadius = UDim.new(0, 10)
-            trackCorner.Parent = sliderTrack
+        local presetCorner = Instance.new("UICorner")
+        presetCorner.CornerRadius = UDim.new(0, 6)
+        presetCorner.Parent = presetButton
 
-            local fill = Instance.new("Frame")
-            fill.Name = "Fill"
-            fill.Size = UDim2.new(initialValue, 0, 1, 0)
-            fill.Position = UDim2.new(0, 0, 0, 0)
-            fill.BackgroundColor3 = color
-            fill.BorderSizePixel = 0
-            fill.ZIndex = 102
-            fill.Parent = sliderTrack
+        presetButton.MouseButton1Click:Connect(function()
+            Visual.selfHighlightColor = color
+            preview.BackgroundColor3 = color
+            if Visual.selfHighlightEnabled then
+                createSelfHighlight()
+            end
+            colorButton.Text = "Self Outline Color: " .. toHex(color)
+            print("Preset color selected:", toHex(color))
+        end)
+    end
 
-            local fillCorner = Instance.new("UICorner")
-            fillCorner.CornerRadius = UDim.new(0, 10)
-            fillCorner.Parent = fill
+    -- RGB Sliders
+    local function createSlider(name, position, color, initialValue)
+        local sliderContainer = Instance.new("Frame")
+        sliderContainer.Name = name .. "Container"
+        sliderContainer.Size = UDim2.new(0.8, 0, 0, 40)
+        sliderContainer.Position = position
+        sliderContainer.BackgroundTransparency = 1
+        sliderContainer.ZIndex = 101
+        sliderContainer.Parent = colorPicker
 
-            local knob = Instance.new("Frame")
-            knob.Name = "Knob"
-            knob.Size = UDim2.new(0, 24, 0, 24)
-            knob.Position = UDim2.new(initialValue, -12, 0.5, -12)
-            knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            knob.BorderSizePixel = 0
-            knob.ZIndex = 103
-            knob.Parent = sliderTrack
+        local label = Instance.new("TextLabel")
+        label.Text = name .. ": " .. math.floor(initialValue * 255)
+        label.Size = UDim2.new(0.25, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 14
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.ZIndex = 102
+        label.Parent = sliderContainer
 
-            local knobCorner = Instance.new("UICorner")
-            knobCorner.CornerRadius = UDim.new(0, 12)
-            knobCorner.Parent = knob
+        local sliderTrack = Instance.new("Frame")
+        sliderTrack.Name = "Track"
+        sliderTrack.Size = UDim2.new(0.7, 0, 0, 12)
+        sliderTrack.Position = UDim2.new(0.25, 10, 0.5, -6)
+        sliderTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        sliderTrack.BorderSizePixel = 0
+        sliderTrack.ZIndex = 101
+        sliderTrack.Parent = sliderContainer
 
-            return sliderContainer, sliderTrack, fill, knob, label
+        local trackCorner = Instance.new("UICorner")
+        trackCorner.CornerRadius = UDim.new(0, 6)
+        trackCorner.Parent = sliderTrack
+
+        local fill = Instance.new("Frame")
+        fill.Name = "Fill"
+        fill.Size = UDim2.new(initialValue, 0, 1, 0)
+        fill.BackgroundColor3 = color
+        fill.BorderSizePixel = 0
+        fill.ZIndex = 102
+        fill.Parent = sliderTrack
+
+        local fillCorner = Instance.new("UICorner")
+        fillCorner.CornerRadius = UDim.new(0, 6)
+        fillCorner.Parent = fill
+
+        local knob = Instance.new("Frame")
+        knob.Name = "Knob"
+        knob.Size = UDim2.new(0, 16, 0, 16)
+        knob.Position = UDim2.new(initialValue, -8, 0.5, -8)
+        knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        knob.BorderSizePixel = 0
+        knob.ZIndex = 103
+        knob.Parent = sliderTrack
+
+        local knobCorner = Instance.new("UICorner")
+        knobCorner.CornerRadius = UDim.new(0, 8)
+        knobCorner.Parent = knob
+
+        return sliderContainer, sliderTrack, fill, knob, label
+    end
+
+    local sliderY = 0.45
+    local rContainer, rTrack, rFill, rKnob, rLabel = createSlider("R", UDim2.new(0.1, 0, sliderY, 0), Color3.fromRGB(255, 100, 100), Visual.selfHighlightColor.R)
+    local gContainer, gTrack, gFill, gKnob, gLabel = createSlider("G", UDim2.new(0.1, 0, sliderY + 0.12, 0), Color3.fromRGB(100, 255, 100), Visual.selfHighlightColor.G)
+    local bContainer, bTrack, bFill, bKnob, bLabel = createSlider("B", UDim2.new(0.1, 0, sliderY + 0.24, 0), Color3.fromRGB(100, 100, 255), Visual.selfHighlightColor.B)
+
+    -- Apply and Cancel buttons
+    local applyButton = Instance.new("TextButton")
+    applyButton.Name = "Apply"
+    applyButton.Text = "Apply"
+    applyButton.Size = UDim2.new(0.35, 0, 0, 35)
+    applyButton.Position = UDim2.new(0.1, 0, 0.82, 0)
+    applyButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+    applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    applyButton.TextSize = 14
+    applyButton.Font = Enum.Font.SourceSansBold
+    applyButton.BorderSizePixel = 0
+    applyButton.ZIndex = 101
+    applyButton.Parent = colorPicker
+
+    local applyCorner = Instance.new("UICorner")
+    applyCorner.CornerRadius = UDim.new(0, 4)
+    applyCorner.Parent = applyButton
+
+    local cancelButton = Instance.new("TextButton")
+    cancelButton.Name = "Cancel"
+    cancelButton.Text = "Cancel"
+    cancelButton.Size = UDim2.new(0.35, 0, 0, 35)
+    cancelButton.Position = UDim2.new(0.55, 0, 0.82, 0)
+    cancelButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    cancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cancelButton.TextSize = 14
+    cancelButton.Font = Enum.Font.SourceSansBold
+    cancelButton.BorderSizePixel = 0
+    cancelButton.ZIndex = 101
+    cancelButton.Parent = colorPicker
+
+    local cancelCorner = Instance.new("UICorner")
+    cancelCorner.CornerRadius = UDim.new(0, 4)
+    cancelCorner.Parent = cancelButton
+
+    -- Slider interaction logic
+    local isDragging = false
+    local currentSlider = nil
+
+    local function updateSlider(track, fill, knob, label, value, colorName)
+        value = math.clamp(value, 0, 1)
+        fill.Size = UDim2.new(value, 0, 1, 0)
+        knob.Position = UDim2.new(value, -8, 0.5, -8)
+        label.Text = colorName .. ": " .. math.floor(value * 255)
+        return value
+    end
+
+    local function updatePreview()
+        local r = rFill.Size.X.Scale
+        local g = gFill.Size.X.Scale
+        local b = bFill.Size.X.Scale
+        preview.BackgroundColor3 = Color3.fromRGB(r * 255, g * 255, b * 255)
+    end
+
+    local function handleSliderInput(track, fill, knob, label, colorName)
+        local connection1, connection2, connection3
+
+        local function startDrag(inputPos)
+            isDragging = true
+            local relativeX = (inputPos.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
+            updateSlider(track, fill, knob, label, relativeX, colorName)
+            updatePreview()
         end
 
-        local rContainer, rTrack, rFill, rKnob, rLabel = createSlider("R", UDim2.new(0.05, 0, sliderY, 0), Color3.fromRGB(255, 100, 100), initialColor.R)
-        local gContainer, gTrack, gFill, gKnob, gLabel = createSlider("G", UDim2.new(0.05, 0, sliderY + 0.15, 0), Color3.fromRGB(100, 255, 100), initialColor.G)
-        local bContainer, bTrack, bFill, bKnob, bLabel = createSlider("B", UDim2.new(0.05, 0, sliderY + 0.30, 0), Color3.fromRGB(100, 100, 255), initialColor.B)
-
-        local buttonY = 0.8
-        local confirm = Instance.new("TextButton")
-        confirm.Name = "Confirm"
-        confirm.Text = "Apply Color"
-        confirm.Size = UDim2.new(0.4, -5, 0, 35)
-        confirm.Position = UDim2.new(0.1, 0, buttonY, 0)
-        confirm.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-        confirm.TextColor3 = Color3.fromRGB(255, 255, 255)
-        confirm.TextSize = 14
-        confirm.Font = Enum.Font.SourceSansBold
-        confirm.BorderSizePixel = 0
-        confirm.ZIndex = 101
-        confirm.Parent = picker
-
-        local confirmCorner = Instance.new("UICorner")
-        confirmCorner.CornerRadius = UDim.new(0, 4)
-        confirmCorner.Parent = confirm
-
-        local cancel = Instance.new("TextButton")
-        cancel.Name = "Cancel"
-        cancel.Text = "Cancel"
-        cancel.Size = UDim2.new(0.4, -5, 0, 35)
-        cancel.Position = UDim2.new(0.5, 5, buttonY, 0)
-        cancel.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-        cancel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        cancel.TextSize = 14
-        cancel.Font = Enum.Font.SourceSansBold
-        cancel.BorderSizePixel = 0
-        cancel.ZIndex = 101
-        cancel.Parent = picker
-
-        local cancelCorner = Instance.new("UICorner")
-        cancelCorner.CornerRadius = UDim.new(0, 4)
-        cancelCorner.Parent = cancel
-
-        local currentSlider = nil
-        local isDragging = false
-
-        local function updateSlider(track, fill, knob, label, value, colorName)
-            value = math.clamp(value, 0, 1)
-            fill.Size = UDim2.new(value, 0, 1, 0)
-            knob.Position = UDim2.new(value, -12, 0.5, -12)
-            label.Text = colorName .. ": " .. math.floor(value * 255)
-            return value
-        end
-
-        local function updatePreview()
-            local r = rFill.Size.X.Scale
-            local g = gFill.Size.X.Scale
-            local b = bFill.Size.X.Scale
-            preview.BackgroundColor3 = Color3.fromRGB(r * 255, g * 255, b * 255)
-        end
-
-        local function handleSliderInput(track, fill, knob, label, colorName)
-            local connection1, connection2, connection3
-
-            local function startDrag(inputPos)
-                isDragging = true
+        local function updateDrag(inputPos)
+            if isDragging then
                 local relativeX = (inputPos.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
                 updateSlider(track, fill, knob, label, relativeX, colorName)
                 updatePreview()
             end
+        end
 
-            local function updateDrag(inputPos)
-                if isDragging then
-                    local relativeX = (inputPos.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
-                    updateSlider(track, fill, knob, label, relativeX, colorName)
-                    updatePreview()
-                end
+        local function stopDrag()
+            isDragging = false
+        end
+
+        connection1 = track.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                startDrag(input.Position)
             end
+        end)
 
-            local function stopDrag()
-                isDragging = false
+        connection2 = track.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                updateDrag(input.Position)
             end
+        end)
 
-            connection1 = track.InputBegan:Connect(function(input)
+        if UserInputService then
+            connection3 = UserInputService.InputEnded:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    startDrag(input.Position)
+                    stopDrag()
                 end
             end)
-
-            connection2 = track.InputChanged:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                    updateDrag(input.Position)
-                end
-            end)
-
-            if UserInputService then
-                connection3 = UserInputService.InputEnded:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        stopDrag()
-                    end
-                end)
-                if connections and type(connections) == "table" then
-                    connections[colorName .. name .. "SliderInputEnded"] = connection3
-                end
-            else
-                warn("Error: UserInputService is nil, cannot connect InputEnded for slider: " .. colorName)
-            end
-
             if connections and type(connections) == "table" then
-                connections[colorName .. name .. "SliderInputBegan"] = connection1
-                connections[colorName .. name .. "SliderInputChanged"] = connection2
+                connections[colorName .. "SliderInputEnded"] = connection3
             end
-
-            return connection1, connection2, connection3
+        else
+            warn("Error: UserInputService is nil, cannot connect InputEnded for slider: " .. colorName)
         end
 
-        handleSliderInput(rTrack, rFill, rKnob, rLabel, "R")
-        handleSliderInput(gTrack, gFill, gKnob, gLabel, "G")
-        handleSliderInput(bTrack, bFill, bKnob, bLabel, "B")
-
-        local function setSliderValues(color)
-            updateSlider(rTrack, rFill, rKnob, rLabel, color.R, "R")
-            updateSlider(gTrack, gFill, gKnob, gLabel, color.G, "G")
-            updateSlider(bTrack, bFill, bKnob, bLabel, color.B, "B")
-            updatePreview()
+        if connections and type(connections) == "table" then
+            connections[colorName .. "SliderInputBegan"] = connection1
+            connections[colorName .. "SliderInputChanged"] = connection2
         end
 
-        confirm.MouseButton1Click:Connect(function()
-            local r = rFill.Size.X.Scale * 255
-            local g = gFill.Size.X.Scale * 255
-            local b = bFill.Size.X.Scale * 255
-            local newColor = Color3.fromRGB(r, g, b)
-            onColorChanged(newColor)
-            picker.Visible = false
-            print(name .. " Color applied:", toHex(newColor))
-        end)
+        return connection1, connection2, connection3
+    end
 
-        cancel.MouseButton1Click:Connect(function()
-            picker.Visible = false
-            print(name .. " Color picker cancelled")
-        end)
+    handleSliderInput(rTrack, rFill, rKnob, rLabel, "R")
+    handleSliderInput(gTrack, gFill, gKnob, gLabel, "G")
+    handleSliderInput(bTrack, bFill, bKnob, bLabel, "B")
+
+    local function setSliderValues(color)
+        updateSlider(rTrack, rFill, rKnob, rLabel, color.R, "R")
+        updateSlider(gTrack, gFill, gKnob, gLabel, color.G, "G")
+        updateSlider(bTrack, bFill, bKnob, bLabel, color.B, "B")
+        updatePreview()
+    end
+
+    colorButton.MouseButton1Click:Connect(function()
+        setSliderValues(Visual.selfHighlightColor)
+        colorPicker.Visible = true
+        print("Color picker opened")
+    end)
+
+    applyButton.MouseButton1Click:Connect(function()
+        local r = rFill.Size.X.Scale * 255
+        local g = gFill.Size.X.Scale * 255
+        local b = bFill.Size.X.Scale * 255
+        Visual.selfHighlightColor = Color3.fromRGB(r, g, b)
+        
+        if Visual.selfHighlightEnabled then
+            createSelfHighlight()
+        end
+        
+        colorButton.Text = "Self Outline Color: " .. toHex(Visual.selfHighlightColor)
+        colorPicker.Visible = false
+        print("Color applied:", toHex(Visual.selfHighlightColor))
+    end)
+
+    cancelButton.MouseButton1Click:Connect(function()
+        colorPicker.Visible = false
+        print("Color picker cancelled")
+    end)
+end
 
         if connections and type(connections) == "table" and connections[name .. "Close"] then
             connections[name .. "Close"]:Disconnect()
