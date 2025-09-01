@@ -572,7 +572,9 @@ local function toggleFreecam(enabled)
         camera.CameraSubject = nil
         
         -- DON'T lock mouse cursor - keep default behavior
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        if UserInputService then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
         
@@ -602,23 +604,25 @@ local function toggleFreecam(enabled)
                 local currentPos = freecamCFrame.Position
                 
                 -- WASD movement
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    movement = movement + freecamLookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    movement = movement - freecamLookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    movement = movement - freecamRightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    movement = movement + freecamRightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-                    movement = movement - freecamUpVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-                    movement = movement + freecamUpVector
+                if UserInputService then
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                        movement = movement + freecamLookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                        movement = movement - freecamLookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                        movement = movement - freecamRightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                        movement = movement + freecamRightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+                        movement = movement - freecamUpVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+                        movement = movement + freecamUpVector
+                    end
                 end
                 
                 -- Mobile joystick support
@@ -643,42 +647,46 @@ local function toggleFreecam(enabled)
             freecamInputConnection:Disconnect()
         end
         
-        freecamInputConnection = UserInputService.InputChanged:Connect(function(input, processed)
-            if not Visual.freecamEnabled or processed then return end
-            
-            if input.UserInputType == Enum.UserInputType.MouseMovement then
-                -- Check if right mouse button is held for camera rotation
-                if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-                    local sensitivity = 0.003
-                    freecamYaw = freecamYaw - input.Delta.X * sensitivity
-                    freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
+        if UserInputService then
+            freecamInputConnection = UserInputService.InputChanged:Connect(function(input, processed)
+                if not Visual.freecamEnabled or processed then return end
+                
+                if input.UserInputType == Enum.UserInputType.MouseMovement then
+                    -- Check if right mouse button is held for camera rotation
+                    if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                        local sensitivity = 0.003
+                        freecamYaw = freecamYaw - input.Delta.X * sensitivity
+                        freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
+                    end
                 end
-            end
-        end)
+            end)
+        end
         
         -- Enable input connections for mobile
-        if not connections.touchInput then
-            connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    Visual.joystickDelta = handleJoystickInput(input, processed)
-                end
-            end)
-        end
-        
-        if not connections.touchBegan then
-            connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    Visual.joystickDelta = handleJoystickInput(input, processed)
-                end
-            end)
-        end
-        
-        if not connections.touchEnded then
-            connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    Visual.joystickDelta = handleJoystickInput(input, processed)
-                end
-            end)
+        if UserInputService then
+            if not connections.touchInput then
+                connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
+                    if input.UserInputType == Enum.UserInputType.Touch then
+                        Visual.joystickDelta = handleJoystickInput(input, processed)
+                    end
+                end)
+            end
+            
+            if not connections.touchBegan then
+                connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
+                    if input.UserInputType == Enum.UserInputType.Touch then
+                        Visual.joystickDelta = handleJoystickInput(input, processed)
+                    end
+                end)
+            end
+            
+            if not connections.touchEnded then
+                connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
+                    if input.UserInputType == Enum.UserInputType.Touch then
+                        Visual.joystickDelta = handleJoystickInput(input, processed)
+                    end
+                end)
+            end
         end
         
         print("Freecam enabled - Use Right Click + Mouse to rotate camera, WASD/QEZC to move")
@@ -718,7 +726,9 @@ local function toggleFreecam(enabled)
         end
         
         -- Reset mouse behavior
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        if UserInputService then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end
         
         -- Reset freecam variables
         freecamCFrame = nil
@@ -1665,11 +1675,16 @@ function Visual.loadVisualButtons(createToggleButton)
             end
         end)
 
-        connection3 = UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                stopDrag()
-            end
-        end)
+        -- Check if UserInputService is valid before connecting
+        if UserInputService then
+            connection3 = UserInputService.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    stopDrag()
+                end
+            end)
+        else
+            warn("Error: UserInputService is nil, cannot connect InputEnded for slider")
+        end
 
         return connection1, connection2, connection3
     end
@@ -1720,22 +1735,26 @@ function Visual.loadVisualButtons(createToggleButton)
     if connections.colorPickerClose then
         connections.colorPickerClose:Disconnect()
     end
-    connections.colorPickerClose = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if colorPicker and colorPicker.Visible and not gameProcessedEvent then
-                local mousePos = input.Position
-                local pickerPos = colorPicker.AbsolutePosition
-                local pickerSize = colorPicker.AbsoluteSize
-                
-                -- Check if click is outside the color picker
-                if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
-                   mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
-                    colorPicker.Visible = false
-                    print("Color picker closed by outside click")
+    if UserInputService then
+        connections.colorPickerClose = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                if colorPicker and colorPicker.Visible and not gameProcessedEvent then
+                    local mousePos = input.Position
+                    local pickerPos = colorPicker.AbsolutePosition
+                    local pickerSize = colorPicker.AbsoluteSize
+                    
+                    -- Check if click is outside the color picker
+                    if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
+                       mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
+                        colorPicker.Visible = false
+                        print("Color picker closed by outside click")
+                    end
                 end
             end
-        end
-    end)
+        end)
+    else
+        warn("Error: UserInputService is nil, cannot connect InputBegan for color picker close")
+    end
 end
 
 -- Function to reset Visual states
@@ -1809,18 +1828,19 @@ function Visual.init(deps)
         return false
     end
     
-    Players = deps.Players
-    UserInputService = deps.UserInputService
-    RunService = deps.RunService
-    Workspace = deps.Workspace
-    Lighting = deps.Lighting
-    RenderSettings = deps.RenderSettings
+    -- Set dependencies with fallbacks
+    Players = deps.Players or game:GetService("Players")
+    UserInputService = deps.UserInputService or game:GetService("UserInputService")
+    RunService = deps.RunService or game:GetService("RunService")
+    Workspace = deps.Workspace or game:GetService("Workspace")
+    Lighting = deps.Lighting or game:GetService("Lighting")
+    RenderSettings = deps.RenderSettings or game:GetService("Settings").Rendering
     ContextActionService = game:GetService("ContextActionService")
-    connections = deps.connections
-    buttonStates = deps.buttonStates
+    connections = deps.connections or {}
+    buttonStates = deps.buttonStates or {}
     ScrollFrame = deps.ScrollFrame
     ScreenGui = deps.ScreenGui
-    settings = deps.settings
+    settings = deps.settings or {}
     humanoid = deps.humanoid
     rootPart = deps.rootPart
     player = deps.player
@@ -1903,7 +1923,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     end
     if wasHideAllNicknames then
         print("Re-enabling Hide All Nicknames after respawn")
-        toggleHideAllNicknames(true)
+                toggleHideAllNicknames(true)
     end
     if wasHideOwnNickname then
         print("Re-enabling Hide Own Nickname after respawn")
@@ -1913,10 +1933,11 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         print("Re-enabling Self Highlight after respawn")
         toggleSelfHighlight(true)
     end
-    if currentTimeMode and currentTimeMode ~= "normal" then
-        print("Re-enabling Time Mode after respawn:", currentTimeMode)
+    if currentTimeMode ~= "normal" then
+        print("Re-applying Time Mode after respawn:", currentTimeMode)
         setTimeMode(currentTimeMode)
     end
 end
 
+-- Expose the module
 return Visual
