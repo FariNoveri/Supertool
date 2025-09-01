@@ -37,6 +37,7 @@ local mouseDelta = Vector2.new(0, 0)
 Visual.selfHighlightEnabled = false
 Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
 local selfHighlight
+local colorPicker = nil  -- Moved to module level to fix scope issue
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
@@ -1463,8 +1464,8 @@ function Visual.loadVisualButtons(createToggleButton)
     colorCorner.CornerRadius = UDim.new(0, 4)
     colorCorner.Parent = colorButton
 
-    -- Create color picker GUI with sliders
-    local colorPicker = Instance.new("Frame")
+    -- Create color picker GUI with sliders - Fixed to module level scope
+    colorPicker = Instance.new("Frame")
     colorPicker.Name = "ColorPicker"
     colorPicker.Size = UDim2.new(0, 300, 0, 350)
     colorPicker.Position = UDim2.new(0.5, -150, 0.5, -175)
@@ -1731,7 +1732,7 @@ function Visual.loadVisualButtons(createToggleButton)
         print("Color picker cancelled")
     end)
 
-    -- Close picker when clicking outside
+    -- Close picker when clicking outside - Fixed colorPicker reference
     if connections.colorPickerClose then
         connections.colorPickerClose:Disconnect()
     end
@@ -1803,6 +1804,12 @@ function Visual.resetStates()
     toggleHideOwnNickname(false)
     toggleSelfHighlight(false)
     setTimeMode("normal")
+    
+    -- Clean up color picker
+    if colorPicker then
+        colorPicker:Destroy()
+        colorPicker = nil
+    end
 end
 
 -- Function to get freecam state
@@ -1846,7 +1853,7 @@ function Visual.init(deps)
     player = deps.player
     Visual.character = deps.character or (player and player.Character)
     
-    Visual.freeselfHighlightEnabled = false
+    Visual.selfHighlightEnabled = false
     Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
     Visual.joystickDelta = Vector2.new(0, 0)
     espHighlights = {}
@@ -1923,7 +1930,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
     end
     if wasHideAllNicknames then
         print("Re-enabling Hide All Nicknames after respawn")
-                toggleHideAllNicknames(true)
+        toggleHideAllNicknames(true)
     end
     if wasHideOwnNickname then
         print("Re-enabling Hide Own Nickname after respawn")
