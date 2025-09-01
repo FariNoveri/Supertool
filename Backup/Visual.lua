@@ -992,8 +992,9 @@ local function toggleLowDetail(enabled)
                     WaterReflectance = terrain.WaterReflectance,
                     WaterTransparency = terrain.WaterTransparency
                 }
-            }
             
+            end
+
             terrain.Decoration = false
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
