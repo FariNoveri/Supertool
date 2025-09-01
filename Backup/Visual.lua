@@ -311,7 +311,7 @@ local function toggleNoClipCamera(enabled)
         Visual.originalCameraSubject = camera.CameraSubject
         
         -- Keep normal camera behavior but disable collision detection
-        if connections and connections.noClipCameraConnection then
+        if connections and type(connections) == "table" and connections.noClipCameraConnection then
             connections.noClipCameraConnection:Disconnect()
             connections.noClipCameraConnection = nil
         end
@@ -350,12 +350,12 @@ local function toggleNoClipCamera(enabled)
                 end
             end
         end)
-        if connections then
+        if connections and type(connections) == "table" then
             connections.noClipCameraConnection = Visual.noClipCameraConnection
         end
         
     else
-        if connections and connections.noClipCameraConnection then
+        if connections and type(connections) == "table" and connections.noClipCameraConnection then
             connections.noClipCameraConnection:Disconnect()
             connections.noClipCameraConnection = nil
         end
@@ -430,7 +430,7 @@ local function toggleESP(enabled)
             end
         end
         
-        if connections and connections.espHealthUpdate then
+        if connections and type(connections) == "table" and connections.espHealthUpdate then
             connections.espHealthUpdate:Disconnect()
         end
         connections.espHealthUpdate = RunService.Heartbeat:Connect(function()
@@ -444,7 +444,7 @@ local function toggleESP(enabled)
             end
         end)
         
-        if connections and connections.espPlayerAdded then
+        if connections and type(connections) == "table" and connections.espPlayerAdded then
             connections.espPlayerAdded:Disconnect()
         end
         connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
@@ -458,7 +458,7 @@ local function toggleESP(enabled)
             end
         end)
         
-        if connections and connections.espPlayerLeaving then
+        if connections and type(connections) == "table" and connections.espPlayerLeaving then
             connections.espPlayerLeaving:Disconnect()
         end
         connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
@@ -470,10 +470,10 @@ local function toggleESP(enabled)
         
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player then
-                if connections and connections["espCharAdded" .. otherPlayer.UserId] then
+                if connections and type(connections) == "table" and connections["espCharAdded" .. otherPlayer.UserId] then
                     connections["espCharAdded" .. otherPlayer.UserId]:Disconnect()
                 end
-                if connections and connections["espCharRemoving" .. otherPlayer.UserId] then
+                if connections and type(connections) == "table" and connections["espCharRemoving" .. otherPlayer.UserId] then
                     connections["espCharRemoving" .. otherPlayer.UserId]:Disconnect()
                 end
                 
@@ -493,7 +493,7 @@ local function toggleESP(enabled)
             end
         end
         
-        if connections and connections.espBackupCheck then
+        if connections and type(connections) == "table" and connections.espBackupCheck then
             connections.espBackupCheck:Disconnect()
         end
         connections.espBackupCheck = RunService.Heartbeat:Connect(function()
@@ -509,7 +509,7 @@ local function toggleESP(enabled)
         end)
         
     else
-        if connections then
+        if connections and type(connections) == "table" then
             if connections.espHealthUpdate then
                 connections.espHealthUpdate:Disconnect()
                 connections.espHealthUpdate = nil
@@ -590,7 +590,7 @@ local function toggleFreecam(enabled)
             joystickFrame.Visible = true
         end
         
-        if connections and connections.freecamConnection then
+        if connections and type(connections) == "table" and connections.freecamConnection then
             connections.freecamConnection:Disconnect()
         end
         
@@ -649,7 +649,7 @@ local function toggleFreecam(enabled)
                 camera.CFrame = freecamCFrame
             end
         end)
-        if connections then
+        if connections and type(connections) == "table" then
             connections.freecamConnection = Visual.freecamConnection
         end
         
@@ -671,14 +671,14 @@ local function toggleFreecam(enabled)
                     end
                 end
             end)
-            if connections then
+            if connections and type(connections) == "table" then
                 connections.freecamInputConnection = freecamInputConnection
             end
         end
         
         -- Enable input connections for mobile
         if UserInputService then
-            if connections and not connections.touchInput then
+            if connections and type(connections) == "table" and not connections.touchInput then
                 connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
                     if input.UserInputType == Enum.UserInputType.Touch then
                         Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -686,7 +686,7 @@ local function toggleFreecam(enabled)
                 end)
             end
             
-            if connections and not connections.touchBegan then
+            if connections and type(connections) == "table" and not connections.touchBegan then
                 connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
                     if input.UserInputType == Enum.UserInputType.Touch then
                         Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -694,7 +694,7 @@ local function toggleFreecam(enabled)
                 end)
             end
             
-            if connections and not connections.touchEnded then
+            if connections and type(connections) == "table" and not connections.touchEnded then
                 connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
                     if input.UserInputType == Enum.UserInputType.Touch then
                         Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -706,7 +706,7 @@ local function toggleFreecam(enabled)
         print("Freecam enabled - Use Right Click + Mouse to rotate camera, WASD/QEZC to move")
         
     else
-        if connections and connections.freecamConnection then
+        if connections and type(connections) == "table" and connections.freecamConnection then
             connections.freecamConnection:Disconnect()
             connections.freecamConnection = nil
         end
@@ -716,7 +716,7 @@ local function toggleFreecam(enabled)
             freecamInputConnection:Disconnect()
             freecamInputConnection = nil
         end
-        if connections then
+        if connections and type(connections) == "table" then
             connections.freecamInputConnection = nil
         end
         
@@ -783,7 +783,7 @@ local function setTimeMode(mode)
         end
     end
     
-    if connections and connections.timeModeMonitor then
+    if connections and type(connections) == "table" and connections.timeModeMonitor then
         connections.timeModeMonitor:Disconnect()
         connections.timeModeMonitor = nil
     end
@@ -904,7 +904,7 @@ local function toggleFlashlight(enabled)
         
         setupFlashlight()
         
-        if connections and connections.flashlight then
+        if connections and type(connections) == "table" and connections.flashlight then
             connections.flashlight:Disconnect()
             connections.flashlight = nil
         end
@@ -929,7 +929,7 @@ local function toggleFlashlight(enabled)
             end
         end)
         
-        if connections and connections.flashlightCharAdded then
+        if connections and type(connections) == "table" and connections.flashlightCharAdded then
             connections.flashlightCharAdded:Disconnect()
         end
         if player then
@@ -942,7 +942,7 @@ local function toggleFlashlight(enabled)
         end
         
     else
-        if connections then
+        if connections and type(connections) == "table" then
             if connections.flashlight then
                 connections.flashlight:Disconnect()
                 connections.flashlight = nil
@@ -1118,7 +1118,7 @@ local function toggleLowDetail(enabled)
             Workspace.StreamingTargetRadius = 16
         end)
         
-        if connections and connections.lowDetailMonitor then
+        if connections and type(connections) == "table" and connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
         end
         connections.lowDetailMonitor = RunService.Heartbeat:Connect(function()
@@ -1142,7 +1142,7 @@ local function toggleLowDetail(enabled)
         end)
         
     else
-        if connections and connections.lowDetailMonitor then
+        if connections and type(connections) == "table" and connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
             connections.lowDetailMonitor = nil
         end
@@ -1208,8 +1208,6 @@ local function toggleLowDetail(enabled)
                                 obj.Brightness = state.Brightness or 1
                             elseif obj:IsA("Sound") then
                                 obj.Volume = state.Volume or 0.5
-                            elseif obj:IsA("PostEffect") then
-                                obj.Enabled = state.Enabled ~= false
                             end
                         end
                     end)
@@ -1318,7 +1316,7 @@ local function toggleUltraLowDetail(enabled)
             print("Ultra Low Detail applied - Environment objects invisible but not destroyed")
         end)
         
-        if connections and connections.ultraLowDetailMonitor then
+        if connections and type(connections) == "table" and connections.ultraLowDetailMonitor then
             connections.ultraLowDetailMonitor:Disconnect()
         end
         connections.ultraLowDetailMonitor = RunService.Heartbeat:Connect(function()
@@ -1342,7 +1340,7 @@ local function toggleUltraLowDetail(enabled)
         end)
         
     else
-        if connections and connections.ultraLowDetailMonitor then
+        if connections and type(connections) == "table" and connections.ultraLowDetailMonitor then
             connections.ultraLowDetailMonitor:Disconnect()
             connections.ultraLowDetailMonitor = nil
         end
@@ -1411,7 +1409,7 @@ local function toggleSelfHighlight(enabled)
     if enabled then
         createSelfHighlight()
         
-        if connections and connections.selfHighlightCharAdded then
+        if connections and type(connections) == "table" and connections.selfHighlightCharAdded then
             connections.selfHighlightCharAdded:Disconnect()
         end
         connections.selfHighlightCharAdded = player.CharacterAdded:Connect(function()
@@ -1426,7 +1424,7 @@ local function toggleSelfHighlight(enabled)
             selfHighlight:Destroy()
             selfHighlight = nil
         end
-        if connections and connections.selfHighlightCharAdded then
+        if connections and type(connections) == "table" and connections.selfHighlightCharAdded then
             connections.selfHighlightCharAdded:Disconnect()
             connections.selfHighlightCharAdded = nil
         end
@@ -1436,10 +1434,16 @@ end
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
     print("Loading visual buttons")
-    print("Connections state:", connections)
+    print("Connections state:", connections, "Type:", type(connections))
     if not createToggleButton then
         warn("Error: createToggleButton not provided! Buttons will not be created.")
         return
+    end
+    
+    -- Ensure connections is a table
+    if not connections or type(connections) ~= "table" then
+        warn("Warning: connections is nil or not a table in loadVisualButtons, initializing as empty table")
+        connections = {}
     end
     
     createToggleButton("Freecam", toggleFreecam)
@@ -1699,14 +1703,14 @@ function Visual.loadVisualButtons(createToggleButton)
                     stopDrag()
                 end
             end)
-            if connections then
+            if connections and type(connections) == "table" then
                 connections[colorName .. "SliderInputEnded"] = connection3
             end
         else
             warn("Error: UserInputService is nil, cannot connect InputEnded for slider")
         end
 
-        if connections then
+        if connections and type(connections) == "table" then
             connections[colorName .. "SliderInputBegan"] = connection1
             connections[colorName .. "SliderInputChanged"] = connection2
         end
@@ -1826,71 +1830,6 @@ function Visual.resetStates()
     end
 end
 
--- Function to get freecam state
-function Visual.getFreecamState()
-    return Visual.freecamEnabled
-end
-
--- Function to toggle freecam
-function Visual.toggleFreecam(enabled)
-    toggleFreecam(enabled)
-end
-
--- Function to toggle no-clip camera
-function Visual.toggleNoClipCamera(enabled)
-    toggleNoClipCamera(enabled)
-end
-
--- Function to set dependencies
-function Visual.init(deps)
-    print("Initializing Visual module")
-    if not deps then
-        warn("Error: No dependencies provided!")
-        return false
-    end
-    
-    -- Set dependencies with fallbacks
-    Players = deps.Players or game:GetService("Players")
-    UserInputService = deps.UserInputService or game:GetService("UserInputService")
-    RunService = deps.RunService or game:GetService("RunService")
-    Workspace = deps.Workspace or game:GetService("Workspace")
-    Lighting = deps.Lighting or game:GetService("Lighting")
-    RenderSettings = deps.RenderSettings or game:GetService("Settings").Rendering
-    ContextActionService = game:GetService("ContextActionService")
-    connections = deps.connections or {}
-    if type(connections) ~= "table" then
-        warn("Warning: connections is not a table, initializing as empty table")
-        connections = {}
-    end
-    print("Connections initialized as:", connections)
-    buttonStates = deps.buttonStates or {}
-    ScrollFrame = deps.ScrollFrame
-    ScreenGui = deps.ScreenGui
-    settings = deps.settings or {}
-    humanoid = deps.humanoid
-    rootPart = deps.rootPart
-    player = deps.player
-    Visual.character = deps.character or (player and player.Character)
-    
-    if not UserInputService then
-        warn("Error: UserInputService is nil, some input features will not work")
-    end
-    
-    Visual.selfHighlightEnabled = false
-    Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
-    Visual.joystickDelta = Vector2.new(0, 0)
-    espHighlights = {}
-    foliageStates = {}
-    processedObjects = {}
-    
-    storeOriginalLightingSettings()
-    
-    createJoystick()
-    
-    print("Visual module initialized successfully")
-    return true
-end
-
 -- Function to update references when character respawns
 function Visual.updateReferences(newHumanoid, newRootPart)
     humanoid = newHumanoid
@@ -1939,7 +1878,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         print("Re-enabling Flashlight after respawn")
         toggleFlashlight(true)
     end
-        if wasLowDetailEnabled then
+    if wasLowDetailEnabled then
         print("Re-enabling Low Detail Mode after respawn")
         toggleLowDetail(true)
     end
@@ -1956,7 +1895,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         toggleHideAllNicknames(true)
     end
     if wasHideOwnNickname then
-        print("Re-enabling Hide Own Nickname after respawn")
+                print("Re-enabling Hide Own Nickname after respawn")
         toggleHideOwnNickname(true)
     end
     if wasSelfHighlightEnabled then
