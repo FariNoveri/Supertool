@@ -1717,19 +1717,22 @@ function Visual.loadVisualButtons(createToggleButton)
     end)
 
     -- Close picker when clicking outside
-    colorPicker.Parent.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local mousePos = input.Position
-            local pickerPos = colorPicker.AbsolutePosition
-            local pickerSize = colorPicker.AbsoluteSize
-            
-            -- Check if click is outside the color picker
-            if colorPicker.Visible and (
-                mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
-                mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y
-            ) then
-                colorPicker.Visible = false
-                print("Color picker closed by outside click")
+    if connections.colorPickerClose then
+        connections.colorPickerClose:Disconnect()
+    end
+    connections.colorPickerClose = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if colorPicker and colorPicker.Visible and not gameProcessedEvent then
+                local mousePos = input.Position
+                local pickerPos = colorPicker.AbsolutePosition
+                local pickerSize = colorPicker.AbsoluteSize
+                
+                -- Check if click is outside the color picker
+                if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
+                   mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
+                    colorPicker.Visible = false
+                    print("Color picker closed by outside click")
+                end
             end
         end
     end)
@@ -1764,6 +1767,10 @@ function Visual.resetStates()
     if connections.noClipCameraConnection then
         connections.noClipCameraConnection:Disconnect()
         connections.noClipCameraConnection = nil
+    end
+    if connections.colorPickerClose then
+        connections.colorPickerClose:Disconnect()
+        connections.colorPickerClose = nil
     end
     
     toggleFreecam(false)
