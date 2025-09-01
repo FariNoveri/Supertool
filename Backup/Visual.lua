@@ -744,7 +744,7 @@ local function setTimeMode(mode)
     
     if mode ~= "normal" then
         connections.timeModeMonitor = RunService.Heartbeat:Connect(function()
-            if Visual.currentTimeMode = = mode then
+            if Visual.currentTimeMode == mode then
                 local currentConfig = timeModeConfigs[mode]
                 for property, expectedValue in pairs(currentConfig) do
                     if expectedValue ~= nil then
