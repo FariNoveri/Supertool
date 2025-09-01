@@ -344,7 +344,7 @@ local function toggleNoClipCamera(enabled)
     end
 end
 
--- Enhanced ESP with fixed color
+-- Enhanced ESP with health-based colors
 local function toggleESP(enabled)
     Visual.espEnabled = enabled
     print("ESP:", enabled)
@@ -382,7 +382,8 @@ local function toggleESP(enabled)
             local highlight = Instance.new("Highlight")
             highlight.Name = "ESPHighlight"
             
-            highlight.FillColor = Visual.espColor
+            local healthColor = getHealthColor(targetPlayer)
+            highlight.FillColor = healthColor
             highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
             highlight.FillTransparency = isInvisible and 0.3 or 0.5
             highlight.OutlineTransparency = 0
@@ -397,6 +398,20 @@ local function toggleESP(enabled)
                 createESPForCharacter(otherPlayer.Character, otherPlayer)
             end
         end
+        
+        if connections and type(connections) == "table" and connections.espHealthUpdate then
+            connections.espHealthUpdate:Disconnect()
+        end
+        connections.espHealthUpdate = RunService.Heartbeat:Connect(function()
+            if Visual.espEnabled then
+                for targetPlayer, highlight in pairs(espHighlights) do
+                    if targetPlayer and targetPlayer.Character and highlight and highlight.Parent then
+                        local newColor = getHealthColor(targetPlayer)
+                        highlight.FillColor = newColor
+                    end
+                end
+            end
+        end)
         
         if connections and type(connections) == "table" and connections.espPlayerAdded then
             connections.espPlayerAdded:Disconnect()
@@ -464,6 +479,10 @@ local function toggleESP(enabled)
         
     else
         if connections and type(connections) == "table" then
+            if connections.espHealthUpdate then
+                connections.espHealthUpdate:Disconnect()
+                connections.espHealthUpdate = nil
+            end
             if connections.espPlayerLeaving then
                 connections.espPlayerLeaving:Disconnect()
                 connections.espPlayerLeaving = nil
@@ -725,7 +744,7 @@ local function setTimeMode(mode)
     
     if mode ~= "normal" then
         connections.timeModeMonitor = RunService.Heartbeat:Connect(function()
-            if Visual.currentTimeMode == mode then
+            if Visual.currentTimeMode = = mode then
                 local currentConfig = timeModeConfigs[mode]
                 for property, expectedValue in pairs(currentConfig) do
                     if expectedValue ~= nil then
@@ -1418,85 +1437,34 @@ function Visual.init(deps)
     return true
 end
 
--- Function to create buttons for Visual features
-function Visual.loadVisualButtons(createToggleButton)
-    print("Loading visual buttons")
-    print("Connections state:", connections, "Type:", type(connections))
-    print("UserInputService state:", UserInputService, "Type:", type(UserInputService))
-    
-    if not createToggleButton then
-        warn("Error: createToggleButton not provided! Buttons will not be created.")
-        return
-    end
-    
-    if not ScrollFrame then
-        warn("Error: ScrollFrame is nil, cannot create buttons")
-        return
-    end
-    
-    if not connections or type(connections) ~= "table" then
-        warn("Warning: connections is nil or not a table, initializing as empty table")
-        connections = {}
-    end
-    
-    createToggleButton("Freecam", toggleFreecam)
-    createToggleButton("NoClipCamera", toggleNoClipCamera)
-    createToggleButton("Fullbright", toggleFullbright)
-    createToggleButton("Flashlight", toggleFlashlight)
-    createToggleButton("Low Detail Mode", toggleLowDetail)
-    createToggleButton("Ultra Low Detail Mode", toggleUltraLowDetail)
-    createToggleButton("ESP", toggleESP)
-    createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
-    createToggleButton("Hide Own Nickname", toggleHideOwnNickname)
-    createToggleButton("Morning Mode", toggleMorning)
-    createToggleButton("Day Mode", toggleDay)
-    createToggleButton("Evening Mode", toggleEvening)
-    createToggleButton("Night Mode", toggleNight)
-    createToggleButton("Self Highlight", toggleSelfHighlight)
+-- Utility function to convert Color3 to hex
+local function toHex(color)
+    local r = math.floor(color.R * 255 + 0.5)
+    local g = math.floor(color.G * 255 + 0.5)
+    local b = math.floor(color.B * 255 + 0.5)
+    return string.format("#%02X%02X%02X", r, g, b)
+end
 
-    -- Helper function to convert Color3 to hex
-    local function toHex(color)
-        local r = math.floor(color.R * 255 + 0.5)
-        local g = math.floor(color.G * 255 + 0.5)
-        local b = math.floor(color.B * 255 + 0.5)
-        return string.format("#%02X%02X%02X", r, g, b)
-    end
-
-    -- Create color picker button
-    local colorButton = Instance.new("TextButton")
-    colorButton.Name = "SelfHighlightColorButton"
-    colorButton.Size = UDim2.new(1, 0, 0, 30)
-    colorButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    colorButton.Text = "Self Outline Color: " .. toHex(Visual.selfHighlightColor)
-    colorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    colorButton.TextSize = 14
-    colorButton.Font = Enum.Font.SourceSans
-    colorButton.BorderSizePixel = 0
-    colorButton.Parent = ScrollFrame
-
-    local colorCorner = Instance.new("UICorner")
-    colorCorner.CornerRadius = UDim.new(0, 4)
-    colorCorner.Parent = colorButton
-
+-- Utility function to create a color picker GUI
+local function createColorPicker(name, initialColor, onColorChanged)
     if not ScreenGui then
-        warn("Error: ScreenGui is nil, cannot create color picker")
-        return
+        warn("Error: ScreenGui is nil, cannot create " .. name .. " color picker")
+        return nil, nil
     end
 
-    -- Create new color picker GUI
-    local colorPicker = Instance.new("Frame")
-    colorPicker.Name = "ColorPicker"
-    colorPicker.Size = UDim2.new(0, 300, 0, 400)
-    colorPicker.Position = UDim2.new(0.5, -150, 0.5, -200)
-    colorPicker.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    colorPicker.BorderSizePixel = 0
-    colorPicker.Visible = false
-    colorPicker.ZIndex = 100
-    colorPicker.Parent = ScreenGui
+    local picker = Instance.new("Frame")
+    picker.Name = name .. "ColorPicker"
+    picker.Size = UDim2.new(0, 300, 0, 400)
+    picker.Position = UDim2.new(0.5, -150, 0.5, -200)
+    picker.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    picker.BorderSizePixel = 0
+    picker.Visible = false
+    picker.ZIndex = 100
+    picker.Parent = ScreenGui
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = colorPicker
+    corner.Parent = picker
 
     local shadow = Instance.new("Frame")
     shadow.Name = "Shadow"
@@ -1505,43 +1473,42 @@ function Visual.loadVisualButtons(createToggleButton)
     shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     shadow.BackgroundTransparency = 0.6
     shadow.ZIndex = 99
-    shadow.Parent = colorPicker
+    shadow.Parent = picker
     
     local shadowCorner = Instance.new("UICorner")
     shadowCorner.CornerRadius = UDim.new(0, 8)
     shadowCorner.Parent = shadow
 
     local title = Instance.new("TextLabel")
-    title.Text = "Choose Highlight Color"
+    title.Text = "Choose " .. name .. " Color"
     title.Size = UDim2.new(1, 0, 0, 40)
     title.BackgroundTransparency = 1
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextSize = 18
     title.Font = Enum.Font.SourceSansBold
     title.ZIndex = 101
-    title.Parent = colorPicker
+    title.Parent = picker
 
     local preview = Instance.new("Frame")
     preview.Name = "Preview"
     preview.Size = UDim2.new(0.8, 0, 0, 50)
     preview.Position = UDim2.new(0.1, 0, 0.12, 0)
-    preview.BackgroundColor3 = Visual.selfHighlightColor
+    preview.BackgroundColor3 = initialColor
     preview.BorderSizePixel = 0
     preview.ZIndex = 101
-    preview.Parent = colorPicker
+    preview.Parent = picker
 
     local previewCorner = Instance.new("UICorner")
     previewCorner.CornerRadius = UDim.new(0, 4)
     previewCorner.Parent = preview
 
-    -- Preset colors grid
     local presetFrame = Instance.new("Frame")
     presetFrame.Name = "PresetFrame"
     presetFrame.Size = UDim2.new(0.8, 0, 0, 100)
     presetFrame.Position = UDim2.new(0.1, 0, 0.25, 0)
     presetFrame.BackgroundTransparency = 1
     presetFrame.ZIndex = 101
-    presetFrame.Parent = colorPicker
+    presetFrame.Parent = picker
 
     local gridLayout = Instance.new("UIGridLayout")
     gridLayout.CellSize = UDim2.new(0, 40, 0, 40)
@@ -1550,7 +1517,7 @@ function Visual.loadVisualButtons(createToggleButton)
     gridLayout.Parent = presetFrame
 
     local presetColors = {
-        Color3.fromRGB(255, 255, 255), -- White (default)
+        Color3.fromRGB(255, 255, 255), -- White
         Color3.fromRGB(255, 0, 0), -- Red
         Color3.fromRGB(0, 255, 0), -- Green
         Color3.fromRGB(0, 0, 255), -- Blue
@@ -1561,7 +1528,7 @@ function Visual.loadVisualButtons(createToggleButton)
         Color3.fromRGB(128, 0, 128) -- Purple
     }
 
-    for i, color in ipairs(presetColors) do
+    for _, color in ipairs(presetColors) do
         local presetButton = Instance.new("TextButton")
         presetButton.Size = UDim2.new(0, 40, 0, 40)
         presetButton.BackgroundColor3 = color
@@ -1575,17 +1542,12 @@ function Visual.loadVisualButtons(createToggleButton)
         presetCorner.Parent = presetButton
 
         presetButton.MouseButton1Click:Connect(function()
-            Visual.selfHighlightColor = color
             preview.BackgroundColor3 = color
-            if Visual.selfHighlightEnabled then
-                createSelfHighlight()
-            end
-            colorButton.Text = "Self Outline Color: " .. toHex(color)
-            print("Preset color selected:", toHex(color))
+            onColorChanged(color)
+            print(name .. " Preset color selected: " .. toHex(color))
         end)
     end
 
-    -- RGB Sliders
     local function createSlider(name, position, color, initialValue)
         local sliderContainer = Instance.new("Frame")
         sliderContainer.Name = name .. "Container"
@@ -1593,7 +1555,7 @@ function Visual.loadVisualButtons(createToggleButton)
         sliderContainer.Position = position
         sliderContainer.BackgroundTransparency = 1
         sliderContainer.ZIndex = 101
-        sliderContainer.Parent = colorPicker
+        sliderContainer.Parent = picker
 
         local label = Instance.new("TextLabel")
         label.Text = name .. ": " .. math.floor(initialValue * 255)
@@ -1647,11 +1609,10 @@ function Visual.loadVisualButtons(createToggleButton)
     end
 
     local sliderY = 0.45
-    local rContainer, rTrack, rFill, rKnob, rLabel = createSlider("R", UDim2.new(0.1, 0, sliderY, 0), Color3.fromRGB(255, 100, 100), Visual.selfHighlightColor.R)
-    local gContainer, gTrack, gFill, gKnob, gLabel = createSlider("G", UDim2.new(0.1, 0, sliderY + 0.12, 0), Color3.fromRGB(100, 255, 100), Visual.selfHighlightColor.G)
-    local bContainer, bTrack, bFill, bKnob, bLabel = createSlider("B", UDim2.new(0.1, 0, sliderY + 0.24, 0), Color3.fromRGB(100, 100, 255), Visual.selfHighlightColor.B)
+    local rContainer, rTrack, rFill, rKnob, rLabel = createSlider("R", UDim2.new(0.1, 0, sliderY, 0), Color3.fromRGB(255, 100, 100), initialColor.R)
+    local gContainer, gTrack, gFill, gKnob, gLabel = createSlider("G", UDim2.new(0.1, 0, sliderY + 0.12, 0), Color3.fromRGB(100, 255, 100), initialColor.G)
+    local bContainer, bTrack, bFill, bKnob, bLabel = createSlider("B", UDim2.new(0.1, 0, sliderY + 0.24, 0), Color3.fromRGB(100, 100, 255), initialColor.B)
 
-    -- Apply and Cancel buttons
     local applyButton = Instance.new("TextButton")
     applyButton.Name = "Apply"
     applyButton.Text = "Apply"
@@ -1663,7 +1624,7 @@ function Visual.loadVisualButtons(createToggleButton)
     applyButton.Font = Enum.Font.SourceSansBold
     applyButton.BorderSizePixel = 0
     applyButton.ZIndex = 101
-    applyButton.Parent = colorPicker
+    applyButton.Parent = picker
 
     local applyCorner = Instance.new("UICorner")
     applyCorner.CornerRadius = UDim.new(0, 4)
@@ -1680,15 +1641,13 @@ function Visual.loadVisualButtons(createToggleButton)
     cancelButton.Font = Enum.Font.SourceSansBold
     cancelButton.BorderSizePixel = 0
     cancelButton.ZIndex = 101
-    cancelButton.Parent = colorPicker
+    cancelButton.Parent = picker
 
     local cancelCorner = Instance.new("UICorner")
     cancelCorner.CornerRadius = UDim.new(0, 4)
     cancelCorner.Parent = cancelButton
 
-    -- Slider interaction logic
     local isDragging = false
-    local currentSlider = nil
 
     local function updateSlider(track, fill, knob, label, value, colorName)
         value = math.clamp(value, 0, 1)
@@ -1746,15 +1705,15 @@ function Visual.loadVisualButtons(createToggleButton)
                 end
             end)
             if connections and type(connections) == "table" then
-                connections[colorName .. "SliderInputEnded"] = connection3
+                connections[name .. colorName .. "SliderInputEnded"] = connection3
             end
         else
             warn("Error: UserInputService is nil, cannot connect InputEnded for slider: " .. colorName)
         end
 
         if connections and type(connections) == "table" then
-            connections[colorName .. "SliderInputBegan"] = connection1
-            connections[colorName .. "SliderInputChanged"] = connection2
+            connections[name .. colorName .. "SliderInputBegan"] = connection1
+            connections[name .. colorName .. "SliderInputChanged"] = connection2
         end
 
         return connection1, connection2, connection3
@@ -1771,87 +1730,153 @@ function Visual.loadVisualButtons(createToggleButton)
         updatePreview()
     end
 
-    colorButton.MouseButton1Click:Connect(function()
-        setSliderValues(Visual.selfHighlightColor)
-        colorPicker.Visible = true
-        print("Color picker opened")
-    end)
-
     applyButton.MouseButton1Click:Connect(function()
         local r = rFill.Size.X.Scale * 255
         local g = gFill.Size.X.Scale * 255
         local b = bFill.Size.X.Scale * 255
-        Visual.selfHighlightColor = Color3.fromRGB(r, g, b)
-        
-        if Visual.selfHighlightEnabled then
-            createSelfHighlight()
-        end
-        
-        colorButton.Text = "Self Outline Color: " .. toHex(Visual.selfHighlightColor)
-        colorPicker.Visible = false
-        print("Color applied:", toHex(Visual.selfHighlightColor))
+        local newColor = Color3.fromRGB(r, g, b)
+        onColorChanged(newColor)
+        picker.Visible = false
+        print(name .. " Color applied: " .. toHex(newColor))
     end)
 
     cancelButton.MouseButton1Click:Connect(function()
-        colorPicker.Visible = false
-        print("Color picker cancelled")
+        picker.Visible = false
+        print(name .. " Color picker cancelled")
     end)
-end
 
-        if connections and type(connections) == "table" and connections[name .. "Close"] then
-            connections[name .. "Close"]:Disconnect()
-            connections[name .. "Close"] = nil
-        end
-        if UserInputService then
-            connections[name .. "Close"] = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    if picker and picker.Visible and not gameProcessedEvent then
-                        local mousePos = input.Position
-                        local pickerPos = picker.AbsolutePosition
-                        local pickerSize = picker.AbsoluteSize
-                        
-                        if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
-                           mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
-                            picker.Visible = false
-                            print(name .. " Color picker closed by outside click")
-                        end
+    if connections and type(connections) == "table" and connections[name .. "Close"] then
+        connections[name .. "Close"]:Disconnect()
+        connections[name .. "Close"] = nil
+    end
+    if UserInputService then
+        connections[name .. "Close"] = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                if picker and picker.Visible and not gameProcessedEvent then
+                    local mousePos = input.Position
+                    local pickerPos = picker.AbsolutePosition
+                    local pickerSize = picker.AbsoluteSize
+                    
+                    if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
+                       mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
+                        picker.Visible = false
+                        print(name .. " Color picker closed by outside click")
                     end
                 end
-            end)
-        else
-            warn("Error: UserInputService is nil, cannot connect InputBegan for color picker close")
-        end
-
-        return picker, setSliderValues
+            end
+        end)
+    else
+        warn("Error: UserInputService is nil, cannot connect InputBegan for color picker close")
     end
 
-    colorPicker, local setSelfSliderValues = createColorPicker("Self Highlight", Visual.selfHighlightColor, function(newColor)
+    return picker, setSliderValues
+end
+
+-- Function to create buttons for Visual features
+function Visual.loadVisualButtons(createToggleButton)
+    print("Loading visual buttons")
+    print("Connections state:", connections, "Type:", type(connections))
+    print("UserInputService state:", UserInputService, "Type:", type(UserInputService))
+    
+    if not createToggleButton then
+        warn("Error: createToggleButton not provided! Buttons will not be created.")
+        return
+    end
+    
+    if not ScrollFrame then
+        warn("Error: ScrollFrame is nil, cannot create buttons")
+        return
+    end
+    
+    if not connections or type(connections) ~= "table" then
+        warn("Warning: connections is nil or not a table, initializing as empty table")
+        connections = {}
+    end
+    
+    createToggleButton("Freecam", toggleFreecam)
+    createToggleButton("NoClipCamera", toggleNoClipCamera)
+    createToggleButton("Fullbright", toggleFullbright)
+    createToggleButton("Flashlight", toggleFlashlight)
+    createToggleButton("Low Detail Mode", toggleLowDetail)
+    createToggleButton("Ultra Low Detail Mode", toggleUltraLowDetail)
+    createToggleButton("ESP", toggleESP)
+    createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
+    createToggleButton("Hide Own Nickname", toggleHideOwnNickname)
+    createToggleButton("Morning Mode", toggleMorning)
+    createToggleButton("Day Mode", toggleDay)
+    createToggleButton("Evening Mode", toggleEvening)
+    createToggleButton("Night Mode", toggleNight)
+    createToggleButton("Self Highlight", toggleSelfHighlight)
+
+    -- Create self highlight color picker button
+    local colorButton = Instance.new("TextButton")
+    colorButton.Name = "SelfHighlightColorButton"
+    colorButton.Size = UDim2.new(1, 0, 0, 30)
+    colorButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    colorButton.Text = "Self Outline Color: " .. toHex(Visual.selfHighlightColor)
+    colorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    colorButton.TextSize = 14
+    colorButton.Font = Enum.Font.SourceSans
+    colorButton.BorderSizePixel = 0
+    colorButton.Parent = ScrollFrame
+
+    local colorCorner = Instance.new("UICorner")
+    colorCorner.CornerRadius = UDim.new(0, 4)
+    colorCorner.Parent = colorButton
+
+    -- Create ESP color picker button
+    local espColorButton = Instance.new("TextButton")
+    espColorButton.Name = "EspColorButton"
+    espColorButton.Size = UDim2.new(1, 0, 0, 30)
+    espColorButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    espColorButton.Text = "ESP Fill Color: " .. toHex(Visual.espColor)
+    espColorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    espColorButton.TextSize = 14
+    espColorButton.Font = Enum.Font.SourceSans
+    espColorButton.BorderSizePixel = 0
+    espColorButton.Parent = ScrollFrame
+
+    local espColorCorner = Instance.new("UICorner")
+    espColorCorner.CornerRadius = UDim.new(0, 4)
+    espColorCorner.Parent = espColorButton
+
+    if not ScreenGui then
+        warn("Error: ScreenGui is nil, cannot create color pickers")
+        return
+    end
+
+    -- Create color pickers
+    colorPicker, setSelfSliderValues = createColorPicker("Self Highlight", Visual.selfHighlightColor, function(newColor)
         Visual.selfHighlightColor = newColor
         if Visual.selfHighlightEnabled then
             createSelfHighlight()
         end
-        colorButton.Text = "Self Outline Color: #" .. toHex(newColor)
+        colorButton.Text = "Self Outline Color: " .. toHex(newColor)
     end)
 
-    espColorPicker, local setEspSliderValues = createColorPicker("ESP", Visual.espColor, function(newColor)
+    espColorPicker, setEspSliderValues = createColorPicker("ESP", Visual.espColor, function(newColor)
         Visual.espColor = newColor
         if Visual.espEnabled then
             toggleESP(false)
             toggleESP(true)
         end
-        espColorButton.Text = "ESP Fill Color: #" .. toHex(newColor)
+        espColorButton.Text = "ESP Fill Color: " .. toHex(newColor)
     end)
 
     colorButton.MouseButton1Click:Connect(function()
-        setSelfSliderValues(Visual.selfHighlightColor)
-        colorPicker.Visible = true
-        print("Self Color picker opened")
+        if colorPicker then
+            setSelfSliderValues(Visual.selfHighlightColor)
+            colorPicker.Visible = true
+            print("Self Color picker opened")
+        end
     end)
 
     espColorButton.MouseButton1Click:Connect(function()
-        setEspSliderValues(Visual.espColor)
-        espColorPicker.Visible = true
-        print("ESP Color picker opened")
+        if espColorPicker then
+            setEspSliderValues(Visual.espColor)
+            espColorPicker.Visible = true
+            print("ESP Color picker opened")
+        end
     end)
 end
 
@@ -1901,7 +1926,7 @@ function Visual.resetStates()
     end
 end
 
--- Function to update references after character respawn
+-- Function to update references after character respawn Visual
 function Visual.updateReferences()
     print("Updating Visual module references")
     
