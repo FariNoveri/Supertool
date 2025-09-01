@@ -311,8 +311,9 @@ local function toggleNoClipCamera(enabled)
         Visual.originalCameraSubject = camera.CameraSubject
         
         -- Keep normal camera behavior but disable collision detection
-        if Visual.noClipCameraConnection then
-            Visual.noClipCameraConnection:Disconnect()
+        if connections and connections.noClipCameraConnection then
+            connections.noClipCameraConnection:Disconnect()
+            connections.noClipCameraConnection = nil
         end
         
         Visual.noClipCameraConnection = RunService.RenderStepped:Connect(function()
@@ -349,12 +350,16 @@ local function toggleNoClipCamera(enabled)
                 end
             end
         end)
+        if connections then
+            connections.noClipCameraConnection = Visual.noClipCameraConnection
+        end
         
     else
-        if Visual.noClipCameraConnection then
-            Visual.noClipCameraConnection:Disconnect()
-            Visual.noClipCameraConnection = nil
+        if connections and connections.noClipCameraConnection then
+            connections.noClipCameraConnection:Disconnect()
+            connections.noClipCameraConnection = nil
         end
+        Visual.noClipCameraConnection = nil
         
         -- Restore original camera settings
         local camera = Workspace.CurrentCamera
@@ -425,7 +430,7 @@ local function toggleESP(enabled)
             end
         end
         
-        if connections.espHealthUpdate then
+        if connections and connections.espHealthUpdate then
             connections.espHealthUpdate:Disconnect()
         end
         connections.espHealthUpdate = RunService.Heartbeat:Connect(function()
@@ -439,7 +444,7 @@ local function toggleESP(enabled)
             end
         end)
         
-        if connections.espPlayerAdded then
+        if connections and connections.espPlayerAdded then
             connections.espPlayerAdded:Disconnect()
         end
         connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
@@ -453,7 +458,7 @@ local function toggleESP(enabled)
             end
         end)
         
-        if connections.espPlayerLeaving then
+        if connections and connections.espPlayerLeaving then
             connections.espPlayerLeaving:Disconnect()
         end
         connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
@@ -465,10 +470,10 @@ local function toggleESP(enabled)
         
         for _, otherPlayer in pairs(Players:GetPlayers()) do
             if otherPlayer ~= player then
-                if connections["espCharAdded" .. otherPlayer.UserId] then
+                if connections and connections["espCharAdded" .. otherPlayer.UserId] then
                     connections["espCharAdded" .. otherPlayer.UserId]:Disconnect()
                 end
-                if connections["espCharRemoving" .. otherPlayer.UserId] then
+                if connections and connections["espCharRemoving" .. otherPlayer.UserId] then
                     connections["espCharRemoving" .. otherPlayer.UserId]:Disconnect()
                 end
                 
@@ -488,7 +493,7 @@ local function toggleESP(enabled)
             end
         end
         
-        if connections.espBackupCheck then
+        if connections and connections.espBackupCheck then
             connections.espBackupCheck:Disconnect()
         end
         connections.espBackupCheck = RunService.Heartbeat:Connect(function()
@@ -504,27 +509,29 @@ local function toggleESP(enabled)
         end)
         
     else
-        if connections.espHealthUpdate then
-            connections.espHealthUpdate:Disconnect()
-            connections.espHealthUpdate = nil
-        end
-        if connections.espPlayerLeaving then
-            connections.espPlayerLeaving:Disconnect()
-            connections.espPlayerLeaving = nil
-        end
-        if connections.espPlayerAdded then
-            connections.espPlayerAdded:Disconnect()
-            connections.espPlayerAdded = nil
-        end
-        if connections.espBackupCheck then
-            connections.espBackupCheck:Disconnect()
-            connections.espBackupCheck = nil
-        end
-        
-        for key, connection in pairs(connections) do
-            if string.match(key, "espCharAdded") or string.match(key, "espCharRemoving") then
-                connection:Disconnect()
-                connections[key] = nil
+        if connections then
+            if connections.espHealthUpdate then
+                connections.espHealthUpdate:Disconnect()
+                connections.espHealthUpdate = nil
+            end
+            if connections.espPlayerLeaving then
+                connections.espPlayerLeaving:Disconnect()
+                connections.espPlayerLeaving = nil
+            end
+            if connections.espPlayerAdded then
+                connections.espPlayerAdded:Disconnect()
+                connections.espPlayerAdded = nil
+            end
+            if connections.espBackupCheck then
+                connections.espBackupCheck:Disconnect()
+                connections.espBackupCheck = nil
+            end
+            
+            for key, connection in pairs(connections) do
+                if string.match(key, "espCharAdded") or string.match(key, "espCharRemoving") then
+                    connection:Disconnect()
+                    connections[key] = nil
+                end
             end
         end
         
@@ -583,8 +590,8 @@ local function toggleFreecam(enabled)
             joystickFrame.Visible = true
         end
         
-        if Visual.freecamConnection then
-            Visual.freecamConnection:Disconnect()
+        if connections and connections.freecamConnection then
+            connections.freecamConnection:Disconnect()
         end
         
         Visual.freecamConnection = RunService.RenderStepped:Connect(function(deltaTime)
@@ -642,6 +649,9 @@ local function toggleFreecam(enabled)
                 camera.CFrame = freecamCFrame
             end
         end)
+        if connections then
+            connections.freecamConnection = Visual.freecamConnection
+        end
         
         -- Mouse input for camera rotation - normal mouse behavior
         if freecamInputConnection then
@@ -661,11 +671,14 @@ local function toggleFreecam(enabled)
                     end
                 end
             end)
+            if connections then
+                connections.freecamInputConnection = freecamInputConnection
+            end
         end
         
         -- Enable input connections for mobile
         if UserInputService then
-            if not connections.touchInput then
+            if connections and not connections.touchInput then
                 connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
                     if input.UserInputType == Enum.UserInputType.Touch then
                         Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -673,7 +686,7 @@ local function toggleFreecam(enabled)
                 end)
             end
             
-            if not connections.touchBegan then
+            if connections and not connections.touchBegan then
                 connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
                     if input.UserInputType == Enum.UserInputType.Touch then
                         Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -681,7 +694,7 @@ local function toggleFreecam(enabled)
                 end)
             end
             
-            if not connections.touchEnded then
+            if connections and not connections.touchEnded then
                 connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
                     if input.UserInputType == Enum.UserInputType.Touch then
                         Visual.joystickDelta = handleJoystickInput(input, processed)
@@ -693,14 +706,18 @@ local function toggleFreecam(enabled)
         print("Freecam enabled - Use Right Click + Mouse to rotate camera, WASD/QEZC to move")
         
     else
-        if Visual.freecamConnection then
-            Visual.freecamConnection:Disconnect()
-            Visual.freecamConnection = nil
+        if connections and connections.freecamConnection then
+            connections.freecamConnection:Disconnect()
+            connections.freecamConnection = nil
         end
+        Visual.freecamConnection = nil
         
         if freecamInputConnection then
             freecamInputConnection:Disconnect()
             freecamInputConnection = nil
+        end
+        if connections then
+            connections.freecamInputConnection = nil
         end
         
         if joystickFrame then
@@ -766,8 +783,9 @@ local function setTimeMode(mode)
         end
     end
     
-    if connections.timeModeMonitor then
+    if connections and connections.timeModeMonitor then
         connections.timeModeMonitor:Disconnect()
+        connections.timeModeMonitor = nil
     end
     
     if mode ~= "normal" then
@@ -785,11 +803,6 @@ local function setTimeMode(mode)
                 end
             end
         end)
-    else
-        if connections.timeModeMonitor then
-            connections.timeModeMonitor:Disconnect()
-            connections.timeModeMonitor = nil
-        end
     end
 end
 
@@ -891,8 +904,9 @@ local function toggleFlashlight(enabled)
         
         setupFlashlight()
         
-        if connections.flashlight then
+        if connections and connections.flashlight then
             connections.flashlight:Disconnect()
+            connections.flashlight = nil
         end
         
         connections.flashlight = RunService.Heartbeat:Connect(function()
@@ -915,7 +929,7 @@ local function toggleFlashlight(enabled)
             end
         end)
         
-        if connections.flashlightCharAdded then
+        if connections and connections.flashlightCharAdded then
             connections.flashlightCharAdded:Disconnect()
         end
         if player then
@@ -928,13 +942,15 @@ local function toggleFlashlight(enabled)
         end
         
     else
-        if connections.flashlight then
-            connections.flashlight:Disconnect()
-            connections.flashlight = nil
-        end
-        if connections.flashlightCharAdded then
-            connections.flashlightCharAdded:Disconnect()
-            connections.flashlightCharAdded = nil
+        if connections then
+            if connections.flashlight then
+                connections.flashlight:Disconnect()
+                connections.flashlight = nil
+            end
+            if connections.flashlightCharAdded then
+                connections.flashlightCharAdded:Disconnect()
+                connections.flashlightCharAdded = nil
+            end
         end
         
         if flashlight then
@@ -1102,7 +1118,7 @@ local function toggleLowDetail(enabled)
             Workspace.StreamingTargetRadius = 16
         end)
         
-        if connections.lowDetailMonitor then
+        if connections and connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
         end
         connections.lowDetailMonitor = RunService.Heartbeat:Connect(function()
@@ -1126,7 +1142,7 @@ local function toggleLowDetail(enabled)
         end)
         
     else
-        if connections.lowDetailMonitor then
+        if connections and connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
             connections.lowDetailMonitor = nil
         end
@@ -1302,7 +1318,7 @@ local function toggleUltraLowDetail(enabled)
             print("Ultra Low Detail applied - Environment objects invisible but not destroyed")
         end)
         
-        if connections.ultraLowDetailMonitor then
+        if connections and connections.ultraLowDetailMonitor then
             connections.ultraLowDetailMonitor:Disconnect()
         end
         connections.ultraLowDetailMonitor = RunService.Heartbeat:Connect(function()
@@ -1326,7 +1342,7 @@ local function toggleUltraLowDetail(enabled)
         end)
         
     else
-        if connections.ultraLowDetailMonitor then
+        if connections and connections.ultraLowDetailMonitor then
             connections.ultraLowDetailMonitor:Disconnect()
             connections.ultraLowDetailMonitor = nil
         end
@@ -1395,7 +1411,7 @@ local function toggleSelfHighlight(enabled)
     if enabled then
         createSelfHighlight()
         
-        if connections.selfHighlightCharAdded then
+        if connections and connections.selfHighlightCharAdded then
             connections.selfHighlightCharAdded:Disconnect()
         end
         connections.selfHighlightCharAdded = player.CharacterAdded:Connect(function()
@@ -1410,7 +1426,7 @@ local function toggleSelfHighlight(enabled)
             selfHighlight:Destroy()
             selfHighlight = nil
         end
-        if connections.selfHighlightCharAdded then
+        if connections and connections.selfHighlightCharAdded then
             connections.selfHighlightCharAdded:Disconnect()
             connections.selfHighlightCharAdded = nil
         end
@@ -1420,6 +1436,7 @@ end
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
     print("Loading visual buttons")
+    print("Connections state:", connections)
     if not createToggleButton then
         warn("Error: createToggleButton not provided! Buttons will not be created.")
         return
@@ -1464,7 +1481,7 @@ function Visual.loadVisualButtons(createToggleButton)
     colorCorner.CornerRadius = UDim.new(0, 4)
     colorCorner.Parent = colorButton
 
-    -- Create color picker GUI with sliders - Fixed to module level scope
+    -- Create color picker GUI with sliders
     colorPicker = Instance.new("Frame")
     colorPicker.Name = "ColorPicker"
     colorPicker.Size = UDim2.new(0, 300, 0, 350)
@@ -1676,15 +1693,22 @@ function Visual.loadVisualButtons(createToggleButton)
             end
         end)
 
-        -- Check if UserInputService is valid before connecting
         if UserInputService then
             connection3 = UserInputService.InputEnded:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                     stopDrag()
                 end
             end)
+            if connections then
+                connections[colorName .. "SliderInputEnded"] = connection3
+            end
         else
             warn("Error: UserInputService is nil, cannot connect InputEnded for slider")
+        end
+
+        if connections then
+            connections[colorName .. "SliderInputBegan"] = connection1
+            connections[colorName .. "SliderInputChanged"] = connection2
         end
 
         return connection1, connection2, connection3
@@ -1733,8 +1757,9 @@ function Visual.loadVisualButtons(createToggleButton)
     end)
 
     -- Close picker when clicking outside - Fixed colorPicker reference
-    if connections.colorPickerClose then
+    if connections and type(connections) == "table" and connections.colorPickerClose then
         connections.colorPickerClose:Disconnect()
+        connections.colorPickerClose = nil
     end
     if UserInputService then
         connections.colorPickerClose = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
@@ -1772,26 +1797,15 @@ function Visual.resetStates()
     Visual.currentTimeMode = "normal"
     Visual.selfHighlightEnabled = false
     
-    if connections.timeModeMonitor then
-        connections.timeModeMonitor:Disconnect()
-        connections.timeModeMonitor = nil
+    if connections and type(connections) == "table" then
+        for key, connection in pairs(connections) do
+            if connection then
+                pcall(function() connection:Disconnect() end)
+                connections[key] = nil
+            end
+        end
     end
-    if connections.lowDetailMonitor then
-        connections.lowDetailMonitor:Disconnect()
-        connections.lowDetailMonitor = nil
-    end
-    if connections.ultraLowDetailMonitor then
-        connections.ultraLowDetailMonitor:Disconnect()
-        connections.ultraLowDetailMonitor = nil
-    end
-    if connections.noClipCameraConnection then
-        connections.noClipCameraConnection:Disconnect()
-        connections.noClipCameraConnection = nil
-    end
-    if connections.colorPickerClose then
-        connections.colorPickerClose:Disconnect()
-        connections.colorPickerClose = nil
-    end
+    connections = {} -- Reset to empty table
     
     toggleFreecam(false)
     toggleNoClipCamera(false)
@@ -1844,6 +1858,11 @@ function Visual.init(deps)
     RenderSettings = deps.RenderSettings or game:GetService("Settings").Rendering
     ContextActionService = game:GetService("ContextActionService")
     connections = deps.connections or {}
+    if type(connections) ~= "table" then
+        warn("Warning: connections is not a table, initializing as empty table")
+        connections = {}
+    end
+    print("Connections initialized as:", connections)
     buttonStates = deps.buttonStates or {}
     ScrollFrame = deps.ScrollFrame
     ScreenGui = deps.ScreenGui
@@ -1852,6 +1871,10 @@ function Visual.init(deps)
     rootPart = deps.rootPart
     player = deps.player
     Visual.character = deps.character or (player and player.Character)
+    
+    if not UserInputService then
+        warn("Error: UserInputService is nil, some input features will not work")
+    end
     
     Visual.selfHighlightEnabled = false
     Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
@@ -1916,7 +1939,7 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         print("Re-enabling Flashlight after respawn")
         toggleFlashlight(true)
     end
-    if wasLowDetailEnabled then
+        if wasLowDetailEnabled then
         print("Re-enabling Low Detail Mode after respawn")
         toggleLowDetail(true)
     end
@@ -1941,10 +1964,115 @@ function Visual.updateReferences(newHumanoid, newRootPart)
         toggleSelfHighlight(true)
     end
     if currentTimeMode ~= "normal" then
-        print("Re-applying Time Mode after respawn:", currentTimeMode)
+        print("Restoring Time Mode after respawn:", currentTimeMode)
         setTimeMode(currentTimeMode)
+    end
+    
+    print("Visual module references updated")
+end
+
+-- Function to cleanup all resources
+function Visual.cleanup()
+    print("Cleaning up Visual module")
+    
+    Visual.resetStates()
+    
+    -- Clean up joystick
+    if joystickFrame then
+        joystickFrame:Destroy()
+        joystickFrame = nil
+        joystickKnob = nil
+    end
+    
+    -- Clean up flashlight
+    if flashlight then
+        flashlight:Destroy()
+        flashlight = nil
+    end
+    if pointLight then
+        pointLight:Destroy()
+        pointLight = nil
+    end
+    
+    -- Clean up self highlight
+    if selfHighlight then
+        selfHighlight:Destroy()
+        selfHighlight = nil
+    end
+    
+    -- Clean up ESP highlights
+    for _, highlight in pairs(espHighlights) do
+        if highlight and highlight.Parent then
+            highlight:Destroy()
+        end
+    end
+    espHighlights = {}
+    
+    -- Clean up foliage states
+    foliageStates = {}
+    processedObjects = {}
+    
+    -- Restore default lighting settings
+    if defaultLightingSettings.stored then
+        for property, value in pairs(defaultLightingSettings) do
+            if property ~= "stored" then
+                pcall(function()
+                    Lighting[property] = value
+                end)
+            end
+        end
+        pcall(function()
+            Workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
+            Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
+            Workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
+            Workspace.Terrain.Decoration = defaultLightingSettings.TerrainDecoration or true
+        end)
+    end
+    
+    -- Clean up color picker
+    if colorPicker then
+        colorPicker:Destroy()
+        colorPicker = nil
+    end
+    
+    print("Visual module cleanup completed")
+end
+
+-- Function to check if module is initialized
+function Visual.isInitialized()
+    return Players and UserInputService and RunService and Workspace and Lighting and ScrollFrame and ScreenGui and player
+end
+
+-- Function to get current state of all features
+function Visual.getState()
+    return {
+        freecamEnabled = Visual.freecamEnabled,
+        noClipCameraEnabled = Visual.noClipCameraEnabled,
+        fullbrightEnabled = Visual.fullbrightEnabled,
+        flashlightEnabled = Visual.flashlightEnabled,
+        lowDetailEnabled = Visual.lowDetailEnabled,
+        ultraLowDetailEnabled = Visual.ultraLowDetailEnabled,
+        espEnabled = Visual.espEnabled,
+        hideAllNicknames = Visual.hideAllNicknames,
+        hideOwnNickname = Visual.hideOwnNickname,
+        selfHighlightEnabled = Visual.selfHighlightEnabled,
+        currentTimeMode = Visual.currentTimeMode,
+        selfHighlightColor = Visual.selfHighlightColor
+    }
+end
+
+-- Function to set self highlight color programmatically
+function Visual.setSelfHighlightColor(color)
+    if typeof(color) == "Color3" then
+        Visual.selfHighlightColor = color
+        if Visual.selfHighlightEnabled then
+            createSelfHighlight()
+        end
+        print("Self Highlight color set to:", toHex(color))
+    else
+        warn("Error: Invalid color provided for setSelfHighlightColor")
     end
 end
 
--- Expose the module
+-- Export the module
 return Visual
