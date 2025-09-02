@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - FIXED MODULE LOADER
+-- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION
 
 -- Services
 local Players = game:GetService("Players")
@@ -110,7 +110,7 @@ MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 10
 
--- Category Container with Scrollingg
+-- Category Container with Scrolling
 local CategoryContainer = Instance.new("ScrollingFrame")
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
@@ -254,7 +254,7 @@ for moduleName, _ in pairs(moduleURLs) do
     end)
 end
 
--- Dependencies for modules
+-- FIXED Dependencies for modules - THIS IS THE CRITICAL FIX
 local dependencies = {
     Players = Players,
     UserInputService = UserInputService,
@@ -262,31 +262,79 @@ local dependencies = {
     Workspace = Workspace,
     Lighting = Lighting,
     ScreenGui = ScreenGui,
+    ScrollFrame = FeatureContainer,  -- CRITICAL FIX: Visual and other modules need this!
     settings = settings,
     connections = connections,
     buttonStates = buttonStates,
     player = player
 }
 
--- Initialize modules
+-- ROBUST Initialize modules function
 local function initializeModules()
     print("Initializing loaded modules...")
+    local initResults = {}
+    
     for moduleName, module in pairs(modules) do
+        local success = false
+        local errorMsg = nil
+        
         if module and type(module.init) == "function" then
-            local success, result = pcall(function()
+            success, errorMsg = pcall(function()
+                -- Always update dependencies with current info
                 dependencies.character = character
                 dependencies.humanoid = humanoid
                 dependencies.rootPart = rootPart
-                return module.init(dependencies)
+                dependencies.ScrollFrame = FeatureContainer  -- Ensure this is always current
+                
+                -- Validate critical dependencies before init
+                if not dependencies.ScrollFrame then
+                    error("ScrollFrame (FeatureContainer) is nil - cannot initialize " .. moduleName)
+                end
+                
+                print("Initializing " .. moduleName .. " with dependencies:", {
+                    character = dependencies.character and "OK" or "NIL",
+                    humanoid = dependencies.humanoid and "OK" or "NIL",
+                    rootPart = dependencies.rootPart and "OK" or "NIL",
+                    ScrollFrame = dependencies.ScrollFrame and "OK" or "NIL",
+                    ScreenGui = dependencies.ScreenGui and "OK" or "NIL"
+                })
+                
+                local result = module.init(dependencies)
+                if result == false then
+                    error("Module init returned false")
+                end
+                return result
             end)
-            if not success then
-                warn("Failed to initialize module " .. moduleName .. ": " .. tostring(result))
-            else
+            
+            if success then
                 print("✓ Initialized module: " .. moduleName)
+                initResults[moduleName] = "SUCCESS"
+            else
+                warn("✗ Failed to initialize module " .. moduleName .. ": " .. tostring(errorMsg))
+                initResults[moduleName] = "FAILED: " .. tostring(errorMsg)
             end
         else
-            print("Module " .. moduleName .. " has no init function or is invalid")
+            warn("✗ Module " .. moduleName .. " has no init function or is invalid")
+            initResults[moduleName] = "NO_INIT_FUNCTION"
         end
+    end
+    
+    -- Report initialization results
+    local successCount = 0
+    local failCount = 0
+    
+    for moduleName, result in pairs(initResults) do
+        if result == "SUCCESS" then
+            successCount = successCount + 1
+        else
+            failCount = failCount + 1
+        end
+    end
+    
+    print(string.format("Module initialization complete: %d success, %d failed", successCount, failCount))
+    
+    if successCount == 0 then
+        warn("WARNING: No modules initialized successfully!")
     end
 end
 
@@ -311,126 +359,148 @@ local function disableActiveFeature()
     activeFeature = nil
 end
 
--- Create button
+-- Create button with error handling
 local function createButton(name, callback, categoryName)
-    local button = Instance.new("TextButton")
-    button.Name = name
-    button.Parent = FeatureContainer
-    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -2, 0, 20)
-    button.Font = Enum.Font.Gotham
-    button.Text = name
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 8
-    button.LayoutOrder = #FeatureContainer:GetChildren()
-    
-    if type(callback) == "function" then
-        button.MouseButton1Click:Connect(function()
-            local success, errorMsg = pcall(callback)
-            if not success then
-                warn("Error executing callback for " .. name .. ": " .. tostring(errorMsg))
-            end
-        end)
-    end
-    
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    end)
-    
-    button.MouseLeave:Connect(function()
+    local success, result = pcall(function()
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Parent = FeatureContainer
         button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    end)
-    
-    return button
-end
-
--- Create toggle button with exclusive feature support
-local function createToggleButton(name, callback, categoryName, disableCallback)
-    local button = Instance.new("TextButton")
-    button.Name = name
-    button.Parent = FeatureContainer
-    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    button.BorderSizePixel = 0
-    button.Size = UDim2.new(1, -2, 0, 20)
-    button.Font = Enum.Font.Gotham
-    button.Text = name
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = 8
-    button.LayoutOrder = #FeatureContainer:GetChildren()
-    
-    -- Ensure category state exists
-    if not categoryStates[categoryName] then
-        categoryStates[categoryName] = {}
-    end
-    
-    if categoryStates[categoryName][name] == nil then
-        categoryStates[categoryName][name] = false
-    end
-    
-    button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
-    
-    button.MouseButton1Click:Connect(function()
-        local newState = not categoryStates[categoryName][name]
-        
-        -- Handle exclusive features
-        if newState and isExclusiveFeature(name) then
-            disableActiveFeature()
-            activeFeature = {
-                name = name,
-                category = categoryName,
-                disableCallback = disableCallback
-            }
-        elseif not newState and activeFeature and activeFeature.name == name then
-            activeFeature = nil
-        end
-        
-        categoryStates[categoryName][name] = newState
-        button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        button.BorderSizePixel = 0
+        button.Size = UDim2.new(1, -2, 0, 20)
+        button.Font = Enum.Font.Gotham
+        button.Text = name
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.TextSize = 8
+        button.LayoutOrder = #FeatureContainer:GetChildren()
         
         if type(callback) == "function" then
-            local success, errorMsg = pcall(callback, newState)
-            if not success then
-                warn("Error executing toggle callback for " .. name .. ": " .. tostring(errorMsg))
-            end
+            button.MouseButton1Click:Connect(function()
+                local callbackSuccess, errorMsg = pcall(callback)
+                if not callbackSuccess then
+                    warn("Error executing callback for " .. name .. ": " .. tostring(errorMsg))
+                end
+            end)
         end
+        
+        button.MouseEnter:Connect(function()
+            button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end)
+        
+        button.MouseLeave:Connect(function()
+            button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        end)
+        
+        return button
     end)
     
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
-    end)
+    if not success then
+        warn("Failed to create button " .. name .. ": " .. tostring(result))
+        return nil
+    end
     
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
-    end)
-    
-    return button
+    return result
 end
 
--- PROPER LOAD BUTTONS FUNCTION
+-- Create toggle button with exclusive feature support and error handling
+local function createToggleButton(name, callback, categoryName, disableCallback)
+    local success, result = pcall(function()
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Parent = FeatureContainer
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        button.BorderSizePixel = 0
+        button.Size = UDim2.new(1, -2, 0, 20)
+        button.Font = Enum.Font.Gotham
+        button.Text = name
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.TextSize = 8
+        button.LayoutOrder = #FeatureContainer:GetChildren()
+        
+        -- Ensure category state exists
+        if not categoryStates[categoryName] then
+            categoryStates[categoryName] = {}
+        end
+        
+        if categoryStates[categoryName][name] == nil then
+            categoryStates[categoryName][name] = false
+        end
+        
+        button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        
+        button.MouseButton1Click:Connect(function()
+            local newState = not categoryStates[categoryName][name]
+            
+            -- Handle exclusive features
+            if newState and isExclusiveFeature(name) then
+                disableActiveFeature()
+                activeFeature = {
+                    name = name,
+                    category = categoryName,
+                    disableCallback = disableCallback
+                }
+            elseif not newState and activeFeature and activeFeature.name == name then
+                activeFeature = nil
+            end
+            
+            categoryStates[categoryName][name] = newState
+            button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+            
+            if type(callback) == "function" then
+                local callbackSuccess, errorMsg = pcall(callback, newState)
+                if not callbackSuccess then
+                    warn("Error executing toggle callback for " .. name .. ": " .. tostring(errorMsg))
+                end
+            end
+        end)
+        
+        button.MouseEnter:Connect(function()
+            button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
+        end)
+        
+        button.MouseLeave:Connect(function()
+            button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        end)
+        
+        return button
+    end)
+    
+    if not success then
+        warn("Failed to create toggle button " .. name .. ": " .. tostring(result))
+        return nil
+    end
+    
+    return result
+end
+
+-- COMPLETELY REWRITTEN LOAD BUTTONS FUNCTION WITH FULL ERROR ISOLATION
 local function loadButtons()
     print("Loading buttons for category: " .. selectedCategory)
     
-    -- Clear existing buttons
-    for _, child in pairs(FeatureContainer:GetChildren()) do
-        if child:IsA("TextButton") or (child:IsA("TextLabel") and child.Name ~= "FeatureLayout") then
-            child:Destroy()
+    -- Clear existing buttons first - with error handling
+    pcall(function()
+        for _, child in pairs(FeatureContainer:GetChildren()) do
+            if child:IsA("TextButton") or (child:IsA("TextLabel") and child.Name ~= "FeatureLayout") then
+                child:Destroy()
+            end
         end
-    end
+    end)
     
-    -- Update category button backgrounds
-    for categoryName, categoryData in pairs(categoryFrames) do
-        if categoryData and categoryData.button then
-            categoryData.button.BackgroundColor3 = categoryName == selectedCategory and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
+    -- Update category button backgrounds - with error handling
+    pcall(function()
+        for categoryName, categoryData in pairs(categoryFrames) do
+            if categoryData and categoryData.button then
+                categoryData.button.BackgroundColor3 = categoryName == selectedCategory and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25)
+            end
         end
-    end
+    end)
 
     if not selectedCategory then
         warn("No category selected!")
         return
     end
     
-    -- Check if module is loaded
+    -- Check if module exists and is loaded
     if not modules[selectedCategory] then
         local loadingLabel = Instance.new("TextLabel")
         loadingLabel.Parent = FeatureContainer
@@ -455,8 +525,22 @@ local function loadButtons()
     local success = false
     local errorMessage = nil
 
-    -- Load buttons based on selected category
-    if selectedCategory == "Movement" and module.loadMovementButtons then
+    -- INDIVIDUAL ERROR HANDLING FOR EACH MODULE TYPE
+    if selectedCategory == "Visual" and module.loadVisualButtons then
+        success, errorMessage = pcall(function()
+            print("Calling Visual.loadVisualButtons")
+            
+            -- Extra validation for Visual module
+            if not module.isInitialized or not module.isInitialized() then
+                error("Visual module is not properly initialized")
+            end
+            
+            module.loadVisualButtons(function(name, callback, disableCallback)
+                return createToggleButton(name, callback, "Visual", disableCallback)
+            end)
+        end)
+        
+    elseif selectedCategory == "Movement" and module.loadMovementButtons then
         success, errorMessage = pcall(function()
             print("Calling Movement.loadMovementButtons")
             module.loadMovementButtons(
@@ -487,14 +571,6 @@ local function loadButtons()
                 function(name, callback) return createButton(name, callback, "Teleport") end,
                 selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
             )
-        end)
-        
-    elseif selectedCategory == "Visual" and module.loadVisualButtons then
-        success, errorMessage = pcall(function()
-            print("Calling Visual.loadVisualButtons")
-            module.loadVisualButtons(function(name, callback, disableCallback)
-                return createToggleButton(name, callback, "Visual", disableCallback)
-            end)
         end)
         
     elseif selectedCategory == "Utility" and module.loadUtilityButtons then
@@ -528,27 +604,51 @@ local function loadButtons()
         end)
         
     else
-        errorMessage = "Module " .. selectedCategory .. " doesn't have the required function!"
-        warn(errorMessage)
+        -- Fallback for modules without proper functions
+        local fallbackLabel = Instance.new("TextLabel")
+        fallbackLabel.Parent = FeatureContainer
+        fallbackLabel.BackgroundTransparency = 1
+        fallbackLabel.Size = UDim2.new(1, -2, 0, 40)
+        fallbackLabel.Font = Enum.Font.Gotham
+        fallbackLabel.Text = selectedCategory .. " module loaded but missing required function.\nModule functions available: " .. table.concat(getModuleFunctions(module), ", ")
+        fallbackLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+        fallbackLabel.TextSize = 8
+        fallbackLabel.TextXAlignment = Enum.TextXAlignment.Left
+        fallbackLabel.TextYAlignment = Enum.TextYAlignment.Top
+        fallbackLabel.TextWrapped = true
+        return
     end
 
-    -- Show error if loading failed
+    -- Show result with better messaging
     if not success and errorMessage then
         local errorLabel = Instance.new("TextLabel")
         errorLabel.Parent = FeatureContainer
         errorLabel.BackgroundTransparency = 1
-        errorLabel.Size = UDim2.new(1, -2, 0, 40)
+        errorLabel.Size = UDim2.new(1, -2, 0, 60)
         errorLabel.Font = Enum.Font.Gotham
-        errorLabel.Text = "Error loading " .. selectedCategory .. ":\n" .. tostring(errorMessage)
+        errorLabel.Text = "Error loading " .. selectedCategory .. ":\n" .. tostring(errorMessage) .. "\n\nTry switching to another category and back."
         errorLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
         errorLabel.TextSize = 8
         errorLabel.TextXAlignment = Enum.TextXAlignment.Left
         errorLabel.TextYAlignment = Enum.TextYAlignment.Top
         errorLabel.TextWrapped = true
-        print("Error: " .. tostring(errorMessage))
+        print("Error loading " .. selectedCategory .. ": " .. tostring(errorMessage))
     elseif success then
         print("✓ Successfully loaded buttons for " .. selectedCategory)
     end
+end
+
+-- Helper function to get available functions in a module
+local function getModuleFunctions(module)
+    local functions = {}
+    if type(module) == "table" then
+        for key, value in pairs(module) do
+            if type(value) == "function" then
+                table.insert(functions, key)
+            end
+        end
+    end
+    return functions
 end
 
 -- Create category buttons
@@ -594,29 +694,44 @@ local function toggleMinimize()
     MinimizeButton.Text = isMinimized and "+" or "-"
 end
 
--- Reset states
+-- Enhanced reset states with better error handling
 local function resetStates()
     print("Resetting all states")
     
-    for _, connection in pairs(connections) do
-        if connection and connection.Disconnect then
-            pcall(function() connection:Disconnect() end)
-        end
+    -- Disconnect all connections safely
+    for key, connection in pairs(connections) do
+        pcall(function()
+            if connection and connection.Disconnect then
+                connection:Disconnect()
+            end
+        end)
+        connections[key] = nil
     end
-    connections = {}
     
-    for _, module in pairs(modules) do
+    -- Reset module states safely
+    for moduleName, module in pairs(modules) do
         if module and type(module.resetStates) == "function" then
-            pcall(function() module.resetStates() end)
+            local success, error = pcall(function() 
+                module.resetStates() 
+            end)
+            if not success then
+                warn("Failed to reset states for " .. moduleName .. ": " .. tostring(error))
+            else
+                print("✓ Reset states for " .. moduleName)
+            end
         end
     end
     
+    -- Reload current category buttons
     if selectedCategory then
-        task.spawn(loadButtons)
+        task.spawn(function()
+            task.wait(0.5) -- Give modules time to reset
+            loadButtons()
+        end)
     end
 end
 
--- Character setup
+-- Enhanced character setup with better error handling and module updates
 local function onCharacterAdded(newCharacter)
     if not newCharacter then return end
     
@@ -629,58 +744,116 @@ local function onCharacterAdded(newCharacter)
             error("Failed to find Humanoid or HumanoidRootPart")
         end
         
+        -- Update dependencies for all modules
         dependencies.character = character
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
+        dependencies.ScrollFrame = FeatureContainer  -- Ensure this is always current
         
+        print("Character setup complete, updating module references...")
+        
+        -- Update references for modules that support it
+        for moduleName, module in pairs(modules) do
+            if module and type(module.updateReferences) == "function" then
+                local updateSuccess, updateError = pcall(function()
+                    module.updateReferences()
+                end)
+                if not updateSuccess then
+                    warn("Failed to update references for " .. moduleName .. ": " .. tostring(updateError))
+                else
+                    print("✓ Updated references for " .. moduleName)
+                end
+            end
+        end
+        
+        -- Re-initialize modules that need character data
         initializeModules()
         
-        if humanoid.Died then
-            connections.humanoidDied = humanoid.Died:Connect(resetStates)
+        -- Set up death connection with error handling
+        if humanoid and humanoid.Died then
+            connections.humanoidDied = humanoid.Died:Connect(function()
+                pcall(resetStates)
+            end)
+        end
+        
+        -- Reload current buttons if needed
+        if selectedCategory and modules[selectedCategory] then
+            task.spawn(function()
+                task.wait(1) -- Give modules time to fully update
+                loadButtons()
+            end)
         end
     end)
+    
     if not success then
         warn("Failed to set up character: " .. tostring(result))
+        -- Don't completely fail - try to continue with basic setup
+        character = newCharacter
+        dependencies.character = character
+        dependencies.ScrollFrame = FeatureContainer
+    else
+        print("✓ Character setup successful")
     end
 end
 
--- Initialize character
+-- Initialize character with error handling
 if player.Character then
     onCharacterAdded(player.Character)
 end
 connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 
--- Event connections
-MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
-LogoButton.MouseButton1Click:Connect(toggleMinimize)
+-- Event connections with error handling
+MinimizeButton.MouseButton1Click:Connect(function()
+    pcall(toggleMinimize)
+end)
+
+LogoButton.MouseButton1Click:Connect(function()
+    pcall(toggleMinimize)
+end)
 
 connections.toggleGui = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Home then
-        toggleMinimize()
+        pcall(toggleMinimize)
     end
 end)
 
--- Start initialization
+-- Enhanced startup sequence with better error handling and reporting
 task.spawn(function()
-    local timeout = 30 -- Increased timeout
+    local timeout = 45 -- Increased timeout for better reliability
     local startTime = tick()
     
-    -- Wait for at least one module to load
+    print("=== MinimalHackGUI Initialization Started ===")
+    
+    -- Wait for at least one critical module to load
     while tick() - startTime < timeout do
         local loadedCount = 0
-        for _ in pairs(modulesLoaded) do
-            loadedCount = loadedCount + 1
+        local criticalModulesLoaded = 0
+        local criticalModules = {"Movement", "Visual", "Player"} -- Essential modules
+        
+        for moduleName, _ in pairs(moduleURLs) do
+            if modulesLoaded[moduleName] then
+                loadedCount = loadedCount + 1
+                for _, critical in ipairs(criticalModules) do
+                    if moduleName == critical then
+                        criticalModulesLoaded = criticalModulesLoaded + 1
+                        break
+                    end
+                end
+            end
         end
         
-        if loadedCount > 0 then
-            print("At least one module loaded, proceeding...")
+        print(string.format("Loading progress: %d/%d total, %d/%d critical", 
+              loadedCount, #categories, criticalModulesLoaded, #criticalModules))
+        
+        if criticalModulesLoaded >= 2 or loadedCount >= 4 then
+            print("Sufficient modules loaded, proceeding with initialization...")
             break
         end
         
-        task.wait(0.5)
+        task.wait(1)
     end
 
-    -- Report loading results
+    -- Report final loading results
     local loadedModules = {}
     local failedModules = {}
     
@@ -692,16 +865,94 @@ task.spawn(function()
         end
     end
     
+    print("=== Module Loading Results ===")
     if #loadedModules > 0 then
-        print("✓ Successfully loaded modules: " .. table.concat(loadedModules, ", "))
+        print("✓ Successfully loaded: " .. table.concat(loadedModules, ", "))
     end
     
     if #failedModules > 0 then
-        print("✗ Failed to load modules: " .. table.concat(failedModules, ", "))
+        print("✗ Failed to load: " .. table.concat(failedModules, ", "))
+        print("Note: Failed modules will be retried when accessed")
     end
 
-    initializeModules()
-    loadButtons()
+    -- Initialize loaded modules
+    if #loadedModules > 0 then
+        print("=== Starting Module Initialization ===")
+        initializeModules()
+    else
+        warn("WARNING: No modules loaded successfully! GUI will have limited functionality.")
+    end
     
-    print("MinimalHackGUI initialization complete!")
+    -- Load initial category buttons
+    print("=== Loading Initial Interface ===")
+    task.wait(0.5) -- Give modules time to fully initialize
+    
+    local buttonLoadSuccess, buttonLoadError = pcall(loadButtons)
+    if not buttonLoadSuccess then
+        warn("Failed to load initial buttons: " .. tostring(buttonLoadError))
+        -- Create fallback message
+        local fallbackLabel = Instance.new("TextLabel")
+        fallbackLabel.Parent = FeatureContainer
+        fallbackLabel.BackgroundTransparency = 1
+        fallbackLabel.Size = UDim2.new(1, -2, 0, 60)
+        fallbackLabel.Font = Enum.Font.Gotham
+        fallbackLabel.Text = "GUI Initialized but some modules failed to load.\nTry switching between categories or restarting the script.\n\nLoaded: " .. (#loadedModules > 0 and table.concat(loadedModules, ", ") or "None")
+        fallbackLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+        fallbackLabel.TextSize = 8
+        fallbackLabel.TextXAlignment = Enum.TextXAlignment.Left
+        fallbackLabel.TextYAlignment = Enum.TextYAlignment.Top
+        fallbackLabel.TextWrapped = true
+    else
+        print("✓ Initial interface loaded successfully")
+    end
+    
+    print("=== MinimalHackGUI Initialization Complete ===")
+    print("Press HOME key to toggle GUI visibility")
+    print("Loaded modules will continue loading in background")
+    
+    -- Continue trying to load failed modules in background
+    if #failedModules > 0 then
+        task.spawn(function()
+            task.wait(5) -- Wait before retry
+            print("=== Retrying Failed Modules ===")
+            for _, failedModule in ipairs(failedModules) do
+                if not modulesLoaded[failedModule] then
+                    print("Retrying: " .. failedModule)
+                    task.spawn(function()
+                        loadModule(failedModule)
+                    end)
+                end
+                task.wait(2) -- Stagger retries
+            end
+        end)
+    end
+end)
+
+-- Add cleanup on script termination
+game:GetService("RunService").Stepped:Connect(function()
+    -- Keep GUI alive and responsive
+    if ScreenGui and ScreenGui.Parent ~= player.PlayerGui then
+        ScreenGui.Parent = player.PlayerGui
+    end
+end)
+
+-- Final safety check
+task.spawn(function()
+    task.wait(10)
+    if not ScreenGui or not ScreenGui.Parent then
+        warn("GUI lost parent, attempting recovery...")
+        if ScreenGui then
+            ScreenGui.Parent = player.PlayerGui
+        end
+    end
+    
+    local workingModules = 0
+    for _, module in pairs(modules) do
+        if module and type(module) == "table" then
+            workingModules = workingModules + 1
+        end
+    end
+    
+    print(string.format("Health check: %d working modules, GUI %s", 
+          workingModules, (ScreenGui and ScreenGui.Parent) and "OK" or "ERROR"))
 end)
