@@ -37,6 +37,7 @@ local mouseDelta = Vector2.new(0, 0)
 Visual.selfHighlightEnabled = false
 Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
 local selfHighlight
+local colorPicker = nil
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
@@ -1398,18 +1399,6 @@ local function createSelfHighlight()
     
     local character = player.Character
     if character then
-        -- Attempt to replicate to server for visibility to all
-        local replicatedStorage = safeGetService("ReplicatedStorage")
-        if replicatedStorage then
-            local remote = replicatedStorage:FindFirstChildOfClass("RemoteEvent") -- Assume a remote that can be used; replace with actual if available
-            if remote then
-                remote:FireServer("CreateHighlight", Visual.selfHighlightColor) -- Assume server script handles creation
-                print("Fired server to create self highlight visible to all")
-                return
-            end
-        end
-        
-        -- Fallback to local highlight if no remote
         selfHighlight = Instance.new("Highlight")
         selfHighlight.Name = "SelfHighlight"
         selfHighlight.OutlineColor = Visual.selfHighlightColor
@@ -1418,7 +1407,7 @@ local function createSelfHighlight()
         selfHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         selfHighlight.Adornee = character
         selfHighlight.Parent = character
-        print("Self Highlight created locally")
+        print("Self Highlight created")
     end
 end
 
@@ -1533,6 +1522,129 @@ function Visual.init(deps)
     return true
 end
 
+-- Utility function to convert Color3 to hex
+local function toHex(color)
+    local r = math.floor(color.R * 255 + 0.5)
+    local g = math.floor(color.G * 255 + 0.5)
+    local b = math.floor(color.B * 255 + 0.5)
+    return string.format("#%02X%02X%02X", r, g, b)
+end
+
+-- Utility function to create a color picker GUI
+local function createColorPicker(name, initialColor, onColorChanged)
+    if not ScreenGui then
+        warn("Error: ScreenGui is nil, cannot create " .. name .. " color picker")
+        return nil, nil
+    end
+
+    local picker = Instance.new("Frame")
+    picker.Name = name .. "ColorPicker"
+    picker.Size = UDim2.new(0, 300, 0, 300)
+    picker.Position = UDim2.new(0.5, -150, 0.5, -150)
+    picker.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    picker.BorderSizePixel = 0
+    picker.Visible = false
+    picker.ZIndex = 100
+    picker.Parent = ScreenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = picker
+
+    local shadow = Instance.new("Frame")
+    shadow.Name = "Shadow"
+    shadow.Size = UDim2.new(1, 10, 1, 10)
+    shadow.Position = UDim2.new(0, -5, 0, -5)
+    shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.BackgroundTransparency = 0.6
+    shadow.ZIndex = 99
+    shadow.Parent = picker
+    
+    local shadowCorner = Instance.new("UICorner")
+    shadowCorner.CornerRadius = UDim.new(0, 8)
+    shadowCorner.Parent = shadow
+
+    local title = Instance.new("TextLabel")
+    title.Text = "Choose " .. name .. " Color"
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 18
+    title.Font = Enum.Font.SourceSansBold
+    title.ZIndex = 101
+    title.Parent = picker
+
+    local presetFrame = Instance.new("Frame")
+    presetFrame.Name = "PresetFrame"
+    presetFrame.Size = UDim2.new(0.8, 0, 0, 200)
+    presetFrame.Position = UDim2.new(0.1, 0, 0.15, 0)
+    presetFrame.BackgroundTransparency = 1
+    presetFrame.ZIndex = 101
+    presetFrame.Parent = picker
+
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(0, 60, 0, 60)
+    gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.Parent = presetFrame
+
+    local presetColors = {
+        Color3.fromRGB(255, 255, 255), -- White
+        Color3.fromRGB(255, 0, 0), -- Red
+        Color3.fromRGB(0, 255, 0), -- Green
+        Color3.fromRGB(0, 0, 255), -- Blue
+        Color3.fromRGB(255, 255, 0), -- Yellow
+        Color3.fromRGB(255, 0, 255), -- Magenta
+        Color3.fromRGB(0, 255, 255), -- Cyan
+        Color3.fromRGB(255, 165, 0), -- Orange
+        Color3.fromRGB(128, 0, 128) -- Purple
+    }
+
+    for _, color in ipairs(presetColors) do
+        local presetButton = Instance.new("TextButton")
+        presetButton.Size = UDim2.new(0, 60, 0, 60)
+        presetButton.BackgroundColor3 = color
+        presetButton.BorderSizePixel = 0
+        presetButton.Text = ""
+        presetButton.ZIndex = 102
+        presetButton.Parent = presetFrame
+
+        local presetCorner = Instance.new("UICorner")
+        presetCorner.CornerRadius = UDim.new(0, 6)
+        presetCorner.Parent = presetButton
+
+        presetButton.MouseButton1Click:Connect(function()
+            onColorChanged(color)
+            picker.Visible = false
+        end)
+    end
+
+    if connections and type(connections) == "table" and connections[name .. "Close"] then
+        connections[name .. "Close"]:Disconnect()
+        connections[name .. "Close"] = nil
+    end
+    if UserInputService then
+        connections[name .. "Close"] = UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                if picker and picker.Visible and not gameProcessedEvent then
+                    local mousePos = input.Position
+                    local pickerPos = picker.AbsolutePosition
+                    local pickerSize = picker.AbsoluteSize
+                    
+                    if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
+                       mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
+                        picker.Visible = false
+                    end
+                end
+            end
+        end)
+    else
+        warn("Error: UserInputService is nil, cannot connect InputBegan for color picker close")
+    end
+
+    return picker
+end
+
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
     print("Loading visual buttons")
@@ -1567,37 +1679,12 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Night Mode", toggleNight)
     createToggleButton("Self Highlight", toggleSelfHighlight)
 
-    -- Preset colors and names for simple cycling
-    local presetSelfColors = {
-        Color3.fromRGB(255, 255, 255),
-        Color3.fromRGB(255, 0, 0),
-        Color3.fromRGB(0, 255, 0),
-        Color3.fromRGB(0, 0, 255),
-        Color3.fromRGB(255, 255, 0),
-        Color3.fromRGB(255, 0, 255),
-        Color3.fromRGB(0, 255, 255),
-        Color3.fromRGB(255, 165, 0),
-        Color3.fromRGB(128, 0, 128)
-    }
-    local colorNames = {
-        "White",
-        "Red",
-        "Green",
-        "Blue",
-        "Yellow",
-        "Magenta",
-        "Cyan",
-        "Orange",
-        "Purple"
-    }
-    local selfColorIndex = 1
-
-    -- Create self highlight color cycle button
+    -- Create self highlight color picker button
     local colorButton = Instance.new("TextButton")
     colorButton.Name = "SelfHighlightColorButton"
     colorButton.Size = UDim2.new(1, 0, 0, 30)
     colorButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    colorButton.Text = "Self Outline Color: " .. colorNames[1]
+    colorButton.Text = "Self Outline Color: " .. toHex(Visual.selfHighlightColor)
     colorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     colorButton.TextSize = 14
     colorButton.Font = Enum.Font.SourceSans
@@ -1608,14 +1695,24 @@ function Visual.loadVisualButtons(createToggleButton)
     colorCorner.CornerRadius = UDim.new(0, 4)
     colorCorner.Parent = colorButton
 
-    colorButton.MouseButton1Click:Connect(function()
-        selfColorIndex = (selfColorIndex % #presetSelfColors) + 1
-        Visual.selfHighlightColor = presetSelfColors[selfColorIndex]
-        colorButton.Text = "Self Outline Color: " .. colorNames[selfColorIndex]
+    if not ScreenGui then
+        warn("Error: ScreenGui is nil, cannot create color pickers")
+        return
+    end
+
+    -- Create color pickers
+    colorPicker = createColorPicker("Self Highlight", Visual.selfHighlightColor, function(newColor)
+        Visual.selfHighlightColor = newColor
         if Visual.selfHighlightEnabled then
             createSelfHighlight()
         end
-        print("Self Outline Color changed to: " .. colorNames[selfColorIndex])
+        colorButton.Text = "Self Outline Color: " .. toHex(newColor)
+    end)
+
+    colorButton.MouseButton1Click:Connect(function()
+        if colorPicker then
+            colorPicker.Visible = true
+        end
     end)
 end
 
@@ -1667,6 +1764,11 @@ function Visual.resetStates()
     toggleHideOwnNickname(false)
     toggleSelfHighlight(false)
     setTimeMode("normal")
+    
+    if colorPicker then
+        colorPicker:Destroy()
+        colorPicker = nil
+    end
 end
 
 -- Function to update references after character respawn
@@ -1807,6 +1909,12 @@ function Visual.cleanup()
         end)
     end
     
+    -- Clean up color pickers
+    if colorPicker then
+        colorPicker:Destroy()
+        colorPicker = nil
+    end
+    
     -- Disconnect any remaining connections
     if connections and type(connections) == "table" then
         for key, connection in pairs(connections) do
@@ -1863,7 +1971,7 @@ function Visual.setSelfHighlightColor(color)
         if Visual.selfHighlightEnabled then
             createSelfHighlight()
         end
-        print("Self Highlight color set to:", color)
+        print("Self Highlight color set to:", toHex(color))
     else
         warn("Error: Invalid color provided for setSelfHighlightColor")
     end
