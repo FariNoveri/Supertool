@@ -1539,8 +1539,8 @@ local function createColorPicker(name, initialColor, onColorChanged)
 
     local picker = Instance.new("Frame")
     picker.Name = name .. "ColorPicker"
-    picker.Size = UDim2.new(0, 300, 0, 300)
-    picker.Position = UDim2.new(0.5, -150, 0.5, -150)
+    picker.Size = UDim2.new(0, 300, 0, 350)
+    picker.Position = UDim2.new(0.5, -150, 0.5, -175)
     picker.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     picker.BorderSizePixel = 0
     picker.Visible = false
@@ -1566,13 +1566,77 @@ local function createColorPicker(name, initialColor, onColorChanged)
 
     local title = Instance.new("TextLabel")
     title.Text = "Choose " .. name .. " Color"
-    title.Size = UDim2.new(1, 0, 0, 40)
+    title.Size = UDim2.new(1, -30, 0, 40)
     title.BackgroundTransparency = 1
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextSize = 18
     title.Font = Enum.Font.SourceSansBold
     title.ZIndex = 101
     title.Parent = picker
+
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -35, 0, 5)
+    closeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 18
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.ZIndex = 102
+    closeButton.Parent = picker
+
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 4)
+    closeCorner.Parent = closeButton
+
+    closeButton.MouseButton1Click:Connect(function()
+        picker.Visible = false
+    end)
+
+    local selectedColor = initialColor
+    local preview = Instance.new("Frame")
+    preview.Name = "Preview"
+    preview.Size = UDim2.new(0.8, 0, 0, 40)
+    preview.Position = UDim2.new(0.1, 0, 0.85, 0)
+    preview.BackgroundColor3 = selectedColor
+    preview.ZIndex = 101
+    preview.Parent = picker
+
+    local previewCorner = Instance.new("UICorner")
+    previewCorner.CornerRadius = UDim.new(0, 4)
+    previewCorner.Parent = preview
+
+    local previewLabel = Instance.new("TextLabel")
+    previewLabel.Text = "Preview"
+    previewLabel.Size = UDim2.new(1, 0, 1, 0)
+    previewLabel.BackgroundTransparency = 1
+    previewLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    previewLabel.TextSize = 14
+    previewLabel.Font = Enum.Font.SourceSans
+    previewLabel.ZIndex = 102
+    previewLabel.Parent = preview
+
+    local applyButton = Instance.new("TextButton")
+    applyButton.Name = "ApplyButton"
+    applyButton.Size = UDim2.new(0.8, 0, 0, 40)
+    applyButton.Position = UDim2.new(0.1, 0, 0.95, 0)
+    applyButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+    applyButton.Text = "Apply"
+    applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    applyButton.TextSize = 18
+    applyButton.Font = Enum.Font.SourceSansBold
+    applyButton.ZIndex = 101
+    applyButton.Parent = picker
+
+    local applyCorner = Instance.new("UICorner")
+    applyCorner.CornerRadius = UDim.new(0, 4)
+    applyCorner.Parent = applyButton
+
+    applyButton.MouseButton1Click:Connect(function()
+        onColorChanged(selectedColor)
+        picker.Visible = false
+    end)
 
     local presetFrame = Instance.new("Frame")
     presetFrame.Name = "PresetFrame"
@@ -1583,26 +1647,37 @@ local function createColorPicker(name, initialColor, onColorChanged)
     presetFrame.Parent = picker
 
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0, 60, 0, 60)
+    gridLayout.CellSize = UDim2.new(0, 40, 0, 40)
     gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = presetFrame
 
     local presetColors = {
         Color3.fromRGB(255, 255, 255), -- White
+        Color3.fromRGB(0, 0, 0), -- Black
+        Color3.fromRGB(128, 128, 128), -- Gray
         Color3.fromRGB(255, 0, 0), -- Red
+        Color3.fromRGB(139, 0, 0), -- Dark Red
         Color3.fromRGB(0, 255, 0), -- Green
+        Color3.fromRGB(0, 100, 0), -- Dark Green
         Color3.fromRGB(0, 0, 255), -- Blue
+        Color3.fromRGB(0, 0, 139), -- Dark Blue
         Color3.fromRGB(255, 255, 0), -- Yellow
-        Color3.fromRGB(255, 0, 255), -- Magenta
-        Color3.fromRGB(0, 255, 255), -- Cyan
         Color3.fromRGB(255, 165, 0), -- Orange
-        Color3.fromRGB(128, 0, 128) -- Purple
+        Color3.fromRGB(255, 69, 0), -- Red-Orange
+        Color3.fromRGB(255, 0, 255), -- Magenta
+        Color3.fromRGB(128, 0, 128), -- Purple
+        Color3.fromRGB(75, 0, 130), -- Indigo
+        Color3.fromRGB(0, 255, 255), -- Cyan
+        Color3.fromRGB(0, 139, 139), -- Dark Cyan
+        Color3.fromRGB(255, 192, 203), -- Pink
+        Color3.fromRGB(165, 42, 42), -- Brown
+        Color3.fromRGB(255, 215, 0) -- Gold
     }
 
     for _, color in ipairs(presetColors) do
         local presetButton = Instance.new("TextButton")
-        presetButton.Size = UDim2.new(0, 60, 0, 60)
+        presetButton.Size = UDim2.new(0, 40, 0, 40)
         presetButton.BackgroundColor3 = color
         presetButton.BorderSizePixel = 0
         presetButton.Text = ""
@@ -1614,8 +1689,8 @@ local function createColorPicker(name, initialColor, onColorChanged)
         presetCorner.Parent = presetButton
 
         presetButton.MouseButton1Click:Connect(function()
-            onColorChanged(color)
-            picker.Visible = false
+            selectedColor = color
+            preview.BackgroundColor3 = selectedColor
         end)
     end
 
