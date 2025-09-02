@@ -33,7 +33,7 @@ Player.followPathfinding = nil
 
 -- Variables for enhanced fling feature
 Player.flingEnabled = false
-Player.flingForce = 50
+Player.flingForce = 80 -- Increased from 50
 Player.flingRange = 10
 Player.flungPlayers = {}
 
@@ -41,7 +41,7 @@ Player.flungPlayers = {}
 Player.physicsEnabled = false
 Player.physicsConnections = {}
 Player.physicsPlayers = {}
-Player.spinSpeed = 20
+Player.spinSpeed = 50 -- Increased from 20
 
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
@@ -276,7 +276,7 @@ local function toggleNoDeathAnimation(enabled)
     end
 end
 
--- Physics Control for Players - New Feature
+-- Physics Control for Players - FIXED VERSION
 local function enablePhysicsForPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot enable physics: Invalid target player")
@@ -298,8 +298,12 @@ local function enablePhysicsForPlayer(targetPlayer)
             return
         end
         
-        -- Enable physics by making parts non-anchored and disabling humanoid control
+        -- IMPROVED PHYSICS: Make the character completely controllable by physics
         rootPart.Anchored = false
+        rootPart.CanCollide = true
+        rootPart.CanTouch = true
+        rootPart.TopSurface = Enum.SurfaceType.Smooth
+        rootPart.BottomSurface = Enum.SurfaceType.Smooth
         
         -- Disable humanoid states that interfere with physics
         humanoid.PlatformStand = true
@@ -307,19 +311,49 @@ local function enablePhysicsForPlayer(targetPlayer)
         humanoid.JumpPower = 0
         humanoid.Sit = false
         
-        -- Make all body parts non-anchored for better physics
+        -- Important: Set HipHeight to 0 to make physics work properly
+        if humanoid:FindFirstChild("HipHeight") then
+            humanoid.HipHeight = 0
+        end
+        
+        -- Make sure all joints and welds are not interfering
+        for _, joint in pairs(character:GetDescendants()) do
+            if joint:IsA("Motor6D") or joint:IsA("Glue") then
+                joint:Destroy()
+            end
+        end
+        
+        -- Apply custom BodyPosition and BodyAngularVelocity for full physics control
+        local bodyPosition = rootPart:FindFirstChild("PhysicsBodyPosition")
+        if bodyPosition then bodyPosition:Destroy() end
+        
+        bodyPosition = Instance.new("BodyPosition")
+        bodyPosition.Name = "PhysicsBodyPosition"
+        bodyPosition.MaxForce = Vector3.new(0, 0, 0) -- No force initially
+        bodyPosition.Position = rootPart.Position
+        bodyPosition.Parent = rootPart
+        
+        -- Add BodyVelocity for better physics response
+        local bodyVelocity = rootPart:FindFirstChild("PhysicsBodyVelocity")
+        if bodyVelocity then bodyVelocity:Destroy() end
+        
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.Name = "PhysicsBodyVelocity"
+        bodyVelocity.MaxForce = Vector3.new(0, 0, 0)
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.Parent = rootPart
+        
+        -- Make all other body parts respond to physics properly
         for _, part in pairs(character:GetDescendants()) do
             if part:IsA("BasePart") and part ~= rootPart then
                 part.Anchored = false
+                part.CanCollide = true
+                part.CanTouch = true
                 
-                -- Add some mass for better physics interactions
-                if part.Name == "Head" or part.Name == "Torso" or part.Name == "UpperTorso" then
-                    local bodyVelocity = part:FindFirstChild("BodyVelocity")
-                    if not bodyVelocity then
-                        bodyVelocity = Instance.new("BodyVelocity")
-                        bodyVelocity.MaxForce = Vector3.new(0, 0, 0)
-                        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                        bodyVelocity.Parent = part
+                -- Remove any existing body movers
+                for _, obj in pairs(part:GetChildren()) do
+                    if obj:IsA("BodyVelocity") or obj:IsA("BodyPosition") or obj:IsA("BodyAngularVelocity") then
+                        obj:Destroy()
                     end
                 end
             end
@@ -331,10 +365,12 @@ local function enablePhysicsForPlayer(targetPlayer)
             rootPart = rootPart,
             character = character,
             originalWalkSpeed = 16,
-            originalJumpPower = 50
+            originalJumpPower = 50,
+            bodyPosition = bodyPosition,
+            bodyVelocity = bodyVelocity
         }
         
-        print("Physics enabled for: " .. targetPlayer.Name)
+        print("Enhanced Physics enabled for: " .. targetPlayer.Name)
     end)
     
     if not success then
@@ -360,11 +396,21 @@ local function disablePhysicsForPlayer(targetPlayer)
             humanoid.JumpPower = physicsData.originalJumpPower
         end
         
-        -- Clean up body movers
+        -- Clean up physics body movers
+        if physicsData.bodyPosition then
+            physicsData.bodyPosition:Destroy()
+        end
+        if physicsData.bodyVelocity then
+            physicsData.bodyVelocity:Destroy()
+        end
+        
+        -- Clean up any remaining physics objects
         if character then
             for _, part in pairs(character:GetDescendants()) do
                 if part:IsA("BodyVelocity") or part:IsA("BodyAngularVelocity") or part:IsA("BodyPosition") then
-                    part:Destroy()
+                    if part.Name:find("Physics") then
+                        part:Destroy()
+                    end
                 end
             end
         end
@@ -383,7 +429,7 @@ local function togglePhysicsControl(enabled)
     Player.physicsEnabled = enabled
     
     if enabled then
-        print("Activating physics control...")
+        print("Activating enhanced physics control...")
         
         -- Enable physics for all players
         for _, p in pairs(Players:GetPlayers()) do
@@ -414,7 +460,7 @@ local function togglePhysicsControl(enabled)
             end
         end)
         
-        print("Physics control activated successfully")
+        print("Enhanced physics control activated successfully")
     else
         print("Deactivating physics control...")
         
@@ -438,7 +484,7 @@ local function togglePhysicsControl(enabled)
     end
 end
 
--- Enhanced Fling Feature with Spinning
+-- Enhanced Fling Feature with Faster Spinning
 local function enhancedFlingPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot fling: Invalid target player")
@@ -469,36 +515,36 @@ local function enhancedFlingPlayer(targetPlayer)
         -- Enable physics first for better control
         enablePhysicsForPlayer(targetPlayer)
         
-        -- Make our character spin for the fling effect
+        -- Make our character spin MUCH faster for the fling effect
         if Player.rootPart then
             local spin = Instance.new("BodyAngularVelocity")
-            spin.AngularVelocity = Vector3.new(0, Player.spinSpeed, 0)
+            spin.AngularVelocity = Vector3.new(0, Player.spinSpeed * 2, 0) -- Double spin speed
             spin.MaxTorque = Vector3.new(0, math.huge, 0)
             spin.Parent = Player.rootPart
             
             -- Remove spin after a short time
-            task.delay(0.5, function()
+            task.delay(0.3, function()
                 if spin and spin.Parent then
                     spin:Destroy()
                 end
             end)
         end
         
-        -- Apply powerful fling forces
+        -- Apply MORE POWERFUL fling forces
         local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
-        local flingVelocity = direction * Player.flingForce
-        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.8, 0) -- Strong upward force
+        local flingVelocity = direction * Player.flingForce * 1.5 -- 1.5x more force
+        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 1.2, 0) -- Stronger upward force
         
         -- Make target non-anchored and apply forces
         targetRootPart.Anchored = false
         targetRootPart.AssemblyLinearVelocity = flingVelocity
         
-        -- Add spinning to the target
+        -- Add MUCH FASTER spinning to the target
         local targetSpin = Instance.new("BodyAngularVelocity")
         targetSpin.AngularVelocity = Vector3.new(
-            math.random(-Player.spinSpeed, Player.spinSpeed),
-            math.random(-Player.spinSpeed, Player.spinSpeed),
-            math.random(-Player.spinSpeed, Player.spinSpeed)
+            math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2),
+            math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2),
+            math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2)
         )
         targetSpin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         targetSpin.Parent = targetRootPart
@@ -507,28 +553,41 @@ local function enhancedFlingPlayer(targetPlayer)
         for _, part in pairs(targetCharacter:GetDescendants()) do
             if part:IsA("BasePart") and part ~= targetRootPart and part.Name ~= "HumanoidRootPart" then
                 local bodyVel = part:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity")
-                bodyVel.MaxForce = Vector3.new(4000, 4000, 4000)
-                bodyVel.Velocity = flingVelocity * math.random(0.7, 1.3)
+                bodyVel.MaxForce = Vector3.new(8000, 8000, 8000) -- Increased force
+                bodyVel.Velocity = flingVelocity * math.random(1.0, 1.8)
                 bodyVel.Parent = part
                 
+                -- Add spinning to individual parts too
+                local partSpin = Instance.new("BodyAngularVelocity")
+                partSpin.AngularVelocity = Vector3.new(
+                    math.random(-Player.spinSpeed, Player.spinSpeed),
+                    math.random(-Player.spinSpeed, Player.spinSpeed),
+                    math.random(-Player.spinSpeed, Player.spinSpeed)
+                )
+                partSpin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                partSpin.Parent = part
+                
                 -- Clean up after some time
-                task.delay(2, function()
+                task.delay(1.5, function()
                     if bodyVel and bodyVel.Parent then
                         bodyVel:Destroy()
+                    end
+                    if partSpin and partSpin.Parent then
+                        partSpin:Destroy()
                     end
                 end)
             end
         end
         
-        -- Clean up spin after some time
-        task.delay(1.5, function()
+        -- Clean up main spin after some time
+        task.delay(2, function()
             if targetSpin and targetSpin.Parent then
                 targetSpin:Destroy()
             end
         end)
         
         -- Reset target after a while
-        task.delay(3, function()
+        task.delay(4, function()
             if targetHumanoid and targetHumanoid.Parent then
                 targetHumanoid.PlatformStand = false
                 targetHumanoid.WalkSpeed = 16
@@ -536,7 +595,7 @@ local function enhancedFlingPlayer(targetPlayer)
             end
         end)
         
-        print("Enhanced fling applied to: " .. targetPlayer.Name)
+        print("Enhanced FAST fling applied to: " .. targetPlayer.Name)
     end)
     
     if not success then
@@ -548,22 +607,22 @@ local function flingPlayer(targetPlayer)
     enhancedFlingPlayer(targetPlayer)
 end
 
--- Toggle Enhanced Fling Mode - Continuously fling nearby players with spin
+-- Toggle Enhanced Fling Mode - Continuously fling nearby players with FASTER spin
 local function toggleFling(enabled)
     Player.flingEnabled = enabled
     
     if enabled then
-        print("Enhanced Fling mode enabled - will fling nearby players with spin")
+        print("Enhanced FAST Fling mode enabled - will fling nearby players with faster spin")
         
         connections.fling = RunService.Heartbeat:Connect(function()
             if not Player.flingEnabled or not Player.rootPart then return end
             
-            -- Make our character spin when fling mode is active
+            -- Make our character spin FASTER when fling mode is active
             local ourBodyAngularVel = Player.rootPart:FindFirstChild("FlingSpinVel")
             if not ourBodyAngularVel then
                 ourBodyAngularVel = Instance.new("BodyAngularVelocity")
                 ourBodyAngularVel.Name = "FlingSpinVel"
-                ourBodyAngularVel.AngularVelocity = Vector3.new(0, Player.spinSpeed, 0)
+                ourBodyAngularVel.AngularVelocity = Vector3.new(0, Player.spinSpeed * 1.5, 0) -- 1.5x faster
                 ourBodyAngularVel.MaxTorque = Vector3.new(0, math.huge, 0)
                 ourBodyAngularVel.Parent = Player.rootPart
             end
@@ -582,21 +641,21 @@ local function toggleFling(enabled)
                         
                         -- Apply continuous fling forces
                         local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
-                        local flingVelocity = direction * Player.flingForce
-                        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.4, 0)
+                        local flingVelocity = direction * Player.flingForce * 1.2
+                        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 0.6, 0)
                         
                         targetRootPart.Anchored = false
                         targetRootPart.AssemblyLinearVelocity = flingVelocity
                         
-                        -- Add spinning effect to target
+                        -- Add FASTER spinning effect to target
                         local targetBodyAngularVel = targetRootPart:FindFirstChild("TargetSpinVel")
                         if not targetBodyAngularVel then
                             targetBodyAngularVel = Instance.new("BodyAngularVelocity")
                             targetBodyAngularVel.Name = "TargetSpinVel"
                             targetBodyAngularVel.AngularVelocity = Vector3.new(
-                                math.random(-Player.spinSpeed, Player.spinSpeed),
-                                math.random(-Player.spinSpeed, Player.spinSpeed),
-                                math.random(-Player.spinSpeed, Player.spinSpeed)
+                                math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2),
+                                math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2),
+                                math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2)
                             )
                             targetBodyAngularVel.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
                             targetBodyAngularVel.Parent = targetRootPart
@@ -609,10 +668,10 @@ local function toggleFling(enabled)
                                 if not bodyVel then
                                     bodyVel = Instance.new("BodyVelocity")
                                     bodyVel.Name = "FlingBodyVel"
-                                    bodyVel.MaxForce = Vector3.new(2000, 2000, 2000)
+                                    bodyVel.MaxForce = Vector3.new(4000, 4000, 4000)
                                     bodyVel.Parent = part
                                 end
-                                bodyVel.Velocity = flingVelocity * math.random(0.8, 1.2)
+                                bodyVel.Velocity = flingVelocity * math.random(1.0, 1.5)
                             end
                         end
                     else
@@ -645,7 +704,7 @@ local function toggleFling(enabled)
             end
         end)
         
-        print("Enhanced Fling mode activated successfully")
+        print("Enhanced FAST Fling mode activated successfully")
     else
         -- Clean up our spinning
         if Player.rootPart then
@@ -1279,7 +1338,7 @@ local function spectatePrevPlayer()
     stopSpectating()
 end
 
--- Update Player List - FIXED BUTTON EVENTS AND FILTERING
+-- Update Player List - REMOVED INDIVIDUAL FREEZE, MAGNET, PHYSICS, FLING BUTTONS
 function Player.updatePlayerList()
     if not PlayerListScrollFrame then
         warn("PlayerListScrollFrame not initialized")
@@ -1329,7 +1388,7 @@ function Player.updatePlayerList()
             playerItem.Parent = PlayerListScrollFrame
             playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             playerItem.BorderSizePixel = 0
-            playerItem.Size = UDim2.new(1, -5, 0, 270) -- Increased height for physics button
+            playerItem.Size = UDim2.new(1, -5, 0, 150) -- Reduced height since we removed buttons
             playerItem.LayoutOrder = playerCount
             playerItem.ZIndex = 1
             
@@ -1361,7 +1420,6 @@ function Player.updatePlayerList()
             selectButton.Active = true
             selectButton.Selectable = true
             
-            -- Add all the other buttons
             local spectateButton = Instance.new("TextButton")
             spectateButton.Name = "SpectateButton"
             spectateButton.Parent = playerItem
@@ -1446,64 +1504,6 @@ function Player.updatePlayerList()
             bringButton.ZIndex = 2
             bringButton.Active = true
             
-            local magnetButton = Instance.new("TextButton")
-            magnetButton.Name = "MagnetButton"
-            magnetButton.Parent = playerItem
-            magnetButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
-            magnetButton.BorderSizePixel = 0
-            magnetButton.Position = UDim2.new(0, 5, 0, 120)
-            magnetButton.Size = UDim2.new(1, -10, 0, 25)
-            magnetButton.Font = Enum.Font.Gotham
-            magnetButton.Text = "MAGNET"
-            magnetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            magnetButton.TextSize = 9
-            magnetButton.ZIndex = 2
-            magnetButton.Active = true
-            
-            -- New Fling Button
-            local flingButton = Instance.new("TextButton")
-            flingButton.Name = "FlingButton"
-            flingButton.Parent = playerItem
-            flingButton.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
-            flingButton.BorderSizePixel = 0
-            flingButton.Position = UDim2.new(0, 5, 0, 150)
-            flingButton.Size = UDim2.new(0, 70, 0, 25)
-            flingButton.Font = Enum.Font.Gotham
-            flingButton.Text = "FLING"
-            flingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            flingButton.TextSize = 9
-            flingButton.ZIndex = 2
-            flingButton.Active = true
-            
-            -- New Physics Button
-            local physicsButton = Instance.new("TextButton")
-            physicsButton.Name = "PhysicsButton"
-            physicsButton.Parent = playerItem
-            physicsButton.BackgroundColor3 = Player.physicsPlayers[p] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(40, 80, 80)
-            physicsButton.BorderSizePixel = 0
-            physicsButton.Position = UDim2.new(0, 80, 0, 150)
-            physicsButton.Size = UDim2.new(1, -85, 0, 25)
-            physicsButton.Font = Enum.Font.Gotham
-            physicsButton.Text = Player.physicsPlayers[p] and "DISABLE PHYSICS" or "ENABLE PHYSICS"
-            physicsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            physicsButton.TextSize = 8
-            physicsButton.ZIndex = 2
-            physicsButton.Active = true
-            
-            local freezeIndividualButton = Instance.new("TextButton")
-            freezeIndividualButton.Name = "FreezeIndividualButton"
-            freezeIndividualButton.Parent = playerItem
-            freezeIndividualButton.BackgroundColor3 = Player.frozenPlayerPositions[p] and Color3.fromRGB(80, 80, 40) or Color3.fromRGB(40, 40, 100)
-            freezeIndividualButton.BorderSizePixel = 0
-            freezeIndividualButton.Position = UDim2.new(0, 5, 0, 180)
-            freezeIndividualButton.Size = UDim2.new(1, -10, 0, 25)
-            freezeIndividualButton.Font = Enum.Font.Gotham
-            freezeIndividualButton.Text = Player.frozenPlayerPositions[p] and "UNFREEZE" or "FREEZE"
-            freezeIndividualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            freezeIndividualButton.TextSize = 8
-            freezeIndividualButton.ZIndex = 2
-            freezeIndividualButton.Active = true
-            
             -- FIXED Button Events with proper scope
             local currentPlayer = p  -- Capture the current player in the loop
             
@@ -1581,54 +1581,6 @@ function Player.updatePlayerList()
                 bringPlayer(currentPlayer)
             end)
             
-            magnetButton.MouseButton1Click:Connect(function()
-                if currentPlayer.Character and currentPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    if not Player.rootPart then
-                        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            Player.rootPart = player.Character.HumanoidRootPart
-                        else
-                            print("Cannot magnet: Local player missing HumanoidRootPart")
-                            return
-                        end
-                    end
-                    
-                    Player.magnetPlayerPositions[currentPlayer] = currentPlayer.Character.HumanoidRootPart
-                    toggleMagnetPlayers(true)
-                else
-                    print("Cannot magnet: Target player has no character or HumanoidRootPart")
-                end
-            end)
-            
-            -- Enhanced Fling button event
-            flingButton.MouseButton1Click:Connect(function()
-                enhancedFlingPlayer(currentPlayer)
-            end)
-            
-            -- Physics button event
-            physicsButton.MouseButton1Click:Connect(function()
-                if Player.physicsPlayers[currentPlayer] then
-                    disablePhysicsForPlayer(currentPlayer)
-                    physicsButton.BackgroundColor3 = Color3.fromRGB(40, 80, 80)
-                    physicsButton.Text = "ENABLE PHYSICS"
-                else
-                    enablePhysicsForPlayer(currentPlayer)
-                    physicsButton.BackgroundColor3 = Color3.fromRGB(80, 40, 80)
-                    physicsButton.Text = "DISABLE PHYSICS"
-                end
-            end)
-            
-            freezeIndividualButton.MouseButton1Click:Connect(function()
-                if Player.frozenPlayerPositions[currentPlayer] then
-                    unfreezePlayer(currentPlayer)
-                    freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(40, 40, 100)
-                    freezeIndividualButton.Text = "FREEZE"
-                else
-                    freezePlayer(currentPlayer)
-                    freezeIndividualButton.BackgroundColor3 = Color3.fromRGB(80, 80, 40)
-                    freezeIndividualButton.Text = "UNFREEZE"
-                end
-            end)
-            
             -- Add hover effects for better UX
             selectButton.MouseEnter:Connect(function()
                 if Player.selectedPlayer ~= currentPlayer then
@@ -1658,22 +1610,6 @@ function Player.updatePlayerList()
             
             teleportButton.MouseLeave:Connect(function()
                 teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-            end)
-            
-            flingButton.MouseEnter:Connect(function()
-                flingButton.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
-            end)
-            
-            flingButton.MouseLeave:Connect(function()
-                flingButton.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
-            end)
-            
-            physicsButton.MouseEnter:Connect(function()
-                physicsButton.BackgroundColor3 = Player.physicsPlayers[currentPlayer] and Color3.fromRGB(100, 50, 100) or Color3.fromRGB(50, 100, 100)
-            end)
-            
-            physicsButton.MouseLeave:Connect(function()
-                physicsButton.BackgroundColor3 = Player.physicsPlayers[currentPlayer] and Color3.fromRGB(80, 40, 80) or Color3.fromRGB(40, 80, 80)
             end)
         end
     end
@@ -2023,7 +1959,7 @@ local function initUI()
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
     PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 450)
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 400) -- Reduced height since we removed buttons
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
