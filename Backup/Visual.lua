@@ -104,6 +104,67 @@ local timeModeConfigs = {
     }
 }
 
+-- Safe service accessor
+local function safeGetService(serviceName)
+    local success, service = pcall(function()
+        return game:GetService(serviceName)
+    end)
+    if success then
+        return service
+    else
+        warn("Failed to get service: " .. serviceName)
+        return nil
+    end
+end
+
+-- Safe rendering settings accessor
+local function safeGetRenderSettings()
+    local success, renderSettings = pcall(function()
+        local settings = safeGetService("Settings")
+        if settings then
+            return settings:GetService("Rendering")
+        end
+        return nil
+    end)
+    if success and renderSettings then
+        return renderSettings
+    else
+        -- Try alternative method
+        success, renderSettings = pcall(function()
+            return game:GetService("UserSettings"):GetService("GameSettings")
+        end)
+        if success then
+            return renderSettings
+        end
+    end
+    warn("Could not access render settings")
+    return nil
+end
+
+-- Health color function for ESP
+local function getHealthColor(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then
+        return Visual.espColor
+    end
+    
+    local humanoidTarget = targetPlayer.Character:FindFirstChild("Humanoid")
+    if not humanoidTarget then
+        return Visual.espColor
+    end
+    
+    local healthPercent = humanoidTarget.Health / humanoidTarget.MaxHealth
+    
+    if healthPercent > 0.75 then
+        return Color3.fromRGB(0, 255, 0)  -- Green (High health)
+    elseif healthPercent > 0.5 then
+        return Color3.fromRGB(255, 255, 0)  -- Yellow (Medium health)
+    elseif healthPercent > 0.25 then
+        return Color3.fromRGB(255, 165, 0)  -- Orange (Low health)
+    else
+        return Color3.fromRGB(255, 0, 0)  -- Red (Very low health)
+    end
+end
+
 -- Store original lighting settings
 local function storeOriginalLightingSettings()
     if not defaultLightingSettings.stored then
@@ -122,7 +183,10 @@ local function storeOriginalLightingSettings()
         defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration
         
         pcall(function()
-            defaultLightingSettings.QualityLevel = game:GetService("Settings").Rendering.QualityLevel
+            local renderSettings = safeGetRenderSettings()
+            if renderSettings then
+                defaultLightingSettings.QualityLevel = renderSettings.QualityLevel
+            end
             defaultLightingSettings.StreamingEnabled = Workspace.StreamingEnabled
             defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
             defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
@@ -134,6 +198,11 @@ end
 
 -- Create virtual joystick for mobile control
 local function createJoystick()
+    if not ScreenGui then
+        warn("Cannot create joystick: ScreenGui is nil")
+        return
+    end
+    
     joystickFrame = Instance.new("Frame")
     joystickFrame.Name = "Joystick"
     joystickFrame.Size = UDim2.new(0, 120, 0, 120)
@@ -950,14 +1019,10 @@ local function toggleLowDetail(enabled)
         end)
         
         pcall(function()
-            local renderSettings = game:GetService("Settings").Rendering
-            renderSettings.QualityLevel = Enum.QualityLevel.Level01
-        end)
-        pcall(function()
-            local userSettings = UserSettings()
-            local gameSettings = userSettings.GameSettings
-            gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-            gameSettings.RenderDistance = 50
+            local renderSettings = safeGetRenderSettings()
+            if renderSettings and renderSettings.QualityLevel then
+                renderSettings.QualityLevel = Enum.QualityLevel.Level01
+            end
         end)
         
         pcall(function()
@@ -970,7 +1035,6 @@ local function toggleLowDetail(enabled)
                     WaterReflectance = terrain.WaterReflectance,
                     WaterTransparency = terrain.WaterTransparency
                 }
-            
             end
 
             terrain.Decoration = false
@@ -1105,14 +1169,10 @@ local function toggleLowDetail(enabled)
         end
         
         pcall(function()
-            local renderSettings = game:GetService("Settings").Rendering
-            renderSettings.QualityLevel = defaultLightingSettings.QualityLevel or Enum.QualityLevel.Automatic
-        end)
-        pcall(function()
-            local userSettings = UserSettings()
-            local gameSettings = userSettings.GameSettings
-            gameSettings.SavedQualityLevel = Enum.SavedQualitySetting.Automatic
-            gameSettings.RenderDistance = 500
+            local renderSettings = safeGetRenderSettings()
+            if renderSettings and renderSettings.QualityLevel then
+                renderSettings.QualityLevel = defaultLightingSettings.QualityLevel or Enum.QualityLevel.Automatic
+            end
         end)
         
         if foliageStates.terrainSettings then
@@ -1190,8 +1250,10 @@ local function toggleUltraLowDetail(enabled)
         toggleLowDetail(true)
         
         pcall(function()
-            local renderSettings = game:GetService("Settings").Rendering
-            renderSettings.QualityLevel = Enum.QualityLevel.Level01
+            local renderSettings = safeGetRenderSettings()
+            if renderSettings and renderSettings.QualityLevel then
+                renderSettings.QualityLevel = Enum.QualityLevel.Level01
+            end
         end)
         
         spawn(function()
@@ -1388,14 +1450,14 @@ function Visual.init(deps)
         return false
     end
     
-    -- Set dependencies with strict fallbacks
-    Players = deps.Players or game:GetService("Players")
-    UserInputService = deps.UserInputService or game:GetService("UserInputService")
-    RunService = deps.RunService or game:GetService("RunService")
-    Workspace = deps.Workspace or game:GetService("Workspace")
-    Lighting = deps.Lighting or game:GetService("Lighting")
-    RenderSettings = deps.RenderSettings or game:GetService("Settings").Rendering
-    ContextActionService = game:GetService("ContextActionService")
+    -- Set dependencies with strict fallbacks and safe service access
+    Players = deps.Players or safeGetService("Players")
+    UserInputService = deps.UserInputService or safeGetService("UserInputService")
+    RunService = deps.RunService or safeGetService("RunService")
+    Workspace = deps.Workspace or safeGetService("Workspace")
+    Lighting = deps.Lighting or safeGetService("Lighting")
+    RenderSettings = deps.RenderSettings or safeGetRenderSettings()
+    ContextActionService = safeGetService("ContextActionService")
     connections = deps.connections or {}
     if type(connections) ~= "table" then
         warn("Warning: connections is not a table, initializing as empty table")
@@ -1407,21 +1469,45 @@ function Visual.init(deps)
     settings = deps.settings or {}
     humanoid = deps.humanoid
     rootPart = deps.rootPart
-    player = deps.player
+    player = deps.player or (Players and Players.LocalPlayer)
     Visual.character = deps.character or (player and player.Character)
+    
+    -- Validate critical dependencies
+    if not Players then
+        warn("Error: Could not get Players service!")
+        return false
+    end
+    if not player then
+        warn("Error: Could not get LocalPlayer!")
+        return false
+    end
+    if not UserInputService then
+        warn("Error: Could not get UserInputService!")
+        return false
+    end
+    if not RunService then
+        warn("Error: Could not get RunService!")
+        return false
+    end
+    if not Workspace then
+        warn("Error: Could not get Workspace!")
+        return false
+    end
+    if not Lighting then
+        warn("Error: Could not get Lighting!")
+        return false
+    end
     
     -- Debug dependency initialization
     print("Dependencies initialized:")
-    print("Players:", Players, "Type:", type(Players))
-    print("UserInputService:", UserInputService, "Type:", type(UserInputService))
-    print("RunService:", RunService, "Type:", type(RunService))
-    print("Workspace:", Workspace, "Type:", type(Workspace))
-    print("Lighting:", Lighting, "Type:", type(Lighting))
-    print("Connections:", connections, "Type:", type(connections))
-    
-    if not UserInputService then
-        warn("Error: UserInputService is nil after initialization, input features may not work")
-    end
+    print("Players:", Players and "OK" or "FAILED")
+    print("UserInputService:", UserInputService and "OK" or "FAILED")
+    print("RunService:", RunService and "OK" or "FAILED")
+    print("Workspace:", Workspace and "OK" or "FAILED")
+    print("Lighting:", Lighting and "OK" or "FAILED")
+    print("RenderSettings:", RenderSettings and "OK" or "FAILED")
+    print("Connections:", connections and "OK" or "FAILED")
+    print("Player:", player and "OK" or "FAILED")
     
     Visual.selfHighlightEnabled = false
     Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
@@ -1430,10 +1516,12 @@ function Visual.init(deps)
     -- Create joystick if ScreenGui is available
     if ScreenGui then
         createJoystick()
+        print("Joystick created successfully")
     else
-        warn("Error: ScreenGui is nil, joystick cannot be created")
+        warn("Warning: ScreenGui is nil, joystick cannot be created")
     end
     
+    print("Visual module initialized successfully")
     return true
 end
 
@@ -1775,8 +1863,6 @@ end
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
     print("Loading visual buttons")
-    print("Connections state:", connections, "Type:", type(connections))
-    print("UserInputService state:", UserInputService, "Type:", type(UserInputService))
     
     if not createToggleButton then
         warn("Error: createToggleButton not provided! Buttons will not be created.")
@@ -1880,6 +1966,19 @@ function Visual.loadVisualButtons(createToggleButton)
     end)
 end
 
+-- Export functions for external access
+Visual.toggleFreecam = toggleFreecam
+Visual.toggleNoClipCamera = toggleNoClipCamera
+Visual.toggleFullbright = toggleFullbright
+Visual.toggleFlashlight = toggleFlashlight
+Visual.toggleLowDetail = toggleLowDetail
+Visual.toggleUltraLowDetail = toggleUltraLowDetail
+Visual.toggleESP = toggleESP
+Visual.toggleHideAllNicknames = toggleHideAllNicknames
+Visual.toggleHideOwnNickname = toggleHideOwnNickname
+Visual.toggleSelfHighlight = toggleSelfHighlight
+Visual.setTimeMode = setTimeMode
+
 -- Function to reset Visual states
 function Visual.resetStates()
     Visual.freecamEnabled = false
@@ -1926,7 +2025,7 @@ function Visual.resetStates()
     end
 end
 
--- Function to update references after character respawn Visual
+-- Function to update references after character respawn
 function Visual.updateReferences()
     print("Updating Visual module references")
     
@@ -1936,9 +2035,9 @@ function Visual.updateReferences()
     rootPart = Visual.character and Visual.character:FindFirstChild("HumanoidRootPart")
     
     -- Debug references
-    print("Updated character:", Visual.character)
-    print("Updated humanoid:", humanoid)
-    print("Updated rootPart:", rootPart)
+    print("Updated character:", Visual.character and "OK" or "FAILED")
+    print("Updated humanoid:", humanoid and "OK" or "FAILED")
+    print("Updated rootPart:", rootPart and "OK" or "FAILED")
     
     -- Restore feature states
     local wasFreecamEnabled = Visual.freecamEnabled
@@ -2093,14 +2192,14 @@ function Visual.isInitialized()
     local isInitialized = Players and UserInputService and RunService and Workspace and Lighting and ScrollFrame and ScreenGui and player
     if not isInitialized then
         warn("Visual module not fully initialized. Missing dependencies:")
-        print("Players:", Players)
-        print("UserInputService:", UserInputService)
-        print("RunService:", RunService)
-        print("Workspace:", Workspace)
-        print("Lighting:", Lighting)
-        print("ScrollFrame:", ScrollFrame)
-        print("ScreenGui:", ScreenGui)
-        print("player:", player)
+        print("Players:", Players and "OK" or "FAILED")
+        print("UserInputService:", UserInputService and "OK" or "FAILED")
+        print("RunService:", RunService and "OK" or "FAILED")
+        print("Workspace:", Workspace and "OK" or "FAILED")
+        print("Lighting:", Lighting and "OK" or "FAILED")
+        print("ScrollFrame:", ScrollFrame and "OK" or "FAILED")
+        print("ScreenGui:", ScreenGui and "OK" or "FAILED")
+        print("player:", player and "OK" or "FAILED")
     end
     return isInitialized
 end
