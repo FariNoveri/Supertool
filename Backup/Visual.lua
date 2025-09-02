@@ -1594,56 +1594,15 @@ local function createColorPicker(name, initialColor, onColorChanged)
         picker.Visible = false
     end)
 
-    local selectedColor = initialColor
-    local preview = Instance.new("Frame")
-    preview.Name = "Preview"
-    preview.Size = UDim2.new(0.8, 0, 0, 40)
-    preview.Position = UDim2.new(0.1, 0, 0.85, 0)
-    preview.BackgroundColor3 = selectedColor
-    preview.ZIndex = 101
-    preview.Parent = picker
-
-    local previewCorner = Instance.new("UICorner")
-    previewCorner.CornerRadius = UDim.new(0, 4)
-    previewCorner.Parent = preview
-
-    local previewLabel = Instance.new("TextLabel")
-    previewLabel.Text = "Preview"
-    previewLabel.Size = UDim2.new(1, 0, 1, 0)
-    previewLabel.BackgroundTransparency = 1
-    previewLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    previewLabel.TextSize = 14
-    previewLabel.Font = Enum.Font.SourceSans
-    previewLabel.ZIndex = 102
-    previewLabel.Parent = preview
-
-    local applyButton = Instance.new("TextButton")
-    applyButton.Name = "ApplyButton"
-    applyButton.Size = UDim2.new(0.8, 0, 0, 40)
-    applyButton.Position = UDim2.new(0.1, 0, 0.95, 0)
-    applyButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-    applyButton.Text = "Apply"
-    applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    applyButton.TextSize = 18
-    applyButton.Font = Enum.Font.SourceSansBold
-    applyButton.ZIndex = 101
-    applyButton.Parent = picker
-
-    local applyCorner = Instance.new("UICorner")
-    applyCorner.CornerRadius = UDim.new(0, 4)
-    applyCorner.Parent = applyButton
-
-    applyButton.MouseButton1Click:Connect(function()
-        onColorChanged(selectedColor)
-        picker.Visible = false
-    end)
-
-    local presetFrame = Instance.new("Frame")
+    local presetFrame = Instance.new("ScrollingFrame")
     presetFrame.Name = "PresetFrame"
-    presetFrame.Size = UDim2.new(0.8, 0, 0, 200)
+    presetFrame.Size = UDim2.new(0.8, 0, 0, 280)
     presetFrame.Position = UDim2.new(0.1, 0, 0.15, 0)
     presetFrame.BackgroundTransparency = 1
     presetFrame.ZIndex = 101
+    presetFrame.ScrollBarThickness = 6
+    presetFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    presetFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     presetFrame.Parent = picker
 
     local gridLayout = Instance.new("UIGridLayout")
@@ -1656,23 +1615,43 @@ local function createColorPicker(name, initialColor, onColorChanged)
         Color3.fromRGB(255, 255, 255), -- White
         Color3.fromRGB(0, 0, 0), -- Black
         Color3.fromRGB(128, 128, 128), -- Gray
+        Color3.fromRGB(192, 192, 192), -- Silver
         Color3.fromRGB(255, 0, 0), -- Red
         Color3.fromRGB(139, 0, 0), -- Dark Red
-        Color3.fromRGB(0, 255, 0), -- Green
-        Color3.fromRGB(0, 100, 0), -- Dark Green
-        Color3.fromRGB(0, 0, 255), -- Blue
-        Color3.fromRGB(0, 0, 139), -- Dark Blue
-        Color3.fromRGB(255, 255, 0), -- Yellow
+        Color3.fromRGB(128, 0, 0), -- Maroon
         Color3.fromRGB(255, 165, 0), -- Orange
         Color3.fromRGB(255, 69, 0), -- Red-Orange
-        Color3.fromRGB(255, 0, 255), -- Magenta
-        Color3.fromRGB(128, 0, 128), -- Purple
-        Color3.fromRGB(75, 0, 130), -- Indigo
+        Color3.fromRGB(255, 140, 0), -- Dark Orange
+        Color3.fromRGB(255, 255, 0), -- Yellow
+        Color3.fromRGB(255, 215, 0), -- Gold
+        Color3.fromRGB(218, 165, 32), -- Goldenrod
+        Color3.fromRGB(0, 255, 0), -- Green
+        Color3.fromRGB(0, 128, 0), -- Dark Green
+        Color3.fromRGB(50, 205, 50), -- Lime
+        Color3.fromRGB(0, 255, 127), -- Spring Green
+        Color3.fromRGB(128, 128, 0), -- Olive
+        Color3.fromRGB(0, 0, 255), -- Blue
+        Color3.fromRGB(0, 0, 139), -- Dark Blue
+        Color3.fromRGB(0, 0, 128), -- Navy
         Color3.fromRGB(0, 255, 255), -- Cyan
         Color3.fromRGB(0, 139, 139), -- Dark Cyan
+        Color3.fromRGB(64, 224, 208), -- Turquoise
+        Color3.fromRGB(0, 128, 128), -- Teal
+        Color3.fromRGB(255, 0, 255), -- Magenta
+        Color3.fromRGB(139, 0, 139), -- Dark Magenta
+        Color3.fromRGB(128, 0, 128), -- Purple
+        Color3.fromRGB(75, 0, 130), -- Indigo
+        Color3.fromRGB(238, 130, 238), -- Violet
         Color3.fromRGB(255, 192, 203), -- Pink
+        Color3.fromRGB(255, 105, 180), -- Hot Pink
+        Color3.fromRGB(255, 20, 147), -- Deep Pink
         Color3.fromRGB(165, 42, 42), -- Brown
-        Color3.fromRGB(255, 215, 0) -- Gold
+        Color3.fromRGB(139, 69, 19), -- Saddle Brown
+        Color3.fromRGB(210, 105, 30), -- Chocolate
+        Color3.fromRGB(255, 228, 196), -- Bisque
+        Color3.fromRGB(255, 222, 173), -- Navajo White
+        Color3.fromRGB(250, 250, 210), -- Light Goldenrod Yellow
+        Color3.fromRGB(240, 230, 140) -- Khaki
     }
 
     for _, color in ipairs(presetColors) do
@@ -1689,10 +1668,12 @@ local function createColorPicker(name, initialColor, onColorChanged)
         presetCorner.Parent = presetButton
 
         presetButton.MouseButton1Click:Connect(function()
-            selectedColor = color
-            preview.BackgroundColor3 = selectedColor
+            onColorChanged(color)
+            picker.Visible = false
         end)
     end
+
+    presetFrame.CanvasSize = UDim2.new(0, 0, 0, gridLayout.AbsoluteContentSize.Y)
 
     if connections and type(connections) == "table" and connections[name .. "Close"] then
         connections[name .. "Close"]:Disconnect()
