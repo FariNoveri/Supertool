@@ -110,7 +110,7 @@ MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 10
 
--- Category Container with Scrolling
+-- Category Container with Scrollingg
 local CategoryContainer = Instance.new("ScrollingFrame")
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
