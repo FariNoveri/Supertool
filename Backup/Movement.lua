@@ -32,7 +32,7 @@ Movement.defaultJumpPower = 50
 Movement.defaultJumpHeight = 7.2
 Movement.defaultGravity = 196.2
 Movement.jumpCount = 0
-Movement.maxJumps = 2
+Movement.maxJumps = 1  -- Fixed for proper double jump (1 air jump)
 
 -- Fly controls
 local flySpeed = 50
@@ -42,9 +42,14 @@ local flyUpButton, flyDownButton
 local boostButton
 local rewindButton
 local sprintButton
+local wallClimbButton
 local joystickDelta = Vector2.new(0, 0)
 local isTouchingJoystick = false
 local joystickTouchId = nil
+
+-- Key states for PC controls
+local flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
+local floatKeys = {forward = false, back = false, left = false, right = false}
 
 -- New features variables
 local positionHistory = {}
@@ -111,6 +116,7 @@ local function createMobileControls()
     if boostButton then boostButton:Destroy() end
     if rewindButton then rewindButton:Destroy() end
     if sprintButton then sprintButton:Destroy() end
+    if wallClimbButton then wallClimbButton:Destroy() end
 
     flyJoystickFrame = Instance.new("Frame")
     flyJoystickFrame.Name = "FlyJoystick"
@@ -197,6 +203,25 @@ local function createMobileControls()
     local sprintCorner = Instance.new("UICorner")
     sprintCorner.CornerRadius = UDim.new(0.2, 0)
     sprintCorner.Parent = sprintButton
+
+    wallClimbButton = Instance.new("TextButton")
+    wallClimbButton.Name = "WallClimbButton"
+    wallClimbButton.Size = UDim2.new(0, 80, 0, 80)
+    wallClimbButton.Position = UDim2.new(1, -100, 1, -460)
+    wallClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    wallClimbButton.BackgroundTransparency = 0.5
+    wallClimbButton.BorderSizePixel = 0
+    wallClimbButton.Text = "CLIMB"
+    wallClimbButton.Font = Enum.Font.GothamBold
+    wallClimbButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    wallClimbButton.TextSize = 16
+    wallClimbButton.Visible = false
+    wallClimbButton.ZIndex = 10
+    wallClimbButton.Parent = ScreenGui or player.PlayerGui
+
+    local wallClimbCorner = Instance.new("UICorner")
+    wallClimbCorner.CornerRadius = UDim.new(0.2, 0)
+    wallClimbCorner.Parent = wallClimbButton
 end
 
 -- Improved joystick handling for float (horizontal only)
@@ -224,8 +249,8 @@ local function handleFloatJoystick(input, gameProcessed)
                 delta = delta * (maxRadius / magnitude)
             end
             
-            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, 0 - 20)
-            joystickDelta = Vector2.new(delta.X / maxRadius, 0)
+            flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
+            joystickDelta = delta / maxRadius
             
         elseif input.UserInputState == Enum.UserInputState.End and input == joystickTouchId then
             isTouchingJoystick = false
@@ -468,19 +493,21 @@ local function toggleSprint(enabled)
     end
 end
 
--- Fixed Float Hack (horizontal movement only) with proper sync
+-- Fixed Float Hack (full horizontal movement) with proper sync and PC controls
 local function toggleFloat(enabled)
     Movement.floatEnabled = enabled
     updateButtonState("Float", enabled)
     print("Float toggle:", enabled)
     
-    local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded"}
+    local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded", "floatKeyBegan", "floatKeyEnded"}
     for _, connName in ipairs(floatConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
             connections[connName] = nil
         end
     end
+    
+    floatKeys = {forward = false, back = false, left = false, right = false}
     
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
@@ -523,6 +550,7 @@ local function toggleFloat(enabled)
                 local floatDirection = Vector3.new(0, 0, 0)
                 flySpeed = getSettingValue("FlySpeed", 50)
                 
+                -- Joystick input
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
                     local right = camera.CFrame.RightVector
@@ -530,11 +558,23 @@ local function toggleFloat(enabled)
                     forward = Vector3.new(forward.X, 0, forward.Z).Unit
                     right = Vector3.new(right.X, 0, right.Z).Unit
                     
-                    floatDirection = right * joystickDelta.X
+                    floatDirection = floatDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
                 end
                 
+                -- Keyboard input
+                local keyDirection = Vector3.new(0, 0, 0)
+                local flatLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
+                local flatRight = Vector3.new(camera.CFrame.RightVector.X, 0, camera.CFrame.RightVector.Z).Unit
+                
+                if floatKeys.forward then keyDirection = keyDirection + flatLook end
+                if floatKeys.back then keyDirection = keyDirection - flatLook end
+                if floatKeys.left then keyDirection = keyDirection - flatRight end
+                if floatKeys.right then keyDirection = keyDirection + flatRight end
+                
+                floatDirection = floatDirection + keyDirection
+                
                 if floatDirection.Magnitude > 0 then
-                    flyBodyVelocity.Velocity = Vector3.new(floatDirection.X * flySpeed, 0, floatDirection.Z * flySpeed)
+                    flyBodyVelocity.Velocity = floatDirection.Unit * flySpeed
                 else
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                 end
@@ -543,6 +583,25 @@ local function toggleFloat(enabled)
             connections.floatInput = UserInputService.InputChanged:Connect(handleFloatJoystick)
             connections.floatBegan = UserInputService.InputBegan:Connect(handleFloatJoystick)
             connections.floatEnded = UserInputService.InputEnded:Connect(handleFloatJoystick)
+            
+            connections.floatKeyBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed or not Movement.floatEnabled then return end
+                local kc = input.KeyCode
+                if kc == Enum.KeyCode.W then floatKeys.forward = true
+                elseif kc == Enum.KeyCode.S then floatKeys.back = true
+                elseif kc == Enum.KeyCode.A then floatKeys.left = true
+                elseif kc == Enum.KeyCode.D then floatKeys.right = true
+                end
+            end)
+            
+            connections.floatKeyEnded = UserInputService.InputEnded:Connect(function(input)
+                local kc = input.KeyCode
+                if kc == Enum.KeyCode.W then floatKeys.forward = false
+                elseif kc == Enum.KeyCode.S then floatKeys.back = false
+                elseif kc == Enum.KeyCode.A then floatKeys.left = false
+                elseif kc == Enum.KeyCode.D then floatKeys.right = false
+                end
+            end)
         end)
     else
         if humanoid then
@@ -811,7 +870,7 @@ local function toggleRewind(enabled)
     end
 end
 
--- Moon Gravity with proper sync
+-- Moon Gravity with proper sync and respawn handling
 local function toggleMoonGravity(enabled)
     Movement.moonGravityEnabled = enabled
     updateButtonState("Moon Gravity", enabled)
@@ -851,7 +910,7 @@ local function toggleDoubleJump(enabled)
     end
 end
 
--- Infinite Jump with improved respawn handling and sync
+-- Infinite Jump with improved speed and sync
 local function toggleInfiniteJump(enabled)
     Movement.infiniteJumpEnabled = enabled
     updateButtonState("Infinite Jump", enabled)
@@ -864,13 +923,14 @@ local function toggleInfiniteJump(enabled)
     if enabled then
         connections.infiniteJump = UserInputService.JumpRequest:Connect(function()
             if not Movement.infiniteJumpEnabled then return end
-            if not refreshReferences() or not humanoid then return end
+            if not refreshReferences() or not humanoid or not rootPart then return end
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            rootPart.Velocity = Vector3.new(rootPart.Velocity.X, getSettingValue("JumpHeight", 50) * 2, rootPart.Velocity.Z)
         end)
     end
 end
 
--- Wall Climbing with improved respawn handling and sync
+-- Wall Climbing with improved respawn handling and sync, added mobile button
 local function toggleWallClimb(enabled)
     Movement.wallClimbEnabled = enabled
     updateButtonState("Wall Climb", enabled)
@@ -883,8 +943,16 @@ local function toggleWallClimb(enabled)
         connections.wallClimbInput:Disconnect()
         connections.wallClimbInput = nil
     end
+    if connections.wallClimbButton then
+        connections.wallClimbButton:Disconnect()
+        connections.wallClimbButton = nil
+    end
     
     if enabled then
+        if wallClimbButton then
+            wallClimbButton.Visible = true
+        end
+        
         connections.wallClimb = RunService.Heartbeat:Connect(function()
             if not Movement.wallClimbEnabled then return end
             if not refreshReferences() or not humanoid or not rootPart then return end
@@ -923,22 +991,38 @@ local function toggleWallClimb(enabled)
                 print("Wall Climb:", Movement.wallClimbEnabled)
             end
         end)
+        
+        connections.wallClimbButton = wallClimbButton.MouseButton1Click:Connect(function()
+            Movement.wallClimbEnabled = not Movement.wallClimbEnabled
+            updateButtonState("Wall Climb", Movement.wallClimbEnabled)
+            wallClimbButton.BackgroundColor3 = Movement.wallClimbEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+            wallClimbButton.Text = Movement.wallClimbEnabled and "CLIMBING" or "CLIMB"
+            print("Wall Climb (mobile):", Movement.wallClimbEnabled)
+        end)
+    else
+        if wallClimbButton then
+            wallClimbButton.Visible = false
+            wallClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            wallClimbButton.Text = "CLIMB"
+        end
     end
 end
 
--- Fly Hack with settings integration and proper sync
+-- Fly Hack with settings integration, proper sync, and PC controls
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     updateButtonState("Fly", enabled)
     print("Fly toggle:", enabled)
     
-    local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd"}
+    local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "flyKeyBegan", "flyKeyEnded"}
     for _, connName in ipairs(flyConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
             connections[connName] = nil
         end
     end
+    
+    flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
     
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
@@ -981,9 +1065,10 @@ local function toggleFly(enabled)
                 if not camera then return end
                 
                 local flyDirection = Vector3.new(0, 0, 0)
-                local floatVerticalInput = 0
+                local verticalInput = 0
                 flySpeed = getSettingValue("FlySpeed", 50)
                 
+                -- Joystick input
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
                     local right = camera.CFrame.RightVector
@@ -994,14 +1079,29 @@ local function toggleFly(enabled)
                     flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
                 end
                 
+                -- Keyboard input
+                local keyDirection = Vector3.new(0, 0, 0)
+                local flatLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
+                local flatRight = Vector3.new(camera.CFrame.RightVector.X, 0, camera.CFrame.RightVector.Z).Unit
+                
+                if flyKeys.forward then keyDirection = keyDirection + flatLook end
+                if flyKeys.back then keyDirection = keyDirection - flatLook end
+                if flyKeys.left then keyDirection = keyDirection - flatRight end
+                if flyKeys.right then keyDirection = keyDirection + flatRight end
+                if flyKeys.up then keyDirection = keyDirection + Vector3.new(0, 1, 0) end
+                if flyKeys.down then keyDirection = keyDirection + Vector3.new(0, -1, 0) end
+                
+                flyDirection = flyDirection + keyDirection
+                
+                -- Button input for vertical (mobile)
                 if flyUpButton and flyUpButton.BackgroundTransparency == 0.1 then
-                    floatVerticalInput = 1
+                    verticalInput = 1
                 elseif flyDownButton and flyDownButton.BackgroundTransparency == 0.1 then
-                    floatVerticalInput = -1
+                    verticalInput = -1
                 end
                 
-                if floatVerticalInput ~= 0 then
-                    flyDirection = flyDirection + Vector3.new(0, floatVerticalInput, 0)
+                if verticalInput ~= 0 then
+                    flyDirection = flyDirection + Vector3.new(0, verticalInput, 0)
                 end
                 
                 if flyDirection.Magnitude > 0 then
@@ -1032,6 +1132,29 @@ local function toggleFly(enabled)
                     flyDownButton.BackgroundTransparency = 0.5
                 end)
             end
+            
+            connections.flyKeyBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed or not Movement.flyEnabled then return end
+                local kc = input.KeyCode
+                if kc == Enum.KeyCode.W then flyKeys.forward = true
+                elseif kc == Enum.KeyCode.S then flyKeys.back = true
+                elseif kc == Enum.KeyCode.A then flyKeys.left = true
+                elseif kc == Enum.KeyCode.D then flyKeys.right = true
+                elseif kc == Enum.KeyCode.Space then flyKeys.up = true
+                elseif kc == Enum.KeyCode.LeftShift then flyKeys.down = true
+                end
+            end)
+            
+            connections.flyKeyEnded = UserInputService.InputEnded:Connect(function(input)
+                local kc = input.KeyCode
+                if kc == Enum.KeyCode.W then flyKeys.forward = false
+                elseif kc == Enum.KeyCode.S then flyKeys.back = false
+                elseif kc == Enum.KeyCode.A then flyKeys.left = false
+                elseif kc == Enum.KeyCode.D then flyKeys.right = false
+                elseif kc == Enum.KeyCode.Space then flyKeys.up = false
+                elseif kc == Enum.KeyCode.LeftShift then flyKeys.down = false
+                end
+            end)
         end)
     else
         if humanoid then
@@ -1088,7 +1211,7 @@ local function toggleNoclip(enabled)
     end
 end
 
--- Walk on Water with better respawn handling and sync
+-- Walk on Water with better respawn handling and sync, increased reliability
 local function toggleWalkOnWater(enabled)
     Movement.walkOnWaterEnabled = enabled
     updateButtonState("Walk on Water", enabled)
@@ -1107,19 +1230,19 @@ local function toggleWalkOnWater(enabled)
             raycastParams.FilterDescendantsInstances = {player.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
             
-            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -10, 0), raycastParams)
-            if raycast and raycast.Instance and (raycast.Instance.Material == Enum.Material.Water or raycast.Instance.Name:lower():find("water")) then
-                if not rootPart:FindFirstChild("WaterWalkPart") then
-                    local waterWalkPart = Instance.new("Part")
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -20, 0), raycastParams)  -- Increased ray length
+            if raycast and raycast.Instance and (raycast.Instance.Material == Enum.Material.Water or string.lower(raycast.Instance.Name):find("water")) then
+                local waterWalkPart = rootPart:FindFirstChild("WaterWalkPart")
+                if not waterWalkPart then
+                    waterWalkPart = Instance.new("Part")
                     waterWalkPart.Name = "WaterWalkPart"
                     waterWalkPart.Anchored = true
                     waterWalkPart.CanCollide = true
                     waterWalkPart.Transparency = 1
-                    waterWalkPart.Size = Vector3.new(10, 0.2, 10)
-                    waterWalkPart.Position = Vector3.new(rootPart.Position.X, raycast.Position.Y + 0.1, rootPart.Position.Z)
-                    waterWalkPart.Parent = Workspace
-                    game:GetService("Debris"):AddItem(waterWalkPart, 0.5)
+                    waterWalkPart.Size = Vector3.new(15, 0.2, 15)  -- Larger size
+                    waterWalkPart.Parent = rootPart  -- Parent to rootPart to follow player
                 end
+                waterWalkPart.Position = Vector3.new(rootPart.Position.X, raycast.Position.Y + 0.1, rootPart.Position.Z)
             end
         end)
     end
@@ -1304,6 +1427,12 @@ function Movement.resetStates()
         sprintEnabled = Movement.sprintEnabled
     }
     
+    -- Deactivate moon gravity on death as per request
+    if currentStates.moonGravityEnabled then
+        Movement.moonGravityEnabled = false
+        updateButtonState("Moon Gravity", false)
+    end
+    
     -- Set flag to indicate we're resetting (not actually disabling)
     isRespawning = true
     
@@ -1314,7 +1443,8 @@ function Movement.resetStates()
         "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatInput", 
         "floatBegan", "floatEnded", "antiFling", "rewind", "rewindInput", 
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
-        "fastFall", "sprint", "sprintInput", "sprintToggle"
+        "fastFall", "sprint", "sprintInput", "sprintToggle", "flyKeyBegan", 
+        "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1361,10 +1491,8 @@ function Movement.resetStates()
         end
     end
     
-    -- Reset workspace gravity if moon gravity was disabled
-    if not currentStates.moonGravityEnabled then
-        Workspace.Gravity = Movement.defaultGravity
-    end
+    -- Always reset workspace gravity on reset
+    Workspace.Gravity = Movement.defaultGravity
     
     -- Reset player collisions
     for _, otherPlayer in pairs(Players:GetPlayers()) do
@@ -1401,6 +1529,10 @@ function Movement.resetStates()
     if sprintButton then
         sprintButton.Visible = false
         sprintButton.Text = "SPRINT"
+    end
+    if wallClimbButton then
+        wallClimbButton.Visible = false
+        wallClimbButton.Text = "CLIMB"
     end
     
     -- Clear respawn flag
@@ -1640,6 +1772,7 @@ function Movement.cleanup()
     if rewindButton then rewindButton:Destroy() end
     if boostButton then boostButton:Destroy() end
     if sprintButton then sprintButton:Destroy() end
+    if wallClimbButton then wallClimbButton:Destroy() end
     
     flyJoystickFrame = nil
     flyJoystickKnob = nil
@@ -1649,6 +1782,7 @@ function Movement.cleanup()
     rewindButton = nil
     boostButton = nil
     sprintButton = nil
+    wallClimbButton = nil
     
     positionHistory = {}
     isBoostActive = false

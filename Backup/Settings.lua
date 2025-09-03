@@ -471,12 +471,12 @@ function Settings.init(deps)
     
     -- Ensure all required settings exist with proper defaults
     if not settings.WalkSpeed then
-        settings.WalkSpeed = {value = 16, min = 16, max = 200, default = 16}
+        settings.WalkSpeed = {value = 50, min = 16, max = 300, default = 50}
         print("Created default WalkSpeed setting")
     end
     
     if not settings.JumpHeight then
-        settings.JumpHeight = {value = 7.2, min = 7.2, max = 100, default = 7.2}
+        settings.JumpHeight = {value = 50, min = 20, max = 200, default = 50}
         print("Created default JumpHeight setting")
     end
     
