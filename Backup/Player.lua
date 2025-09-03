@@ -1,6 +1,5 @@
 -- Player-related features for MinimalHackGUI by Fari Noveri, including spectate, player list, freeze players, bring player, fling, and magnet player
 -- Enhanced with Physics Control and Improved Fling System
---Backup
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, RunService, Workspace, humanoid, connections, buttonStates, ScrollFrame, ScreenGui, player
@@ -1357,14 +1356,24 @@ function Player.updatePlayerList()
     Player.spectatePlayerList = {}
     local playerCount = 0
     
+    -- Get search text
+    local searchText = ""
+    if SearchBox then
+        searchText = string.lower(SearchBox.Text)
+    end
+    
     -- Get all players excluding local player
     local allPlayers = Players:GetPlayers()
     local validPlayers = {}
     
     for _, p in pairs(allPlayers) do
         if p ~= player and p.Parent == Players then -- Check if player is still in game
-            table.insert(validPlayers, p)
-            table.insert(Player.spectatePlayerList, p)
+            local usernameLower = string.lower(p.Name)
+            local displayNameLower = string.lower(p.DisplayName)
+            if searchText == "" or string.find(usernameLower, searchText) or string.find(displayNameLower, searchText) then
+                table.insert(validPlayers, p)
+                table.insert(Player.spectatePlayerList, p)
+            end
         end
     end
     
@@ -1375,7 +1384,7 @@ function Player.updatePlayerList()
         noPlayersLabel.BackgroundTransparency = 1
         noPlayersLabel.Size = UDim2.new(1, 0, 0, 30)
         noPlayersLabel.Font = Enum.Font.Gotham
-        noPlayersLabel.Text = "No other players found"
+        noPlayersLabel.Text = "No players found"
         noPlayersLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         noPlayersLabel.TextSize = 11
         noPlayersLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -1400,7 +1409,7 @@ function Player.updatePlayerList()
             nameLabel.Position = UDim2.new(0, 5, 0, 5)
             nameLabel.Size = UDim2.new(1, -10, 0, 20)
             nameLabel.Font = Enum.Font.GothamBold
-            nameLabel.Text = p.Name
+            nameLabel.Text = p.DisplayName .. " (@" .. p.Name .. ")"
             nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             nameLabel.TextSize = 12
             nameLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1960,7 +1969,7 @@ local function initUI()
     PlayerListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     PlayerListFrame.BorderSizePixel = 1
     PlayerListFrame.Position = UDim2.new(0.5, -150, 0.2, 0)
-    PlayerListFrame.Size = UDim2.new(0, 300, 0, 400) -- Reduced height since we removed buttons
+    PlayerListFrame.Size = UDim2.new(0, 300, 0, 430) -- Increased height for search box
     PlayerListFrame.Visible = false
     PlayerListFrame.Active = true
     PlayerListFrame.Draggable = true
@@ -1988,12 +1997,26 @@ local function initUI()
     ClosePlayerListButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     ClosePlayerListButton.TextSize = 12
 
+    SearchBox = Instance.new("TextBox")
+    SearchBox.Name = "SearchBox"
+    SearchBox.Parent = PlayerListFrame
+    SearchBox.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    SearchBox.BorderSizePixel = 0
+    SearchBox.Position = UDim2.new(0, 10, 0, 40)
+    SearchBox.Size = UDim2.new(1, -20, 0, 25)
+    SearchBox.Font = Enum.Font.Gotham
+    SearchBox.PlaceholderText = "Search by username or display name..."
+    SearchBox.Text = ""
+    SearchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+    SearchBox.TextSize = 12
+    SearchBox.ClearTextOnFocus = false
+
     SelectedPlayerLabel = Instance.new("TextLabel")
     SelectedPlayerLabel.Name = "SelectedPlayerLabel"
     SelectedPlayerLabel.Parent = PlayerListFrame
     SelectedPlayerLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     SelectedPlayerLabel.BorderSizePixel = 0
-    SelectedPlayerLabel.Position = UDim2.new(0, 10, 0, 45)
+    SelectedPlayerLabel.Position = UDim2.new(0, 10, 0, 70)
     SelectedPlayerLabel.Size = UDim2.new(1, -20, 0, 25)
     SelectedPlayerLabel.Font = Enum.Font.Gotham
     SelectedPlayerLabel.Text = "SELECTED: NONE"
@@ -2004,8 +2027,8 @@ local function initUI()
     PlayerListScrollFrame.Name = "PlayerListScrollFrame"
     PlayerListScrollFrame.Parent = PlayerListFrame
     PlayerListScrollFrame.BackgroundTransparency = 1
-    PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 80)
-    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -90)
+    PlayerListScrollFrame.Position = UDim2.new(0, 10, 0, 100)
+    PlayerListScrollFrame.Size = UDim2.new(1, -20, 1, -110)
     PlayerListScrollFrame.ScrollBarThickness = 8
     PlayerListScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
     PlayerListScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -2167,6 +2190,10 @@ local function initUI()
 
     TeleportSpectateButton.MouseButton1Click:Connect(function()
         teleportToSpectatedPlayer()
+    end)
+
+    SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        Player.updatePlayerList()
     end)
 
     -- Initialize Player List
