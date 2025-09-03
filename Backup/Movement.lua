@@ -37,6 +37,7 @@ Movement.maxJumps = 1  -- Fixed for proper double jump (1 air jump)
 -- Fly controls
 local flySpeed = 50
 local flyBodyVelocity = nil
+local flyBodyGyro = nil
 local flyJoystickFrame, flyJoystickKnob
 local flyUpButton, flyDownButton
 local boostButton
@@ -1008,7 +1009,7 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Fly Hack with settings integration, proper sync, and PC controls
+-- Fly Hack with settings integration, proper sync, and PC controls (modified to Infinite Yield style with BodyGyro)
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     updateButtonState("Fly", enabled)
@@ -1028,6 +1029,10 @@ local function toggleFly(enabled)
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
     end
+    if flyBodyGyro then
+        flyBodyGyro:Destroy()
+        flyBodyGyro = nil
+    end
     
     if enabled then
         task.spawn(function()
@@ -1041,9 +1046,14 @@ local function toggleFly(enabled)
             
             humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            flyBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
+            
+            flyBodyGyro = Instance.new("BodyGyro")
+            flyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            flyBodyGyro.P = 9e4
+            flyBodyGyro.Parent = rootPart
             
             if flyJoystickFrame then flyJoystickFrame.Visible = true end
             if flyUpButton then flyUpButton.Visible = true end
@@ -1056,13 +1066,23 @@ local function toggleFly(enabled)
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                    flyBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
                 
+                if not flyBodyGyro or flyBodyGyro.Parent ~= rootPart then
+                    if flyBodyGyro then flyBodyGyro:Destroy() end
+                    flyBodyGyro = Instance.new("BodyGyro")
+                    flyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+                    flyBodyGyro.P = 9e4
+                    flyBodyGyro.Parent = rootPart
+                end
+                
                 local camera = Workspace.CurrentCamera
                 if not camera then return end
+                
+                flyBodyGyro.CFrame = camera.CFrame
                 
                 local flyDirection = Vector3.new(0, 0, 0)
                 local verticalInput = 0
@@ -1457,6 +1477,10 @@ function Movement.resetStates()
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
     end
+    if flyBodyGyro then
+        flyBodyGyro:Destroy()
+        flyBodyGyro = nil
+    end
     
     -- Reset temporary variables but keep feature states
     Movement.jumpCount = 0
@@ -1779,6 +1803,7 @@ function Movement.cleanup()
     flyUpButton = nil
     flyDownButton = nil
     flyBodyVelocity = nil
+    flyBodyGyro = nil
     rewindButton = nil
     boostButton = nil
     sprintButton = nil
