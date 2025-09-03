@@ -375,33 +375,38 @@ end
 local function togglePathVisibility()
     pathVisualsVisible = not pathVisualsVisible
     
-    local transparency = pathVisualsVisible and 0 or 1
-    
     for _, part in pairs(pathVisualParts) do
         if part and part.Parent then
-            part.Transparency = transparency
-            local billboard = part:FindFirstChildOfClass("BillboardGui")
-            if billboard then
-                billboard.Enabled = pathVisualsVisible
+            part.Transparency = pathVisualsVisible and 0.7 or 1
+            
+            -- Handle all billboard types
+            for _, child in pairs(part:GetChildren()) do
+                if child:IsA("BillboardGui") then
+                    child.Enabled = pathVisualsVisible
+                end
             end
         end
     end
     
     for _, part in pairs(pathMarkerParts) do
         if part and part.Parent then
-            part.Transparency = transparency
-            local billboard = part:FindFirstChildOfClass("BillboardGui")
-            if billboard then
-                billboard.Enabled = pathVisualsVisible
+            part.Transparency = pathVisualsVisible and (part.Name == "ClickablePathPoint" and 0.5 or 0.3) or 1
+            
+            -- Handle all billboard types including Start From Here labels
+            for _, child in pairs(part:GetChildren()) do
+                if child:IsA("BillboardGui") then
+                    child.Enabled = pathVisualsVisible
+                end
             end
         end
     end
     
     if pausedHereLabel and pausedHereLabel.Parent then
-        pausedHereLabel.Transparency = transparency
-        local billboard = pausedHereLabel:FindFirstChildOfClass("BillboardGui")
-        if billboard then
-            billboard.Enabled = pathVisualsVisible
+        pausedHereLabel.Transparency = pathVisualsVisible and 0.2 or 1
+        for _, child in pairs(pausedHereLabel:GetChildren()) do
+            if child:IsA("BillboardGui") then
+                child.Enabled = pathVisualsVisible
+            end
         end
     end
     
@@ -996,24 +1001,49 @@ function deletePathFromJSON(pathName)
     return success and error or false
 end
 
--- FIXED: Rename with better sync
+-- FIXED: Rename with better sync and proper cleanup
 function renamePathInJSON(oldName, newName)
     local success, error = pcall(function()
-        local oldData = loadPathFromJSON(oldName)
-        if not oldData then return false end
+        -- Check if new name already exists
+        if isfile(PATH_FOLDER_PATH .. sanitizeFileName(newName) .. ".json") then
+            warn("[SUPERTOOL] File with new name already exists: " .. newName)
+            return false
+        end
         
+        local oldData = loadPathFromJSON(oldName)
+        if not oldData then 
+            warn("[SUPERTOOL] Could not load old path data for rename: " .. oldName)
+            return false 
+        end
+        
+        -- Update the data
         oldData.name = newName
         oldData.lastModified = os.time()
         
+        -- Save with new name
         if savePathToJSON(newName, oldData) then
-            deletePathFromJSON(oldName)
-            print("[SUPERTOOL] Path renamed from " .. oldName .. " to " .. newName)
-            return true
+            -- Delete old file only after successful save
+            if deletePathFromJSON(oldName) then
+                print("[SUPERTOOL] Path file renamed from " .. oldName .. " to " .. newName)
+                return true
+            else
+                -- If delete failed, clean up the new file
+                deletePathFromJSON(newName)
+                warn("[SUPERTOOL] Failed to delete old file during rename, operation cancelled")
+                return false
+            end
+        else
+            warn("[SUPERTOOL] Failed to save new file during rename")
+            return false
         end
-        return false
     end)
     
-    return success and error or false
+    if not success then
+        warn("[SUPERTOOL] Error during rename operation: " .. tostring(error))
+        return false
+    end
+    
+    return error -- This is actually the return value from the pcall function
 end
 
 -- UI Components
