@@ -750,50 +750,98 @@ local function toggleFling(enabled)
     end
 end
 
--- Bring Player (Fixed)
+-- Bring Player (Modified for server-side using Krnl)
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Player = Players.LocalPlayer -- Local player
+
 local function bringPlayer(targetPlayer)
-    if not targetPlayer or targetPlayer == player then
+    if not targetPlayer or targetPlayer == Player then
         print("Cannot bring: Invalid target player")
         return
     end
-    
-    if not Player.rootPart then
+
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then
         print("Cannot bring: Local player missing HumanoidRootPart")
         return
     end
-    
+
     local success, result = pcall(function()
-        local targetCharacter = targetPlayer.Character
-        if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") then
-            print("Cannot bring: Target player has no character or HumanoidRootPart")
+        local ourPosition = Player.Character.HumanoidRootPart.CFrame
+        local newPosition = (ourPosition * CFrame.new(0, 0, -5)).Position
+        local newCFrame = CFrame.new(newPosition, ourPosition.Position)
+
+        -- Step 1: Try to find a teleport RemoteEvent
+        local teleportRemote = nil
+        local possibleRemoteNames = {
+            "Teleport", "MovePlayer", "Respawn", "LoadCharacter", "SetPosition", "MoveTo", "TeleportTo"
+        }
+
+        for _, remoteName in ipairs(possibleRemoteNames) do
+            local foundRemote = ReplicatedStorage:FindFirstChild(remoteName)
+            if foundRemote and foundRemote:IsA("RemoteEvent") then
+                teleportRemote = foundRemote
+                break
+            end
+        end
+
+        if teleportRemote then
+            -- Attempt to fire the RemoteEvent (try different parameter formats)
+            local formats = {
+                {targetPlayer, newPosition}, -- Player, Vector3
+                {targetPlayer, newCFrame}, -- Player, CFrame
+                {newPosition}, -- Just Vector3
+                {newCFrame}, -- Just CFrame
+                {targetPlayer.UserId, newPosition}, -- UserId, Vector3
+                {targetPlayer.UserId, newCFrame} -- UserId, CFrame
+            }
+
+            for _, format in ipairs(formats) do
+                pcall(function()
+                    teleportRemote:FireServer(unpack(format))
+                    print("Fired RemoteEvent " .. teleportRemote.Name .. " with format: " .. tostring(format))
+                end)
+            end
+
+            -- Reset humanoid state
+            local targetCharacter = targetPlayer.Character
+            if targetCharacter and targetCharacter:FindFirstChild("Humanoid") then
+                local targetHumanoid = targetCharacter.Humanoid
+                targetHumanoid.PlatformStand = false
+                targetHumanoid.WalkSpeed = 16
+                targetHumanoid.JumpPower = 50
+            end
+
+            print("Requested server to bring player: " .. targetPlayer.Name)
             return
+        else
+            warn("No teleport RemoteEvent found in ReplicatedStorage")
         end
-        
-        local targetRootPart = targetCharacter.HumanoidRootPart
-        local ourPosition = Player.rootPart.CFrame
-        local newPosition = ourPosition * CFrame.new(0, 0, -5)
-        
-        -- Ensure the target player isn't anchored
-        targetRootPart.Anchored = false
-        
-        -- Set CFrame with proper orientation
-        targetRootPart.CFrame = CFrame.new(newPosition.Position, ourPosition.Position)
-        
-        -- Reset velocities
-        targetRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        targetRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-        
-        -- Ensure humanoid is in a proper state
-        local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
-        if targetHumanoid then
-            targetHumanoid.PlatformStand = false
-            targetHumanoid.WalkSpeed = 16
-            targetHumanoid.JumpPower = 50
+
+        -- Step 2: Fallback to direct server-side manipulation
+        -- This assumes Krnl/Solara can manipulate server objects
+        local targetCharacter = targetPlayer.Character
+        if targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart") then
+            local targetRootPart = targetCharacter.HumanoidRootPart
+            -- Attempt to bypass network ownership (exploit-specific)
+            -- Note: This may not persist if the server has strong authority
+            pcall(function()
+                targetRootPart.CFrame = newCFrame
+                targetRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                targetRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+                if targetHumanoid then
+                    targetHumanoid.PlatformStand = false
+                    targetHumanoid.WalkSpeed = 16
+                    targetHumanoid.JumpPower = 50
+                end
+                print("Attempted direct server-side teleport for: " .. targetPlayer.Name)
+            end)
+        else
+            warn("Target player has no character or HumanoidRootPart")
         end
-        
-        print("Brought player: " .. targetPlayer.Name)
     end)
-    
+
     if not success then
         warn("Failed to bring player: " .. tostring(result))
     end
