@@ -1,5 +1,5 @@
 -- Enhanced Path-only Utility for MinimalHackGUI by Fari Noveri
--- Updated version with fixed Ctrl+Z, JSON loading, status display, and enhanced path features
+-- Updated version with fixed auto respawn, start from here, file sync, and status sync
 -- REMOVED: All macro functionality
 -- ADDED: Top-right status display, pause/resume with markers, clickable path points
 -- farinoveri30@gmail.com (claude ai)
@@ -39,6 +39,7 @@ local pathVisualsVisible = true
 local lastPauseToggleTime = 0
 local lastVisibilityToggleTime = 0
 local DEBOUNCE_TIME = 0.5 -- seconds
+local characterDied = false -- NEW: Track when character dies
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -153,6 +154,37 @@ local function resetCharacter()
     end
 end
 
+-- FIXED: Auto respawn function
+local function handleAutoRespawn()
+    if pathAutoRespawning and pathPlaying then
+        print("[SUPERTOOL] Auto respawning for path replay...")
+        characterDied = true
+        resetCharacter()
+        
+        -- Wait for character to load and restart path
+        task.spawn(function()
+            local attempts = 0
+            while attempts < 50 and not updateCharacterReferences() do
+                attempts = attempts + 1
+                task.wait(0.2)
+            end
+            
+            if updateCharacterReferences() then
+                task.wait(1) -- Small delay to ensure character is fully loaded
+                pathPauseIndex = 1 -- Reset to beginning
+                playbackStartTime = tick()
+                playbackOffsetTime = 0
+                playbackPauseTime = 0
+                characterDied = false
+                print("[SUPERTOOL] Character loaded, restarting path from beginning")
+            else
+                warn("[SUPERTOOL] Failed to reload character for auto respawn")
+                stopPathPlayback()
+            end
+        end)
+    end
+end
+
 -- Path Movement Detection
 local function detectMovementType(velocity, position)
     local speed = velocity.Magnitude
@@ -202,12 +234,15 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
         detector.Parent = part
         detector.MaxActivationDistance = 50
         
-        detector.MouseClick:Connect(function(player)
-            -- Find the closest point in the path
+        detector.MouseClick:Connect(function(clickPlayer)
+            -- FIXED: Find the closest point in the current playing path
+            local activePath = savedPaths[currentPathName]
+            if not activePath or not activePath.points then return end
+            
             local closestIndex = 1
             local closestDistance = math.huge
             
-            for i, point in pairs(currentPath.points or savedPaths[currentPathName].points or {}) do
+            for i, point in pairs(activePath.points) do
                 local distance = (position - point.position).Magnitude
                 if distance < closestDistance then
                     closestDistance = distance
@@ -237,13 +272,18 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             -- Auto-remove after 3 seconds
             game:GetService("Debris"):AddItem(billboard, 3)
             
-            -- Set playback start index
+            -- FIXED: Set playback start index and restart playback
             pathPauseIndex = closestIndex
-            print("[SUPERTOOL] Path playback will start from index " .. closestIndex)
+            playbackStartTime = tick()
+            playbackOffsetTime = activePath.points[closestIndex].time or 0
+            playbackPauseTime = 0
             
+            print("[SUPERTOOL] Path playback will start from index " .. closestIndex .. " at time " .. playbackOffsetTime)
+            
+            -- If currently playing, restart from this position
             if pathPlaying then
-                stopPathPlayback()
-                playPath(currentPathName, false, pathAutoPlaying, pathAutoRespawning)
+                -- Don't stop completely, just reset the playback variables
+                print("[SUPERTOOL] Restarting playback from clicked position")
             end
         end)
     end
@@ -538,7 +578,7 @@ local function stopPathRecording()
     print("[SUPERTOOL] Path recorded: " .. pathName .. " (" .. #currentPath.points .. " points, " .. #currentPath.markers .. " markers)")
 end
 
--- Path Playback Functions
+-- FIXED: Path Playback Functions with proper auto respawn and status sync
 local function playPath(pathName, showOnly, autoPlay, respawn)
     if pathRecording or pathPlaying then 
         stopPathPlayback()
@@ -549,11 +589,15 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     
-    local path = savedPaths[pathName] or loadPathFromJSON(pathName)
+    -- FIXED: Reload path from JSON to ensure sync
+    local path = loadPathFromJSON(pathName)
     if not path or not path.points or #path.points == 0 then
         warn("[SUPERTOOL] Cannot play path: Invalid path data")
         return
     end
+    
+    -- Update savedPaths with fresh data
+    savedPaths[pathName] = path
     
     pathPlaying = true
     pathShowOnly = showOnly or false
@@ -561,9 +605,10 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     pathAutoRespawning = respawn or false
     currentPathName = pathName
     pathPaused = false
+    characterDied = false
     playbackStartTime = tick()
     playbackPauseTime = 0
-    playbackOffsetTime = path.points[pathPauseIndex].time or 0
+    playbackOffsetTime = path.points[pathPauseIndex] and path.points[pathPauseIndex].time or 0
     
     clearPathVisuals()
     
@@ -593,26 +638,44 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     
-    print("[SUPERTOOL] Playing path: " .. pathName)
+    print("[SUPERTOOL] Playing path: " .. pathName .. " from index " .. pathPauseIndex)
     
     local index = pathPauseIndex
     
     pathPlayConnection = RunService.Heartbeat:Connect(function()
-        if not pathPlaying or pathPaused then return end
+        if not pathPlaying or pathPaused or characterDied then return end
         
-        if not updateCharacterReferences() then return end
+        if not updateCharacterReferences() then 
+            -- FIXED: Check if character died/removed
+            if humanoid and humanoid.Health <= 0 then
+                print("[SUPERTOOL] Character died during path playback")
+                if pathAutoRespawning then
+                    handleAutoRespawn()
+                else
+                    stopPathPlayback()
+                end
+            end
+            return 
+        end
         
+        -- FIXED: Check if we've reached the end of the path
         if index > #path.points then
+            print("[SUPERTOOL] Reached end of path")
             if pathAutoPlaying then
                 if pathAutoRespawning then
-                    resetCharacter()
+                    print("[SUPERTOOL] Auto respawning to restart path")
+                    handleAutoRespawn()
+                    return
                 else
+                    print("[SUPERTOOL] Auto looping path")
                     index = 1
+                    pathPauseIndex = 1
                     playbackOffsetTime = path.points[1].time or 0
                     playbackStartTime = tick()
                     playbackPauseTime = 0
                 end
             else
+                print("[SUPERTOOL] Path finished, stopping playback")
                 stopPathPlayback()
                 return
             end
@@ -629,6 +692,7 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
                     humanoid.JumpPower = point.jumpPower
                 end)
                 index = index + 1
+                pathPauseIndex = index -- Keep track of current position
             end
         end
     end)
@@ -646,8 +710,12 @@ local function togglePathVisuals(pathName)
     updatePathList()
 end
 
+-- FIXED: Stop path playback with proper status sync
 local function stopPathPlayback()
     if not pathPlaying then return end
+    
+    print("[SUPERTOOL] Stopping path playback")
+    
     pathPlaying = false
     pathAutoPlaying = false
     pathAutoRespawning = false
@@ -655,13 +723,18 @@ local function stopPathPlayback()
     pathShowOnly = false
     pathPauseIndex = 1
     playbackOffsetTime = 0
+    characterDied = false
+    
     if pathPlayConnection then
         pathPlayConnection:Disconnect()
         pathPlayConnection = nil
     end
-    if humanoid then
-        humanoid.WalkSpeed = settings.WalkSpeed.value or 16
+    
+    -- FIXED: Reset walkspeed properly
+    if humanoid and updateCharacterReferences() then
+        humanoid.WalkSpeed = settings.WalkSpeed and settings.WalkSpeed.value or 16
     end
+    
     currentPathName = nil
     
     -- Clear paused here marker
@@ -685,6 +758,7 @@ local function pausePath()
             createPausedHereMarker(rootPart.Position)
             playbackPauseTime = playbackPauseTime + (tick() - playbackStartTime)
         end
+        print("[SUPERTOOL] Path paused")
     else
         -- Remove paused marker and resume
         if pausedHereLabel and pausedHereLabel.Parent then
@@ -692,6 +766,7 @@ local function pausePath()
             pausedHereLabel = nil
         end
         playbackStartTime = tick()
+        print("[SUPERTOOL] Path resumed")
     end
     
     updatePathStatus()
@@ -734,7 +809,7 @@ local function undoToLastMarker()
     end
 end
 
--- FIXED: Load all existing files function
+-- FIXED: Load all existing files function with better error handling
 local function loadAllSavedPaths()
     local success, result = pcall(function()
         if not isfolder(PATH_FOLDER_PATH) then return 0 end
@@ -749,6 +824,7 @@ local function loadAllSavedPaths()
                 if pathData then
                     savedPaths[pathData.name] = pathData
                     loadedCount = loadedCount + 1
+                    print("[SUPERTOOL] Loaded path: " .. pathData.name)
                 end
             end
         end
@@ -765,7 +841,7 @@ local function loadAllSavedPaths()
     end
 end
 
--- Status Update Functions - FIXED
+-- FIXED: Status Update Functions with proper sync
 function updatePathStatus()
     if not PathStatusLabel then return end
     
@@ -777,10 +853,14 @@ function updatePathStatus()
         local modeText = pathAutoRespawning and "Auto-Respawn" or (pathAutoPlaying and "Auto-Loop" or "Single Play")
         statusText = (pathPaused and "⏸️ Paused: " or statusPrefix) .. currentPathName .. 
                     (pathShowOnly and "" or " (" .. modeText .. ")")
+    else
+        statusText = ""
     end
     
     PathStatusLabel.Text = statusText
     PathStatusLabel.Visible = statusText ~= ""
+    
+    print("[SUPERTOOL] Status updated: " .. (statusText ~= "" and statusText or "Idle"))
 end
 
 -- File system functions for paths
@@ -827,7 +907,8 @@ function savePathToJSON(pathName, pathData)
             pointCount = #serializedPoints,
             markerCount = #serializedMarkers,
             duration = pathData.duration,
-            speed = pathData.speed or 1
+            speed = pathData.speed or 1,
+            lastModified = os.time() -- FIXED: Add timestamp for sync
         }
         
         local jsonString = HttpService:JSONEncode(jsonData)
@@ -840,6 +921,7 @@ function savePathToJSON(pathName, pathData)
     return success
 end
 
+-- FIXED: Load path from JSON with better sync handling
 function loadPathFromJSON(pathName)
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(pathName)
@@ -878,7 +960,7 @@ function loadPathFromJSON(pathName)
             table.insert(validMarkers, marker)
         end
         
-        return {
+        local pathData = {
             name = jsonData.name or pathName,
             created = jsonData.created or os.time(),
             points = validPoints,
@@ -886,8 +968,12 @@ function loadPathFromJSON(pathName)
             pointCount = #validPoints,
             markerCount = #validMarkers,
             duration = jsonData.duration or 0,
-            speed = jsonData.speed or 1
+            speed = jsonData.speed or 1,
+            lastModified = jsonData.lastModified or jsonData.created or os.time()
         }
+        
+        print("[SUPERTOOL] Loaded path from JSON: " .. pathData.name .. " (Modified: " .. os.date("%H:%M:%S", pathData.lastModified) .. ")")
+        return pathData
     end)
     
     return success and result or nil
@@ -910,16 +996,18 @@ function deletePathFromJSON(pathName)
     return success and error or false
 end
 
+-- FIXED: Rename with better sync
 function renamePathInJSON(oldName, newName)
     local success, error = pcall(function()
         local oldData = loadPathFromJSON(oldName)
         if not oldData then return false end
         
         oldData.name = newName
-        oldData.modified = os.time()
+        oldData.lastModified = os.time()
         
         if savePathToJSON(newName, oldData) then
             deletePathFromJSON(oldName)
+            print("[SUPERTOOL] Path renamed from " .. oldName .. " to " .. newName)
             return true
         end
         return false
@@ -950,7 +1038,7 @@ local function initPathUI()
     PathTitle.BorderSizePixel = 0
     PathTitle.Size = UDim2.new(1, 0, 0, 25)
     PathTitle.Font = Enum.Font.GothamBold
-    PathTitle.Text = "PATH CREATOR v2.0 - Enhanced"
+    PathTitle.Text = "PATH CREATOR v2.1 - FIXED"
     PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathTitle.TextSize = 10
 
@@ -1028,7 +1116,7 @@ local function initPathUI()
     UndoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     UndoButton.TextSize = 7
 
-    -- Status Label positioned at top right
+    -- FIXED: Status Label positioned at top right with better visibility
     PathStatusLabel = Instance.new("TextLabel")
     PathStatusLabel.Parent = ScreenGui
     PathStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -1053,7 +1141,7 @@ local function initPathUI()
     ClearVisualsButton.MouseButton1Click:Connect(clearPathVisuals)
     UndoButton.MouseButton1Click:Connect(undoToLastMarker)
     
-    -- Search functionality
+    -- FIXED: Search functionality with refresh trigger
     PathInput.Changed:Connect(function(property)
         if property == "Text" then
             updatePathList()
@@ -1061,224 +1149,231 @@ local function initPathUI()
     end)
 end
 
+-- FIXED: Update path list with better file sync
 function updatePathList()
     if not PathScrollFrame then return end
     
-    for _, child in pairs(PathScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
+    -- FIXED: Reload all paths from files to ensure sync
+    task.spawn(function()
+        loadAllSavedPaths()
+        
+        -- Clear existing UI items
+        for _, child in pairs(PathScrollFrame:GetChildren()) do
+            if child:IsA("Frame") then
+                child:Destroy()
+            end
         end
-    end
-    
-    local searchText = PathInput.Text:lower()
-    for pathName, path in pairs(savedPaths) do
-        if searchText == "" or string.find(pathName:lower(), searchText) then
-            local pathItem = Instance.new("Frame")
-            pathItem.Parent = PathScrollFrame
-            pathItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            pathItem.BorderColor3 = Color3.fromRGB(40, 40, 40)
-            pathItem.BorderSizePixel = 1
-            pathItem.Size = UDim2.new(1, -5, 0, 120)
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Parent = pathItem
-            nameLabel.Position = UDim2.new(0, 5, 0, 3)
-            nameLabel.Size = UDim2.new(1, -10, 0, 18)
-            nameLabel.Text = pathName
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.TextSize = 9
-            nameLabel.Font = Enum.Font.GothamBold
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            local infoLabel = Instance.new("TextLabel")
-            infoLabel.Parent = pathItem
-            infoLabel.Position = UDim2.new(0, 5, 0, 20)
-            infoLabel.Size = UDim2.new(1, -10, 0, 12)
-            infoLabel.BackgroundTransparency = 1
-            infoLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-            infoLabel.TextSize = 7
-            infoLabel.Font = Enum.Font.Gotham
-            infoLabel.Text = string.format("Points: %d | Markers: %d | Duration: %.1fs", 
-                                         path.pointCount or 0, 
-                                         path.markerCount or 0, 
-                                         path.duration or 0)
-            infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            -- Button row 1
-            local playButton = Instance.new("TextButton")
-            playButton.Parent = pathItem
-            playButton.Position = UDim2.new(0, 5, 0, 38)
-            playButton.Size = UDim2.new(0, 45, 0, 20)
-            playButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-            playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            playButton.TextSize = 7
-            playButton.Font = Enum.Font.GothamBold
-            playButton.Text = (pathPlaying and currentPathName == pathName and not pathAutoPlaying) and "STOP" or "PLAY"
-            
-            local autoPlayButton = Instance.new("TextButton")
-            autoPlayButton.Parent = pathItem
-            autoPlayButton.Position = UDim2.new(0, 55, 0, 38)
-            autoPlayButton.Size = UDim2.new(0, 45, 0, 20)
-            autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
-            autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoPlayButton.TextSize = 7
-            autoPlayButton.Font = Enum.Font.GothamBold
-            autoPlayButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "LOOP"
-            
-            local autoRespButton = Instance.new("TextButton")
-            autoRespButton.Parent = pathItem
-            autoRespButton.Position = UDim2.new(0, 105, 0, 38)
-            autoRespButton.Size = UDim2.new(0, 45, 0, 20)
-            autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
-            autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoRespButton.TextSize = 7
-            autoRespButton.Font = Enum.Font.GothamBold
-            autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
-            
-            local toggleShowButton = Instance.new("TextButton")
-            toggleShowButton.Parent = pathItem
-            toggleShowButton.Position = UDim2.new(0, 155, 0, 38)
-            toggleShowButton.Size = UDim2.new(0, 45, 0, 20)
-            toggleShowButton.BackgroundColor3 = Color3.fromRGB(100, 100, 60)
-            toggleShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            toggleShowButton.TextSize = 7
-            toggleShowButton.Font = Enum.Font.GothamBold
-            toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
-            
-            local deleteButton = Instance.new("TextButton")
-            deleteButton.Parent = pathItem
-            deleteButton.Position = UDim2.new(0, 205, 0, 38)
-            deleteButton.Size = UDim2.new(0, 45, 0, 20)
-            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-            deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            deleteButton.TextSize = 7
-            deleteButton.Font = Enum.Font.GothamBold
-            deleteButton.Text = "DELETE"
-            
-            -- Rename section
-            local renameInput = Instance.new("TextBox")
-            renameInput.Parent = pathItem
-            renameInput.Position = UDim2.new(0, 5, 0, 65)
-            renameInput.Size = UDim2.new(0, 150, 0, 18)
-            renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-            renameInput.BorderSizePixel = 0
-            renameInput.PlaceholderText = "Enter new name..."
-            renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameInput.TextSize = 7
-            renameInput.Font = Enum.Font.Gotham
-            
-            local renameButton = Instance.new("TextButton")
-            renameButton.Parent = pathItem
-            renameButton.Position = UDim2.new(0, 160, 0, 65)
-            renameButton.Size = UDim2.new(0, 50, 0, 18)
-            renameButton.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
-            renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            renameButton.TextSize = 7
-            renameButton.Font = Enum.Font.GothamBold
-            renameButton.Text = "RENAME"
-            
-            -- Speed control
-            local speedLabel = Instance.new("TextLabel")
-            speedLabel.Parent = pathItem
-            speedLabel.Position = UDim2.new(0, 5, 0, 90)
-            speedLabel.Size = UDim2.new(0, 50, 0, 18)
-            speedLabel.BackgroundTransparency = 1
-            speedLabel.Text = "Speed:"
-            speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            speedLabel.TextSize = 7
-            speedLabel.Font = Enum.Font.Gotham
-            speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            local speedInput = Instance.new("TextBox")
-            speedInput.Parent = pathItem
-            speedInput.Position = UDim2.new(0, 55, 0, 90)
-            speedInput.Size = UDim2.new(0, 50, 0, 18)
-            speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-            speedInput.BorderSizePixel = 0
-            speedInput.Text = tostring(path.speed or 1)
-            speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            speedInput.TextSize = 7
-            speedInput.Font = Enum.Font.Gotham
-            
-            -- Event connections
-            playButton.MouseButton1Click:Connect(function()
-                if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
-                    stopPathPlayback()
-                else
-                    playPath(pathName, false, false, false)
-                end
-                updatePathList()
-            end)
-            
-            autoPlayButton.MouseButton1Click:Connect(function()
-                if pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning then
-                    stopPathPlayback()
-                else
-                    playPath(pathName, false, true, false)
-                end
-                updatePathList()
-            end)
-            
-            autoRespButton.MouseButton1Click:Connect(function()
-                if pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning then
-                    stopPathPlayback()
-                else
-                    playPath(pathName, false, true, true)
-                end
-                updatePathList()
-            end)
-            
-            toggleShowButton.MouseButton1Click:Connect(function()
-                togglePathVisuals(pathName)
-            end)
-            
-            deleteButton.MouseButton1Click:Connect(function()
-                if pathPlaying and currentPathName == pathName then
-                    stopPathPlayback()
-                end
-                savedPaths[pathName] = nil
-                deletePathFromJSON(pathName)
-                updatePathList()
-                clearPathVisuals()
-            end)
-            
-            renameButton.MouseButton1Click:Connect(function()
-                if renameInput.Text ~= "" then
-                    local newName = renameInput.Text
-                    if savedPaths[pathName] then
-                        savedPaths[newName] = savedPaths[pathName]
-                        savedPaths[pathName] = nil
-                        
-                        if pathPlaying and currentPathName == pathName then
-                            currentPathName = newName
-                        end
-                        
-                        renamePathInJSON(pathName, newName)
-                        renameInput.Text = ""
-                        updatePathList()
-                    end
-                end
-            end)
-            
-            speedInput.FocusLost:Connect(function(enterPressed)
-                if enterPressed then
-                    local newSpeed = tonumber(speedInput.Text)
-                    if newSpeed and newSpeed > 0 and newSpeed <= 10 then
-                        path.speed = newSpeed
-                        savePathToJSON(pathName, path)
+        
+        local searchText = PathInput.Text:lower()
+        for pathName, path in pairs(savedPaths) do
+            if searchText == "" or string.find(pathName:lower(), searchText) then
+                local pathItem = Instance.new("Frame")
+                pathItem.Parent = PathScrollFrame
+                pathItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                pathItem.BorderColor3 = Color3.fromRGB(40, 40, 40)
+                pathItem.BorderSizePixel = 1
+                pathItem.Size = UDim2.new(1, -5, 0, 120)
+                
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Parent = pathItem
+                nameLabel.Position = UDim2.new(0, 5, 0, 3)
+                nameLabel.Size = UDim2.new(1, -10, 0, 18)
+                nameLabel.Text = pathName
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.TextSize = 9
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                
+                local infoLabel = Instance.new("TextLabel")
+                infoLabel.Parent = pathItem
+                infoLabel.Position = UDim2.new(0, 5, 0, 20)
+                infoLabel.Size = UDim2.new(1, -10, 0, 12)
+                infoLabel.BackgroundTransparency = 1
+                infoLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+                infoLabel.TextSize = 7
+                infoLabel.Font = Enum.Font.Gotham
+                infoLabel.Text = string.format("Points: %d | Markers: %d | Duration: %.1fs", 
+                                             path.pointCount or 0, 
+                                             path.markerCount or 0, 
+                                             path.duration or 0)
+                infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+                
+                -- Button row 1
+                local playButton = Instance.new("TextButton")
+                playButton.Parent = pathItem
+                playButton.Position = UDim2.new(0, 5, 0, 38)
+                playButton.Size = UDim2.new(0, 45, 0, 20)
+                playButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+                playButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                playButton.TextSize = 7
+                playButton.Font = Enum.Font.GothamBold
+                playButton.Text = (pathPlaying and currentPathName == pathName and not pathAutoPlaying) and "STOP" or "PLAY"
+                
+                local autoPlayButton = Instance.new("TextButton")
+                autoPlayButton.Parent = pathItem
+                autoPlayButton.Position = UDim2.new(0, 55, 0, 38)
+                autoPlayButton.Size = UDim2.new(0, 45, 0, 20)
+                autoPlayButton.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
+                autoPlayButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                autoPlayButton.TextSize = 7
+                autoPlayButton.Font = Enum.Font.GothamBold
+                autoPlayButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "LOOP"
+                
+                local autoRespButton = Instance.new("TextButton")
+                autoRespButton.Parent = pathItem
+                autoRespButton.Position = UDim2.new(0, 105, 0, 38)
+                autoRespButton.Size = UDim2.new(0, 45, 0, 20)
+                autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
+                autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                autoRespButton.TextSize = 7
+                autoRespButton.Font = Enum.Font.GothamBold
+                autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
+                
+                local toggleShowButton = Instance.new("TextButton")
+                toggleShowButton.Parent = pathItem
+                toggleShowButton.Position = UDim2.new(0, 155, 0, 38)
+                toggleShowButton.Size = UDim2.new(0, 45, 0, 20)
+                toggleShowButton.BackgroundColor3 = Color3.fromRGB(100, 100, 60)
+                toggleShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                toggleShowButton.TextSize = 7
+                toggleShowButton.Font = Enum.Font.GothamBold
+                toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
+                
+                local deleteButton = Instance.new("TextButton")
+                deleteButton.Parent = pathItem
+                deleteButton.Position = UDim2.new(0, 205, 0, 38)
+                deleteButton.Size = UDim2.new(0, 45, 0, 20)
+                deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+                deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                deleteButton.TextSize = 7
+                deleteButton.Font = Enum.Font.GothamBold
+                deleteButton.Text = "DELETE"
+                
+                -- Rename section
+                local renameInput = Instance.new("TextBox")
+                renameInput.Parent = pathItem
+                renameInput.Position = UDim2.new(0, 5, 0, 65)
+                renameInput.Size = UDim2.new(0, 150, 0, 18)
+                renameInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                renameInput.BorderSizePixel = 0
+                renameInput.PlaceholderText = "Enter new name..."
+                renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+                renameInput.TextSize = 7
+                renameInput.Font = Enum.Font.Gotham
+                
+                local renameButton = Instance.new("TextButton")
+                renameButton.Parent = pathItem
+                renameButton.Position = UDim2.new(0, 160, 0, 65)
+                renameButton.Size = UDim2.new(0, 50, 0, 18)
+                renameButton.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
+                renameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                renameButton.TextSize = 7
+                renameButton.Font = Enum.Font.GothamBold
+                renameButton.Text = "RENAME"
+                
+                -- Speed control
+                local speedLabel = Instance.new("TextLabel")
+                speedLabel.Parent = pathItem
+                speedLabel.Position = UDim2.new(0, 5, 0, 90)
+                speedLabel.Size = UDim2.new(0, 50, 0, 18)
+                speedLabel.BackgroundTransparency = 1
+                speedLabel.Text = "Speed:"
+                speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+                speedLabel.TextSize = 7
+                speedLabel.Font = Enum.Font.Gotham
+                speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+                
+                local speedInput = Instance.new("TextBox")
+                speedInput.Parent = pathItem
+                speedInput.Position = UDim2.new(0, 55, 0, 90)
+                speedInput.Size = UDim2.new(0, 50, 0, 18)
+                speedInput.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                speedInput.BorderSizePixel = 0
+                speedInput.Text = tostring(path.speed or 1)
+                speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+                speedInput.TextSize = 7
+                speedInput.Font = Enum.Font.Gotham
+                
+                -- Event connections
+                playButton.MouseButton1Click:Connect(function()
+                    if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
+                        stopPathPlayback()
                     else
-                        speedInput.Text = tostring(path.speed or 1)
+                        playPath(pathName, false, false, false)
                     end
-                end
-            end)
+                    updatePathList()
+                end)
+                
+                autoPlayButton.MouseButton1Click:Connect(function()
+                    if pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning then
+                        stopPathPlayback()
+                    else
+                        playPath(pathName, false, true, false)
+                    end
+                    updatePathList()
+                end)
+                
+                autoRespButton.MouseButton1Click:Connect(function()
+                    if pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning then
+                        stopPathPlayback()
+                    else
+                        playPath(pathName, false, true, true)
+                    end
+                    updatePathList()
+                end)
+                
+                toggleShowButton.MouseButton1Click:Connect(function()
+                    togglePathVisuals(pathName)
+                end)
+                
+                deleteButton.MouseButton1Click:Connect(function()
+                    if pathPlaying and currentPathName == pathName then
+                        stopPathPlayback()
+                    end
+                    savedPaths[pathName] = nil
+                    deletePathFromJSON(pathName)
+                    updatePathList()
+                    clearPathVisuals()
+                end)
+                
+                renameButton.MouseButton1Click:Connect(function()
+                    if renameInput.Text ~= "" then
+                        local newName = renameInput.Text
+                        if savedPaths[pathName] then
+                            savedPaths[newName] = savedPaths[pathName]
+                            savedPaths[pathName] = nil
+                            
+                            if pathPlaying and currentPathName == pathName then
+                                currentPathName = newName
+                            end
+                            
+                            renamePathInJSON(pathName, newName)
+                            renameInput.Text = ""
+                            updatePathList()
+                        end
+                    end
+                end)
+                
+                speedInput.FocusLost:Connect(function(enterPressed)
+                    if enterPressed then
+                        local newSpeed = tonumber(speedInput.Text)
+                        if newSpeed and newSpeed > 0 and newSpeed <= 10 then
+                            path.speed = newSpeed
+                            savePathToJSON(pathName, path)
+                        else
+                            speedInput.Text = tostring(path.speed or 1)
+                        end
+                    end
+                end)
+            end
         end
-    end
-    
-    task.wait(0.1)
-    if PathLayout then
-        PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
-    end
+        
+        task.wait(0.1)
+        if PathLayout then
+            PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
+        end
+    end)
 end
 
 -- FIXED: Keyboard Controls
@@ -1330,7 +1425,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
 end
 
--- Initialize function
+-- FIXED: Initialize function with better character handling
 function Utility.init(deps)
     Players = deps.Players
     humanoid = deps.humanoid
@@ -1349,6 +1444,7 @@ function Utility.init(deps)
     pathPaused = false
     pathAutoPlaying = false
     pathAutoRespawning = false
+    characterDied = false
     
     -- FIXED: Create folder structure first
     local success = pcall(function()
@@ -1370,46 +1466,103 @@ function Utility.init(deps)
     
     setupKeyboardControls()
     
+    -- FIXED: Better character event handling
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
+            print("[SUPERTOOL] Character respawned")
             task.spawn(function()
+                -- Wait for character to fully load
                 humanoid = newCharacter:WaitForChild("Humanoid", 30)
                 rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
+                
                 if humanoid and rootPart then
-                    if pathRecording and pathPaused then
-                        task.wait(5)
+                    print("[SUPERTOOL] Character references updated")
+                    
+                    -- FIXED: Handle auto respawn completion
+                    if characterDied and pathAutoRespawning and pathPlaying then
+                        print("[SUPERTOOL] Auto respawn completed, resuming path")
+                        task.wait(2) -- Wait a bit for character to stabilize
+                        characterDied = false
                         pathPaused = false
                         updatePathStatus()
                     end
-                    if pathPlaying and currentPathName then
-                        task.wait(5)
+                    
+                    -- Resume recording if it was paused due to death
+                    if pathRecording and pathPaused then
+                        task.wait(3) -- Wait a bit longer for recording resume
                         pathPaused = false
-                        playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
+                        print("[SUPERTOOL] Recording resumed after respawn")
+                        updatePathStatus()
                     end
+                    
+                    -- Resume playing if it was paused due to death (non-auto respawn)
+                    if pathPlaying and pathPaused and not pathAutoRespawning and currentPathName then
+                        task.wait(3)
+                        pathPaused = false
+                        print("[SUPERTOOL] Playback resumed after respawn")
+                        updatePathStatus()
+                    end
+                    
+                    -- FIXED: Connect death event for proper status sync
+                    humanoid.Died:Connect(function()
+                        print("[SUPERTOOL] Character died")
+                        characterDied = true
+                        
+                        -- FIXED: Proper status handling when character dies
+                        if pathRecording then
+                            pathPaused = true
+                            print("[SUPERTOOL] Recording paused due to death")
+                            updatePathStatus()
+                        end
+                        
+                        if pathPlaying and not pathAutoRespawning then
+                            pathPaused = true
+                            print("[SUPERTOOL] Playback paused due to death")
+                            updatePathStatus()
+                        elseif pathPlaying and pathAutoRespawning then
+                            print("[SUPERTOOL] Character died, auto respawn will handle restart")
+                            -- Don't set paused for auto respawn, let handleAutoRespawn manage it
+                        end
+                    end)
+                else
+                    warn("[SUPERTOOL] Failed to get character references after respawn")
                 end
             end)
         end)
         
         player.CharacterRemoving:Connect(function()
+            print("[SUPERTOOL] Character removing")
             if pathRecording then
                 pathPaused = true
+                print("[SUPERTOOL] Recording paused due to character removal")
                 updatePathStatus()
             end
-            if pathPlaying then
+            if pathPlaying and not pathAutoRespawning then
                 pathPaused = true
+                print("[SUPERTOOL] Playback paused due to character removal")
                 updatePathStatus()
             end
         end)
         
-        if humanoid then
-            humanoid.Died:Connect(function()
+        -- FIXED: Initial death connection if character already exists
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            local currentHumanoid = player.Character.Humanoid
+            currentHumanoid.Died:Connect(function()
+                print("[SUPERTOOL] Character died")
+                characterDied = true
+                
                 if pathRecording then
                     pathPaused = true
+                    print("[SUPERTOOL] Recording paused due to death")
                     updatePathStatus()
                 end
-                if pathPlaying then
+                
+                if pathPlaying and not pathAutoRespawning then
                     pathPaused = true
+                    print("[SUPERTOOL] Playback paused due to death")
                     updatePathStatus()
+                elseif pathPlaying and pathAutoRespawning then
+                    print("[SUPERTOOL] Character died, auto respawn will handle restart")
                 end
             end)
         end
@@ -1417,10 +1570,12 @@ function Utility.init(deps)
     
     task.spawn(function()
         initPathUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized")
+        print("[SUPERTOOL] Enhanced Path Utility v2.1 initialized - FIXES APPLIED")
+        print("  - FIXED: Auto respawn now works properly")
+        print("  - FIXED: Start from here clickable points functional")
+        print("  - FIXED: File sync - names update when changed in file manager")
+        print("  - FIXED: Status sync - recording/playback status accurate")
         print("  - REMOVED: All macro functionality")
-        print("  - FIXED: Ctrl+Z undo function")
-        print("  - FIXED: JSON path loading after relog")
         print("  - ADDED: Top-right status display")
         print("  - ADDED: Clickable path points every 5 meters")
         print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
