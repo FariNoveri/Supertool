@@ -48,6 +48,20 @@ local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLa
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 local EmoteGuiFrame
 
+local StarterGui = game:GetService("StarterGui")
+
+-- Helper function to find player by partial name
+local function findPlayer(name)
+    if not name then return nil end
+    name = name:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name, 1, true) == 1 or p.DisplayName:lower():find(name, 1, true) == 1 then
+            return p
+        end
+    end
+    return nil
+end
+
 -- Force Field (God Mode replacement)
 local function toggleForceField(enabled)
     Player.forceFieldEnabled = enabled
@@ -298,6 +312,8 @@ local function enablePhysicsForPlayer(targetPlayer)
             return
         end
         
+        rootPart:SetNetworkOwner(player)
+        
         -- IMPROVED PHYSICS: Make the character completely controllable by physics
         rootPart.Anchored = false
         rootPart.CanCollide = true
@@ -375,6 +391,10 @@ local function disablePhysicsForPlayer(targetPlayer)
                     end
                 end
             end
+        end
+        
+        if rootPart then
+            rootPart:SetNetworkOwner(nil)
         end
         
         Player.physicsPlayers[targetPlayer] = nil
@@ -474,6 +494,8 @@ local function enhancedFlingPlayer(targetPlayer)
             return
         end
         
+        targetRootPart:SetNetworkOwner(player)
+        
         -- Enable physics first for better control
         enablePhysicsForPlayer(targetPlayer)
         
@@ -525,6 +547,9 @@ local function enhancedFlingPlayer(targetPlayer)
                 targetHumanoid.WalkSpeed = 16
                 targetHumanoid.JumpPower = 50
             end
+            if targetRootPart and targetRootPart.Parent then
+                targetRootPart:SetNetworkOwner(nil)
+            end
             disablePhysicsForPlayer(targetPlayer)
         end)
         
@@ -566,6 +591,7 @@ local function toggleFling(enabled)
                     local distance = (Player.rootPart.Position - targetRootPart.Position).Magnitude
                     
                     if distance <= Player.flingRange then
+                        targetRootPart:SetNetworkOwner(player)
                         enablePhysicsForPlayer(targetPlayer)
                         
                         if not Player.flungPlayers[targetPlayer] then
@@ -606,6 +632,9 @@ local function toggleFling(enabled)
                                 targetHumanoid.PlatformStand = false
                                 targetHumanoid.WalkSpeed = 16
                                 targetHumanoid.JumpPower = 50
+                            end
+                            if targetRootPart then
+                                targetRootPart:SetNetworkOwner(nil)
                             end
                             disablePhysicsForPlayer(targetPlayer)
                             Player.flungPlayers[targetPlayer] = nil
@@ -651,6 +680,7 @@ local function toggleFling(enabled)
                     if targetBodyAngularVel then
                         targetBodyAngularVel:Destroy()
                     end
+                    targetRootPart:SetNetworkOwner(nil)
                 end
                 
                 local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
@@ -669,7 +699,7 @@ local function toggleFling(enabled)
     end
 end
 
--- Bring Player (Fixed)
+-- Bring Player (Fixed with network ownership for server-side replication)
 local function bringPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot bring: Invalid target player")
@@ -692,6 +722,8 @@ local function bringPlayer(targetPlayer)
         local ourPosition = Player.rootPart.CFrame
         local newPosition = ourPosition * CFrame.new(0, 0, -5)
         
+        targetRootPart:SetNetworkOwner(player)
+        
         -- Ensure the target player isn't anchored
         targetRootPart.Anchored = false
         
@@ -713,6 +745,15 @@ local function bringPlayer(targetPlayer)
         print("Brought player: " .. targetPlayer.Name)
     end)
     
+    if success then
+        task.delay(0.1, function()
+            local targetCharacter = targetPlayer.Character
+            if targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart") then
+                targetCharacter.HumanoidRootPart:SetNetworkOwner(nil)
+            end
+        end)
+    end
+    
     if not success then
         warn("Failed to bring player: " .. tostring(result))
     end
@@ -728,7 +769,9 @@ local function toggleMagnetPlayers(enabled)
         
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
+                local hrp = p.Character.HumanoidRootPart
+                hrp:SetNetworkOwner(player)
+                Player.magnetPlayerPositions[p] = hrp
             end
         end
         
@@ -762,13 +805,17 @@ local function toggleMagnetPlayers(enabled)
                 newPlayer.CharacterAdded:Connect(function(character)
                     task.wait(0.5)
                     if character:FindFirstChild("HumanoidRootPart") then
-                        Player.magnetPlayerPositions[newPlayer] = character.HumanoidRootPart
+                        local hrp = character.HumanoidRootPart
+                        hrp:SetNetworkOwner(player)
+                        Player.magnetPlayerPositions[newPlayer] = hrp
                         print("Magnet applied to new player: " .. newPlayer.Name)
                     end
                 end)
                 if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     task.wait(0.5)
-                    Player.magnetPlayerPositions[newPlayer] = newPlayer.Character.HumanoidRootPart
+                    local hrp = newPlayer.Character.HumanoidRootPart
+                    hrp:SetNetworkOwner(player)
+                    Player.magnetPlayerPositions[newPlayer] = hrp
                     print("Magnet applied to existing player: " .. newPlayer.Name)
                 end
             end
@@ -780,7 +827,9 @@ local function toggleMagnetPlayers(enabled)
                 Player.rootPart = character:FindFirstChild("HumanoidRootPart")
                 for _, p in pairs(Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        Player.magnetPlayerPositions[p] = p.Character.HumanoidRootPart
+                        local hrp = p.Character.HumanoidRootPart
+                        hrp:SetNetworkOwner(player)
+                        Player.magnetPlayerPositions[p] = hrp
                         print("Magnet reapplied to player: " .. p.Name)
                     end
                 end
@@ -808,6 +857,7 @@ local function toggleMagnetPlayers(enabled)
         for targetPlayer, _ in pairs(Player.magnetPlayerPositions) do
             if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 local hrp = targetPlayer.Character.HumanoidRootPart
+                hrp:SetNetworkOwner(nil)
                 hrp.Anchored = false
                 if targetPlayer.Character:FindFirstChild("Humanoid") then
                     local hum = targetPlayer.Character.Humanoid
@@ -829,6 +879,7 @@ local function freezePlayer(targetPlayer)
     
     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = targetPlayer.Character.HumanoidRootPart
+        hrp:SetNetworkOwner(player)
         
         if not Player.frozenPlayerPositions[targetPlayer] then
             Player.frozenPlayerPositions[targetPlayer] = {
@@ -863,6 +914,7 @@ local function unfreezePlayer(targetPlayer)
         local frozenData = Player.frozenPlayerPositions[targetPlayer]
         
         hrp.Anchored = frozenData and frozenData.anchored or false
+        hrp:SetNetworkOwner(nil)
         
         if targetPlayer.Character:FindFirstChild("Humanoid") then
             local hum = targetPlayer.Character.Humanoid
@@ -893,7 +945,9 @@ local function setupPlayerMonitoring(targetPlayer)
         
         if Player.magnetEnabled then
             if character:FindFirstChild("HumanoidRootPart") then
-                Player.magnetPlayerPositions[targetPlayer] = character.HumanoidRootPart
+                local hrp = character.HumanoidRootPart
+                hrp:SetNetworkOwner(player)
+                Player.magnetPlayerPositions[targetPlayer] = hrp
                 print("Magnet applied to respawned player: " .. targetPlayer.Name)
             end
         end
@@ -922,7 +976,9 @@ local function setupPlayerMonitoring(targetPlayer)
     end
     
     if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        Player.magnetPlayerPositions[targetPlayer] = targetPlayer.Character.HumanoidRootPart
+        local hrp = targetPlayer.Character.HumanoidRootPart
+        hrp:SetNetworkOwner(player)
+        Player.magnetPlayerPositions[targetPlayer] = hrp
         print("Magnet applied to player: " .. targetPlayer.Name)
     end
     
@@ -1464,28 +1520,7 @@ function Player.updatePlayerList()
             end)
             
             teleportButton.MouseButton1Click:Connect(function()
-                local success, result = pcall(function()
-                    if currentPlayer and currentPlayer.Character and currentPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        if not Player.rootPart then
-                            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                                Player.rootPart = player.Character.HumanoidRootPart
-                            else
-                                print("Cannot teleport: Local player missing HumanoidRootPart")
-                                return
-                            end
-                        end
-                        
-                        local targetPosition = currentPlayer.Character.HumanoidRootPart.CFrame
-                        local newPosition = targetPosition * CFrame.new(0, 0, 5)
-                        Player.rootPart.CFrame = newPosition
-                        print("Teleported to: " .. currentPlayer.Name)
-                    else
-                        print("Cannot teleport: Target player has no character or HumanoidRootPart")
-                    end
-                end)
-                if not success then
-                    warn("Teleport failed: " .. tostring(result))
-                end
+                teleportToPlayer(currentPlayer)
             end)
             
             followButton.MouseButton1Click:Connect(function()
@@ -1572,15 +1607,15 @@ function Player.updatePlayerList()
     updateSpectateButtons()
 end
 
--- Teleport to Spectated Player (Fixed)
-local function teleportToSpectatedPlayer()
-    if not Player.selectedPlayer then
+-- Teleport to Player
+local function teleportToPlayer(targetPlayer)
+    if not targetPlayer then
         print("Cannot teleport: No player selected")
         return
     end
     
     local success, result = pcall(function()
-        if Player.selectedPlayer.Character and Player.selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             if not Player.rootPart then
                 if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     Player.rootPart = player.Character.HumanoidRootPart
@@ -1590,18 +1625,23 @@ local function teleportToSpectatedPlayer()
                 end
             end
             
-            local targetPosition = Player.selectedPlayer.Character.HumanoidRootPart.CFrame
+            local targetPosition = targetPlayer.Character.HumanoidRootPart.CFrame
             local newPosition = targetPosition * CFrame.new(0, 0, 5)
             Player.rootPart.CFrame = newPosition
-            print("Teleported to spectated player: " .. Player.selectedPlayer.Name)
+            print("Teleported to: " .. targetPlayer.Name)
         else
-            print("Cannot teleport: No valid spectated player or missing HumanoidRootPart")
+            print("Cannot teleport: No valid player or missing HumanoidRootPart")
         end
     end)
     
     if not success then
         warn("Teleport failed: " .. tostring(result))
     end
+end
+
+-- Teleport to Spectated Player (Fixed)
+local function teleportToSpectatedPlayer()
+    teleportToPlayer(Player.selectedPlayer)
 end
 
 -- Show Emote GUI
@@ -2222,6 +2262,68 @@ local function initConnections()
                 Player.updatePlayerList()
             end
             task.wait(2) -- Update every 2 seconds when visible
+        end
+    end)
+    
+    -- Add chat commands
+    connections.chatted = player.Chatted:Connect(function(message)
+        if message:sub(1,1) ~= "/" then return end
+        
+        local args = message:sub(2):split(" ")
+        local cmd = args[1]:lower()
+        local arg1 = args[2]
+        
+        if cmd == "tp" then
+            local target = findPlayer(arg1)
+            if target then
+                teleportToPlayer(target)
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success tp to " .. target.Name})
+            else
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed tp: player not found"})
+            end
+        elseif cmd == "bring" then
+            local target = findPlayer(arg1)
+            if target then
+                bringPlayer(target)
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success bring " .. target.Name})
+            else
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed bring: player not found"})
+            end
+        elseif cmd == "follow" then
+            local target = findPlayer(arg1)
+            if target then
+                toggleFollowPlayer(target)
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success follow " .. target.Name})
+            else
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed follow: player not found"})
+            end
+        elseif cmd == "stopfollow" then
+            stopFollowing()
+            StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success stop follow"})
+        elseif cmd == "fling" then
+            local target = findPlayer(arg1)
+            if target then
+                flingPlayer(target)
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success fling " .. target.Name})
+            else
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed fling: player not found"})
+            end
+        elseif cmd == "freeze" then
+            local target = findPlayer(arg1)
+            if target then
+                freezePlayer(target)
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success freeze " .. target.Name})
+            else
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed freeze: player not found"})
+            end
+        elseif cmd == "unfreeze" then
+            local target = findPlayer(arg1)
+            if target then
+                unfreezePlayer(target)
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success unfreeze " .. target.Name})
+            else
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed unfreeze: player not found"})
+            end
         end
     end)
 end
