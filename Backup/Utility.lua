@@ -44,7 +44,6 @@ local DEBOUNCE_TIME = 0.5 -- seconds
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PATH_FOLDER_PATH = "Supertool/Paths/"
 
 -- Path movement detection constants
@@ -64,10 +63,6 @@ local movementColors = {
     idle = Color3.fromRGB(200, 200, 200),
     paused = Color3.fromRGB(255, 255, 255)
 }
-
--- New for admin actions
-local moderationRemotes = {}
-local suspiciousPlayers = {}
 
 -- Helper function for sanitize filename
 local function sanitizeFileName(name)
@@ -933,176 +928,6 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
--- New functions for admin actions
-local function findModerationRemotes()
-    moderationRemotes = {}
-    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") then
-            if string.find(string.lower(obj.Name), "report") or 
-               string.find(string.lower(obj.Name), "kick") or 
-               string.find(string.lower(obj.Name), "ban") or 
-               string.find(string.lower(obj.Name), "admin") then
-                table.insert(moderationRemotes, obj)
-                print("[SUPERTOOL] Found potential moderation RemoteEvent: " .. obj.Name)
-            end
-        end
-    end
-    if #moderationRemotes == 0 then
-        warn("[SUPERTOOL] No potential moderation RemoteEvents found")
-    end
-end
-
-local function attemptKickPlayer(targetPlayerName)
-    local targetPlayer = Players:FindFirstChild(targetPlayerName)
-    if not targetPlayer then
-        warn("[SUPERTOOL] Target player not found: " .. tostring(targetPlayerName))
-        return
-    end
-
-    for _, remote in pairs(moderationRemotes) do
-        pcall(function()
-            remote:FireServer(targetPlayer, "kick")
-            remote:FireServer(targetPlayer.UserId, "kick")
-            remote:FireServer(targetPlayer.Name, "kick")
-            remote:FireServer({action = "kick", player = targetPlayer.UserId})
-            remote:FireServer("kick", targetPlayer.UserId)
-            print("[SUPERTOOL] Attempted FireServer on " .. remote.Name .. " to kick " .. targetPlayerName)
-        end)
-    end
-end
-
-local function attemptBanPlayer(targetPlayerName)
-    local targetPlayer = Players:FindFirstChild(targetPlayerName)
-    if not targetPlayer then
-        warn("[SUPERTOOL] Target player not found: " .. tostring(targetPlayerName))
-        return
-    end
-
-    for _, remote in pairs(moderationRemotes) do
-        pcall(function()
-            remote:FireServer(targetPlayer, "ban")
-            remote:FireServer(targetPlayer.UserId, "ban")
-            remote:FireServer(targetPlayer.Name, "ban")
-            remote:FireServer({action = "ban", player = targetPlayer.UserId})
-            remote:FireServer("ban", targetPlayer.UserId)
-            print("[SUPERTOOL] Attempted FireServer on " .. remote.Name .. " to ban " .. targetPlayerName)
-        end)
-    end
-end
-
-local function pseudoKickPlayer(targetPlayerName)
-    local targetPlayer = Players:FindFirstChild(targetPlayerName)
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        warn("[SUPERTOOL] Target player not found or invalid: " .. tostring(targetPlayerName))
-        return
-    end
-    local targetRootPart = targetPlayer.Character.HumanoidRootPart
-    for i = 1, 100 do
-        pcall(function()
-            targetRootPart.CFrame = CFrame.new(Vector3.new(1000000, 1000000, 1000000))
-        end)
-        task.wait(0.01)
-    end
-    print("[SUPERTOOL] Attempted to pseudo-kick: " .. targetPlayerName)
-end
-
-local function monitorPlayersForCheating()
-    RunService.Heartbeat:Connect(function()
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local rootPart = otherPlayer.Character.HumanoidRootPart
-                local velocity = rootPart.Velocity
-                local speed = velocity.Magnitude
-
-                if speed > 100 then
-                    if not suspiciousPlayers[otherPlayer.Name] then
-                        suspiciousPlayers[otherPlayer.Name] = true
-                        warn("[SUPERTOOL] Suspicious player detected: " .. otherPlayer.Name .. " (Speed: " .. math.floor(speed) .. ")")
-                    end
-                end
-            end
-        end
-    end)
-end
-
-local function updateSuspiciousPlayersList()
-    if not PathScrollFrame then return end
-
-    local suspiciousFrame = Instance.new("Frame")
-    suspiciousFrame.Parent = PathScrollFrame
-    suspiciousFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    suspiciousFrame.BorderColor3 = Color3.fromRGB(40, 40, 40)
-    suspiciousFrame.BorderSizePixel = 1
-    suspiciousFrame.Size = UDim2.new(1, -5, 0, 50)
-
-    local suspiciousLabel = Instance.new("TextLabel")
-    suspiciousLabel.Parent = suspiciousFrame
-    suspiciousLabel.Position = UDim2.new(0, 5, 0, 3)
-    suspiciousLabel.Size = UDim2.new(1, -10, 0, 18)
-    suspiciousLabel.Text = "Suspicious Players"
-    suspiciousLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-    suspiciousLabel.BackgroundTransparency = 1
-    suspiciousLabel.TextSize = 9
-    suspiciousLabel.Font = Enum.Font.GothamBold
-    suspiciousLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local playerListLabel = Instance.new("TextLabel")
-    playerListLabel.Parent = suspiciousFrame
-    playerListLabel.Position = UDim2.new(0, 5, 0, 20)
-    playerListLabel.Size = UDim2.new(1, -10, 0, 25)
-    playerListLabel.BackgroundTransparency = 1
-    playerListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-    playerListLabel.TextSize = 7
-    playerListLabel.Font = Enum.Font.Gotham
-    playerListLabel.Text = table.concat(table.getkeys(suspiciousPlayers), ", ") or "None"
-    playerListLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    task.wait(0.1)
-    if PathLayout then
-        PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
-    end
-end
-
-local function attemptTeleportPlayer(targetPlayerName)
-    local targetPlayer = Players:FindFirstChild(targetPlayerName)
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        warn("[SUPERTOOL] Target player not found or invalid: " .. tostring(targetPlayerName))
-        return
-    end
-    local targetRootPart = targetPlayer.Character.HumanoidRootPart
-    pcall(function()
-        targetRootPart.CFrame = rootPart.CFrame
-    end)
-    print("[SUPERTOOL] Attempted to teleport " .. targetPlayerName .. " to you")
-end
-
-local function attemptFreezePlayer(targetPlayerName)
-    local targetPlayer = Players:FindFirstChild(targetPlayerName)
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
-        warn("[SUPERTOOL] Target player not found or invalid: " .. tostring(targetPlayerName))
-        return
-    end
-    local targetHumanoid = targetPlayer.Character.Humanoid
-    pcall(function()
-        targetHumanoid.WalkSpeed = 0
-        targetHumanoid.JumpPower = 0
-    end)
-    print("[SUPERTOOL] Attempted to freeze " .. targetPlayerName)
-end
-
-local function attemptKillPlayer(targetPlayerName)
-    local targetPlayer = Players:FindFirstChild(targetPlayerName)
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
-        warn("[SUPERTOOL] Target player not found or invalid: " .. tostring(targetPlayerName))
-        return
-    end
-    local targetHumanoid = targetPlayer.Character.Humanoid
-    pcall(function()
-        targetHumanoid.Health = 0
-    end)
-    print("[SUPERTOOL] Attempted to kill " .. targetPlayerName)
-end
-
 -- UI Components
 local function initPathUI()
     if PathFrame then return end
@@ -1218,73 +1043,6 @@ local function initPathUI()
     PathStatusLabel.Visible = false
     PathStatusLabel.ZIndex = 100
 
-    -- New admin UI elements
-    local PlayerSelect = Instance.new("TextBox")
-    PlayerSelect.Parent = PathFrame
-    PlayerSelect.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    PlayerSelect.BorderSizePixel = 0
-    PlayerSelect.Position = UDim2.new(0, 5, 0, 60)
-    PlayerSelect.Size = UDim2.new(1, -10, 0, 25)
-    PlayerSelect.Font = Enum.Font.Gotham
-    PlayerSelect.PlaceholderText = "Enter player name to target..."
-    PlayerSelect.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PlayerSelect.TextSize = 8
-
-    local KickButton = Instance.new("TextButton")
-    KickButton.Parent = PathControlsFrame
-    KickButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-    KickButton.BorderSizePixel = 0
-    KickButton.Position = UDim2.new(0, 260, 0, 2.5)
-    KickButton.Size = UDim2.new(0, 50, 0, 25)
-    KickButton.Font = Enum.Font.GothamBold
-    KickButton.Text = "KICK"
-    KickButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    KickButton.TextSize = 8
-
-    local BanButton = Instance.new("TextButton")
-    BanButton.Parent = PathControlsFrame
-    BanButton.BackgroundColor3 = Color3.fromRGB(120, 30, 30)
-    BanButton.BorderSizePixel = 0
-    BanButton.Position = UDim2.new(0, 315, 0, 2.5)
-    BanButton.Size = UDim2.new(0, 50, 0, 25)
-    BanButton.Font = Enum.Font.GothamBold
-    BanButton.Text = "BAN"
-    BanButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    BanButton.TextSize = 8
-
-    local TeleportButton = Instance.new("TextButton")
-    TeleportButton.Parent = PathControlsFrame
-    TeleportButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-    TeleportButton.BorderSizePixel = 0
-    TeleportButton.Position = UDim2.new(0, 5, 0, 35)
-    TeleportButton.Size = UDim2.new(0, 80, 0, 25)
-    TeleportButton.Font = Enum.Font.GothamBold
-    TeleportButton.Text = "TELEPORT"
-    TeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TeleportButton.TextSize = 8
-
-    local FreezeButton = Instance.new("TextButton")
-    FreezeButton.Parent = PathControlsFrame
-    FreezeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 150)
-    FreezeButton.BorderSizePixel = 0
-    FreezeButton.Position = UDim2.new(0, 90, 0, 35)
-    FreezeButton.Size = UDim2.new(0, 80, 0, 25)
-    FreezeButton.Font = Enum.Font.GothamBold
-    FreezeButton.Text = "FREEZE"
-    FreezeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    FreezeButton.TextSize = 8
-
-    local KillButton = Instance.new("TextButton")
-    KillButton.Parent = PathControlsFrame
-    KillButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-    KillButton.BorderSizePixel = 0
-    KillButton.Position = UDim2.new(0, 175, 0, 35)
-    KillButton.Size = UDim2.new(0, 80, 0, 25)
-    KillButton.Font = Enum.Font.GothamBold
-    KillButton.Text = "KILL"
-    KillButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    KillButton.TextSize = 8
-
     -- Event connections
     ClosePathButton.MouseButton1Click:Connect(function()
         PathFrame.Visible = false
@@ -1299,54 +1057,6 @@ local function initPathUI()
     PathInput.Changed:Connect(function(property)
         if property == "Text" then
             updatePathList()
-        end
-    end)
-    
-    -- New admin event connections
-    KickButton.MouseButton1Click:Connect(function()
-        local targetName = PlayerSelect.Text
-        if targetName ~= "" then
-            attemptKickPlayer(targetName)
-            pseudoKickPlayer(targetName) -- Fallback
-        else
-            warn("[SUPERTOOL] Enter a player name to kick")
-        end
-    end)
-
-    BanButton.MouseButton1Click:Connect(function()
-        local targetName = PlayerSelect.Text
-        if targetName ~= "" then
-            attemptBanPlayer(targetName)
-            pseudoKickPlayer(targetName) -- Fallback for ban simulation
-        else
-            warn("[SUPERTOOL] Enter a player name to ban")
-        end
-    end)
-
-    TeleportButton.MouseButton1Click:Connect(function()
-        local targetName = PlayerSelect.Text
-        if targetName ~= "" then
-            attemptTeleportPlayer(targetName)
-        else
-            warn("[SUPERTOOL] Enter a player name to teleport")
-        end
-    end)
-
-    FreezeButton.MouseButton1Click:Connect(function()
-        local targetName = PlayerSelect.Text
-        if targetName ~= "" then
-            attemptFreezePlayer(targetName)
-        else
-            warn("[SUPERTOOL] Enter a player name to freeze")
-        end
-    end)
-
-    KillButton.MouseButton1Click:Connect(function()
-        local targetName = PlayerSelect.Text
-        if targetName ~= "" then
-            attemptKillPlayer(targetName)
-        else
-            warn("[SUPERTOOL] Enter a player name to kill")
         end
     end)
 end
@@ -1565,8 +1275,6 @@ function updatePathList()
         end
     end
     
-    updateSuspiciousPlayersList()
-    
     task.wait(0.1)
     if PathLayout then
         PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
@@ -1661,8 +1369,6 @@ function Utility.init(deps)
     print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
     
     setupKeyboardControls()
-    findModerationRemotes()
-    monitorPlayersForCheating()
     
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
@@ -1721,7 +1427,6 @@ function Utility.init(deps)
         print("  - ENHANCED: Better UI with improved controls")
         print("  - Keyboard Controls: Ctrl+Z (undo during recording)")
         print("  - JSON Storage: Supertool/Paths/")
-        print("  - ADDED: Admin actions - Kick, Ban, Teleport, Freeze, Kill")
     end)
 end
 
