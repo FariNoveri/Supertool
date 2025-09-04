@@ -306,42 +306,13 @@ local function enablePhysicsForPlayer(targetPlayer)
         rootPart.BottomSurface = Enum.SurfaceType.Smooth
         
         -- Disable humanoid states that interfere with physics
-        humanoid.PlatformStand = true
+        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         humanoid.WalkSpeed = 0
         humanoid.JumpPower = 0
         humanoid.Sit = false
         
         -- Important: Set HipHeight to 0 to make physics work properly
-        if humanoid:FindFirstChild("HipHeight") then
-            humanoid.HipHeight = 0
-        end
-        
-        -- Make sure all joints and welds are not interfering
-        for _, joint in pairs(character:GetDescendants()) do
-            if joint:IsA("Motor6D") or joint:IsA("Glue") then
-                joint:Destroy()
-            end
-        end
-        
-        -- Apply custom BodyPosition and BodyAngularVelocity for full physics control
-        local bodyPosition = rootPart:FindFirstChild("PhysicsBodyPosition")
-        if bodyPosition then bodyPosition:Destroy() end
-        
-        bodyPosition = Instance.new("BodyPosition")
-        bodyPosition.Name = "PhysicsBodyPosition"
-        bodyPosition.MaxForce = Vector3.new(0, 0, 0) -- No force initially
-        bodyPosition.Position = rootPart.Position
-        bodyPosition.Parent = rootPart
-        
-        -- Add BodyVelocity for better physics response
-        local bodyVelocity = rootPart:FindFirstChild("PhysicsBodyVelocity")
-        if bodyVelocity then bodyVelocity:Destroy() end
-        
-        bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.Name = "PhysicsBodyVelocity"
-        bodyVelocity.MaxForce = Vector3.new(0, 0, 0)
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.Parent = rootPart
+        humanoid.HipHeight = 0
         
         -- Make all other body parts respond to physics properly
         for _, part in pairs(character:GetDescendants()) do
@@ -365,9 +336,7 @@ local function enablePhysicsForPlayer(targetPlayer)
             rootPart = rootPart,
             character = character,
             originalWalkSpeed = 16,
-            originalJumpPower = 50,
-            bodyPosition = bodyPosition,
-            bodyVelocity = bodyVelocity
+            originalJumpPower = 50
         }
         
         print("Enhanced Physics enabled for: " .. targetPlayer.Name)
@@ -391,17 +360,10 @@ local function disablePhysicsForPlayer(targetPlayer)
         local character = physicsData.character
         
         if humanoid and humanoid.Parent then
-            humanoid.PlatformStand = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             humanoid.WalkSpeed = physicsData.originalWalkSpeed
             humanoid.JumpPower = physicsData.originalJumpPower
-        end
-        
-        -- Clean up physics body movers
-        if physicsData.bodyPosition then
-            physicsData.bodyPosition:Destroy()
-        end
-        if physicsData.bodyVelocity then
-            physicsData.bodyVelocity:Destroy()
+            humanoid.HipHeight = 2  -- Standard HipHeight for R15
         end
         
         -- Clean up any remaining physics objects
@@ -549,36 +511,6 @@ local function enhancedFlingPlayer(targetPlayer)
         targetSpin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         targetSpin.Parent = targetRootPart
         
-        -- Create additional body parts forces for more realistic fling
-        for _, part in pairs(targetCharacter:GetDescendants()) do
-            if part:IsA("BasePart") and part ~= targetRootPart and part.Name ~= "HumanoidRootPart" then
-                local bodyVel = part:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity")
-                bodyVel.MaxForce = Vector3.new(8000, 8000, 8000) -- Increased force
-                bodyVel.Velocity = flingVelocity * math.random(1.0, 1.8)
-                bodyVel.Parent = part
-                
-                -- Add spinning to individual parts too
-                local partSpin = Instance.new("BodyAngularVelocity")
-                partSpin.AngularVelocity = Vector3.new(
-                    math.random(-Player.spinSpeed, Player.spinSpeed),
-                    math.random(-Player.spinSpeed, Player.spinSpeed),
-                    math.random(-Player.spinSpeed, Player.spinSpeed)
-                )
-                partSpin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                partSpin.Parent = part
-                
-                -- Clean up after some time
-                task.delay(1.5, function()
-                    if bodyVel and bodyVel.Parent then
-                        bodyVel:Destroy()
-                    end
-                    if partSpin and partSpin.Parent then
-                        partSpin:Destroy()
-                    end
-                end)
-            end
-        end
-        
         -- Clean up main spin after some time
         task.delay(2, function()
             if targetSpin and targetSpin.Parent then
@@ -593,6 +525,7 @@ local function enhancedFlingPlayer(targetPlayer)
                 targetHumanoid.WalkSpeed = 16
                 targetHumanoid.JumpPower = 50
             end
+            disablePhysicsForPlayer(targetPlayer)
         end)
         
         print("Enhanced FAST fling applied to: " .. targetPlayer.Name)
@@ -660,28 +593,12 @@ local function toggleFling(enabled)
                             targetBodyAngularVel.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
                             targetBodyAngularVel.Parent = targetRootPart
                         end
-                        
-                        -- Apply forces to other body parts for more realistic effect
-                        for _, part in pairs(targetPlayer.Character:GetDescendants()) do
-                            if part:IsA("BasePart") and part ~= targetRootPart then
-                                local bodyVel = part:FindFirstChild("FlingBodyVel")
-                                if not bodyVel then
-                                    bodyVel = Instance.new("BodyVelocity")
-                                    bodyVel.Name = "FlingBodyVel"
-                                    bodyVel.MaxForce = Vector3.new(4000, 4000, 4000)
-                                    bodyVel.Parent = part
-                                end
-                                bodyVel.Velocity = flingVelocity * math.random(1.0, 1.5)
-                            end
-                        end
                     else
                         if Player.flungPlayers[targetPlayer] then
                             -- Clean up when player moves away
-                            for _, part in pairs(targetPlayer.Character:GetDescendants()) do
-                                local spinVel = part:FindFirstChild("TargetSpinVel") or part:FindFirstChild("FlingBodyVel")
-                                if spinVel then
-                                    spinVel:Destroy()
-                                end
+                            local targetBodyAngularVel = targetRootPart:FindFirstChild("TargetSpinVel")
+                            if targetBodyAngularVel then
+                                targetBodyAngularVel:Destroy()
                             end
                             
                             local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
@@ -690,6 +607,7 @@ local function toggleFling(enabled)
                                 targetHumanoid.WalkSpeed = 16
                                 targetHumanoid.JumpPower = 50
                             end
+                            disablePhysicsForPlayer(targetPlayer)
                             Player.flungPlayers[targetPlayer] = nil
                         end
                     end
@@ -727,10 +645,11 @@ local function toggleFling(enabled)
         -- Clean up all flung players
         for targetPlayer, _ in pairs(Player.flungPlayers) do
             if targetPlayer.Character then
-                for _, part in pairs(targetPlayer.Character:GetDescendants()) do
-                    local spinVel = part:FindFirstChild("TargetSpinVel") or part:FindFirstChild("FlingBodyVel")
-                    if spinVel then
-                        spinVel:Destroy()
+                local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if targetRootPart then
+                    local targetBodyAngularVel = targetRootPart:FindFirstChild("TargetSpinVel")
+                    if targetBodyAngularVel then
+                        targetBodyAngularVel:Destroy()
                     end
                 end
                 
