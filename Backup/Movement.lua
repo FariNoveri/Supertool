@@ -1,4 +1,4 @@
--- Movement.lua - Updated version with enhanced GUI and chat command for SpeedHack, JumpHack, and Fly
+-- Movement.lua - Updated version with enhanced GUI and chat commands /fly and /unfly for SpeedHack, JumpHack, and Fly
 
 -- Dependencies
 local Players, RunService, Workspace, UserInputService, humanoid, rootPart, connections, buttonStates, ScrollFrame, ScreenGui, settings, player
@@ -1777,10 +1777,12 @@ function Movement.init(deps)
     createSettingsGUI()
     setupScrollFrame()
     
-    -- Add chat command listener for /fly
+    -- Add chat command listener for /fly and /unfly
     connections.chat = player.Chatted:Connect(function(message)
         if message:lower() == "/fly" then
-            toggleFly(not Movement.flyEnabled)
+            toggleFly(true)
+        elseif message:lower() == "/unfly" then
+            toggleFly(false)
         end
     end)
     
