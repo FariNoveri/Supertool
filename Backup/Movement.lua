@@ -63,6 +63,35 @@ local settingsFrame
 local speedInput, jumpInput, sprintInput, flyInput, swimInput
 local applyButton, closeButton
 
+-- Chat system
+local function sendServerMessage(message)
+    local StarterGui = game:GetService("StarterGui")
+    if StarterGui then
+        pcall(function()
+            StarterGui:SetCore("ChatMakeSystemMessage", {
+                Text = "[SERVER] " .. message;
+                Color = Color3.fromRGB(0, 255, 0);
+                Font = Enum.Font.GothamBold;
+                FontSize = Enum.FontSize.Size18;
+            })
+        end)
+    end
+    
+    -- Alternative method - print to console
+    print("[SERVER] " .. message)
+    
+    -- Try to add to chat directly if possible
+    local Chat = game:GetService("Chat")
+    if Chat then
+        pcall(function()
+            local chatService = require(game:GetService("ServerScriptService"):WaitForChild("ChatServiceRunner"):WaitForChild("ChatService"))
+            if chatService then
+                chatService:InternalSendSystemMessage("[SERVER] " .. message, "All")
+            end
+        end)
+    end
+end
+
 -- Scroll frame for UI
 local function setupScrollFrame()
     if ScrollFrame then
@@ -1094,10 +1123,17 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Fly Hack
+-- Fly Hack with enhanced chat commands
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     updateButtonState("Fly", enabled)
+    
+    -- Send server message based on state
+    if enabled then
+        sendServerMessage("SUCCESS ACTIVATED FLY")
+    else
+        sendServerMessage("SUCCESS DEACTIVATED FLY")
+    end
     
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "flyKeyBegan", "flyKeyEnded"}
     for _, connName in ipairs(flyConnections) do
@@ -1548,7 +1584,7 @@ function Movement.resetStates()
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
         "fastFall", "sprint", "sprintInput", "sprintToggle", "flyKeyBegan", 
         "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton",
-        "swim", "chat"
+        "swim", "chat", "chatInput", "chatMonitor"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1708,7 +1744,107 @@ function Movement.updateReferences(newHumanoid, newRootPart)
         }) do
             updateButtonState(featureName, enabled)
         end
+        
+        -- Setup chat commands again after respawn
+        setupChatCommands()
     end)
+end
+
+-- Enhanced chat command setup
+local function setupChatCommands()
+    -- Clean up existing chat connections
+    if connections.chat then
+        connections.chat:Disconnect()
+        connections.chat = nil
+    end
+    if connections.chatInput then
+        connections.chatInput:Disconnect()
+        connections.chatInput = nil
+    end
+    if connections.chatMonitor then
+        connections.chatMonitor:Disconnect()
+        connections.chatMonitor = nil
+    end
+    
+    -- Primary method: Direct chat connection
+    if player and player.Chatted then
+        connections.chat = player.Chatted:Connect(function(message)
+            local lowerMessage = string.lower(message)
+            if lowerMessage == "/fly" then
+                print("Chat command detected: /fly")
+                toggleFly(true)
+            elseif lowerMessage == "/unfly" then
+                print("Chat command detected: /unfly") 
+                toggleFly(false)
+            end
+        end)
+    end
+    
+    -- Alternative method: Monitor chat service
+    local success, chatService = pcall(function()
+        return game:GetService("Chat")
+    end)
+    
+    if success and chatService then
+        connections.chatMonitor = chatService.Chatted:Connect(function(part, message, color)
+            if part and part.Parent == player.Character and part.Parent:FindFirstChild("Head") then
+                local lowerMessage = string.lower(message)
+                if lowerMessage == "/fly" then
+                    print("Chat monitor detected: /fly")
+                    toggleFly(true)
+                elseif lowerMessage == "/unfly" then
+                    print("Chat monitor detected: /unfly")
+                    toggleFly(false)
+                end
+            end
+        end)
+    end
+    
+    -- Backup method: Text service monitoring
+    local TextService = game:GetService("TextService")
+    if TextService then
+        local lastMessage = ""
+        local lastTime = 0
+        
+        connections.chatInput = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if input.KeyCode == Enum.KeyCode.Return and not gameProcessed then
+                task.wait(0.1) -- Small delay to catch the message
+                local currentTime = tick()
+                
+                -- Try to detect if /fly or /unfly was typed
+                task.spawn(function()
+                    task.wait(0.2)
+                    local gui = player.PlayerGui:FindFirstChild("Chat")
+                    if gui then
+                        local chatFrame = gui:FindFirstChild("Frame")
+                        if chatFrame then
+                            local chatChannelParentFrame = chatFrame:FindFirstChild("ChatChannelParentFrame")
+                            if chatChannelParentFrame then
+                                local frame = chatChannelParentFrame:FindFirstChild("Frame_MessageLogDisplay")
+                                if frame then
+                                    local scrollingFrame = frame:FindFirstChild("Scroller")
+                                    if scrollingFrame then
+                                        local lastChild = scrollingFrame:GetChildren()
+                                        if #lastChild > 0 then
+                                            local lastMsg = lastChild[#lastChild]
+                                            if lastMsg and lastMsg:FindFirstChild("TextLabel") then
+                                                local msgText = lastMsg.TextLabel.Text
+                                                if string.find(string.lower(msgText), "/fly") then
+                                                    toggleFly(true)
+                                                elseif string.find(string.lower(msgText), "/unfly") then
+                                                    toggleFly(false)
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        end)
+    end
 end
 
 -- Initialize module
@@ -1776,15 +1912,7 @@ function Movement.init(deps)
     createMobileControls()
     createSettingsGUI()
     setupScrollFrame()
-    
-    -- Add chat command listener for /fly and /unfly
-    connections.chat = player.Chatted:Connect(function(message)
-        if message:lower() == "/fly" then
-            toggleFly(true)
-        elseif message:lower() == "/unfly" then
-            toggleFly(false)
-        end
-    end)
+    setupChatCommands()
     
     return true
 end
@@ -1830,6 +1958,11 @@ function Movement.debug()
     print("  SprintSpeed:", getSettingValue("SprintSpeed", "not found"))
     print("  FlySpeed:", getSettingValue("FlySpeed", "not found"))
     print("  SwimSpeed:", getSettingValue("SwimSpeed", "not found"))
+    
+    print("Chat Commands:")
+    print("  chat connection:", connections.chat ~= nil)
+    print("  chatInput connection:", connections.chatInput ~= nil)
+    print("  chatMonitor connection:", connections.chatMonitor ~= nil)
 end
 
 -- Cleanup function
