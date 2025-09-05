@@ -1124,195 +1124,270 @@ local function toggleWallClimb(enabled)
 end
 
 -- Fly Hack with enhanced chat commands
+-- Simple and reliable fly implementation
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     updateButtonState("Fly", enabled)
     
-    -- Send server message based on state
+    -- Send message
     if enabled then
-        sendServerMessage("SUCCESS ACTIVATED FLY")
+        sendServerMessage("FLY ACTIVATED")
+        print("=== ACTIVATING FLY ===")
     else
-        sendServerMessage("SUCCESS DEACTIVATED FLY")
+        sendServerMessage("FLY DEACTIVATED") 
+        print("=== DEACTIVATING FLY ===")
     end
     
+    -- Clean up ALL fly connections first
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "flyKeyBegan", "flyKeyEnded"}
     for _, connName in ipairs(flyConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
             connections[connName] = nil
+            print("Disconnected:", connName)
         end
     end
     
-    flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
-    
+    -- Destroy existing fly objects
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
+        print("Destroyed flyBodyVelocity")
     end
     if flyBodyGyro then
-        flyBodyGyro:Destroy()
+        flyBodyGyro:Destroy() 
         flyBodyGyro = nil
+        print("Destroyed flyBodyGyro")
     end
     
     if enabled then
-        task.spawn(function()
-            task.wait(0.1)
-            if not refreshReferences() or not rootPart or not humanoid then
-                Movement.flyEnabled = false
-                updateButtonState("Fly", false)
-                return
-            end
-            
-            humanoid.PlatformStand = true
-            flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-            flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-            flyBodyVelocity.Parent = rootPart
-            
-            flyBodyGyro = Instance.new("BodyGyro")
-            flyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-            flyBodyGyro.P = 9e4
-            flyBodyGyro.Parent = rootPart
-            
-            if flyJoystickFrame then flyJoystickFrame.Visible = true end
-            if flyUpButton then flyUpButton.Visible = true end
-            if flyDownButton then flyDownButton.Visible = true end
-            
-            connections.fly = RunService.Heartbeat:Connect(function()
-                if not Movement.flyEnabled then return end
-                if not refreshReferences() or not rootPart then return end
-                
-                if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
-                    if flyBodyVelocity then flyBodyVelocity:Destroy() end
-                    flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                    flyBodyVelocity.Parent = rootPart
-                end
-                
-                if not flyBodyGyro or flyBodyGyro.Parent ~= rootPart then
-                    if flyBodyGyro then flyBodyGyro:Destroy() end
-                    flyBodyGyro = Instance.new("BodyGyro")
-                    flyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                    flyBodyGyro.P = 9e4
-                    flyBodyGyro.Parent = rootPart
-                end
-                
-                local camera = Workspace.CurrentCamera
-                if not camera then return end
-                
-                flyBodyGyro.CFrame = camera.CFrame
-                
-                local flyDirection = Vector3.new(0, 0, 0)
-                local verticalInput = 0
-                flySpeed = getSettingValue("FlySpeed", 50)
-                
-                if joystickDelta.Magnitude > 0.05 then
-                    local forward = camera.CFrame.LookVector
-                    local right = camera.CFrame.RightVector
-                    
-                    forward = Vector3.new(forward.X, 0, forward.Z).Unit
-                    right = Vector3.new(right.X, 0, right.Z).Unit
-                    
-                    flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
-                end
-                
-                local keyDirection = Vector3.new(0, 0, 0)
-                local flatLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
-                local flatRight = Vector3.new(camera.CFrame.RightVector.X, 0, camera.CFrame.RightVector.Z).Unit
-                
-                if flyKeys.forward then keyDirection = keyDirection + flatLook end
-                if flyKeys.back then keyDirection = keyDirection - flatLook end
-                if flyKeys.left then keyDirection = keyDirection - flatRight end
-                if flyKeys.right then keyDirection = keyDirection + flatRight end
-                if flyKeys.up then keyDirection = keyDirection + Vector3.new(0, 1, 0) end
-                if flyKeys.down then keyDirection = keyDirection + Vector3.new(0, -1, 0) end
-                
-                flyDirection = flyDirection + keyDirection
-                
-                if flyUpButton and flyUpButton.BackgroundTransparency == 0.1 then
-                    verticalInput = 1
-                elseif flyDownButton and flyDownButton.BackgroundTransparency == 0.1 then
-                    verticalInput = -1
-                end
-                
-                if verticalInput ~= 0 then
-                    flyDirection = flyDirection + Vector3.new(0, verticalInput, 0)
-                end
-                
-                if flyDirection.Magnitude > 0 then
-                    flyBodyVelocity.Velocity = flyDirection.Unit * flySpeed
-                else
-                    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                end
-            end)
-            
-            connections.flyInput = UserInputService.InputChanged:Connect(handleFlyJoystick)
-            connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
-            connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
-            
-            if flyUpButton then
-                connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
-                    flyUpButton.BackgroundTransparency = 0.1
-                end)
-                connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
-                    flyUpButton.BackgroundTransparency = 0.5
-                end)
-            end
-            
-            if flyDownButton then
-                connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
-                    flyDownButton.BackgroundTransparency = 0.1
-                end)
-                connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
-                    flyDownButton.BackgroundTransparency = 0.5
-                end)
-            end
-            
-            connections.flyKeyBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-                if gameProcessed or not Movement.flyEnabled then return end
-                local kc = input.KeyCode
-                if kc == Enum.KeyCode.W then flyKeys.forward = true
-                elseif kc == Enum.KeyCode.S then flyKeys.back = true
-                elseif kc == Enum.KeyCode.A then flyKeys.left = true
-                elseif kc == Enum.KeyCode.D then flyKeys.right = true
-                elseif kc == Enum.KeyCode.Space then flyKeys.up = true
-                elseif kc == Enum.KeyCode.LeftShift then flyKeys.down = true
-                end
-            end)
-            
-            connections.flyKeyEnded = UserInputService.InputEnded:Connect(function(input)
-                local kc = input.KeyCode
-                if kc == Enum.KeyCode.W then flyKeys.forward = false
-                elseif kc == Enum.KeyCode.S then flyKeys.back = false
-                elseif kc == Enum.KeyCode.A then flyKeys.left = false
-                elseif kc == Enum.KeyCode.D then flyKeys.right = false
-                elseif kc == Enum.KeyCode.Space then flyKeys.up = false
-                elseif kc == Enum.KeyCode.LeftShift then flyKeys.down = false
-                end
-            end)
-        end)
-    else
-        if humanoid then
-            humanoid.PlatformStand = false
-        end
-        if flyJoystickFrame then 
-            flyJoystickFrame.Visible = false
-            flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
-        end
-        if flyUpButton then 
-            flyUpButton.Visible = false
-            flyUpButton.BackgroundTransparency = 0.5
-        end
-        if flyDownButton then 
-            flyDownButton.Visible = false
-            flyDownButton.BackgroundTransparency = 0.5
+        -- Force refresh references
+        if not refreshReferences() then
+            print("ERROR: Cannot refresh references!")
+            Movement.flyEnabled = false
+            updateButtonState("Fly", false)
+            return
         end
         
-        joystickDelta = Vector2.new(0, 0)
-        isTouchingJoystick = false
-        joystickTouchId = nil
+        print("Player:", player.Name)
+        print("Character:", player.Character and player.Character.Name or "nil")
+        print("Humanoid:", humanoid and "found" or "nil")
+        print("RootPart:", rootPart and "found" or "nil")
+        
+        if not humanoid or not rootPart then
+            print("ERROR: Missing humanoid or rootPart!")
+            Movement.flyEnabled = false
+            updateButtonState("Fly", false)
+            return
+        end
+        
+        -- SIMPLE FLY SETUP - no delays, direct approach
+        print("Setting PlatformStand...")
+        humanoid.PlatformStand = true
+        
+        print("Creating BodyVelocity...")
+        flyBodyVelocity = Instance.new("BodyVelocity")
+        flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        flyBodyVelocity.Parent = rootPart
+        
+        print("Creating BodyGyro...")  
+        flyBodyGyro = Instance.new("BodyGyro")
+        flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        flyBodyGyro.P = 10000
+        flyBodyGyro.CFrame = rootPart.CFrame
+        flyBodyGyro.Parent = rootPart
+        
+        -- Show controls
+        if flyJoystickFrame then flyJoystickFrame.Visible = true end
+        if flyUpButton then flyUpButton.Visible = true end  
+        if flyDownButton then flyDownButton.Visible = true end
+        
+        print("Starting fly heartbeat...")
+        
+        -- SIMPLE FLY LOOP
+        connections.fly = RunService.Heartbeat:Connect(function()
+            if not Movement.flyEnabled then 
+                print("Fly disabled, stopping loop")
+                return 
+            end
+            
+            -- Check if objects still exist
+            if not flyBodyVelocity or not flyBodyVelocity.Parent then
+                print("BodyVelocity missing, recreating...")
+                flyBodyVelocity = Instance.new("BodyVelocity")
+                flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                flyBodyVelocity.Parent = rootPart
+            end
+            
+            if not flyBodyGyro or not flyBodyGyro.Parent then
+                print("BodyGyro missing, recreating...")
+                flyBodyGyro = Instance.new("BodyGyro")
+                flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                flyBodyGyro.P = 10000
+                flyBodyGyro.CFrame = rootPart.CFrame
+                flyBodyGyro.Parent = rootPart
+            end
+            
+            local camera = Workspace.CurrentCamera
+            if not camera then return end
+            
+            -- Set rotation to camera
+            flyBodyGyro.CFrame = camera.CFrame
+            
+            -- Get fly speed
+            local speed = getSettingValue("FlySpeed", 50)
+            local moveVector = Vector3.new(0, 0, 0)
+            
+            -- Keyboard controls - SIMPLE
+            if flyKeys.forward then 
+                moveVector = moveVector + camera.CFrame.LookVector
+            end
+            if flyKeys.back then
+                moveVector = moveVector - camera.CFrame.LookVector  
+            end
+            if flyKeys.left then
+                moveVector = moveVector - camera.CFrame.RightVector
+            end
+            if flyKeys.right then
+                moveVector = moveVector + camera.CFrame.RightVector
+            end
+            if flyKeys.up then
+                moveVector = moveVector + Vector3.new(0, 1, 0)
+            end
+            if flyKeys.down then
+                moveVector = moveVector - Vector3.new(0, 1, 0)
+            end
+            
+            -- Apply movement
+            flyBodyVelocity.Velocity = moveVector * speed
+        end)
+        
+        -- SIMPLE KEYBOARD INPUT
+        connections.flyKeyBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            
+            if input.KeyCode == Enum.KeyCode.W then
+                flyKeys.forward = true
+                print("W pressed")
+            elseif input.KeyCode == Enum.KeyCode.S then  
+                flyKeys.back = true
+                print("S pressed")
+            elseif input.KeyCode == Enum.KeyCode.A then
+                flyKeys.left = true
+                print("A pressed")
+            elseif input.KeyCode == Enum.KeyCode.D then
+                flyKeys.right = true  
+                print("D pressed")
+            elseif input.KeyCode == Enum.KeyCode.Space then
+                flyKeys.up = true
+                print("Space pressed")
+            elseif input.KeyCode == Enum.KeyCode.LeftShift then
+                flyKeys.down = true
+                print("Shift pressed") 
+            end
+        end)
+        
+        connections.flyKeyEnded = UserInputService.InputEnded:Connect(function(input)
+            if input.KeyCode == Enum.KeyCode.W then
+                flyKeys.forward = false
+            elseif input.KeyCode == Enum.KeyCode.S then
+                flyKeys.back = false  
+            elseif input.KeyCode == Enum.KeyCode.A then
+                flyKeys.left = false
+            elseif input.KeyCode == Enum.KeyCode.D then
+                flyKeys.right = false
+            elseif input.KeyCode == Enum.KeyCode.Space then
+                flyKeys.up = false
+            elseif input.KeyCode == Enum.KeyCode.LeftShift then
+                flyKeys.down = false
+            end
+        end)
+        
+        print("FLY SETUP COMPLETE!")
+        
+    else
+        -- DISABLE FLY
+        print("Disabling fly...")
+        
+        if humanoid then
+            humanoid.PlatformStand = false
+            print("PlatformStand disabled")
+        end
+        
+        -- Hide controls
+        if flyJoystickFrame then flyJoystickFrame.Visible = false end
+        if flyUpButton then flyUpButton.Visible = false end
+        if flyDownButton then flyDownButton.Visible = false end
+        
+        -- Reset keys
+        flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
+        
+        print("FLY DISABLED!")
     end
+end
+
+-- SIMPLE CHAT COMMANDS - Fixed
+local function setupChatCommands()
+    print("=== SETTING UP CHAT COMMANDS ===")
+    
+    -- Clean existing
+    if connections.chatCommand then
+        connections.chatCommand:Disconnect()
+        connections.chatCommand = nil
+    end
+    
+    -- Simple player chat connection
+    if player and player.Chatted then
+        connections.chatCommand = player.Chatted:Connect(function(message)
+            print("CHAT MESSAGE:", message)
+            
+            local cmd = string.lower(string.gsub(message, "%s+", ""))
+            print("PROCESSED COMMAND:", cmd)
+            
+            if cmd == "/fly" then
+                print("CHAT: Activating fly!")
+                toggleFly(true)
+            elseif cmd == "/unfly" then
+                print("CHAT: Deactivating fly!")  
+                toggleFly(false)
+            end
+        end)
+        print("Chat commands connected successfully!")
+    else
+        print("ERROR: Could not connect to player.Chatted")
+    end
+end
+
+-- Test function to manually trigger fly
+function Movement.testFly()
+    print("=== MANUAL FLY TEST ===")
+    toggleFly(not Movement.flyEnabled)
+end
+
+-- Debug function specifically for fly
+function Movement.debugFly()
+    print("=== FLY DEBUG ===")
+    print("flyEnabled:", Movement.flyEnabled)
+    print("flyBodyVelocity:", flyBodyVelocity ~= nil)
+    print("flyBodyGyro:", flyBodyGyro ~= nil) 
+    print("player:", player ~= nil)
+    print("humanoid:", humanoid ~= nil)
+    print("rootPart:", rootPart ~= nil)
+    print("fly connection:", connections.fly ~= nil)
+    print("chat connection:", connections.chatCommand ~= nil)
+    
+    if flyBodyVelocity then
+        print("BodyVelocity parent:", flyBodyVelocity.Parent and flyBodyVelocity.Parent.Name or "nil")
+        print("BodyVelocity velocity:", flyBodyVelocity.Velocity)
+    end
+    
+    if flyBodyGyro then  
+        print("BodyGyro parent:", flyBodyGyro.Parent and flyBodyGyro.Parent.Name or "nil")
+    end
+    
+    print("flyKeys:", flyKeys)
 end
 
 -- NoClip
