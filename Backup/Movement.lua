@@ -25,6 +25,7 @@ Movement.boostEnabled = false
 Movement.slowFallEnabled = false
 Movement.fastFallEnabled = false
 Movement.sprintEnabled = false
+Movement.isSprinting = false
 
 -- Default values
 Movement.defaultWalkSpeed = 16
@@ -455,16 +456,14 @@ local function toggleSprint(enabled)
             sprintButton.Visible = true
         end
         
-        local isSprinting = false
-        
         connections.sprintInput = sprintButton.MouseButton1Click:Connect(function()
             if refreshReferences() and humanoid then
-                isSprinting = not isSprinting
-                sprintButton.BackgroundColor3 = isSprinting and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
-                sprintButton.BackgroundTransparency = isSprinting and 0.2 or 0.5
-                sprintButton.Text = isSprinting and "SPRINTING!" or "SPRINT"
+                Movement.isSprinting = not Movement.isSprinting
+                sprintButton.BackgroundColor3 = Movement.isSprinting and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+                sprintButton.BackgroundTransparency = Movement.isSprinting and 0.2 or 0.5
+                sprintButton.Text = Movement.isSprinting and "SPRINTING!" or "SPRINT"
                 
-                humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
+                humanoid.WalkSpeed = Movement.isSprinting and getSettingValue("SprintSpeed", 300) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
             end
         end)
         
@@ -472,12 +471,12 @@ local function toggleSprint(enabled)
             if gameProcessed or not Movement.sprintEnabled then return end
             if input.KeyCode == Enum.KeyCode.LeftShift then
                 if refreshReferences() and humanoid then
-                    isSprinting = not isSprinting
-                    sprintButton.BackgroundColor3 = isSprinting and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
-                    sprintButton.BackgroundTransparency = isSprinting and 0.2 or 0.5
-                    sprintButton.Text = isSprinting and "SPRINTING!" or "SPRINT"
+                    Movement.isSprinting = not Movement.isSprinting
+                    sprintButton.BackgroundColor3 = Movement.isSprinting and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+                    sprintButton.BackgroundTransparency = Movement.isSprinting and 0.2 or 0.5
+                    sprintButton.Text = Movement.isSprinting and "SPRINTING!" or "SPRINT"
                     
-                    humanoid.WalkSpeed = isSprinting and getSettingValue("SprintSpeed", 80) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
+                    humanoid.WalkSpeed = Movement.isSprinting and getSettingValue("SprintSpeed", 300) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
                 end
             end
         end)
@@ -491,6 +490,7 @@ local function toggleSprint(enabled)
         if refreshReferences() and humanoid then
             humanoid.WalkSpeed = Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed
         end
+        Movement.isSprinting = false
     end
 end
 
@@ -926,7 +926,7 @@ local function toggleInfiniteJump(enabled)
             if not Movement.infiniteJumpEnabled then return end
             if not refreshReferences() or not humanoid or not rootPart then return end
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            rootPart.Velocity = Vector3.new(rootPart.Velocity.X, getSettingValue("JumpHeight", 50) * 2, rootPart.Velocity.Z)
+            rootPart.Velocity = Vector3.new(rootPart.Velocity.X, getSettingValue("JumpHeight", 50) * 3, rootPart.Velocity.Z)
         end)
     end
 end
@@ -1241,6 +1241,10 @@ local function toggleWalkOnWater(enabled)
         connections.walkOnWater = nil
     end
     
+    if refreshReferences() and humanoid then
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, not enabled)
+    end
+    
     if enabled then
         connections.walkOnWater = RunService.Heartbeat:Connect(function()
             if not Movement.walkOnWaterEnabled then return end
@@ -1350,29 +1354,30 @@ local function toggleSwim(enabled)
     Movement.swimEnabled = enabled
     updateButtonState("Super Swim", enabled)
     
-    local function applySwim()
-        if refreshReferences() and humanoid then
-            if enabled then
-                pcall(function()
-                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
-                    humanoid.WalkSpeed = 50
-                end)
-            else
-                pcall(function()
-                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
-                    humanoid.WalkSpeed = Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed
-                end)
-            end
-            return true
-        end
-        return false
+    if connections.swim then
+        connections.swim:Disconnect()
+        connections.swim = nil
     end
     
-    if not applySwim() then
-        task.spawn(function()
-            task.wait(0.1)
-            applySwim()
+    if enabled then
+        connections.swim = RunService.Heartbeat:Connect(function()
+            if not Movement.swimEnabled then return end
+            if not refreshReferences() or not humanoid then return end
+            
+            local baseSpeed = Movement.defaultWalkSpeed
+            if Movement.speedEnabled then baseSpeed = getSettingValue("WalkSpeed", 50) end
+            if Movement.isSprinting then baseSpeed = getSettingValue("SprintSpeed", 300) end
+            
+            if humanoid:GetState() == Enum.HumanoidStateType.Swimming then
+                humanoid.WalkSpeed = getSettingValue("SwimSpeed", 100)
+            else
+                humanoid.WalkSpeed = baseSpeed
+            end
         end)
+    else
+        if refreshReferences() and humanoid then
+            humanoid.WalkSpeed = Movement.defaultWalkSpeed
+        end
     end
 end
 
@@ -1420,6 +1425,51 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Slow Fall", toggleSlowFall)
     createToggleButton("Fast Fall", toggleFastFall)
     createToggleButton("Sprint", toggleSprint)
+    
+    local yOffset = 0
+    local function createInput(name, settingName, default)
+        local label = Instance.new("TextLabel")
+        label.Name = name .. "Label"
+        label.Size = UDim2.new(1, 0, 0, 30)
+        label.Position = UDim2.new(0, 0, 0, yOffset)
+        label.BackgroundTransparency = 1
+        label.Text = name .. ":"
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 14
+        label.Parent = ScrollFrame
+        yOffset = yOffset + 30
+
+        local input = Instance.new("TextBox")
+        input.Name = name .. "Input"
+        input.Size = UDim2.new(1, 0, 0, 30)
+        input.Position = UDim2.new(0, 0, 0, yOffset)
+        input.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        input.TextColor3 = Color3.fromRGB(255, 255, 255)
+        input.Text = tostring(getSettingValue(settingName, default))
+        input.Font = Enum.Font.Gotham
+        input.TextSize = 14
+        input.Parent = ScrollFrame
+        input.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                local val = tonumber(input.Text)
+                if val then
+                    settings[settingName] = settings[settingName] or {}
+                    settings[settingName].value = val
+                    Movement.applySettings()
+                end
+            end
+        end)
+        yOffset = yOffset + 40
+    end
+    
+    createInput("Speed", "WalkSpeed", 50)
+    createInput("Jump", "JumpHeight", 50)
+    createInput("Sprint Speed", "SprintSpeed", 300)
+    createInput("Fly Speed", "FlySpeed", 50)
+    createInput("Swim Speed", "SwimSpeed", 100)
+    
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 20)
 end
 
 -- Enhanced reset function with proper state sync
@@ -1464,7 +1514,8 @@ function Movement.resetStates()
         "floatBegan", "floatEnded", "antiFling", "rewind", "rewindInput", 
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
         "fastFall", "sprint", "sprintInput", "sprintToggle", "flyKeyBegan", 
-        "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton"
+        "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton",
+        "swim"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1694,6 +1745,7 @@ function Movement.init(deps)
     Movement.slowFallEnabled = false
     Movement.fastFallEnabled = false
     Movement.sprintEnabled = false
+    Movement.isSprinting = false
     
     Movement.jumpCount = 0
     joystickDelta = Vector2.new(0, 0)
