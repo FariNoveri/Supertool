@@ -1,13 +1,12 @@
--- Movement.lua - Fixed version with proper state synchronization and settings integration
--- Movement-related features for MinimalHackGUI by Fari Noveri, mobile-friendly with robust respawn handling
+-- Movement.lua - Updated version with enhanced GUI and chat command for SpeedHack, JumpHack, and Fly
 
--- Dependencies: These must be passed from mainloader.lua
+-- Dependencies
 local Players, RunService, Workspace, UserInputService, humanoid, rootPart, connections, buttonStates, ScrollFrame, ScreenGui, settings, player
 
 -- Initialize module
 local Movement = {}
 
--- Movement states (these need to persist across respawns)
+-- Movement states
 Movement.speedEnabled = false
 Movement.jumpEnabled = false
 Movement.flyEnabled = false
@@ -33,7 +32,7 @@ Movement.defaultJumpPower = 50
 Movement.defaultJumpHeight = 7.2
 Movement.defaultGravity = 196.2
 Movement.jumpCount = 0
-Movement.maxJumps = 1  -- Fixed for proper double jump (1 air jump)
+Movement.maxJumps = 1
 
 -- Fly controls
 local flySpeed = 50
@@ -55,18 +54,21 @@ local floatKeys = {forward = false, back = false, left = false, right = false}
 
 -- New features variables
 local positionHistory = {}
-local maxHistorySize = 180 -- 6 seconds at 30 fps
+local maxHistorySize = 180
 local isBoostActive = false
-
--- State synchronization flag
 local isRespawning = false
+
+-- New settings GUI
+local settingsFrame
+local speedInput, jumpInput, sprintInput, flyInput, swimInput
+local applyButton, closeButton
 
 -- Scroll frame for UI
 local function setupScrollFrame()
     if ScrollFrame then
         ScrollFrame.ScrollingEnabled = true
         ScrollFrame.ScrollBarThickness = 8
-        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
+        ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 600)
     end
 end
 
@@ -97,7 +99,7 @@ local function getSettingValue(settingName, defaultValue)
     return defaultValue
 end
 
--- Function to update button visual state
+-- Update button visual state
 local function updateButtonState(featureName, enabled)
     if buttonStates and buttonStates[featureName] then
         local button = buttonStates[featureName]
@@ -108,7 +110,112 @@ local function updateButtonState(featureName, enabled)
     end
 end
 
--- Create virtual controls with better positioning and white style
+-- Create settings GUI for SpeedHack, JumpHack, and Fly
+local function createSettingsGUI()
+    if settingsFrame then settingsFrame:Destroy() end
+
+    settingsFrame = Instance.new("Frame")
+    settingsFrame.Name = "SettingsFrame"
+    settingsFrame.Size = UDim2.new(0, 200, 0, 300)
+    settingsFrame.Position = UDim2.new(0.5, -100, 0.5, -150)
+    settingsFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    settingsFrame.BorderSizePixel = 0
+    settingsFrame.Visible = false
+    settingsFrame.ZIndex = 15
+    settingsFrame.Parent = ScreenGui or player.PlayerGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.1, 0)
+    corner.Parent = settingsFrame
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.BackgroundTransparency = 1
+    title.Text = "Movement Settings"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
+    title.Parent = settingsFrame
+
+    local function createInputField(name, settingName, defaultValue, yOffset)
+        local label = Instance.new("TextLabel")
+        label.Name = name .. "Label"
+        label.Size = UDim2.new(1, -10, 0, 20)
+        label.Position = UDim2.new(0, 5, 0, yOffset)
+        label.BackgroundTransparency = 1
+        label.Text = name .. ":"
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = settingsFrame
+
+        local input = Instance.new("TextBox")
+        input.Name = name .. "Input"
+        input.Size = UDim2.new(1, -10, 0, 30)
+        input.Position = UDim2.new(0, 5, 0, yOffset + 20)
+        input.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        input.TextColor3 = Color3.fromRGB(255, 255, 255)
+        input.Text = tostring(getSettingValue(settingName, defaultValue))
+        input.Font = Enum.Font.Gotham
+        input.TextSize = 14
+        input.Parent = settingsFrame
+
+        return input
+    end
+
+    speedInput = createInputField("Speed", "WalkSpeed", 50, 40)
+    jumpInput = createInputField("Jump", "JumpHeight", 50, 90)
+    sprintInput = createInputField("Sprint", "SprintSpeed", 300, 140)
+    flyInput = createInputField("Fly", "FlySpeed", 50, 190)
+    swimInput = createInputField("Swim", "SwimSpeed", 100, 240)
+
+    applyButton = Instance.new("TextButton")
+    applyButton.Name = "ApplyButton"
+    applyButton.Size = UDim2.new(0.45, -10, 0, 30)
+    applyButton.Position = UDim2.new(0, 5, 1, -35)
+    applyButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+    applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    applyButton.Text = "Apply"
+    applyButton.Font = Enum.Font.GothamBold
+    applyButton.TextSize = 14
+    applyButton.Parent = settingsFrame
+
+    closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0.45, -10, 0, 30)
+    closeButton.Position = UDim2.new(0.55, 5, 1, -35)
+    closeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.Text = "Close"
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.TextSize = 14
+    closeButton.Parent = settingsFrame
+
+    applyButton.MouseButton1Click:Connect(function()
+        local speedVal = tonumber(speedInput.Text)
+        local jumpVal = tonumber(jumpInput.Text)
+        local sprintVal = tonumber(sprintInput.Text)
+        local flyVal = tonumber(flyInput.Text)
+        local swimVal = tonumber(swimInput.Text)
+
+        if speedVal then settings.WalkSpeed = {value = speedVal} end
+        if jumpVal then settings.JumpHeight = {value = jumpVal} end
+        if sprintVal then settings.SprintSpeed = {value = sprintVal} end
+        if flyVal then settings.FlySpeed = {value = flyVal} end
+        if swimVal then settings.SwimSpeed = {value = swimVal} end
+
+        Movement.applySettings()
+        settingsFrame.Visible = false
+    end)
+
+    closeButton.MouseButton1Click:Connect(function()
+        settingsFrame.Visible = false
+    end)
+end
+
+-- Create mobile controls
 local function createMobileControls()
     print("Creating mobile controls")
     
@@ -226,7 +333,7 @@ local function createMobileControls()
     wallClimbCorner.Parent = wallClimbButton
 end
 
--- Improved joystick handling for float (horizontal only)
+-- Joystick handling for float
 local function handleFloatJoystick(input, gameProcessed)
     if not Movement.floatEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
         return 
@@ -253,7 +360,6 @@ local function handleFloatJoystick(input, gameProcessed)
             
             flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
             joystickDelta = delta / maxRadius
-            
         elseif input.UserInputState == Enum.UserInputState.End and input == joystickTouchId then
             isTouchingJoystick = false
             joystickTouchId = nil
@@ -263,7 +369,7 @@ local function handleFloatJoystick(input, gameProcessed)
     end
 end
 
--- Regular joystick handling for fly (with vertical movement)
+-- Joystick handling for fly
 local function handleFlyJoystick(input, gameProcessed)
     if not Movement.flyEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
         return 
@@ -290,7 +396,6 @@ local function handleFlyJoystick(input, gameProcessed)
             
             flyJoystickKnob.Position = UDim2.new(0.5, delta.X - 20, 0.5, delta.Y - 20)
             joystickDelta = delta / maxRadius
-            
         elseif input.UserInputState == Enum.UserInputState.End and input == joystickTouchId then
             isTouchingJoystick = false
             joystickTouchId = nil
@@ -300,18 +405,16 @@ local function handleFlyJoystick(input, gameProcessed)
     end
 end
 
--- Speed Hack with settings integration and proper sync
+-- Speed Hack with settings integration
 local function toggleSpeed(enabled)
     Movement.speedEnabled = enabled
     updateButtonState("Speed Hack", enabled)
-    print("Speed Hack:", enabled)
     
     if enabled then
         local function applySpeed()
             if refreshReferences() and humanoid then
                 local speedValue = getSettingValue("WalkSpeed", 50)
                 humanoid.WalkSpeed = speedValue
-                print("Applied speed:", speedValue)
                 return true
             end
             return false
@@ -330,11 +433,10 @@ local function toggleSpeed(enabled)
     end
 end
 
--- Jump Hack with settings integration and proper sync
+-- Jump Hack with settings integration
 local function toggleJump(enabled)
     Movement.jumpEnabled = enabled
     updateButtonState("Jump Hack", enabled)
-    print("Jump Hack:", enabled)
     
     if enabled then
         local function applyJump()
@@ -345,7 +447,6 @@ local function toggleJump(enabled)
                 else
                     humanoid.JumpPower = jumpValue * 2.4
                 end
-                print("Applied jump:", jumpValue)
                 return true
             end
             return false
@@ -368,11 +469,10 @@ local function toggleJump(enabled)
     end
 end
 
--- Slow Fall with no fall damage (automatic)
+-- Slow Fall
 local function toggleSlowFall(enabled)
     Movement.slowFallEnabled = enabled
     updateButtonState("Slow Fall", enabled)
-    print("Slow Fall:", enabled)
     
     if connections.slowFall then
         connections.slowFall:Disconnect()
@@ -400,11 +500,10 @@ local function toggleSlowFall(enabled)
     end
 end
 
--- Fast Fall with no fall damage (automatic)
+-- Fast Fall
 local function toggleFastFall(enabled)
     Movement.fastFallEnabled = enabled
     updateButtonState("Fast Fall", enabled)
-    print("Fast Fall:", enabled)
     
     if connections.fastFall then
         connections.fastFall:Disconnect()
@@ -432,11 +531,10 @@ local function toggleFastFall(enabled)
     end
 end
 
--- Sprint feature with toggle and proper sync
+-- Sprint feature
 local function toggleSprint(enabled)
     Movement.sprintEnabled = enabled
     updateButtonState("Sprint", enabled)
-    print("Sprint:", enabled)
     
     if connections.sprint then
         connections.sprint:Disconnect()
@@ -494,11 +592,10 @@ local function toggleSprint(enabled)
     end
 end
 
--- Fixed Float Hack (full horizontal movement) with proper sync and PC controls
+-- Float Hack
 local function toggleFloat(enabled)
     Movement.floatEnabled = enabled
     updateButtonState("Float", enabled)
-    print("Float toggle:", enabled)
     
     local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded", "floatKeyBegan", "floatKeyEnded"}
     for _, connName in ipairs(floatConnections) do
@@ -519,7 +616,6 @@ local function toggleFloat(enabled)
         task.spawn(function()
             task.wait(0.1)
             if not refreshReferences() or not rootPart or not humanoid then
-                print("Failed to get references for float")
                 Movement.floatEnabled = false
                 updateButtonState("Float", false)
                 return
@@ -551,7 +647,6 @@ local function toggleFloat(enabled)
                 local floatDirection = Vector3.new(0, 0, 0)
                 flySpeed = getSettingValue("FlySpeed", 50)
                 
-                -- Joystick input
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
                     local right = camera.CFrame.RightVector
@@ -562,7 +657,6 @@ local function toggleFloat(enabled)
                     floatDirection = floatDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
                 end
                 
-                -- Keyboard input
                 local keyDirection = Vector3.new(0, 0, 0)
                 local flatLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
                 local flatRight = Vector3.new(camera.CFrame.RightVector.X, 0, camera.CFrame.RightVector.Z).Unit
@@ -619,7 +713,7 @@ local function toggleFloat(enabled)
     end
 end
 
--- Boost (NOS-like effect, no cooldown) with proper sync
+-- Boost
 local function createBoostButton()
     if boostButton then boostButton:Destroy() end
     
@@ -736,7 +830,7 @@ local function toggleBoost(enabled)
     end
 end
 
--- Improved Rewind Movement (follows exact path with rotations) with proper sync
+-- Rewind Movement
 local function createRewindButton()
     if rewindButton then rewindButton:Destroy() end
     
@@ -798,21 +892,20 @@ local function toggleRewind(enabled)
         end)
         
         local function performRewind()
-            if #positionHistory < 30 then return end -- Minimum 1 second of history
+            if #positionHistory < 30 then return end
             
             rewindButton.BackgroundTransparency = 0.1
             rewindButton.Text = "REWINDING"
             
-            -- Reverse the history to play it backwards
             local reversedHistory = {}
             for i = #positionHistory, 1, -1 do
                 table.insert(reversedHistory, positionHistory[i])
             end
             
             local startTime = tick()
-            local rewindDuration = 2 -- Rewind takes 2 seconds to play back 6 seconds
+            local rewindDuration = 2
             local historyLength = #reversedHistory
-            local frameInterval = 6 / historyLength -- Time per frame in history
+            local frameInterval = 6 / historyLength
             
             local rewindConnection
             rewindConnection = RunService.Heartbeat:Connect(function()
@@ -824,18 +917,14 @@ local function toggleRewind(enabled)
                 local elapsed = tick() - startTime
                 local progress = math.min(elapsed / rewindDuration, 1)
                 
-                -- Calculate which frame to display
                 local frameIndex = math.floor(progress * (historyLength - 1)) + 1
                 if frameIndex > historyLength then
                     frameIndex = historyLength
                 end
                 
-                -- Get the target CFrame
                 local targetCFrame = reversedHistory[frameIndex].cframe
-                
-                -- Apply the exact CFrame (position and rotation)
                 rootPart.CFrame = targetCFrame
-                rootPart.Velocity = Vector3.new(0, 0, 0) -- Prevent momentum
+                rootPart.Velocity = Vector3.new(0, 0, 0)
                 
                 if progress >= 1 then
                     rewindConnection:Disconnect()
@@ -843,7 +932,6 @@ local function toggleRewind(enabled)
                         rewindButton.BackgroundTransparency = 0.5
                         rewindButton.Text = "⏪"
                     end
-                    -- Clear history after rewind to start fresh
                     positionHistory = {}
                 end
             end)
@@ -871,11 +959,10 @@ local function toggleRewind(enabled)
     end
 end
 
--- Moon Gravity with proper sync and respawn handling
+-- Moon Gravity
 local function toggleMoonGravity(enabled)
     Movement.moonGravityEnabled = enabled
     updateButtonState("Moon Gravity", enabled)
-    print("Moon Gravity:", enabled)
     
     if enabled then
         Workspace.Gravity = Movement.defaultGravity / 6
@@ -884,7 +971,7 @@ local function toggleMoonGravity(enabled)
     end
 end
 
--- Double Jump with improved respawn handling and sync
+-- Double Jump
 local function toggleDoubleJump(enabled)
     Movement.doubleJumpEnabled = enabled
     updateButtonState("Double Jump", enabled)
@@ -911,7 +998,7 @@ local function toggleDoubleJump(enabled)
     end
 end
 
--- Infinite Jump with improved speed and sync
+-- Infinite Jump
 local function toggleInfiniteJump(enabled)
     Movement.infiniteJumpEnabled = enabled
     updateButtonState("Infinite Jump", enabled)
@@ -931,7 +1018,7 @@ local function toggleInfiniteJump(enabled)
     end
 end
 
--- Wall Climbing with improved respawn handling and sync, added mobile button
+-- Wall Climbing
 local function toggleWallClimb(enabled)
     Movement.wallClimbEnabled = enabled
     updateButtonState("Wall Climb", enabled)
@@ -989,7 +1076,6 @@ local function toggleWallClimb(enabled)
             if input.KeyCode == Enum.KeyCode.C then
                 Movement.wallClimbEnabled = not Movement.wallClimbEnabled
                 updateButtonState("Wall Climb", Movement.wallClimbEnabled)
-                print("Wall Climb:", Movement.wallClimbEnabled)
             end
         end)
         
@@ -998,7 +1084,6 @@ local function toggleWallClimb(enabled)
             updateButtonState("Wall Climb", Movement.wallClimbEnabled)
             wallClimbButton.BackgroundColor3 = Movement.wallClimbEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
             wallClimbButton.Text = Movement.wallClimbEnabled and "CLIMBING" or "CLIMB"
-            print("Wall Climb (mobile):", Movement.wallClimbEnabled)
         end)
     else
         if wallClimbButton then
@@ -1009,11 +1094,10 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Fly Hack with settings integration, proper sync, and PC controls (modified to Infinite Yield style with BodyGyro)
+-- Fly Hack
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     updateButtonState("Fly", enabled)
-    print("Fly toggle:", enabled)
     
     local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "flyKeyBegan", "flyKeyEnded"}
     for _, connName in ipairs(flyConnections) do
@@ -1038,7 +1122,6 @@ local function toggleFly(enabled)
         task.spawn(function()
             task.wait(0.1)
             if not refreshReferences() or not rootPart or not humanoid then
-                print("Failed to get rootPart for fly")
                 Movement.flyEnabled = false
                 updateButtonState("Fly", false)
                 return
@@ -1088,7 +1171,6 @@ local function toggleFly(enabled)
                 local verticalInput = 0
                 flySpeed = getSettingValue("FlySpeed", 50)
                 
-                -- Joystick input
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
                     local right = camera.CFrame.RightVector
@@ -1099,7 +1181,6 @@ local function toggleFly(enabled)
                     flyDirection = flyDirection + (right * joystickDelta.X) + (forward * -joystickDelta.Y)
                 end
                 
-                -- Keyboard input
                 local keyDirection = Vector3.new(0, 0, 0)
                 local flatLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
                 local flatRight = Vector3.new(camera.CFrame.RightVector.X, 0, camera.CFrame.RightVector.Z).Unit
@@ -1113,7 +1194,6 @@ local function toggleFly(enabled)
                 
                 flyDirection = flyDirection + keyDirection
                 
-                -- Button input for vertical (mobile)
                 if flyUpButton and flyUpButton.BackgroundTransparency == 0.1 then
                     verticalInput = 1
                 elseif flyDownButton and flyDownButton.BackgroundTransparency == 0.1 then
@@ -1199,7 +1279,7 @@ local function toggleFly(enabled)
     end
 end
 
--- NoClip with better respawn handling and sync
+-- NoClip
 local function toggleNoclip(enabled)
     Movement.noclipEnabled = enabled
     updateButtonState("NoClip", enabled)
@@ -1231,7 +1311,7 @@ local function toggleNoclip(enabled)
     end
 end
 
--- Walk on Water with better respawn handling and sync, increased reliability
+-- Walk on Water
 local function toggleWalkOnWater(enabled)
     Movement.walkOnWaterEnabled = enabled
     updateButtonState("Walk on Water", enabled)
@@ -1254,7 +1334,7 @@ local function toggleWalkOnWater(enabled)
             raycastParams.FilterDescendantsInstances = {player.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
             
-            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -20, 0), raycastParams)  -- Increased ray length
+            local raycast = Workspace:Raycast(rootPart.Position, Vector3.new(0, -20, 0), raycastParams)
             if raycast and raycast.Instance and (raycast.Instance.Material == Enum.Material.Water or string.lower(raycast.Instance.Name):find("water")) then
                 local waterWalkPart = rootPart:FindFirstChild("WaterWalkPart")
                 if not waterWalkPart then
@@ -1263,8 +1343,8 @@ local function toggleWalkOnWater(enabled)
                     waterWalkPart.Anchored = true
                     waterWalkPart.CanCollide = true
                     waterWalkPart.Transparency = 1
-                    waterWalkPart.Size = Vector3.new(15, 0.2, 15)  -- Larger size
-                    waterWalkPart.Parent = rootPart  -- Parent to rootPart to follow player
+                    waterWalkPart.Size = Vector3.new(15, 0.2, 15)
+                    waterWalkPart.Parent = rootPart
                 end
                 waterWalkPart.Position = Vector3.new(rootPart.Position.X, raycast.Position.Y + 0.1, rootPart.Position.Z)
             end
@@ -1272,7 +1352,7 @@ local function toggleWalkOnWater(enabled)
     end
 end
 
--- Enhanced Player NoClip with Anti-Fling Protection and sync
+-- Player NoClip
 local function togglePlayerNoclip(enabled)
     Movement.playerNoclipEnabled = enabled
     updateButtonState("Player NoClip", enabled)
@@ -1349,7 +1429,7 @@ local function togglePlayerNoclip(enabled)
     end
 end
 
--- Super Swim with better reference handling and sync
+-- Super Swim
 local function toggleSwim(enabled)
     Movement.swimEnabled = enabled
     updateButtonState("Super Swim", enabled)
@@ -1381,10 +1461,8 @@ local function toggleSwim(enabled)
     end
 end
 
--- Function to apply current settings to active features
+-- Apply settings
 function Movement.applySettings()
-    print("Applying Movement settings")
-    
     if Movement.speedEnabled then
         toggleSpeed(true)
     end
@@ -1398,15 +1476,15 @@ function Movement.applySettings()
     end
 end
 
--- Function to create buttons for Movement features
+-- Load movement buttons with new settings button
 function Movement.loadMovementButtons(createButton, createToggleButton)
-    print("Loading movement buttons")
     if not createButton or not createToggleButton then
         warn("Error: createButton or createToggleButton not provided!")
         return
     end
     
     setupScrollFrame()
+    createSettingsGUI()
     
     createToggleButton("Speed Hack", toggleSpeed)
     createToggleButton("Jump Hack", toggleJump)
@@ -1426,57 +1504,15 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Fast Fall", toggleFastFall)
     createToggleButton("Sprint", toggleSprint)
     
-    local yOffset = 0
-    local function createInput(name, settingName, default)
-        local label = Instance.new("TextLabel")
-        label.Name = name .. "Label"
-        label.Size = UDim2.new(1, 0, 0, 30)
-        label.Position = UDim2.new(0, 0, 0, yOffset)
-        label.BackgroundTransparency = 1
-        label.Text = name .. ":"
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.Font = Enum.Font.Gotham
-        label.TextSize = 14
-        label.Parent = ScrollFrame
-        yOffset = yOffset + 30
-
-        local input = Instance.new("TextBox")
-        input.Name = name .. "Input"
-        input.Size = UDim2.new(1, 0, 0, 30)
-        input.Position = UDim2.new(0, 0, 0, yOffset)
-        input.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        input.TextColor3 = Color3.fromRGB(255, 255, 255)
-        input.Text = tostring(getSettingValue(settingName, default))
-        input.Font = Enum.Font.Gotham
-        input.TextSize = 14
-        input.Parent = ScrollFrame
-        input.FocusLost:Connect(function(enterPressed)
-            if enterPressed then
-                local val = tonumber(input.Text)
-                if val then
-                    settings[settingName] = settings[settingName] or {}
-                    settings[settingName].value = val
-                    Movement.applySettings()
-                end
-            end
-        end)
-        yOffset = yOffset + 40
-    end
-    
-    createInput("Speed", "WalkSpeed", 50)
-    createInput("Jump", "JumpHeight", 50)
-    createInput("Sprint Speed", "SprintSpeed", 300)
-    createInput("Fly Speed", "FlySpeed", 50)
-    createInput("Swim Speed", "SwimSpeed", 100)
-    
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 20)
+    local settingsButton = createButton("Settings", function()
+        settingsFrame.Visible = not settingsFrame.Visible
+    end)
+    settingsButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    settingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 end
 
--- Enhanced reset function with proper state sync
+-- Reset states
 function Movement.resetStates()
-    print("Resetting Movement states")
-    
-    -- Store current states before reset
     local currentStates = {
         speedEnabled = Movement.speedEnabled,
         jumpEnabled = Movement.jumpEnabled,
@@ -1497,16 +1533,13 @@ function Movement.resetStates()
         sprintEnabled = Movement.sprintEnabled
     }
     
-    -- Deactivate moon gravity on death as per request
     if currentStates.moonGravityEnabled then
         Movement.moonGravityEnabled = false
         updateButtonState("Moon Gravity", false)
     end
     
-    -- Set flag to indicate we're resetting (not actually disabling)
     isRespawning = true
     
-    -- Disconnect all connections
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
         "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", 
@@ -1515,7 +1548,7 @@ function Movement.resetStates()
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
         "fastFall", "sprint", "sprintInput", "sprintToggle", "flyKeyBegan", 
         "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton",
-        "swim"
+        "swim", "chat"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1533,15 +1566,6 @@ function Movement.resetStates()
         flyBodyGyro = nil
     end
     
-    -- Reset temporary variables but keep feature states
-    Movement.jumpCount = 0
-    joystickDelta = Vector2.new(0, 0)
-    isTouchingJoystick = false
-    joystickTouchId = nil
-    positionHistory = {}
-    isBoostActive = false
-    
-    -- Reset physics if character exists
     if refreshReferences() then
         if humanoid then
             humanoid.WalkSpeed = Movement.defaultWalkSpeed
@@ -1566,10 +1590,8 @@ function Movement.resetStates()
         end
     end
     
-    -- Always reset workspace gravity on reset
     Workspace.Gravity = Movement.defaultGravity
     
-    -- Reset player collisions
     for _, otherPlayer in pairs(Players:GetPlayers()) do
         if otherPlayer ~= player and otherPlayer.Character then
             for _, part in pairs(otherPlayer.Character:GetChildren()) do
@@ -1580,7 +1602,6 @@ function Movement.resetStates()
         end
     end
     
-    -- Hide mobile controls temporarily
     if flyJoystickFrame then
         flyJoystickFrame.Visible = false
         flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
@@ -1610,15 +1631,17 @@ function Movement.resetStates()
         wallClimbButton.Text = "CLIMB"
     end
     
-    -- Clear respawn flag
+    Movement.jumpCount = 0
+    joystickDelta = Vector2.new(0, 0)
+    isTouchingJoystick = false
+    joystickTouchId = nil
+    positionHistory = {}
+    isBoostActive = false
     isRespawning = false
-    
-    print("Movement reset complete, states preserved for reapplication")
 end
 
--- Enhanced reference update function with proper state restoration
+-- Update references
 function Movement.updateReferences(newHumanoid, newRootPart)
-    print("Updating Movement references")
     humanoid = newHumanoid
     rootPart = newRootPart
     
@@ -1630,14 +1653,13 @@ function Movement.updateReferences(newHumanoid, newRootPart)
             Movement.defaultJumpPower = humanoid.JumpPower or 50
         end
     end
-    
     Movement.defaultGravity = Workspace.Gravity or 196.2
     
     createMobileControls()
+    createSettingsGUI()
     
-    -- Reapply all active states after a short delay
     task.spawn(function()
-        task.wait(0.3) -- Give time for character to fully load
+        task.wait(0.3)
         
         local statesToReapply = {
             {Movement.speedEnabled, toggleSpeed, "Speed"},
@@ -1661,12 +1683,10 @@ function Movement.updateReferences(newHumanoid, newRootPart)
         
         for _, state in ipairs(statesToReapply) do
             if state[1] then
-                print("Reapplying", state[3])
                 state[2](true)
             end
         end
         
-        -- Update all button states to reflect current status
         for featureName, enabled in pairs({
             ["Speed Hack"] = Movement.speedEnabled,
             ["Jump Hack"] = Movement.jumpEnabled,
@@ -1691,9 +1711,8 @@ function Movement.updateReferences(newHumanoid, newRootPart)
     end)
 end
 
--- Function to set dependencies
+-- Initialize module
 function Movement.init(deps)
-    print("Initializing Movement module")
     if not deps then
         warn("Error: No dependencies provided!")
         return false
@@ -1727,7 +1746,6 @@ function Movement.init(deps)
     end
     Movement.defaultGravity = Workspace.Gravity or 196.2
     
-    -- Initialize all states as false (they will be set by button toggles)
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
     Movement.flyEnabled = false
@@ -1751,21 +1769,27 @@ function Movement.init(deps)
     joystickDelta = Vector2.new(0, 0)
     isTouchingJoystick = false
     joystickTouchId = nil
-    
     positionHistory = {}
     isBoostActive = false
     isRespawning = false
     
     createMobileControls()
+    createSettingsGUI()
     setupScrollFrame()
     
-    print("Movement module initialized successfully")
+    -- Add chat command listener for /fly
+    connections.chat = player.Chatted:Connect(function(message)
+        if message:lower() == "/fly" then
+            toggleFly(not Movement.flyEnabled)
+        end
+    end)
+    
     return true
 end
 
--- Enhanced debug function
+-- Debug function
 function Movement.debug()
-    print("=== Enhanced Movement Module Debug Info ===")
+    print("=== Movement Module Debug Info ===")
     print("Movement Features:")
     print("  speedEnabled:", Movement.speedEnabled)
     print("  jumpEnabled:", Movement.jumpEnabled)
@@ -1785,61 +1809,29 @@ function Movement.debug()
     print("  fastFallEnabled:", Movement.fastFallEnabled)
     print("  sprintEnabled:", Movement.sprintEnabled)
     
-    print("New Feature Data:")
-    print("  positionHistory entries:", #positionHistory)
-    print("  isBoostActive:", isBoostActive)
-    print("  isRespawning:", isRespawning)
+    print("Settings GUI:")
+    print("  settingsFrame:", settingsFrame ~= nil)
+    print("  speedInput:", speedInput ~= nil)
+    print("  jumpInput:", jumpInput ~= nil)
+    print("  sprintInput:", sprintInput ~= nil)
+    print("  flyInput:", flyInput ~= nil)
+    print("  swimInput:", swimInput ~= nil)
     
     print("References:")
     print("  player:", player ~= nil)
     print("  humanoid:", humanoid ~= nil)
     print("  rootPart:", rootPart ~= nil)
-    print("  player.Character:", player and player.Character ~= nil)
     
-    print("Settings Integration:")
-    if settings then
-        print("  WalkSpeed setting:", getSettingValue("WalkSpeed", "not found"))
-        print("  JumpHeight setting:", getSettingValue("JumpHeight", "not found"))
-        print("  FlySpeed setting:", getSettingValue("FlySpeed", "not found"))
-        print("  SprintSpeed setting:", getSettingValue("SprintSpeed", "not found"))
-    else
-        print("  settings: nil")
-    end
-    
-    print("UI Elements:")
-    print("  flyJoystickFrame:", flyJoystickFrame ~= nil)
-    print("  flyUpButton:", flyUpButton ~= nil)
-    print("  flyDownButton:", flyDownButton ~= nil)
-    print("  rewindButton:", rewindButton ~= nil)
-    print("  boostButton:", boostButton ~= nil)
-    print("  sprintButton:", sprintButton ~= nil)
-    
-    print("Button States:")
-    if buttonStates then
-        for name, button in pairs(buttonStates) do
-            if button and button.Parent then
-                local isGreen = button.BackgroundColor3 == Color3.fromRGB(0, 255, 0)
-                print("  " .. name .. ": " .. (isGreen and "ACTIVE" or "INACTIVE"))
-            end
-        end
-    end
-    
-    print("Active Connections:")
-    local activeConnections = 0
-    for name, conn in pairs(connections) do
-        if conn and conn.Connected then
-            activeConnections = activeConnections + 1
-            print("  " .. name .. ": connected")
-        end
-    end
-    print("  Total active:", activeConnections)
-    print("===============================================")
+    print("Settings Values:")
+    print("  WalkSpeed:", getSettingValue("WalkSpeed", "not found"))
+    print("  JumpHeight:", getSettingValue("JumpHeight", "not found"))
+    print("  SprintSpeed:", getSettingValue("SprintSpeed", "not found"))
+    print("  FlySpeed:", getSettingValue("FlySpeed", "not found"))
+    print("  SwimSpeed:", getSettingValue("SwimSpeed", "not found"))
 end
 
--- Add cleanup function for when module is unloaded
+-- Cleanup function
 function Movement.cleanup()
-    print("Cleaning up Movement module")
-    
     Movement.resetStates()
     
     if flyJoystickFrame then flyJoystickFrame:Destroy() end
@@ -1849,6 +1841,7 @@ function Movement.cleanup()
     if boostButton then boostButton:Destroy() end
     if sprintButton then sprintButton:Destroy() end
     if wallClimbButton then wallClimbButton:Destroy() end
+    if settingsFrame then settingsFrame:Destroy() end
     
     flyJoystickFrame = nil
     flyJoystickKnob = nil
@@ -1860,12 +1853,11 @@ function Movement.cleanup()
     boostButton = nil
     sprintButton = nil
     wallClimbButton = nil
+    settingsFrame = nil
     
     positionHistory = {}
     isBoostActive = false
     isRespawning = false
-    
-    print("Movement module cleaned up")
 end
 
 return Movement
