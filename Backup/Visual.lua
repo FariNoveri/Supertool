@@ -20,12 +20,15 @@ Visual.ultraLowDetailEnabled = false
 Visual.espEnabled = false
 Visual.hideAllNicknames = false
 Visual.hideOwnNickname = false
+Visual.hideAllCharactersExceptSelf = false
+Visual.hideSelfCharacter = false
 Visual.currentTimeMode = "normal"
 Visual.joystickDelta = Vector2.new(0, 0)
 Visual.character = nil
 local flashlight
 local pointLight
 local espHighlights = {}
+local characterTransparencies = {}
 local defaultLightingSettings = {}
 local joystickFrame
 local joystickKnob
@@ -337,6 +340,85 @@ local function toggleHideOwnNickname(enabled)
             end
         end
     end
+end
+
+-- Hide Character function
+local function hideCharacter(targetPlayer, hide)
+    local char = targetPlayer.Character
+    if not char then return end
+    if hide then
+        if not characterTransparencies[targetPlayer] then
+            characterTransparencies[targetPlayer] = {}
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") or part:IsA("MeshPart") then
+                    characterTransparencies[targetPlayer][part] = part.Transparency
+                    part.Transparency = 1
+                end
+            end
+        end
+    else
+        if characterTransparencies[targetPlayer] then
+            for part, trans in pairs(characterTransparencies[targetPlayer]) do
+                if part and part.Parent then
+                    part.Transparency = trans
+                end
+            end
+            characterTransparencies[targetPlayer] = nil
+        end
+    end
+end
+
+-- Toggle Hide All Characters Except Self
+local function toggleHideAllCharactersExceptSelf(enabled)
+    Visual.hideAllCharactersExceptSelf = enabled
+    print("Hide All Characters Except Self:", enabled)
+    
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        if targetPlayer ~= player then
+            hideCharacter(targetPlayer, enabled)
+        end
+    end
+    
+    if enabled then
+        if connections.hideAllCharsPlayerAdded then
+            connections.hideAllCharsPlayerAdded:Disconnect()
+        end
+        connections.hideAllCharsPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
+            if newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function(char)
+                    task.wait(0.3)
+                    if Visual.hideAllCharactersExceptSelf then
+                        hideCharacter(newPlayer, true)
+                    end
+                end)
+            end
+        end)
+        
+        if connections.hideAllCharsPlayerRemoving then
+            connections.hideAllCharsPlayerRemoving:Disconnect()
+        end
+        connections.hideAllCharsPlayerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            if characterTransparencies[leavingPlayer] then
+                characterTransparencies[leavingPlayer] = nil
+            end
+        end)
+    else
+        if connections.hideAllCharsPlayerAdded then
+            connections.hideAllCharsPlayerAdded:Disconnect()
+            connections.hideAllCharsPlayerAdded = nil
+        end
+        if connections.hideAllCharsPlayerRemoving then
+            connections.hideAllCharsPlayerRemoving:Disconnect()
+            connections.hideAllCharsPlayerRemoving = nil
+        end
+    end
+end
+
+-- Toggle Hide Self Character
+local function toggleHideSelfCharacter(enabled)
+    Visual.hideSelfCharacter = enabled
+    print("Hide Self Character:", enabled)
+    hideCharacter(player, enabled)
 end
 
 -- NoClipCamera - Camera passes through objects while maintaining normal movement
@@ -689,7 +771,7 @@ local function toggleFreecam(enabled)
                 if not Visual.freecamEnabled or processed then return end
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                    if UserInputService:IsMouseButtonPressed(Enum.MouseButton.Right) then
                         local sensitivity = 0.003
                         freecamYaw = freecamYaw - input.Delta.X * sensitivity
                         freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
@@ -1518,6 +1600,17 @@ function Visual.init(deps)
         warn("Warning: ScreenGui is nil, joystick cannot be created")
     end
     
+    -- Add freecam keybind
+    if connections.keybindFreecam then
+        connections.keybindFreecam:Disconnect()
+    end
+    connections.keybindFreecam = UserInputService.InputBegan:Connect(function(input, processed)
+        if processed then return end
+        if input.KeyCode == Enum.KeyCode.C and (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)) then
+            toggleFreecam(not Visual.freecamEnabled)
+        end
+    end)
+    
     print("Visual module initialized successfully")
     return true
 end
@@ -1612,46 +1705,26 @@ local function createColorPicker(name, initialColor, onColorChanged)
     gridLayout.Parent = presetFrame
 
     local presetColors = {
-        Color3.fromRGB(255, 255, 255), -- White
-        Color3.fromRGB(0, 0, 0), -- Black
-        Color3.fromRGB(128, 128, 128), -- Gray
-        Color3.fromRGB(192, 192, 192), -- Silver
-        Color3.fromRGB(255, 0, 0), -- Red
-        Color3.fromRGB(139, 0, 0), -- Dark Red
-        Color3.fromRGB(128, 0, 0), -- Maroon
-        Color3.fromRGB(255, 165, 0), -- Orange
-        Color3.fromRGB(255, 69, 0), -- Red-Orange
-        Color3.fromRGB(255, 140, 0), -- Dark Orange
-        Color3.fromRGB(255, 255, 0), -- Yellow
-        Color3.fromRGB(255, 215, 0), -- Gold
-        Color3.fromRGB(218, 165, 32), -- Goldenrod
-        Color3.fromRGB(0, 255, 0), -- Green
-        Color3.fromRGB(0, 128, 0), -- Dark Green
-        Color3.fromRGB(50, 205, 50), -- Lime
-        Color3.fromRGB(0, 255, 127), -- Spring Green
-        Color3.fromRGB(128, 128, 0), -- Olive
-        Color3.fromRGB(0, 0, 255), -- Blue
-        Color3.fromRGB(0, 0, 139), -- Dark Blue
-        Color3.fromRGB(0, 0, 128), -- Navy
-        Color3.fromRGB(0, 255, 255), -- Cyan
-        Color3.fromRGB(0, 139, 139), -- Dark Cyan
-        Color3.fromRGB(64, 224, 208), -- Turquoise
-        Color3.fromRGB(0, 128, 128), -- Teal
-        Color3.fromRGB(255, 0, 255), -- Magenta
-        Color3.fromRGB(139, 0, 139), -- Dark Magenta
-        Color3.fromRGB(128, 0, 128), -- Purple
-        Color3.fromRGB(75, 0, 130), -- Indigo
-        Color3.fromRGB(238, 130, 238), -- Violet
-        Color3.fromRGB(255, 192, 203), -- Pink
-        Color3.fromRGB(255, 105, 180), -- Hot Pink
-        Color3.fromRGB(255, 20, 147), -- Deep Pink
-        Color3.fromRGB(165, 42, 42), -- Brown
-        Color3.fromRGB(139, 69, 19), -- Saddle Brown
-        Color3.fromRGB(210, 105, 30), -- Chocolate
-        Color3.fromRGB(255, 228, 196), -- Bisque
-        Color3.fromRGB(255, 222, 173), -- Navajo White
-        Color3.fromRGB(250, 250, 210), -- Light Goldenrod Yellow
-        Color3.fromRGB(240, 230, 140) -- Khaki
+        Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 0, 0), Color3.fromRGB(128, 128, 128), Color3.fromRGB(192, 192, 192),
+        Color3.fromRGB(255, 0, 0), Color3.fromRGB(139, 0, 0), Color3.fromRGB(128, 0, 0), Color3.fromRGB(200, 0, 0), Color3.fromRGB(150, 0, 0), Color3.fromRGB(100, 0, 0),
+        Color3.fromRGB(255, 165, 0), Color3.fromRGB(255, 69, 0), Color3.fromRGB(255, 140, 0), Color3.fromRGB(200, 100, 0), Color3.fromRGB(150, 75, 0),
+        Color3.fromRGB(255, 255, 0), Color3.fromRGB(255, 215, 0), Color3.fromRGB(218, 165, 32), Color3.fromRGB(200, 200, 0), Color3.fromRGB(150, 150, 0),
+        Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 128, 0), Color3.fromRGB(50, 205, 50), Color3.fromRGB(0, 255, 127), Color3.fromRGB(128, 128, 0), Color3.fromRGB(0, 200, 0), Color3.fromRGB(0, 150, 0),
+        Color3.fromRGB(0, 0, 255), Color3.fromRGB(0, 0, 139), Color3.fromRGB(0, 0, 128), Color3.fromRGB(0, 0, 200), Color3.fromRGB(0, 0, 150),
+        Color3.fromRGB(0, 255, 255), Color3.fromRGB(0, 139, 139), Color3.fromRGB(64, 224, 208), Color3.fromRGB(0, 128, 128), Color3.fromRGB(0, 200, 200),
+        Color3.fromRGB(255, 0, 255), Color3.fromRGB(139, 0, 139), Color3.fromRGB(128, 0, 128), Color3.fromRGB(75, 0, 130), Color3.fromRGB(238, 130, 238), Color3.fromRGB(200, 0, 200),
+        Color3.fromRGB(255, 192, 203), Color3.fromRGB(255, 105, 180), Color3.fromRGB(255, 20, 147), Color3.fromRGB(200, 100, 150), Color3.fromRGB(150, 75, 100),
+        Color3.fromRGB(165, 42, 42), Color3.fromRGB(139, 69, 19), Color3.fromRGB(210, 105, 30), Color3.fromRGB(255, 228, 196), Color3.fromRGB(255, 222, 173),
+        Color3.fromRGB(250, 250, 210), Color3.fromRGB(240, 230, 140), Color3.fromRGB(200, 200, 200), Color3.fromRGB(150, 150, 150), Color3.fromRGB(100, 100, 100),
+        Color3.fromRGB(255, 100, 100), Color3.fromRGB(255, 200, 200), Color3.fromRGB(100, 255, 100), Color3.fromRGB(200, 255, 200), Color3.fromRGB(100, 100, 255), Color3.fromRGB(200, 200, 255),
+        Color3.fromRGB(255, 255, 100), Color3.fromRGB(255, 100, 255), Color3.fromRGB(100, 255, 255), Color3.fromRGB(255, 150, 150), Color3.fromRGB(150, 255, 150), Color3.fromRGB(150, 150, 255),
+        Color3.fromRGB(255, 255, 150), Color3.fromRGB(255, 150, 255), Color3.fromRGB(150, 255, 255), Color3.fromRGB(200, 150, 100), Color3.fromRGB(100, 200, 150), Color3.fromRGB(150, 100, 200),
+        Color3.fromRGB(50, 50, 50), Color3.fromRGB(75, 75, 75), Color3.fromRGB(100, 100, 100), Color3.fromRGB(125, 125, 125), Color3.fromRGB(150, 150, 150),
+        Color3.fromRGB(175, 175, 175), Color3.fromRGB(200, 200, 200), Color3.fromRGB(225, 225, 225), Color3.fromRGB(250, 250, 250), Color3.fromRGB(240, 240, 240),
+        Color3.fromRGB(230, 230, 230), Color3.fromRGB(220, 220, 220), Color3.fromRGB(210, 210, 210), Color3.fromRGB(190, 190, 190), Color3.fromRGB(180, 180, 180),
+        Color3.fromRGB(170, 170, 170), Color3.fromRGB(160, 160, 160), Color3.fromRGB(140, 140, 140), Color3.fromRGB(130, 130, 130), Color3.fromRGB(110, 110, 110),
+        Color3.fromRGB(90, 90, 90), Color3.fromRGB(80, 80, 80), Color3.fromRGB(70, 70, 70), Color3.fromRGB(60, 60, 60), Color3.fromRGB(40, 40, 40),
+        Color3.fromRGB(30, 30, 30), Color3.fromRGB(20, 20, 20), Color3.fromRGB(10, 10, 10)
     }
 
     for _, color in ipairs(presetColors) do
@@ -1729,6 +1802,8 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("ESP", toggleESP)
     createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
     createToggleButton("Hide Own Nickname", toggleHideOwnNickname)
+    createToggleButton("Hide All Characters Except Self", toggleHideAllCharactersExceptSelf)
+    createToggleButton("Hide Self Character", toggleHideSelfCharacter)
     createToggleButton("Morning Mode", toggleMorning)
     createToggleButton("Day Mode", toggleDay)
     createToggleButton("Evening Mode", toggleEvening)
@@ -1782,6 +1857,8 @@ Visual.toggleUltraLowDetail = toggleUltraLowDetail
 Visual.toggleESP = toggleESP
 Visual.toggleHideAllNicknames = toggleHideAllNicknames
 Visual.toggleHideOwnNickname = toggleHideOwnNickname
+Visual.toggleHideAllCharactersExceptSelf = toggleHideAllCharactersExceptSelf
+Visual.toggleHideSelfCharacter = toggleHideSelfCharacter
 Visual.toggleSelfHighlight = toggleSelfHighlight
 Visual.setTimeMode = setTimeMode
 
@@ -1796,6 +1873,8 @@ function Visual.resetStates()
     Visual.espEnabled = false
     Visual.hideAllNicknames = false
     Visual.hideOwnNickname = false
+    Visual.hideAllCharactersExceptSelf = false
+    Visual.hideSelfCharacter = false
     Visual.currentTimeMode = "normal"
     Visual.selfHighlightEnabled = false
     
@@ -1818,6 +1897,8 @@ function Visual.resetStates()
     toggleESP(false)
     toggleHideAllNicknames(false)
     toggleHideOwnNickname(false)
+    toggleHideAllCharactersExceptSelf(false)
+    toggleHideSelfCharacter(false)
     toggleSelfHighlight(false)
     setTimeMode("normal")
     
@@ -1851,6 +1932,8 @@ function Visual.updateReferences()
     local wasEspEnabled = Visual.espEnabled
     local wasHideAllNicknames = Visual.hideAllNicknames
     local wasHideOwnNickname = Visual.hideOwnNickname
+    local wasHideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf
+    local wasHideSelfCharacter = Visual.hideSelfCharacter
     local wasSelfHighlightEnabled = Visual.selfHighlightEnabled
     local currentTimeMode = Visual.currentTimeMode
     
@@ -1893,6 +1976,14 @@ function Visual.updateReferences()
     if wasHideOwnNickname then
         print("Re-enabling Hide Own Nickname after respawn")
         toggleHideOwnNickname(true)
+    end
+    if wasHideAllCharactersExceptSelf then
+        print("Re-enabling Hide All Characters Except Self after respawn")
+        toggleHideAllCharactersExceptSelf(true)
+    end
+    if wasHideSelfCharacter then
+        print("Re-enabling Hide Self Character after respawn")
+        toggleHideSelfCharacter(true)
     end
     if wasSelfHighlightEnabled then
         print("Re-enabling Self Highlight after respawn")
@@ -1943,6 +2034,9 @@ function Visual.cleanup()
         end
     end
     espHighlights = {}
+    
+    -- Clean up character transparencies
+    characterTransparencies = {}
     
     -- Clean up foliage states
     foliageStates = {}
@@ -2014,6 +2108,8 @@ function Visual.getState()
         espEnabled = Visual.espEnabled,
         hideAllNicknames = Visual.hideAllNicknames,
         hideOwnNickname = Visual.hideOwnNickname,
+        hideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf,
+        hideSelfCharacter = Visual.hideSelfCharacter,
         selfHighlightEnabled = Visual.selfHighlightEnabled,
         currentTimeMode = Visual.currentTimeMode,
         selfHighlightColor = Visual.selfHighlightColor
