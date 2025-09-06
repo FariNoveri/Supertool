@@ -1608,7 +1608,7 @@ function Player.updatePlayerList()
 end
 
 -- Teleport to Player
-local function teleportToPlayer(targetPlayer)
+local function teleportToPlayer(targetPlayer, direction)
     if not targetPlayer then
         print("Cannot teleport: No player selected")
         return
@@ -1626,7 +1626,20 @@ local function teleportToPlayer(targetPlayer)
             end
             
             local targetPosition = targetPlayer.Character.HumanoidRootPart.CFrame
-            local newPosition = targetPosition * CFrame.new(0, 0, 5)
+            local offset = Vector3.new(0, 0, 5) -- default back
+            if direction then
+                direction = direction:lower()
+                if direction == "front" then
+                    offset = Vector3.new(0, 0, -5)
+                elseif direction == "back" then
+                    offset = Vector3.new(0, 0, 5)
+                elseif direction == "left" then
+                    offset = Vector3.new(-5, 0, 0)
+                elseif direction == "right" then
+                    offset = Vector3.new(5, 0, 0)
+                end
+            end
+            local newPosition = targetPosition * CFrame.new(offset)
             Player.rootPart.CFrame = newPosition
             print("Teleported to: " .. targetPlayer.Name)
         else
@@ -2271,18 +2284,20 @@ local function initConnections()
         
         local args = message:sub(2):split(" ")
         local cmd = args[1]:lower()
-        local arg1 = args[2]
         
         if cmd == "tp" then
-            local target = findPlayer(arg1)
+            local targetName = args[2]
+            local direction = args[3]
+            local target = findPlayer(targetName)
             if target then
-                teleportToPlayer(target)
-                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success tp to " .. target.Name})
+                teleportToPlayer(target, direction)
+                local dirText = direction and " " .. direction or ""
+                StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success tp to " .. target.Name .. dirText})
             else
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed tp: player not found"})
             end
         elseif cmd == "bring" then
-            local target = findPlayer(arg1)
+            local target = findPlayer(args[2])
             if target then
                 bringPlayer(target)
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success bring " .. target.Name})
@@ -2290,7 +2305,7 @@ local function initConnections()
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed bring: player not found"})
             end
         elseif cmd == "follow" then
-            local target = findPlayer(arg1)
+            local target = findPlayer(args[2])
             if target then
                 toggleFollowPlayer(target)
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success follow " .. target.Name})
@@ -2301,7 +2316,7 @@ local function initConnections()
             stopFollowing()
             StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success stop follow"})
         elseif cmd == "fling" then
-            local target = findPlayer(arg1)
+            local target = findPlayer(args[2])
             if target then
                 flingPlayer(target)
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success fling " .. target.Name})
@@ -2309,7 +2324,7 @@ local function initConnections()
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed fling: player not found"})
             end
         elseif cmd == "freeze" then
-            local target = findPlayer(arg1)
+            local target = findPlayer(args[2])
             if target then
                 freezePlayer(target)
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success freeze " .. target.Name})
@@ -2317,7 +2332,7 @@ local function initConnections()
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed freeze: player not found"})
             end
         elseif cmd == "unfreeze" then
-            local target = findPlayer(arg1)
+            local target = findPlayer(args[2])
             if target then
                 unfreezePlayer(target)
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] success unfreeze " .. target.Name})
