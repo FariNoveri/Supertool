@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION
+-- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION WITH CREDIT
 
 -- Services
 local Players = game:GetService("Players")
@@ -156,7 +156,7 @@ FeatureLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- Categories
+-- Categories - ADDED CREDIT CATEGORY
 local categories = {
     {name = "Movement", order = 1},
     {name = "Player", order = 2},
@@ -165,16 +165,18 @@ local categories = {
     {name = "Utility", order = 5},
     {name = "AntiAdmin", order = 6},
     {name = "Settings", order = 7},
-    {name = "Info", order = 8}
+    {name = "Info", order = 8},
+    {name = "Credit", order = 9}  -- NEW CREDIT CATEGORY
 }
 
 local categoryFrames = {}
 local isMinimized = false
 
--- Load modules - FIXED VERSION
+-- Load modules - FIXED VERSION WITH CREDIT MODULE
 local modules = {}
 local modulesLoaded = {}
 
+-- ADDED CREDIT MODULE URL
 local moduleURLs = {
     Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Movement.lua",
     Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Player.lua",
@@ -183,7 +185,8 @@ local moduleURLs = {
     Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Utility.lua",
     AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/AntiAdmin.lua",
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Settings.lua",
-    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua"
+    Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua",
+    Credit = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Credit.lua"  -- NEW CREDIT URL
 }
 
 -- PROPER MODULE LOADING FUNCTION
@@ -473,7 +476,7 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     return result
 end
 
--- COMPLETELY REWRITTEN LOAD BUTTONS FUNCTION WITH FULL ERROR ISOLATION
+-- COMPLETELY REWRITTEN LOAD BUTTONS FUNCTION WITH FULL ERROR ISOLATION AND CREDIT SUPPORT
 local function loadButtons()
     print("Loading buttons for category: " .. selectedCategory)
     
@@ -525,8 +528,14 @@ local function loadButtons()
     local success = false
     local errorMessage = nil
 
-    -- INDIVIDUAL ERROR HANDLING FOR EACH MODULE TYPE
-    if selectedCategory == "Visual" and module.loadVisualButtons then
+    -- INDIVIDUAL ERROR HANDLING FOR EACH MODULE TYPE INCLUDING CREDIT
+    if selectedCategory == "Credit" and module.createCreditDisplay then
+        success, errorMessage = pcall(function()
+            print("Calling Credit.createCreditDisplay")
+            module.createCreditDisplay(FeatureContainer)
+        end)
+        
+    elseif selectedCategory == "Visual" and module.loadVisualButtons then
         success, errorMessage = pcall(function()
             print("Calling Visual.loadVisualButtons")
             
