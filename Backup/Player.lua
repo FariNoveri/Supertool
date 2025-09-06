@@ -43,6 +43,10 @@ Player.physicsConnections = {}
 Player.physicsPlayers = {}
 Player.spinSpeed = 50 -- Increased from 20
 
+-- Variables for teleport history
+Player.teleportHistory = {}
+Player.teleportFuture = {}
+
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
@@ -1625,6 +1629,9 @@ local function teleportToPlayer(targetPlayer, direction)
                 end
             end
             
+            table.insert(Player.teleportHistory, Player.rootPart.CFrame)
+            Player.teleportFuture = {}
+            
             local targetPosition = targetPlayer.Character.HumanoidRootPart.CFrame
             local offset = Vector3.new(0, 0, 5) -- default back
             if direction then
@@ -1655,6 +1662,34 @@ end
 -- Teleport to Spectated Player (Fixed)
 local function teleportToSpectatedPlayer()
     teleportToPlayer(Player.selectedPlayer)
+end
+
+-- Back Teleport
+local function backTeleport()
+    if #Player.teleportHistory == 0 then
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] no previous position"})
+        return
+    end
+    local prevCFrame = table.remove(Player.teleportHistory)
+    if Player.rootPart then
+        table.insert(Player.teleportFuture, Player.rootPart.CFrame)
+        Player.rootPart.CFrame = prevCFrame
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] back to previous position"})
+    end
+end
+
+-- Next Teleport
+local function nextTeleport()
+    if #Player.teleportFuture == 0 then
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] no next position"})
+        return
+    end
+    local nextCFrame = table.remove(Player.teleportFuture)
+    if Player.rootPart then
+        table.insert(Player.teleportHistory, Player.rootPart.CFrame)
+        Player.rootPart.CFrame = nextCFrame
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] next to forward position"})
+    end
 end
 
 -- Show Emote GUI
@@ -1911,6 +1946,8 @@ function Player.resetStates()
     Player.magnetEnabled = false
     Player.flingEnabled = false
     Player.physicsEnabled = false
+    Player.teleportHistory = {}
+    Player.teleportFuture = {}
     
     toggleForceField(false)
     toggleAntiAFK(false)
@@ -2339,6 +2376,10 @@ local function initConnections()
             else
                 StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] failed unfreeze: player not found"})
             end
+        elseif cmd == "back" then
+            backTeleport()
+        elseif cmd == "next" then
+            nextTeleport()
         end
     end)
 end
