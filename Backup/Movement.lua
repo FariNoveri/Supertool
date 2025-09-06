@@ -84,9 +84,16 @@ local function sendServerMessage(message)
     local Chat = game:GetService("Chat")
     if Chat then
         pcall(function()
-            local chatService = require(game:GetService("ServerScriptService"):WaitForChild("ChatServiceRunner"):WaitForChild("ChatService"))
-            if chatService then
-                chatService:InternalSendSystemMessage("[SERVER] " .. message, "All")
+            local sss = game:GetService("ServerScriptService")
+            local csr = sss:FindFirstChild("ChatServiceRunner")
+            if csr then
+                local cs = csr:FindFirstChild("ChatService")
+                if cs then
+                    local chatService = require(cs)
+                    if chatService then
+                        chatService:InternalSendSystemMessage("[SERVER] " .. message, "All")
+                    end
+                end
             end
         end)
     end
