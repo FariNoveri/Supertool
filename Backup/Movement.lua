@@ -151,7 +151,7 @@ local function createSettingsGUI()
     settingsFrame.BorderSizePixel = 0
     settingsFrame.Visible = false
     settingsFrame.ZIndex = 15
-    settingsFrame.Parent = ScreenGui or player.PlayerGui
+    pcall(function() settingsFrame.Parent = ScreenGui or player.PlayerGui end)
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0.1, 0)
@@ -265,7 +265,7 @@ local function createMobileControls()
     flyJoystickFrame.BorderSizePixel = 0
     flyJoystickFrame.Visible = false
     flyJoystickFrame.ZIndex = 10
-    flyJoystickFrame.Parent = ScreenGui or player.PlayerGui
+    pcall(function() flyJoystickFrame.Parent = ScreenGui or player.PlayerGui end)
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0.5, 0)
@@ -298,7 +298,7 @@ local function createMobileControls()
     flyUpButton.TextSize = 20
     flyUpButton.Visible = false
     flyUpButton.ZIndex = 10
-    flyUpButton.Parent = ScreenGui or player.PlayerGui
+    pcall(function() flyUpButton.Parent = ScreenGui or player.PlayerGui end)
 
     local upCorner = Instance.new("UICorner")
     upCorner.CornerRadius = UDim.new(0.2, 0)
@@ -317,7 +317,7 @@ local function createMobileControls()
     flyDownButton.TextSize = 20
     flyDownButton.Visible = false
     flyDownButton.ZIndex = 10
-    flyDownButton.Parent = ScreenGui or player.PlayerGui
+    pcall(function() flyDownButton.Parent = ScreenGui or player.PlayerGui end)
 
     local downCorner = Instance.new("UICorner")
     downCorner.CornerRadius = UDim.new(0.2, 0)
@@ -336,7 +336,7 @@ local function createMobileControls()
     sprintButton.TextSize = 16
     sprintButton.Visible = false
     sprintButton.ZIndex = 10
-    sprintButton.Parent = ScreenGui or player.PlayerGui
+    pcall(function() sprintButton.Parent = ScreenGui or player.PlayerGui end)
 
     local sprintCorner = Instance.new("UICorner")
     sprintCorner.CornerRadius = UDim.new(0.2, 0)
@@ -355,7 +355,7 @@ local function createMobileControls()
     wallClimbButton.TextSize = 16
     wallClimbButton.Visible = false
     wallClimbButton.ZIndex = 10
-    wallClimbButton.Parent = ScreenGui or player.PlayerGui
+    pcall(function() wallClimbButton.Parent = ScreenGui or player.PlayerGui end)
 
     local wallClimbCorner = Instance.new("UICorner")
     wallClimbCorner.CornerRadius = UDim.new(0.2, 0)
@@ -704,8 +704,8 @@ local function toggleFloat(enabled)
                 end
             end)
             
-            connections.floatInput = UserInputService.InputChanged:Connect(handleFloatJoystick)
             connections.floatBegan = UserInputService.InputBegan:Connect(handleFloatJoystick)
+            connections.floatChanged = UserInputService.InputChanged:Connect(handleFloatJoystick)
             connections.floatEnded = UserInputService.InputEnded:Connect(handleFloatJoystick)
             
             connections.floatKeyBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -759,7 +759,7 @@ local function createBoostButton()
     boostButton.TextSize = 16
     boostButton.Visible = false
     boostButton.ZIndex = 10
-    boostButton.Parent = ScreenGui or player.PlayerGui
+    pcall(function() boostButton.Parent = ScreenGui or player.PlayerGui end)
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0.2, 0)
@@ -876,7 +876,7 @@ local function createRewindButton()
     rewindButton.TextSize = 24
     rewindButton.Visible = false
     rewindButton.ZIndex = 10
-    rewindButton.Parent = ScreenGui or player.PlayerGui
+    pcall(function() rewindButton.Parent = ScreenGui or player.PlayerGui end)
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0.2, 0)
@@ -1139,7 +1139,7 @@ local function toggleFly(enabled)
     end
     
     -- Clean up ALL fly connections first
-    local flyConnections = {"fly", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "flyKeyBegan", "flyKeyEnded"}
+    local flyConnections = {"fly", "flyBegan", "flyChanged", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "flyKeyBegan", "flyKeyEnded"}
     for _, connName in ipairs(flyConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
@@ -1240,6 +1240,11 @@ local function toggleFly(enabled)
             local speed = getSettingValue("FlySpeed", 50)
             local moveVector = Vector3.new(0, 0, 0)
             
+            -- Joystick controls
+            if joystickDelta.Magnitude > 0.05 then
+                moveVector = moveVector + (camera.CFrame.RightVector * joystickDelta.X) + (camera.CFrame.LookVector * -joystickDelta.Y)
+            end
+            
             -- Keyboard controls - SIMPLE
             if flyKeys.forward then 
                 moveVector = moveVector + camera.CFrame.LookVector
@@ -1261,7 +1266,11 @@ local function toggleFly(enabled)
             end
             
             -- Apply movement
-            flyBodyVelocity.Velocity = moveVector * speed
+            if moveVector.Magnitude > 0 then
+                flyBodyVelocity.Velocity = moveVector.Unit * speed
+            else
+                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            end
         end)
         
         -- SIMPLE KEYBOARD INPUT
@@ -1305,6 +1314,25 @@ local function toggleFly(enabled)
             end
         end)
         
+        -- Joystick input
+        connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
+        connections.flyChanged = UserInputService.InputChanged:Connect(handleFlyJoystick)
+        connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
+        
+        -- Up/Down buttons
+        connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
+            flyKeys.up = true
+        end)
+        connections.flyUpEnd = flyUpButton.MouseButton1Up:Connect(function()
+            flyKeys.up = false
+        end)
+        connections.flyDown = flyDownButton.MouseButton1Down:Connect(function()
+            flyKeys.down = true
+        end)
+        connections.flyDownEnd = flyDownButton.MouseButton1Up:Connect(function()
+            flyKeys.down = false
+        end)
+        
         print("FLY SETUP COMPLETE!")
         
     else
@@ -1321,8 +1349,11 @@ local function toggleFly(enabled)
         if flyUpButton then flyUpButton.Visible = false end
         if flyDownButton then flyDownButton.Visible = false end
         
-        -- Reset keys
+        -- Reset keys and joystick
         flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
+        joystickDelta = Vector2.new(0, 0)
+        isTouchingJoystick = false
+        joystickTouchId = nil
         
         print("FLY DISABLED!")
     end
@@ -1343,8 +1374,11 @@ local function setupChatCommands()
         connections.chatCommand = player.Chatted:Connect(function(message)
             print("CHAT MESSAGE:", message)
             
-            local cmd = string.lower(string.gsub(message, "%s+", ""))
-            print("PROCESSED COMMAND:", cmd)
+            local args = {}
+            for word in message:gmatch("%S+") do
+                table.insert(args, word)
+            end
+            local cmd = string.lower(args[1] or "")
             
             if cmd == "/fly" then
                 print("CHAT: Activating fly!")
@@ -1352,6 +1386,52 @@ local function setupChatCommands()
             elseif cmd == "/unfly" then
                 print("CHAT: Deactivating fly!")  
                 toggleFly(false)
+            elseif cmd == "/flyspeed" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.FlySpeed = {value = val}
+                    sendServerMessage("Fly speed set to " .. val)
+                    if Movement.flyEnabled then
+                        toggleFly(false)
+                        toggleFly(true)
+                    end
+                end
+            elseif cmd == "/speed" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.WalkSpeed = {value = val}
+                    sendServerMessage("Speed set to " .. val)
+                    if Movement.speedEnabled then
+                        toggleSpeed(true)
+                    end
+                end
+            elseif cmd == "/jump" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.JumpHeight = {value = val}
+                    sendServerMessage("Jump height set to " .. val)
+                    if Movement.jumpEnabled then
+                        toggleJump(true)
+                    end
+                end
+            elseif cmd == "/sprint" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.SprintSpeed = {value = val}
+                    sendServerMessage("Sprint speed set to " .. val)
+                    if Movement.sprintEnabled then
+                        toggleSprint(true)
+                    end
+                end
+            elseif cmd == "/swim" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.SwimSpeed = {value = val}
+                    sendServerMessage("Swim speed set to " .. val)
+                    if Movement.swimEnabled then
+                        toggleSwim(true)
+                    end
+                end
             end
         end)
         print("Chat commands connected successfully!")
@@ -1653,9 +1733,8 @@ function Movement.resetStates()
     
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
-        "wallClimb", "flyInput", "flyBegan", "flyEnded", "flyUp", "flyUpEnd", 
-        "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatInput", 
-        "floatBegan", "floatEnded", "antiFling", "rewind", "rewindInput", 
+        "wallClimb", "flyBegan", "flyChanged", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "wallClimbInput", "float", "floatBegan", "floatChanged", "floatEnded", "antiFling", 
+        "rewind", "rewindInput", 
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
         "fastFall", "sprint", "sprintInput", "sprintToggle", "flyKeyBegan", 
         "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton",
@@ -1844,13 +1923,62 @@ local function setupChatCommands()
     -- Primary method: Direct chat connection
     if player and player.Chatted then
         connections.chat = player.Chatted:Connect(function(message)
-            local lowerMessage = string.lower(message)
-            if lowerMessage == "/fly" then
-                print("Chat command detected: /fly")
+            local args = {}
+            for word in message:gmatch("%S+") do
+                table.insert(args, word)
+            end
+            local cmd = string.lower(args[1] or "")
+            
+            if cmd == "/fly" then
                 toggleFly(true)
-            elseif lowerMessage == "/unfly" then
-                print("Chat command detected: /unfly") 
+            elseif cmd == "/unfly" then
                 toggleFly(false)
+            elseif cmd == "/flyspeed" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.FlySpeed = {value = val}
+                    sendServerMessage("Fly speed set to " .. val)
+                    if Movement.flyEnabled then
+                        toggleFly(false)
+                        toggleFly(true)
+                    end
+                end
+            elseif cmd == "/speed" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.WalkSpeed = {value = val}
+                    sendServerMessage("Speed set to " .. val)
+                    if Movement.speedEnabled then
+                        toggleSpeed(true)
+                    end
+                end
+            elseif cmd == "/jump" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.JumpHeight = {value = val}
+                    sendServerMessage("Jump height set to " .. val)
+                    if Movement.jumpEnabled then
+                        toggleJump(true)
+                    end
+                end
+            elseif cmd == "/sprint" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.SprintSpeed = {value = val}
+                    sendServerMessage("Sprint speed set to " .. val)
+                    if Movement.sprintEnabled then
+                        toggleSprint(true)
+                    end
+                end
+            elseif cmd == "/swim" then
+                local val = tonumber(args[2])
+                if val then
+                    settings.SwimSpeed = {value = val}
+                    sendServerMessage("Swim speed set to " .. val)
+                    if Movement.swimEnabled then
+                        toggleSwim(true)
+                    end
+                end
             end
         end)
     end
@@ -1863,13 +1991,62 @@ local function setupChatCommands()
     if success and chatService then
         connections.chatMonitor = chatService.Chatted:Connect(function(part, message, color)
             if part and part.Parent == player.Character and part.Parent:FindFirstChild("Head") then
-                local lowerMessage = string.lower(message)
-                if lowerMessage == "/fly" then
-                    print("Chat monitor detected: /fly")
+                local args = {}
+                for word in message:gmatch("%S+") do
+                    table.insert(args, word)
+                end
+                local cmd = string.lower(args[1] or "")
+                
+                if cmd == "/fly" then
                     toggleFly(true)
-                elseif lowerMessage == "/unfly" then
-                    print("Chat monitor detected: /unfly")
+                elseif cmd == "/unfly" then
                     toggleFly(false)
+                elseif cmd == "/flyspeed" then
+                    local val = tonumber(args[2])
+                    if val then
+                        settings.FlySpeed = {value = val}
+                        sendServerMessage("Fly speed set to " .. val)
+                        if Movement.flyEnabled then
+                            toggleFly(false)
+                            toggleFly(true)
+                        end
+                    end
+                elseif cmd == "/speed" then
+                    local val = tonumber(args[2])
+                    if val then
+                        settings.WalkSpeed = {value = val}
+                        sendServerMessage("Speed set to " .. val)
+                        if Movement.speedEnabled then
+                            toggleSpeed(true)
+                        end
+                    end
+                elseif cmd == "/jump" then
+                    local val = tonumber(args[2])
+                    if val then
+                        settings.JumpHeight = {value = val}
+                        sendServerMessage("Jump height set to " .. val)
+                        if Movement.jumpEnabled then
+                            toggleJump(true)
+                        end
+                    end
+                elseif cmd == "/sprint" then
+                    local val = tonumber(args[2])
+                    if val then
+                        settings.SprintSpeed = {value = val}
+                        sendServerMessage("Sprint speed set to " .. val)
+                        if Movement.sprintEnabled then
+                            toggleSprint(true)
+                        end
+                    end
+                elseif cmd == "/swim" then
+                    local val = tonumber(args[2])
+                    if val then
+                        settings.SwimSpeed = {value = val}
+                        sendServerMessage("Swim speed set to " .. val)
+                        if Movement.swimEnabled then
+                            toggleSwim(true)
+                        end
+                    end
                 end
             end
         end)
@@ -1878,15 +2055,9 @@ local function setupChatCommands()
     -- Backup method: Text service monitoring
     local TextService = game:GetService("TextService")
     if TextService then
-        local lastMessage = ""
-        local lastTime = 0
-        
         connections.chatInput = UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if input.KeyCode == Enum.KeyCode.Return and not gameProcessed then
-                task.wait(0.1) -- Small delay to catch the message
-                local currentTime = tick()
-                
-                -- Try to detect if /fly or /unfly was typed
+                task.wait(0.1)
                 task.spawn(function()
                     task.wait(0.2)
                     local gui = player.PlayerGui:FindFirstChild("Chat")
@@ -1904,10 +2075,61 @@ local function setupChatCommands()
                                             local lastMsg = lastChild[#lastChild]
                                             if lastMsg and lastMsg:FindFirstChild("TextLabel") then
                                                 local msgText = lastMsg.TextLabel.Text
-                                                if string.find(string.lower(msgText), "/fly") then
+                                                local args = {}
+                                                for word in msgText:gmatch("%S+") do
+                                                    table.insert(args, word)
+                                                end
+                                                local cmd = string.lower(args[1] or "")
+                                                if cmd == "/fly" then
                                                     toggleFly(true)
-                                                elseif string.find(string.lower(msgText), "/unfly") then
+                                                elseif cmd == "/unfly" then
                                                     toggleFly(false)
+                                                elseif cmd == "/flyspeed" then
+                                                    local val = tonumber(args[2])
+                                                    if val then
+                                                        settings.FlySpeed = {value = val}
+                                                        sendServerMessage("Fly speed set to " .. val)
+                                                        if Movement.flyEnabled then
+                                                            toggleFly(false)
+                                                            toggleFly(true)
+                                                        end
+                                                    end
+                                                elseif cmd == "/speed" then
+                                                    local val = tonumber(args[2])
+                                                    if val then
+                                                        settings.WalkSpeed = {value = val}
+                                                        sendServerMessage("Speed set to " .. val)
+                                                        if Movement.speedEnabled then
+                                                            toggleSpeed(true)
+                                                        end
+                                                    end
+                                                elseif cmd == "/jump" then
+                                                    local val = tonumber(args[2])
+                                                    if val then
+                                                        settings.JumpHeight = {value = val}
+                                                        sendServerMessage("Jump height set to " .. val)
+                                                        if Movement.jumpEnabled then
+                                                            toggleJump(true)
+                                                        end
+                                                    end
+                                                elseif cmd == "/sprint" then
+                                                    local val = tonumber(args[2])
+                                                    if val then
+                                                        settings.SprintSpeed = {value = val}
+                                                        sendServerMessage("Sprint speed set to " .. val)
+                                                        if Movement.sprintEnabled then
+                                                            toggleSprint(true)
+                                                        end
+                                                    end
+                                                elseif cmd == "/swim" then
+                                                    local val = tonumber(args[2])
+                                                    if val then
+                                                        settings.SwimSpeed = {value = val}
+                                                        sendServerMessage("Swim speed set to " .. val)
+                                                        if Movement.swimEnabled then
+                                                            toggleSwim(true)
+                                                        end
+                                                    end
                                                 end
                                             end
                                         end
