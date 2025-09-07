@@ -3,6 +3,7 @@
 -- REMOVED: All macro functionality
 -- ADDED: Top-right status display, pause/resume with markers, clickable path points
 -- farinoveri30@gmail.com (claude ai)
+-- Fixed bugs: UI textbox, outfit apply, reset character
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -156,9 +157,7 @@ local function killPlayer()
 end
 
 local function resetCharacter()
-    if player then
-        player:LoadCharacter()
-    end
+    killPlayer()  -- Changed to kill for client-side respawn
 end
 
 -- Path Movement Detection
@@ -1140,7 +1139,7 @@ function updatePathList()
             autoRespButton.Size = UDim2.new(0, 45, 0, 20)
             autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
             autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoPlayButton.TextSize = 7
+            autoRespButton.TextSize = 7
             autoRespButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
             
@@ -1320,68 +1319,130 @@ local function setupKeyboardControls()
 end
 
 -- Outfit Manager Functions
-local function descriptionToTable(desc)
-    return {
-        Shirt = desc.Shirt,
-        Pants = desc.Pants,
-        Face = desc.Face,
-        HairAccessory = desc.HairAccessory,
-        GraphicTShirt = desc.GraphicTShirt,
-        HatAccessory = desc.HatAccessory,
-        -- Add more as needed
-    }
+local function getOrCreateClothing(character, className)
+    local clothing = character:FindFirstChildOfClass(className)
+    if not clothing then
+        clothing = Instance.new(className)
+        clothing.Parent = character
+    end
+    return clothing
 end
 
-local function tableToDescription(tbl)
-    local desc = Instance.new("HumanoidDescription")
-    desc.Shirt = tbl.Shirt or 0
-    desc.Pants = tbl.Pants or 0
-    desc.Face = tbl.Face or 0
-    desc.HairAccessory = tbl.HairAccessory or ""
-    desc.GraphicTShirt = tbl.GraphicTShirt or 0
-    desc.HatAccessory = tbl.HatAccessory or ""
-    return desc
+local function applyDescriptionManual(desc, character)
+    if not character then return end
+    
+    -- Shirt
+    if desc.Shirt ~= 0 then
+        local shirt = getOrCreateClothing(character, "Shirt")
+        shirt.ShirtTemplate = "rbxassetid://" .. desc.Shirt
+    end
+    
+    -- Pants
+    if desc.Pants ~= 0 then
+        local pants = getOrCreateClothing(character, "Pants")
+        pants.PantsTemplate = "rbxassetid://" .. desc.Pants
+    end
+    
+    -- Face
+    if desc.Face ~= 0 then
+        local head = character:FindFirstChild("Head")
+        if head then
+            local face = head:FindFirstChild("face") or Instance.new("Decal", head)
+            face.Name = "face"
+            face.Texture = "rbxassetid://" .. desc.Face
+        end
+    end
+    
+    -- Hair and accessories
+    if desc.HairAccessory ~= "" then
+        -- Clear existing accessories
+        for _, acc in pairs(character:GetChildren()) do
+            if acc:IsA("Accessory") and acc:FindFirstChild("Hair") then  -- Assume hair has 'Hair' handle or tag
+                acc:Destroy()
+            end
+        end
+        
+        local hairIds = string.split(desc.HairAccessory, ",")
+        for _, id in pairs(hairIds) do
+            local asset = game:GetService("InsertService"):LoadAsset(tonumber(id))
+            local acc = asset:GetChildren()[1]
+            if acc:IsA("Accessory") then
+                acc.Parent = character
+            end
+            asset:Destroy()
+        end
+    end
+    
+    print("[SUPERTOOL] Applied description manually")
 end
 
 local function applyClone()
     local userId = tonumber(OutfitUserIdInput.Text)
-    if userId then
+    if userId and player.Character then
         local success, desc = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
-        if success and humanoid then
-            humanoid:ApplyDescription(desc)
-            print("[SUPERTOOL] Cloned avatar from user " .. userId)
+        if success then
+            applyDescriptionManual(desc, player.Character)
         end
     end
 end
 
 local function applyItem(itemType, input)
     local id = tonumber(input.Text)
-    if id and humanoid then
-        local desc = humanoid:GetAppliedDescription()
-        if itemType == "Shirt" then desc.Shirt = id end
-        if itemType == "Pants" then desc.Pants = id end
-        if itemType == "Face" then desc.Face = id end
-        humanoid:ApplyDescription(desc)
-        print("[SUPERTOOL] Applied " .. itemType .. " ID: " .. id)
+    if id and player.Character then
+        if itemType == "Shirt" then
+            local shirt = getOrCreateClothing(player.Character, "Shirt")
+            shirt.ShirtTemplate = "rbxassetid://" .. id
+        elseif itemType == "Pants" then
+            local pants = getOrCreateClothing(player.Character, "Pants")
+            pants.PantsTemplate = "rbxassetid://" .. id
+        elseif itemType == "Face" then
+            local head = player.Character:FindFirstChild("Head")
+            if head then
+                local face = head:FindFirstChild("face") or Instance.new("Decal", head)
+                face.Name = "face"
+                face.Texture = "rbxassetid://" .. id
+            end
+        end
     end
 end
 
 local function applyHair()
-    local ids = OutfitHairInput.Text
-    if ids and humanoid then
-        local desc = humanoid:GetAppliedDescription()
-        desc.HairAccessory = ids
-        humanoid:ApplyDescription(desc)
-        print("[SUPERTOOL] Applied Hair IDs: " .. ids)
+    local idsStr = OutfitHairInput.Text
+    if idsStr and player.Character then
+        -- Clear existing hair
+        for _, acc in pairs(player.Character:GetChildren()) do
+            if acc:IsA("Accessory") and acc:FindFirstChild("Hair") then
+                acc:Destroy()
+            end
+        end
+        
+        local hairIds = string.split(idsStr, ",")
+        for _, id in pairs(hairIds) do
+            local trimmedId = string.gsub(id, "%s+", "")
+            local numId = tonumber(trimmedId)
+            if numId then
+                local asset = game:GetService("InsertService"):LoadAsset(numId)
+                local acc = asset:GetChildren()[1]
+                if acc:IsA("Accessory") then
+                    acc.Parent = player.Character
+                end
+                asset:Destroy()
+            end
+        end
     end
 end
 
 local function saveOutfitToJSON(outfitName)
     if not humanoid then return end
     local desc = humanoid:GetAppliedDescription()
-    local outfitData = descriptionToTable(desc)
-    outfitData.name = outfitName
-    outfitData.created = os.time()
+    local outfitData = {
+        name = outfitName,
+        created = os.time(),
+        Shirt = desc.Shirt,
+        Pants = desc.Pants,
+        Face = desc.Face,
+        HairAccessory = desc.HairAccessory
+    }
     
     local success, _ = pcall(function()
         local sanitizedName = sanitizeFileName(outfitName)
@@ -1439,10 +1500,13 @@ end
 
 local function applyOutfit(outfitName)
     local outfit = savedOutfits[outfitName] or loadOutfitFromJSON(outfitName)
-    if outfit and humanoid then
-        local desc = tableToDescription(outfit)
-        humanoid:ApplyDescription(desc)
-        print("[SUPERTOOL] Applied outfit: " .. outfitName)
+    if outfit and player.Character then
+        local desc = Instance.new("HumanoidDescription")
+        desc.Shirt = outfit.Shirt or 0
+        desc.Pants = outfit.Pants or 0
+        desc.Face = outfit.Face or 0
+        desc.HairAccessory = outfit.HairAccessory or ""
+        applyDescriptionManual(desc, player.Character)
     end
 end
 
