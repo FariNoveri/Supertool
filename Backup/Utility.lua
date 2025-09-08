@@ -1362,7 +1362,7 @@ local function applyDescriptionManual(desc, character)
             end
         end
         
-        local hairIds = string.split(desc.HairAccessory, ",")
+        local hairIds = string.split(desc.HairAccessory, ";")
         for _, id in pairs(hairIds) do
             local asset = game:GetService("InsertService"):LoadAsset(tonumber(id))
             local acc = asset:GetChildren()[1]
