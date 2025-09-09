@@ -30,6 +30,7 @@ Player.followConnections = {}
 Player.followOffset = Vector3.new(0, 2, 5)
 Player.followSpeed = 1.2
 Player.followPathfinding = nil
+Player.followPathHistory = {}
 
 -- Variables for enhanced fling feature
 Player.flingEnabled = false
@@ -54,14 +55,23 @@ local EmoteGuiFrame
 
 local StarterGui = game:GetService("StarterGui")
 
--- Helper function to find player by partial name
+-- Helper function to find player by partial name (enhanced matching)
 local function findPlayer(name)
     if not name then return nil end
     name = name:lower()
+    local candidates = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower():find(name, 1, true) == 1 or p.DisplayName:lower():find(name, 1, true) == 1 then
-            return p
+        local pname = p.Name:lower()
+        local dname = p.DisplayName:lower()
+        if pname:find(name) or dname:find(name) then
+            table.insert(candidates, p)
         end
+    end
+    if #candidates > 0 then
+        table.sort(candidates, function(a, b)
+            return a.Name:lower():find(name) < b.Name:lower():find(name)
+        end)
+        return candidates[1]
     end
     return nil
 end
@@ -470,7 +480,7 @@ local function togglePhysicsControl(enabled)
     end
 end
 
--- Enhanced Fling Feature with Faster Spinning
+-- Enhanced Fling Feature (like Infinite Yield)
 local function enhancedFlingPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot fling: Invalid target player")
@@ -498,66 +508,32 @@ local function enhancedFlingPlayer(targetPlayer)
             return
         end
         
+        -- Position local player at target for collision fling
+        local oldCFrame = Player.rootPart.CFrame
+        Player.rootPart.CFrame = targetRootPart.CFrame * CFrame.new(0, 0, -1)
+        Player.rootPart.Anchored = false
+        Player.rootPart.CanCollide = true
+        
+        -- High spin on local player
+        local spin = Instance.new("BodyAngularVelocity")
+        spin.AngularVelocity = Vector3.new(999999, 999999, 999999)
+        spin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        spin.Parent = Player.rootPart
+        
+        -- Apply velocity to target
         targetRootPart:SetNetworkOwner(player)
+        targetRootPart.AssemblyLinearVelocity = Vector3.new(0, 10000, 0)
         
-        -- Enable physics first for better control
-        enablePhysicsForPlayer(targetPlayer)
-        
-        -- Make our character spin MUCH faster for the fling effect
-        if Player.rootPart then
-            local spin = Instance.new("BodyAngularVelocity")
-            spin.AngularVelocity = Vector3.new(0, Player.spinSpeed * 2, 0) -- Double spin speed
-            spin.MaxTorque = Vector3.new(0, math.huge, 0)
-            spin.Parent = Player.rootPart
-            
-            -- Remove spin after a short time
-            task.delay(0.3, function()
-                if spin and spin.Parent then
-                    spin:Destroy()
-                end
-            end)
-        end
-        
-        -- Apply MORE POWERFUL fling forces
-        local direction = (targetRootPart.Position - Player.rootPart.Position).Unit
-        local flingVelocity = direction * Player.flingForce * 1.5 -- 1.5x more force
-        flingVelocity = flingVelocity + Vector3.new(0, Player.flingForce * 1.2, 0) -- Stronger upward force
-        
-        -- Make target non-anchored and apply forces
-        targetRootPart.Anchored = false
-        targetRootPart.AssemblyLinearVelocity = flingVelocity
-        
-        -- Add MUCH FASTER spinning to the target
-        local targetSpin = Instance.new("BodyAngularVelocity")
-        targetSpin.AngularVelocity = Vector3.new(
-            math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2),
-            math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2),
-            math.random(-Player.spinSpeed * 2, Player.spinSpeed * 2)
-        )
-        targetSpin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        targetSpin.Parent = targetRootPart
-        
-        -- Clean up main spin after some time
-        task.delay(2, function()
-            if targetSpin and targetSpin.Parent then
-                targetSpin:Destroy()
-            end
+        task.delay(0.1, function()
+            spin:Destroy()
+            Player.rootPart.CFrame = oldCFrame
         end)
         
-        -- Reset target after a while
-        task.delay(4, function()
-            if targetHumanoid and targetHumanoid.Parent then
-                targetHumanoid.PlatformStand = false
-                targetHumanoid.WalkSpeed = 16
-                targetHumanoid.JumpPower = 50
-            end
-            if targetRootPart and targetRootPart.Parent then
-                targetRootPart:SetNetworkOwner(nil)
-            end
-            disablePhysicsForPlayer(targetPlayer)
+        task.delay(1, function()
+            targetRootPart:SetNetworkOwner(nil)
         end)
         
-        print("Enhanced FAST fling applied to: " .. targetPlayer.Name)
+        print("Fling applied to: " .. targetPlayer.Name)
     end)
     
     if not success then
@@ -763,7 +739,7 @@ local function bringPlayer(targetPlayer)
     end
 end
 
--- Magnet Players
+-- Magnet Players (client-side with BodyPosition)
 local function toggleMagnetPlayers(enabled)
     Player.magnetEnabled = enabled
     
@@ -774,8 +750,10 @@ local function toggleMagnetPlayers(enabled)
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                 local hrp = p.Character.HumanoidRootPart
-                hrp:SetNetworkOwner(player)
-                Player.magnetPlayerPositions[p] = hrp
+                local bodyPos = Instance.new("BodyPosition")
+                bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bodyPos.Parent = hrp
+                Player.magnetPlayerPositions[p] = bodyPos
             end
         end
         
@@ -783,14 +761,11 @@ local function toggleMagnetPlayers(enabled)
             if not Player.magnetEnabled or not Player.rootPart then return end
             
             local ourCFrame = Player.rootPart.CFrame
-            for targetPlayer, hrp in pairs(Player.magnetPlayerPositions) do
+            for targetPlayer, bodyPos in pairs(Player.magnetPlayerPositions) do
                 if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    hrp = targetPlayer.Character.HumanoidRootPart
+                    local hrp = targetPlayer.Character.HumanoidRootPart
                     local targetCFrame = ourCFrame * CFrame.new(Player.magnetOffset)
-                    hrp.CFrame = CFrame.new(targetCFrame.Position, ourCFrame.Position)
-                    hrp.Anchored = true
-                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    bodyPos.Position = targetCFrame.Position
                     
                     if targetPlayer.Character:FindFirstChild("Humanoid") then
                         local hum = targetPlayer.Character.Humanoid
@@ -799,6 +774,7 @@ local function toggleMagnetPlayers(enabled)
                         hum.JumpPower = 0
                     end
                 else
+                    bodyPos:Destroy()
                     Player.magnetPlayerPositions[targetPlayer] = nil
                 end
             end
@@ -810,16 +786,20 @@ local function toggleMagnetPlayers(enabled)
                     task.wait(0.5)
                     if character:FindFirstChild("HumanoidRootPart") then
                         local hrp = character.HumanoidRootPart
-                        hrp:SetNetworkOwner(player)
-                        Player.magnetPlayerPositions[newPlayer] = hrp
+                        local bodyPos = Instance.new("BodyPosition")
+                        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                        bodyPos.Parent = hrp
+                        Player.magnetPlayerPositions[newPlayer] = bodyPos
                         print("Magnet applied to new player: " .. newPlayer.Name)
                     end
                 end)
                 if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     task.wait(0.5)
                     local hrp = newPlayer.Character.HumanoidRootPart
-                    hrp:SetNetworkOwner(player)
-                    Player.magnetPlayerPositions[newPlayer] = hrp
+                    local bodyPos = Instance.new("BodyPosition")
+                    bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bodyPos.Parent = hrp
+                    Player.magnetPlayerPositions[newPlayer] = bodyPos
                     print("Magnet applied to existing player: " .. newPlayer.Name)
                 end
             end
@@ -832,8 +812,10 @@ local function toggleMagnetPlayers(enabled)
                 for _, p in pairs(Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                         local hrp = p.Character.HumanoidRootPart
-                        hrp:SetNetworkOwner(player)
-                        Player.magnetPlayerPositions[p] = hrp
+                        local bodyPos = Instance.new("BodyPosition")
+                        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                        bodyPos.Parent = hrp
+                        Player.magnetPlayerPositions[p] = bodyPos
                         print("Magnet reapplied to player: " .. p.Name)
                     end
                 end
@@ -858,10 +840,12 @@ local function toggleMagnetPlayers(enabled)
             connections.magnetRespawn = nil
         end
         
-        for targetPlayer, _ in pairs(Player.magnetPlayerPositions) do
+        for targetPlayer, bodyPos in pairs(Player.magnetPlayerPositions) do
+            if bodyPos then
+                bodyPos:Destroy()
+            end
             if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 local hrp = targetPlayer.Character.HumanoidRootPart
-                hrp:SetNetworkOwner(nil)
                 hrp.Anchored = false
                 if targetPlayer.Character:FindFirstChild("Humanoid") then
                     local hum = targetPlayer.Character.Humanoid
@@ -877,25 +861,21 @@ local function toggleMagnetPlayers(enabled)
     end
 end
 
--- Helper function to freeze a single player
+-- Helper function to freeze a single player (client-side with BodyPosition)
 local function freezePlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then return end
     
     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = targetPlayer.Character.HumanoidRootPart
-        hrp:SetNetworkOwner(player)
+        
+        local bodyPos = Instance.new("BodyPosition")
+        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyPos.Position = hrp.Position
+        bodyPos.Parent = hrp
         
         if not Player.frozenPlayerPositions[targetPlayer] then
-            Player.frozenPlayerPositions[targetPlayer] = {
-                cframe = hrp.CFrame,
-                anchored = hrp.Anchored,
-                velocity = hrp.AssemblyLinearVelocity
-            }
+            Player.frozenPlayerPositions[targetPlayer] = bodyPos
         end
-        
-        hrp.Anchored = true
-        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
         
         if targetPlayer.Character:FindFirstChild("Humanoid") then
             local hum = targetPlayer.Character.Humanoid
@@ -913,22 +893,19 @@ end
 local function unfreezePlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then return end
     
-    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local hrp = targetPlayer.Character.HumanoidRootPart
-        local frozenData = Player.frozenPlayerPositions[targetPlayer]
-        
-        hrp.Anchored = frozenData and frozenData.anchored or false
-        hrp:SetNetworkOwner(nil)
-        
-        if targetPlayer.Character:FindFirstChild("Humanoid") then
-            local hum = targetPlayer.Character.Humanoid
-            hum.PlatformStand = false
-            hum.WalkSpeed = 16
-            hum.JumpPower = 50
-        end
-        
-        print("Unfroze player: " .. targetPlayer.Name)
+    local frozenData = Player.frozenPlayerPositions[targetPlayer]
+    if frozenData then
+        frozenData:Destroy()
     end
+    
+    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+        local hum = targetPlayer.Character.Humanoid
+        hum.PlatformStand = false
+        hum.WalkSpeed = 16
+        hum.JumpPower = 50
+    end
+        
+    print("Unfroze player: " .. targetPlayer.Name)
     
     Player.frozenPlayerPositions[targetPlayer] = nil
 end
@@ -950,8 +927,10 @@ local function setupPlayerMonitoring(targetPlayer)
         if Player.magnetEnabled then
             if character:FindFirstChild("HumanoidRootPart") then
                 local hrp = character.HumanoidRootPart
-                hrp:SetNetworkOwner(player)
-                Player.magnetPlayerPositions[targetPlayer] = hrp
+                local bodyPos = Instance.new("BodyPosition")
+                bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bodyPos.Parent = hrp
+                Player.magnetPlayerPositions[targetPlayer] = bodyPos
                 print("Magnet applied to respawned player: " .. targetPlayer.Name)
             end
         end
@@ -981,8 +960,10 @@ local function setupPlayerMonitoring(targetPlayer)
     
     if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = targetPlayer.Character.HumanoidRootPart
-        hrp:SetNetworkOwner(player)
-        Player.magnetPlayerPositions[targetPlayer] = hrp
+        local bodyPos = Instance.new("BodyPosition")
+        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyPos.Parent = hrp
+        Player.magnetPlayerPositions[targetPlayer] = bodyPos
         print("Magnet applied to player: " .. targetPlayer.Name)
     end
     
@@ -1055,13 +1036,10 @@ local function toggleFreezePlayers(enabled)
         
         connections.freeze = RunService.Heartbeat:Connect(function()
             if Player.freezeEnabled then
-                for targetPlayer, frozenData in pairs(Player.frozenPlayerPositions) do
+                for targetPlayer, bodyPos in pairs(Player.frozenPlayerPositions) do
                     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                         local hrp = targetPlayer.Character.HumanoidRootPart
-                        hrp.CFrame = frozenData.cframe
-                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                        hrp.Anchored = true
+                        bodyPos.Position = hrp.Position
                         
                         if targetPlayer.Character:FindFirstChild("Humanoid") then
                             local hum = targetPlayer.Character.Humanoid
@@ -1706,6 +1684,7 @@ local function stopFollowing()
     Player.followEnabled = false
     Player.followTarget = nil
     Player.lastTargetPosition = nil
+    Player.followPathHistory = {}
     
     for _, connection in pairs(Player.followConnections) do
         if connection then
@@ -1728,7 +1707,7 @@ local function stopFollowing()
     Player.updatePlayerList()
 end
 
--- Follow Player (Fixed)
+-- Follow Player (client-side, follow exact path with history)
 local function followPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot follow: Invalid target player")
@@ -1749,110 +1728,47 @@ local function followPlayer(targetPlayer)
     
     Player.followEnabled = true
     Player.followTarget = targetPlayer
-    
-    local PathfindingService = game:GetService("PathfindingService")
+    Player.followPathHistory = {}
     
     local targetRootPart = targetPlayer.Character.HumanoidRootPart
     local targetHumanoid = targetPlayer.Character.Humanoid
     
     print("Started following: " .. targetPlayer.Name)
     
-    local currentPath = nil
-    local currentWaypoint = 0
-    local pathUpdateTime = 0
-    local lastTargetPos = targetRootPart.Position
+    -- Record target path
+    Player.followConnections.record = RunService.Heartbeat:Connect(function()
+        if Player.followEnabled then
+            table.insert(Player.followPathHistory, {Position = targetRootPart.Position, Time = tick()})
+            if #Player.followPathHistory > 100 then
+                table.remove(Player.followPathHistory, 1)
+            end
+        end
+    end)
     
-    local function updatePath()
+    Player.followConnections.follow = RunService.Heartbeat:Connect(function()
         if not Player.followEnabled or not Player.followTarget then
             stopFollowing()
             return
         end
         
-        if not Player.followTarget.Character or not Player.followTarget.Character:FindFirstChild("HumanoidRootPart") or not Player.followTarget.Character:FindFirstChild("Humanoid") then
-            stopFollowing()
-            return
-        end
-        
-        local currentTargetRootPart = Player.followTarget.Character.HumanoidRootPart
-        local currentTargetHumanoid = Player.followTarget.Character.Humanoid
-        
-        if not Player.rootPart or not humanoid then
-            stopFollowing()
-            return
-        end
-        
-        local targetPosition = currentTargetRootPart.Position
-        local ourPosition = Player.rootPart.Position
-        local distance = (ourPosition - targetPosition).Magnitude
-        
-        local currentTime = tick()
-        if not currentPath or (lastTargetPos - targetPosition).Magnitude > 4 or currentTime - pathUpdateTime > 2 then
-            pathUpdateTime = currentTime
-            lastTargetPos = targetPosition
-            
-            local success, result = pcall(function()
-                currentPath = PathfindingService:CreatePath({
-                    AgentRadius = 2,
-                    AgentHeight = 5,
-                    AgentCanJump = true,
-                    WaypointSpacing = 4
-                })
-                
-                currentPath:ComputeAsync(ourPosition, targetPosition)
-                
-                if currentPath.Status == Enum.PathStatus.Success then
-                    currentWaypoint = 1
-                else
-                    currentPath = nil
-                end
-            end)
-            
-            if not success then
-                warn("Pathfinding failed: " .. tostring(result))
-                currentPath = nil
+        if #Player.followPathHistory > 0 then
+            local nextPos = Player.followPathHistory[1].Position
+            humanoid:MoveTo(nextPos)
+            if (Player.rootPart.Position - nextPos).Magnitude < 2 then
+                table.remove(Player.followPathHistory, 1)
             end
         end
         
-        if currentPath and currentPath.Status == Enum.PathStatus.Success then
-            local waypoints = currentPath:GetWaypoints()
-            
-            if currentWaypoint <= #waypoints then
-                local waypoint = waypoints[currentWaypoint]
-                local waypointPosition = waypoint.Position
-                local waypointDistance = (ourPosition - waypointPosition).Magnitude
-                
-                humanoid:MoveTo(waypointPosition)
-                
-                if waypoint.Action == Enum.PathWaypointAction.Jump then
-                    humanoid.Jump = true
-                end
-                
-                if waypointDistance < 3 then
-                    currentWaypoint = currentWaypoint + 1
-                end
-            end
-        else
-            if distance > 5 then
-                local followPosition = targetPosition - (currentTargetRootPart.CFrame.LookVector * Player.followOffset.Z)
-                followPosition = followPosition + Vector3.new(0, Player.followOffset.Y, 0)
-                humanoid:MoveTo(followPosition)
-            end
-        end
+        humanoid.WalkSpeed = math.max(targetHumanoid.WalkSpeed * Player.followSpeed, 16)
         
-        humanoid.WalkSpeed = math.max(currentTargetHumanoid.WalkSpeed * Player.followSpeed, 16)
-        
-        if currentTargetHumanoid.Jump and not humanoid.Jump then
+        if targetHumanoid.Jump and not humanoid.Jump then
             humanoid.Jump = true
         end
         
-        if currentTargetHumanoid.Sit ~= humanoid.Sit then
-            humanoid.Sit = currentTargetHumanoid.Sit
+        if targetHumanoid.Sit ~= humanoid.Sit then
+            humanoid.Sit = targetHumanoid.Sit
         end
-        
-        Player.lastTargetPosition = targetPosition
-    end
-    
-    Player.followConnections.heartbeat = RunService.Heartbeat:Connect(updatePath)
+    end)
     
     Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
         if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
@@ -1862,11 +1778,9 @@ local function followPlayer(targetPlayer)
         
         if newRootPart and newHumanoid then
             print("Target respawned, continuing follow: " .. Player.followTarget.Name)
-            currentPath = nil
-            currentWaypoint = 0
-            pathUpdateTime = 0
             targetRootPart = newRootPart
             targetHumanoid = newHumanoid
+            Player.followPathHistory = {}
         else
             print("Failed to get new character parts for follow target")
             stopFollowing()
@@ -1889,7 +1803,6 @@ local function followPlayer(targetPlayer)
         if newRootPart and newHumanoid then
             Player.rootPart = newRootPart
             humanoid = newHumanoid
-            currentPath = nil
             print("Our character respawned, continuing follow")
         else
             print("Failed to get our new character parts")
