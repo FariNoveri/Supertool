@@ -750,6 +750,7 @@ local function toggleMagnetPlayers(enabled)
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                 local hrp = p.Character.HumanoidRootPart
+                hrp:SetNetworkOwner(player)
                 local bodyPos = Instance.new("BodyPosition")
                 bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                 bodyPos.Parent = hrp
@@ -786,6 +787,7 @@ local function toggleMagnetPlayers(enabled)
                     task.wait(0.5)
                     if character:FindFirstChild("HumanoidRootPart") then
                         local hrp = character.HumanoidRootPart
+                        hrp:SetNetworkOwner(player)
                         local bodyPos = Instance.new("BodyPosition")
                         bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                         bodyPos.Parent = hrp
@@ -796,6 +798,7 @@ local function toggleMagnetPlayers(enabled)
                 if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     task.wait(0.5)
                     local hrp = newPlayer.Character.HumanoidRootPart
+                    hrp:SetNetworkOwner(player)
                     local bodyPos = Instance.new("BodyPosition")
                     bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                     bodyPos.Parent = hrp
@@ -812,6 +815,7 @@ local function toggleMagnetPlayers(enabled)
                 for _, p in pairs(Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                         local hrp = p.Character.HumanoidRootPart
+                        hrp:SetNetworkOwner(player)
                         local bodyPos = Instance.new("BodyPosition")
                         bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                         bodyPos.Parent = hrp
@@ -847,6 +851,7 @@ local function toggleMagnetPlayers(enabled)
             if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 local hrp = targetPlayer.Character.HumanoidRootPart
                 hrp.Anchored = false
+                hrp:SetNetworkOwner(nil)
                 if targetPlayer.Character:FindFirstChild("Humanoid") then
                     local hum = targetPlayer.Character.Humanoid
                     hum.PlatformStand = false
@@ -867,7 +872,7 @@ local function freezePlayer(targetPlayer)
     
     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = targetPlayer.Character.HumanoidRootPart
-        
+        hrp:SetNetworkOwner(player)
         local bodyPos = Instance.new("BodyPosition")
         bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bodyPos.Position = hrp.Position
@@ -896,6 +901,11 @@ local function unfreezePlayer(targetPlayer)
     local frozenData = Player.frozenPlayerPositions[targetPlayer]
     if frozenData then
         frozenData:Destroy()
+    end
+    
+    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = targetPlayer.Character.HumanoidRootPart
+        hrp:SetNetworkOwner(nil)
     end
     
     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
@@ -927,6 +937,7 @@ local function setupPlayerMonitoring(targetPlayer)
         if Player.magnetEnabled then
             if character:FindFirstChild("HumanoidRootPart") then
                 local hrp = character.HumanoidRootPart
+                hrp:SetNetworkOwner(player)
                 local bodyPos = Instance.new("BodyPosition")
                 bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                 bodyPos.Parent = hrp
@@ -960,6 +971,7 @@ local function setupPlayerMonitoring(targetPlayer)
     
     if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = targetPlayer.Character.HumanoidRootPart
+        hrp:SetNetworkOwner(player)
         local bodyPos = Instance.new("BodyPosition")
         bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bodyPos.Parent = hrp
@@ -1038,9 +1050,6 @@ local function toggleFreezePlayers(enabled)
             if Player.freezeEnabled then
                 for targetPlayer, bodyPos in pairs(Player.frozenPlayerPositions) do
                     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        local hrp = targetPlayer.Character.HumanoidRootPart
-                        bodyPos.Position = hrp.Position
-                        
                         if targetPlayer.Character:FindFirstChild("Humanoid") then
                             local hum = targetPlayer.Character.Humanoid
                             hum.PlatformStand = true
