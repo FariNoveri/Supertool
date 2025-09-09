@@ -18,6 +18,7 @@ Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.ultraLowDetailEnabled = false
 Visual.espEnabled = false
+Visual.xrayEnabled = false
 Visual.hideAllNicknames = false
 Visual.hideOwnNickname = false
 Visual.hideAllCharactersExceptSelf = false
@@ -29,6 +30,7 @@ local flashlight
 local pointLight
 local espHighlights = {}
 local characterTransparencies = {}
+local xrayTransparencies = {}
 local defaultLightingSettings = {}
 local joystickFrame
 local joystickKnob
@@ -659,6 +661,54 @@ local function toggleESP(enabled)
             end
         end
         espHighlights = {}
+    end
+end
+
+-- XRay function similar to Infinite Yield
+local function isCharacterPart(part)
+    local model = part:FindFirstAncestorOfClass("Model")
+    return model and Players:GetPlayerFromCharacter(model)
+end
+
+local function applyXRayToObject(obj)
+    if (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation")) and not isCharacterPart(obj) then
+        if not xrayTransparencies[obj] then
+            xrayTransparencies[obj] = obj.Transparency
+            obj.Transparency = 0.7
+        end
+    end
+end
+
+local function toggleXRay(enabled)
+    Visual.xrayEnabled = enabled
+    print("XRay:", enabled)
+    
+    if enabled then
+        xrayTransparencies = {}
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            applyXRayToObject(obj)
+        end
+        
+        if connections and type(connections) == "table" and connections.xrayDescendantAdded then
+            connections.xrayDescendantAdded:Disconnect()
+        end
+        connections.xrayDescendantAdded = Workspace.DescendantAdded:Connect(function(obj)
+            if Visual.xrayEnabled then
+                applyXRayToObject(obj)
+            end
+        end)
+    else
+        for obj, trans in pairs(xrayTransparencies) do
+            if obj and obj.Parent then
+                obj.Transparency = trans
+            end
+        end
+        xrayTransparencies = {}
+        
+        if connections and type(connections) == "table" and connections.xrayDescendantAdded then
+            connections.xrayDescendantAdded:Disconnect()
+            connections.xrayDescendantAdded = nil
+        end
     end
 end
 
@@ -1800,6 +1850,7 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Low Detail Mode", toggleLowDetail)
     createToggleButton("Ultra Low Detail Mode", toggleUltraLowDetail)
     createToggleButton("ESP", toggleESP)
+    createToggleButton("XRay", toggleXRay)
     createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
     createToggleButton("Hide Own Nickname", toggleHideOwnNickname)
     createToggleButton("Hide All Characters Except Self", toggleHideAllCharactersExceptSelf)
@@ -1855,6 +1906,7 @@ Visual.toggleFlashlight = toggleFlashlight
 Visual.toggleLowDetail = toggleLowDetail
 Visual.toggleUltraLowDetail = toggleUltraLowDetail
 Visual.toggleESP = toggleESP
+Visual.toggleXRay = toggleXRay
 Visual.toggleHideAllNicknames = toggleHideAllNicknames
 Visual.toggleHideOwnNickname = toggleHideOwnNickname
 Visual.toggleHideAllCharactersExceptSelf = toggleHideAllCharactersExceptSelf
@@ -1871,6 +1923,7 @@ function Visual.resetStates()
     Visual.lowDetailEnabled = false
     Visual.ultraLowDetailEnabled = false
     Visual.espEnabled = false
+    Visual.xrayEnabled = false
     Visual.hideAllNicknames = false
     Visual.hideOwnNickname = false
     Visual.hideAllCharactersExceptSelf = false
@@ -1895,6 +1948,7 @@ function Visual.resetStates()
     toggleLowDetail(false)
     toggleUltraLowDetail(false)
     toggleESP(false)
+    toggleXRay(false)
     toggleHideAllNicknames(false)
     toggleHideOwnNickname(false)
     toggleHideAllCharactersExceptSelf(false)
@@ -1930,6 +1984,7 @@ function Visual.updateReferences()
     local wasLowDetailEnabled = Visual.lowDetailEnabled
     local wasUltraLowDetailEnabled = Visual.ultraLowDetailEnabled
     local wasEspEnabled = Visual.espEnabled
+    local wasXRayEnabled = Visual.xrayEnabled
     local wasHideAllNicknames = Visual.hideAllNicknames
     local wasHideOwnNickname = Visual.hideOwnNickname
     local wasHideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf
@@ -1968,6 +2023,10 @@ function Visual.updateReferences()
     if wasEspEnabled then
         print("Re-enabling ESP after respawn")
         toggleESP(true)
+    end
+    if wasXRayEnabled then
+        print("Re-enabling XRay after respawn")
+        toggleXRay(true)
     end
     if wasHideAllNicknames then
         print("Re-enabling Hide All Nicknames after respawn")
@@ -2038,6 +2097,9 @@ function Visual.cleanup()
     -- Clean up character transparencies
     characterTransparencies = {}
     
+    -- Clean up xray transparencies
+    xrayTransparencies = {}
+    
     -- Clean up foliage states
     foliageStates = {}
     processedObjects = {}
@@ -2106,6 +2168,7 @@ function Visual.getState()
         lowDetailEnabled = Visual.lowDetailEnabled,
         ultraLowDetailEnabled = Visual.ultraLowDetailEnabled,
         espEnabled = Visual.espEnabled,
+        xrayEnabled = Visual.xrayEnabled,
         hideAllNicknames = Visual.hideAllNicknames,
         hideOwnNickname = Visual.hideOwnNickname,
         hideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf,
