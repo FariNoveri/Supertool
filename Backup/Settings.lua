@@ -7,17 +7,19 @@ local ScreenGui, ScrollFrame, settings, Movement
 -- Initialize module
 local Settings = {}
 
--- UI Elements (to be initialized in initUI function)
-local SettingsFrame, SettingsScrollFrame, SettingsLayout
-
 -- Store slider references for updates
 local sliders = {}
 
+-- Store toggle states
+local toggleStates = {
+    HideLogo = false
+}
+
 -- Helper function to create a slider UI
-local function createSlider(name, setting, min, max, default)
+local function createSlider(name, setting, min, max, default, parent)
     local sliderFrame = Instance.new("Frame")
     sliderFrame.Name = name .. "Slider"
-    sliderFrame.Parent = SettingsScrollFrame
+    sliderFrame.Parent = parent
     sliderFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     sliderFrame.BorderSizePixel = 0
     sliderFrame.Size = UDim2.new(1, -5, 0, 60)
@@ -166,6 +168,37 @@ local function createSlider(name, setting, min, max, default)
     end)
 end
 
+-- Helper function to create a toggle button UI
+local function createToggleButton(name, callback, parent)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Parent = parent
+    button.BackgroundColor3 = toggleStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+    button.BorderSizePixel = 0
+    button.Size = UDim2.new(1, -2, 0, 20)
+    button.Font = Enum.Font.Gotham
+    button.Text = name
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 8
+    
+    button.MouseButton1Click:Connect(function()
+        local newState = not toggleStates[name]
+        toggleStates[name] = newState
+        button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+        if type(callback) == "function" then
+            callback(newState)
+        end
+    end)
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = toggleStates[name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = toggleStates[name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+    end)
+end
+
 -- Function to update slider UI when settings change externally
 local function updateSliderUI(name, newValue)
     local slider = sliders[name]
@@ -210,175 +243,85 @@ function Settings.applySettings()
         print("Sprint Speed setting updated:", settings.SprintSpeed.value)
     end
     
+    -- Apply GUI resize
+    local mainFrame = ScreenGui:FindFirstChild("MainFrame")
+    if mainFrame then
+        if settings.GuiWidth then
+            mainFrame.Size = UDim2.new(0, settings.GuiWidth.value, mainFrame.Size.Y.Scale, mainFrame.Size.Y.Offset)
+        end
+        if settings.GuiHeight then
+            mainFrame.Size = UDim2.new(mainFrame.Size.X.Scale, mainFrame.Size.X.Offset, 0, settings.GuiHeight.value)
+        end
+    end
+    
+    -- Apply Hide Logo
+    local minimizedLogo = ScreenGui:FindFirstChild("MinimizedLogo")
+    if minimizedLogo then
+        if toggleStates.HideLogo then
+            minimizedLogo.BackgroundTransparency = 1
+            local logoText = minimizedLogo:FindFirstChild("TextLabel")
+            if logoText then
+                logoText.Visible = false
+            end
+        else
+            minimizedLogo.BackgroundTransparency = 0
+            minimizedLogo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            local logoText = minimizedLogo:FindFirstChild("TextLabel")
+            if logoText then
+                logoText.Visible = true
+            end
+        end
+    end
+    
     -- Note: Fly Speed and Freecam Speed are applied directly in their respective modules
     print("Settings applied - WalkSpeed:", settings.WalkSpeed and settings.WalkSpeed.value or "N/A", 
           "JumpHeight:", settings.JumpHeight and settings.JumpHeight.value or "N/A",
           "SprintSpeed:", settings.SprintSpeed and settings.SprintSpeed.value or "N/A")
 end
 
--- Show Settings UI
-local function showSettings()
-    if not SettingsFrame then
-        warn("Settings UI not initialized!")
+-- Function to create buttons for Settings features (now directly loads UI elements)
+function Settings.loadSettingsButtons(createButton)
+    -- Ignore createButton, directly add to ScrollFrame (which is FeatureContainer)
+    if not ScrollFrame then
+        warn("ScrollFrame not provided!")
         return
     end
     
-    SettingsFrame.Visible = true
-    SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, SettingsLayout.AbsoluteContentSize.Y + 20)
+    -- Create toggle for Hide Logo
+    createToggleButton("Hide Logo", function(state)
+        toggleStates.HideLogo = state
+        Settings.applySettings()
+    end, ScrollFrame)
+    
+    -- Create sliders
+    if settings.WalkSpeed then
+        createSlider("Walk Speed", settings.WalkSpeed, settings.WalkSpeed.min, settings.WalkSpeed.max, settings.WalkSpeed.default, ScrollFrame)
+    end
+    if settings.JumpHeight then
+        createSlider("Jump Height", settings.JumpHeight, settings.JumpHeight.min, settings.JumpHeight.max, settings.JumpHeight.default, ScrollFrame)
+    end
+    if settings.SprintSpeed then
+        createSlider("Sprint Speed", settings.SprintSpeed, settings.SprintSpeed.min, settings.SprintSpeed.max, settings.SprintSpeed.default, ScrollFrame)
+    end
+    if settings.FlySpeed then
+        createSlider("Fly Speed", settings.FlySpeed, settings.FlySpeed.min, settings.FlySpeed.max, settings.FlySpeed.default, ScrollFrame)
+    end
+    if settings.FreecamSpeed then
+        createSlider("Freecam Speed", settings.FreecamSpeed, settings.FreecamSpeed.min, settings.FreecamSpeed.max, settings.FreecamSpeed.default, ScrollFrame)
+    end
+    if settings.GuiWidth then
+        createSlider("Gui Width", settings.GuiWidth, settings.GuiWidth.min, settings.GuiWidth.max, settings.GuiWidth.default, ScrollFrame)
+    end
+    if settings.GuiHeight then
+        createSlider("Gui Height", settings.GuiHeight, settings.GuiHeight.min, settings.GuiHeight.max, settings.GuiHeight.default, ScrollFrame)
+    end
     
     -- Update all slider UIs to reflect current values
     for name, slider in pairs(sliders) do
         updateSliderUI(name, slider.setting.value)
     end
     
-    print("Settings UI opened")
-end
-
--- Hide Settings UI
-local function hideSettings()
-    if SettingsFrame then
-        SettingsFrame.Visible = false
-        print("Settings UI closed")
-    end
-end
-
--- Initialize UI elements
-local function initUI()
-    if not ScreenGui then
-        warn("ScreenGui not provided to Settings module!")
-        return
-    end
-    
-    -- Settings Frame
-    SettingsFrame = Instance.new("Frame")
-    SettingsFrame.Name = "SettingsFrame"
-    SettingsFrame.Parent = ScreenGui
-    SettingsFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    SettingsFrame.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    SettingsFrame.BorderSizePixel = 2
-    SettingsFrame.Position = UDim2.new(0.5, -175, 0.2, 0)
-    SettingsFrame.Size = UDim2.new(0, 350, 0, 450)  -- Increased height for more sliders
-    SettingsFrame.Visible = false
-    SettingsFrame.Active = true
-    SettingsFrame.Draggable = true
-    SettingsFrame.ZIndex = 100  -- Higher z-index to ensure visibility
-
-    -- Add rounded corners to settings frame
-    local frameCorner = Instance.new("UICorner")
-    frameCorner.CornerRadius = UDim.new(0, 8)
-    frameCorner.Parent = SettingsFrame
-
-    -- Settings Title
-    local SettingsTitle = Instance.new("TextLabel")
-    SettingsTitle.Name = "Title"
-    SettingsTitle.Parent = SettingsFrame
-    SettingsTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    SettingsTitle.BorderSizePixel = 0
-    SettingsTitle.Position = UDim2.new(0, 0, 0, 0)
-    SettingsTitle.Size = UDim2.new(1, 0, 0, 40)
-    SettingsTitle.Font = Enum.Font.GothamBold
-    SettingsTitle.Text = "⚙️ SETTINGS"
-    SettingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SettingsTitle.TextSize = 14
-    SettingsTitle.ZIndex = 101
-    
-    -- Add rounded corners to title
-    local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 8)
-    titleCorner.Parent = SettingsTitle
-
-    -- Close Settings Button - Fixed with proper event handling
-    local CloseSettingsButton = Instance.new("TextButton")
-    CloseSettingsButton.Name = "CloseButton"
-    CloseSettingsButton.Parent = SettingsFrame
-    CloseSettingsButton.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-    CloseSettingsButton.Position = UDim2.new(1, -35, 0, 8)
-    CloseSettingsButton.Size = UDim2.new(0, 25, 0, 25)
-    CloseSettingsButton.Font = Enum.Font.GothamBold
-    CloseSettingsButton.Text = "✕"
-    CloseSettingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseSettingsButton.TextSize = 12
-    CloseSettingsButton.ZIndex = 102  -- Higher z-index than title
-    CloseSettingsButton.Active = true  -- Make sure it's active
-    
-    -- Add rounded corners to close button
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0, 4)
-    closeCorner.Parent = CloseSettingsButton
-
-    -- Settings ScrollFrame
-    SettingsScrollFrame = Instance.new("ScrollingFrame")
-    SettingsScrollFrame.Name = "SettingsScrollFrame"
-    SettingsScrollFrame.Parent = SettingsFrame
-    SettingsScrollFrame.BackgroundTransparency = 1
-    SettingsScrollFrame.Position = UDim2.new(0, 15, 0, 50)
-    SettingsScrollFrame.Size = UDim2.new(1, -30, 1, -65)
-    SettingsScrollFrame.ScrollBarThickness = 6
-    SettingsScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(70, 130, 180)
-    SettingsScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-    SettingsScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-    SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    SettingsScrollFrame.BorderSizePixel = 0
-    SettingsScrollFrame.ZIndex = 101
-    SettingsScrollFrame.Active = false  -- Don't block input to children
-
-    -- Settings Layout
-    SettingsLayout = Instance.new("UIListLayout")
-    SettingsLayout.Parent = SettingsScrollFrame
-    SettingsLayout.Padding = UDim.new(0, 8)
-    SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    SettingsLayout.FillDirection = Enum.FillDirection.Vertical
-
-    -- Create sliders for all settings
-    if settings.WalkSpeed then
-        createSlider("Walk Speed", settings.WalkSpeed, settings.WalkSpeed.min, settings.WalkSpeed.max, settings.WalkSpeed.default)
-    end
-    if settings.JumpHeight then
-        createSlider("Jump Height", settings.JumpHeight, settings.JumpHeight.min, settings.JumpHeight.max, settings.JumpHeight.default)
-    end
-    if settings.SprintSpeed then
-        createSlider("Sprint Speed", settings.SprintSpeed, settings.SprintSpeed.min, settings.SprintSpeed.max, settings.SprintSpeed.default)
-    end
-    if settings.FlySpeed then
-        createSlider("Fly Speed", settings.FlySpeed, settings.FlySpeed.min, settings.FlySpeed.max, settings.FlySpeed.default)
-    end
-    if settings.FreecamSpeed then
-        createSlider("Freecam Speed", settings.FreecamSpeed, settings.FreecamSpeed.min, settings.FreecamSpeed.max, settings.FreecamSpeed.default)
-    end
-
-    -- Connect Close Settings Button - Multiple event types for reliability
-    CloseSettingsButton.MouseButton1Click:Connect(function()
-        print("Close button clicked (Mouse)")
-        hideSettings()
-    end)
-    
-    -- Also handle touch for mobile
-    CloseSettingsButton.TouchTap:Connect(function()
-        print("Close button tapped (Touch)")
-        hideSettings()
-    end)
-    
-    -- Backup method using Activated event
-    CloseSettingsButton.Activated:Connect(function()
-        print("Close button activated")
-        hideSettings()
-    end)
-    
-    -- Update canvas size after layout change
-    SettingsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, SettingsLayout.AbsoluteContentSize.Y + 20)
-    end)
-    
-    print("Settings UI initialized successfully with all sliders")
-end
-
--- Function to create buttons for Settings features
-function Settings.loadSettingsButtons(createButton)
-    if not createButton then
-        warn("createButton function not provided!")
-        return
-    end
-    createButton("Settings", showSettings)
+    print("Settings UI elements loaded directly")
 end
 
 -- Function to reset Settings states
@@ -396,6 +339,11 @@ function Settings.resetStates()
     if settings.SprintSpeed then settings.SprintSpeed.value = settings.SprintSpeed.default end
     if settings.FlySpeed then settings.FlySpeed.value = settings.FlySpeed.default end
     if settings.FreecamSpeed then settings.FreecamSpeed.value = settings.FreecamSpeed.default end
+    if settings.GuiWidth then settings.GuiWidth.value = settings.GuiWidth.default end
+    if settings.GuiHeight then settings.GuiHeight.value = settings.GuiHeight.default end
+    
+    -- Reset toggles
+    toggleStates.HideLogo = false
     
     -- Update slider UIs
     for name, slider in pairs(sliders) do
@@ -404,10 +352,6 @@ function Settings.resetStates()
     
     -- Apply the reset settings
     Settings.applySettings()
-    
-    if SettingsFrame then
-        SettingsFrame.Visible = false
-    end
     
     print("Settings reset complete")
 end
@@ -495,8 +439,15 @@ function Settings.init(deps)
         print("Created default FreecamSpeed setting")
     end
     
-    -- Initialize UI elements
-    initUI()
+    if not settings.GuiWidth then
+        settings.GuiWidth = {value = 500, min = 300, max = 800, default = 500}
+        print("Created default GuiWidth setting")
+    end
+    
+    if not settings.GuiHeight then
+        settings.GuiHeight = {value = 300, min = 200, max = 600, default = 300}
+        print("Created default GuiHeight setting")
+    end
     
     print("Settings module initialized successfully")
     return true
@@ -506,13 +457,12 @@ end
 function Settings.debug()
     print("=== Settings Module Debug ===")
     print("ScreenGui:", ScreenGui ~= nil)
-    print("SettingsFrame:", SettingsFrame ~= nil)
     print("Settings object:", settings ~= nil)
     print("Movement reference:", Movement ~= nil)
     
     if settings then
         print("Current Settings Values:")
-        local settingsList = {"WalkSpeed", "JumpHeight", "SprintSpeed", "FlySpeed", "FreecamSpeed"}
+        local settingsList = {"WalkSpeed", "JumpHeight", "SprintSpeed", "FlySpeed", "FreecamSpeed", "GuiWidth", "GuiHeight"}
         for _, name in ipairs(settingsList) do
             if settings[name] then
                 print("  " .. name .. ":", settings[name].value, 
@@ -534,20 +484,6 @@ function Settings.debug()
     end
     print("  Total sliders:", sliderCount)
     
-    print("UI State:")
-    print("  SettingsFrame visible:", SettingsFrame and SettingsFrame.Visible or false)
-    print("  SettingsScrollFrame:", SettingsScrollFrame ~= nil)
-    print("  Close button exists:", SettingsFrame and SettingsFrame:FindFirstChild("CloseButton") ~= nil)
-    
-    if SettingsFrame and SettingsFrame:FindFirstChild("CloseButton") then
-        local closeBtn = SettingsFrame.CloseButton
-        print("  Close button properties:")
-        print("    Active:", closeBtn.Active)
-        print("    ZIndex:", closeBtn.ZIndex)
-        print("    Size:", closeBtn.Size)
-        print("    Position:", closeBtn.Position)
-    end
-    
     print("=============================")
 end
 
@@ -555,13 +491,6 @@ end
 function Settings.cleanup()
     print("Cleaning up Settings module")
     
-    if SettingsFrame then
-        SettingsFrame:Destroy()
-        SettingsFrame = nil
-    end
-    
-    SettingsScrollFrame = nil
-    SettingsLayout = nil
     sliders = {}
     
     print("Settings module cleaned up")
@@ -590,31 +519,10 @@ end
 
 -- Function to force refresh of all UI elements
 function Settings.refreshUI()
-    if not SettingsFrame then return end
-    
-    -- Update canvas size
-    if SettingsScrollFrame and SettingsLayout then
-        SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, SettingsLayout.AbsoluteContentSize.Y + 20)
-    end
-    
     -- Refresh all sliders
     Settings.refreshSliders()
     
     print("Settings UI refreshed")
-end
-
--- Function to check if settings UI is currently visible
-function Settings.isVisible()
-    return SettingsFrame and SettingsFrame.Visible or false
-end
-
--- Function to toggle settings visibility
-function Settings.toggle()
-    if Settings.isVisible() then
-        hideSettings()
-    else
-        showSettings()
-    end
 end
 
 return Settings

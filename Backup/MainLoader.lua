@@ -24,7 +24,9 @@ local settings = {
     FlySpeed = {value = 50, min = 10, max = 200, default = 50},
     FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
     JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
-    WalkSpeed = {value = 16, min = 10, max = 200, default = 16}
+    WalkSpeed = {value = 16, min = 10, max = 200, default = 16},
+    GuiWidth = {value = 500, min = 300, max = 800, default = 500},
+    GuiHeight = {value = 300, min = 200, max = 600, default = 300}
 }
 
 -- ScreenGui
@@ -50,7 +52,7 @@ Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Frame.BorderColor3 = Color3.fromRGB(45, 45, 45)
 Frame.BorderSizePixel = 1
 Frame.Position = UDim2.new(0.5, -250, 0.5, -150)
-Frame.Size = UDim2.new(0, 500, 0, 300)
+Frame.Size = UDim2.new(0, settings.GuiWidth.value, 0, settings.GuiHeight.value)
 Frame.Active = true
 Frame.Draggable = true
 
@@ -483,7 +485,7 @@ local function loadButtons()
     -- Clear existing buttons first - with error handling
     pcall(function()
         for _, child in pairs(FeatureContainer:GetChildren()) do
-            if child:IsA("TextButton") or (child:IsA("TextLabel") and child.Name ~= "FeatureLayout") then
+            if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
                 child:Destroy()
             end
         end
