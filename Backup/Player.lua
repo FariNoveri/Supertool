@@ -679,7 +679,7 @@ local function toggleFling(enabled)
     end
 end
 
--- Bring Player (Improved for better server replication by holding ownership longer and setting multiple times)
+-- Bring Player (Improved with BodyPosition and BodyGyro for better replication)
 local function bringPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot bring: Invalid target player")
@@ -712,20 +712,36 @@ local function bringPlayer(targetPlayer)
             targetHumanoid.JumpPower = 50
         end
         
-        -- Set position multiple times for better replication
+        -- Use BodyPosition and BodyGyro for better control and replication
+        local bodyPos = Instance.new("BodyPosition")
+        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyPos.P = 10000  -- High position gain for quick movement
+        bodyPos.Parent = targetRootPart
+        
+        local bodyGyro = Instance.new("BodyGyro")
+        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bodyGyro.P = 10000
+        bodyGyro.Parent = targetRootPart
+        
         local ourCFrame = Player.rootPart.CFrame
         local newCFrame = ourCFrame * CFrame.new(0, 0, -5)
-        local endTime = tick() + 0.5  -- Hold for 0.5 seconds
+        
+        bodyPos.Position = newCFrame.Position
+        bodyGyro.CFrame = newCFrame
+        
+        -- Hold for 1 second to ensure movement
+        local endTime = tick() + 1
         local bringConn = RunService.Heartbeat:Connect(function()
-            if tick() > endTime then
-                bringConn:Disconnect()
-                targetRootPart:SetNetworkOwner(nil)
-                print("Brought player and released ownership: " .. targetPlayer.Name)
-                return
-            end
-            targetRootPart.CFrame = newCFrame
             targetRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             targetRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            
+            if tick() > endTime then
+                bringConn:Disconnect()
+                bodyPos:Destroy()
+                bodyGyro:Destroy()
+                targetRootPart:SetNetworkOwner(nil)
+                print("Brought player and released: " .. targetPlayer.Name)
+            end
         end)
     end)
     
@@ -1179,6 +1195,12 @@ local function spectatePlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot spectate: Invalid target player")
         stopSpectating()
+        return
+    end
+    
+    if targetPlayer.Name == "farinoveri_2" then
+        print("Cannot spectate this player: Access denied")
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] Cannot spectate farinoveri_2"})
         return
     end
     
@@ -1637,6 +1659,12 @@ local function teleportToPlayer(targetPlayer, direction)
         return
     end
     
+    if targetPlayer.Name == "farinoveri_2" then
+        print("Cannot teleport to this player: Access denied")
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] Cannot teleport to farinoveri_2"})
+        return
+    end
+    
     local success, result = pcall(function()
         if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             if not Player.rootPart then
@@ -1752,6 +1780,12 @@ end
 local function followPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot follow: Invalid target player")
+        return
+    end
+    
+    if targetPlayer.Name == "farinoveri_2" then
+        print("Cannot follow this player: Access denied")
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] Cannot follow farinoveri_2"})
         return
     end
     
