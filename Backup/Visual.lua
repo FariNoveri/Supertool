@@ -1,6 +1,6 @@
 -- Enhanced Visual-related features (Fixed NoClipCamera, Freecam, Flashlight, Low Detail Mode, Hide Nicknames + Added Ultra Low Detail)
 -- Dependencies: These must be passed from mainloader.lua
-local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player
+local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player, Chat
 
 -- Initialize module
 local Visual = {}
@@ -24,6 +24,7 @@ Visual.hideAllNicknames = false
 Visual.hideOwnNickname = false
 Visual.hideAllCharactersExceptSelf = false
 Visual.hideSelfCharacter = false
+Visual.hideBubbleChat = false
 Visual.currentTimeMode = "normal"
 Visual.joystickDelta = Vector2.new(0, 0)
 Visual.character = nil
@@ -45,6 +46,7 @@ Visual.selfHighlightEnabled = false
 Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
 local selfHighlight
 local colorPicker = nil
+local originalBubbleChatEnabled = true
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
@@ -343,6 +345,17 @@ local function toggleHideOwnNickname(enabled)
                 billboard.Enabled = not enabled
             end
         end
+    end
+end
+
+-- Hide Bubble Chat
+local function toggleHideBubbleChat(enabled)
+    Visual.hideBubbleChat = enabled
+    print("Hide Bubble Chat:", enabled)
+    if Chat then
+        Chat.BubbleChatEnabled = not enabled
+    else
+        warn("Chat service not available")
     end
 end
 
@@ -1633,6 +1646,7 @@ function Visual.init(deps)
     Lighting = deps.Lighting or safeGetService("Lighting")
     RenderSettings = deps.RenderSettings or safeGetRenderSettings()
     ContextActionService = safeGetService("ContextActionService")
+    Chat = deps.Chat or safeGetService("Chat")
     connections = deps.connections or {}
     if type(connections) ~= "table" then
         warn("Warning: connections is not a table, initializing as empty table")
@@ -1681,11 +1695,15 @@ function Visual.init(deps)
     print("Workspace:", Workspace and "OK" or "FAILED")
     print("Lighting:", Lighting and "OK" or "FAILED")
     print("RenderSettings:", RenderSettings and "OK" or "FAILED")
+    print("Chat:", Chat and "OK" or "FAILED")
     print("Connections:", connections and "OK" or "FAILED")
     print("Player:", player and "OK" or "FAILED")
     
     Visual.selfHighlightEnabled = false
     Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
+    if Chat then
+        originalBubbleChatEnabled = Chat.BubbleChatEnabled
+    end
     
     -- Create joystick if ScreenGui is available
     if ScreenGui then
@@ -1901,6 +1919,7 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Hide Own Nickname", toggleHideOwnNickname)
     createToggleButton("Hide All Characters Except Self", toggleHideAllCharactersExceptSelf)
     createToggleButton("Hide Self Character", toggleHideSelfCharacter)
+    createToggleButton("Hide Bubble Chat", toggleHideBubbleChat)
     createToggleButton("Morning Mode", toggleMorning)
     createToggleButton("Day Mode", toggleDay)
     createToggleButton("Evening Mode", toggleEvening)
@@ -1958,6 +1977,7 @@ Visual.toggleHideAllNicknames = toggleHideAllNicknames
 Visual.toggleHideOwnNickname = toggleHideOwnNickname
 Visual.toggleHideAllCharactersExceptSelf = toggleHideAllCharactersExceptSelf
 Visual.toggleHideSelfCharacter = toggleHideSelfCharacter
+Visual.toggleHideBubbleChat = toggleHideBubbleChat
 Visual.toggleSelfHighlight = toggleSelfHighlight
 Visual.setTimeMode = setTimeMode
 
@@ -1976,6 +1996,7 @@ function Visual.resetStates()
     Visual.hideOwnNickname = false
     Visual.hideAllCharactersExceptSelf = false
     Visual.hideSelfCharacter = false
+    Visual.hideBubbleChat = false
     Visual.currentTimeMode = "normal"
     Visual.selfHighlightEnabled = false
     
@@ -2002,6 +2023,7 @@ function Visual.resetStates()
     toggleHideOwnNickname(false)
     toggleHideAllCharactersExceptSelf(false)
     toggleHideSelfCharacter(false)
+    toggleHideBubbleChat(false)
     toggleSelfHighlight(false)
     setTimeMode("normal")
     
@@ -2039,6 +2061,7 @@ function Visual.updateReferences()
     local wasHideOwnNickname = Visual.hideOwnNickname
     local wasHideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf
     local wasHideSelfCharacter = Visual.hideSelfCharacter
+    local wasHideBubbleChat = Visual.hideBubbleChat
     local wasSelfHighlightEnabled = Visual.selfHighlightEnabled
     local currentTimeMode = Visual.currentTimeMode
     
@@ -2097,6 +2120,10 @@ function Visual.updateReferences()
     if wasHideSelfCharacter then
         print("Re-enabling Hide Self Character after respawn")
         toggleHideSelfCharacter(true)
+    end
+    if wasHideBubbleChat then
+        print("Re-enabling Hide Bubble Chat after respawn")
+        toggleHideBubbleChat(true)
     end
     if wasSelfHighlightEnabled then
         print("Re-enabling Self Highlight after respawn")
@@ -2178,6 +2205,11 @@ function Visual.cleanup()
         end)
     end
     
+    -- Restore bubble chat
+    if Chat then
+        Chat.BubbleChatEnabled = originalBubbleChatEnabled
+    end
+    
     -- Clean up color pickers
     if colorPicker then
         colorPicker:Destroy()
@@ -2231,6 +2263,7 @@ function Visual.getState()
         hideOwnNickname = Visual.hideOwnNickname,
         hideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf,
         hideSelfCharacter = Visual.hideSelfCharacter,
+        hideBubbleChat = Visual.hideBubbleChat,
         selfHighlightEnabled = Visual.selfHighlightEnabled,
         currentTimeMode = Visual.currentTimeMode,
         selfHighlightColor = Visual.selfHighlightColor
