@@ -679,7 +679,7 @@ local function toggleFling(enabled)
     end
 end
 
--- Bring Player (Improved with BodyPosition and BodyGyro for better replication)
+-- Bring Player (Improved with direct CFrame set after taking ownership for server-side effect)
 local function bringPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot bring: Invalid target player")
@@ -712,36 +712,19 @@ local function bringPlayer(targetPlayer)
             targetHumanoid.JumpPower = 50
         end
         
-        -- Use BodyPosition and BodyGyro for better control and replication
-        local bodyPos = Instance.new("BodyPosition")
-        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bodyPos.P = 10000  -- High position gain for quick movement
-        bodyPos.Parent = targetRootPart
-        
-        local bodyGyro = Instance.new("BodyGyro")
-        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bodyGyro.P = 10000
-        bodyGyro.Parent = targetRootPart
-        
         local ourCFrame = Player.rootPart.CFrame
         local newCFrame = ourCFrame * CFrame.new(0, 0, -5)
         
-        bodyPos.Position = newCFrame.Position
-        bodyGyro.CFrame = newCFrame
+        -- Direct set with anchor trick for better replication
+        targetRootPart.Anchored = true
+        targetRootPart.CFrame = newCFrame
+        task.wait(0.1)
+        targetRootPart.Anchored = false
         
-        -- Hold for 1 second to ensure movement
-        local endTime = tick() + 1
-        local bringConn = RunService.Heartbeat:Connect(function()
-            targetRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            targetRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            
-            if tick() > endTime then
-                bringConn:Disconnect()
-                bodyPos:Destroy()
-                bodyGyro:Destroy()
-                targetRootPart:SetNetworkOwner(nil)
-                print("Brought player and released: " .. targetPlayer.Name)
-            end
+        -- Hold ownership a bit longer
+        task.delay(0.5, function()
+            targetRootPart:SetNetworkOwner(nil)
+            print("Brought player and released: " .. targetPlayer.Name)
         end)
     end)
     
@@ -750,50 +733,22 @@ local function bringPlayer(targetPlayer)
     end
 end
 
--- Magnet Players (client-side with BodyPosition and BodyGyro for full control)
+-- Magnet Players (client-side visual only using RenderStepped CFrame override)
 local function toggleMagnetPlayers(enabled)
     Player.magnetEnabled = enabled
     
     if enabled then
-        print("Activating magnet players...")
-        Player.magnetPlayerPositions = {}
+        print("Activating magnet players (client-side visual)...")
         
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local hrp = p.Character.HumanoidRootPart
-                local bodyPos = Instance.new("BodyPosition")
-                bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bodyPos.Parent = hrp
-                local bodyGyro = Instance.new("BodyGyro")
-                bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                bodyGyro.Parent = hrp
-                Player.magnetPlayerPositions[p] = {bodyPos = bodyPos, bodyGyro = bodyGyro}
-            end
-        end
-        
-        connections.magnet = RunService.Heartbeat:Connect(function()
+        connections.magnet = RunService.RenderStepped:Connect(function()
             if not Player.magnetEnabled or not Player.rootPart then return end
             
             local ourCFrame = Player.rootPart.CFrame
-            for targetPlayer, movers in pairs(Player.magnetPlayerPositions) do
-                if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            for _, targetPlayer in pairs(Players:GetPlayers()) do
+                if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     local hrp = targetPlayer.Character.HumanoidRootPart
-                    local targetCFrame = ourCFrame * CFrame.new(Player.magnetOffset)
-                    movers.bodyPos.Position = targetCFrame.Position
-                    movers.bodyGyro.CFrame = ourCFrame  -- All face same direction as local player
-                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                    
-                    if targetPlayer.Character:FindFirstChild("Humanoid") then
-                        local hum = targetPlayer.Character.Humanoid
-                        hum.PlatformStand = true
-                        hum.WalkSpeed = 0
-                        hum.JumpPower = 0
-                    end
-                else
-                    movers.bodyPos:Destroy()
-                    movers.bodyGyro:Destroy()
-                    Player.magnetPlayerPositions[targetPlayer] = nil
+                    local targetPosition = (ourCFrame * CFrame.new(Player.magnetOffset)).Position
+                    hrp.CFrame = CFrame.new(targetPosition) * ourCFrame.Rotation
                 end
             end
         end)
@@ -802,30 +757,8 @@ local function toggleMagnetPlayers(enabled)
             if Player.magnetEnabled and newPlayer ~= player then
                 newPlayer.CharacterAdded:Connect(function(character)
                     task.wait(0.5)
-                    if character:FindFirstChild("HumanoidRootPart") then
-                        local hrp = character.HumanoidRootPart
-                        local bodyPos = Instance.new("BodyPosition")
-                        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        bodyPos.Parent = hrp
-                        local bodyGyro = Instance.new("BodyGyro")
-                        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                        bodyGyro.Parent = hrp
-                        Player.magnetPlayerPositions[newPlayer] = {bodyPos = bodyPos, bodyGyro = bodyGyro}
-                        print("Magnet applied to new player: " .. newPlayer.Name)
-                    end
+                    print("Magnet (visual) applied to new player: " .. newPlayer.Name)
                 end)
-                if newPlayer.Character and newPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    task.wait(0.5)
-                    local hrp = newPlayer.Character.HumanoidRootPart
-                    local bodyPos = Instance.new("BodyPosition")
-                    bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    bodyPos.Parent = hrp
-                    local bodyGyro = Instance.new("BodyGyro")
-                    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                    bodyGyro.Parent = hrp
-                    Player.magnetPlayerPositions[newPlayer] = {bodyPos = bodyPos, bodyGyro = bodyGyro}
-                    print("Magnet applied to existing player: " .. newPlayer.Name)
-                end
             end
         end)
         
@@ -833,23 +766,10 @@ local function toggleMagnetPlayers(enabled)
             if Player.magnetEnabled then
                 task.wait(0.5)
                 Player.rootPart = character:FindFirstChild("HumanoidRootPart")
-                for _, p in pairs(Players:GetPlayers()) do
-                    if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        local hrp = p.Character.HumanoidRootPart
-                        local bodyPos = Instance.new("BodyPosition")
-                        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        bodyPos.Parent = hrp
-                        local bodyGyro = Instance.new("BodyGyro")
-                        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                        bodyGyro.Parent = hrp
-                        Player.magnetPlayerPositions[p] = {bodyPos = bodyPos, bodyGyro = bodyGyro}
-                        print("Magnet reapplied to player: " .. p.Name)
-                    end
-                end
             end
         end)
         
-        print("Magnet players activated successfully")
+        print("Magnet players activated successfully (client-side visual)")
     else
         print("Deactivating magnet players...")
         if connections.magnet then
@@ -867,58 +787,18 @@ local function toggleMagnetPlayers(enabled)
             connections.magnetRespawn = nil
         end
         
-        for targetPlayer, movers in pairs(Player.magnetPlayerPositions) do
-            if movers.bodyPos then
-                movers.bodyPos:Destroy()
-            end
-            if movers.bodyGyro then
-                movers.bodyGyro:Destroy()
-            end
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local hrp = targetPlayer.Character.HumanoidRootPart
-                hrp.Anchored = false
-                if targetPlayer.Character:FindFirstChild("Humanoid") then
-                    local hum = targetPlayer.Character.Humanoid
-                    hum.PlatformStand = false
-                    hum.WalkSpeed = 16
-                    hum.JumpPower = 50
-                end
-            end
-        end
-        
-        Player.magnetPlayerPositions = {}
         print("Magnet players deactivated successfully")
     end
 end
 
--- Helper function to freeze a single player (client-side with BodyPosition and BodyGyro)
+-- Helper function to freeze a single player (client-side visual with stored CFrame)
 local function freezePlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then return end
     
     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = targetPlayer.Character.HumanoidRootPart
-        local bodyPos = Instance.new("BodyPosition")
-        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bodyPos.Position = hrp.Position
-        bodyPos.Parent = hrp
-        local bodyGyro = Instance.new("BodyGyro")
-        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bodyGyro.CFrame = hrp.CFrame
-        bodyGyro.Parent = hrp
-        
-        if not Player.frozenPlayerPositions[targetPlayer] then
-            Player.frozenPlayerPositions[targetPlayer] = {bodyPos = bodyPos, bodyGyro = bodyGyro}
-        end
-        
-        if targetPlayer.Character:FindFirstChild("Humanoid") then
-            local hum = targetPlayer.Character.Humanoid
-            hum.PlatformStand = true
-            hum.Sit = false
-            hum.WalkSpeed = 0
-            hum.JumpPower = 0
-        end
-        
-        print("Froze player: " .. targetPlayer.Name)
+        Player.frozenPlayerPositions[targetPlayer] = hrp.CFrame
+        print("Froze player (visual): " .. targetPlayer.Name)
     end
 end
 
@@ -926,30 +806,8 @@ end
 local function unfreezePlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then return end
     
-    local frozenData = Player.frozenPlayerPositions[targetPlayer]
-    if frozenData then
-        if frozenData.bodyPos then
-            frozenData.bodyPos:Destroy()
-        end
-        if frozenData.bodyGyro then
-            frozenData.bodyGyro:Destroy()
-        end
-    end
-    
-    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local hrp = targetPlayer.Character.HumanoidRootPart
-    end
-    
-    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-        local hum = targetPlayer.Character.Humanoid
-        hum.PlatformStand = false
-        hum.WalkSpeed = 16
-        hum.JumpPower = 50
-    end
-        
-    print("Unfroze player: " .. targetPlayer.Name)
-    
     Player.frozenPlayerPositions[targetPlayer] = nil
+    print("Unfroze player: " .. targetPlayer.Name)
 end
 
 -- Setup monitoring for a specific player
@@ -963,21 +821,7 @@ local function setupPlayerMonitoring(targetPlayer)
         
         if Player.freezeEnabled then
             freezePlayer(targetPlayer)
-            print("Auto-froze respawned player: " .. targetPlayer.Name)
-        end
-        
-        if Player.magnetEnabled then
-            if character:FindFirstChild("HumanoidRootPart") then
-                local hrp = character.HumanoidRootPart
-                local bodyPos = Instance.new("BodyPosition")
-                bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bodyPos.Parent = hrp
-                local bodyGyro = Instance.new("BodyGyro")
-                bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                bodyGyro.Parent = hrp
-                Player.magnetPlayerPositions[targetPlayer] = {bodyPos = bodyPos, bodyGyro = bodyGyro}
-                print("Magnet applied to respawned player: " .. targetPlayer.Name)
-            end
+            print("Auto-froze respawned player (visual): " .. targetPlayer.Name)
         end
         
         if Player.physicsEnabled then
@@ -1001,18 +845,6 @@ local function setupPlayerMonitoring(targetPlayer)
     
     if Player.freezeEnabled and targetPlayer.Character then
         freezePlayer(targetPlayer)
-    end
-    
-    if Player.magnetEnabled and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local hrp = targetPlayer.Character.HumanoidRootPart
-        local bodyPos = Instance.new("BodyPosition")
-        bodyPos.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bodyPos.Parent = hrp
-        local bodyGyro = Instance.new("BodyGyro")
-        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bodyGyro.Parent = hrp
-        Player.magnetPlayerPositions[targetPlayer] = {bodyPos = bodyPos, bodyGyro = bodyGyro}
-        print("Magnet applied to player: " .. targetPlayer.Name)
     end
     
     if Player.physicsEnabled then
@@ -1045,16 +877,15 @@ local function cleanupPlayerMonitoring(targetPlayer)
     end
     
     Player.frozenPlayerPositions[targetPlayer] = nil
-    Player.magnetPlayerPositions[targetPlayer] = nil
     disablePhysicsForPlayer(targetPlayer)
 end
 
--- Freeze Players
+-- Freeze Players (client-side visual using RenderStepped CFrame override)
 local function toggleFreezePlayers(enabled)
     Player.freezeEnabled = enabled
     
     if enabled then
-        print("Activating freeze players...")
+        print("Activating freeze players (client-side visual)...")
         Player.frozenPlayerPositions = {}
         
         for _, p in pairs(Players:GetPlayers()) do
@@ -1082,24 +913,17 @@ local function toggleFreezePlayers(enabled)
             end)
         end
         
-        connections.freeze = RunService.Heartbeat:Connect(function()
+        connections.freeze = RunService.RenderStepped:Connect(function()
             if Player.freezeEnabled then
-                for targetPlayer, movers in pairs(Player.frozenPlayerPositions) do
+                for targetPlayer, frozenCFrame in pairs(Player.frozenPlayerPositions) do
                     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                         local hrp = targetPlayer.Character.HumanoidRootPart
-                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                        if targetPlayer.Character:FindFirstChild("Humanoid") then
-                            local hum = targetPlayer.Character.Humanoid
-                            hum.PlatformStand = true
-                            hum.WalkSpeed = 0
-                            hum.JumpPower = 0
-                        end
+                        hrp.CFrame = frozenCFrame
                     end
                 end
             end
         end)
-        print("Players frozen successfully")
+        print("Players frozen successfully (client-side visual)")
     else
         print("Deactivating freeze players...")
         if connections.freeze then
@@ -1139,11 +963,11 @@ end
 
 -- Update Spectate Buttons Visibility
 local function updateSpectateButtons()
-    local isSpectating = Player.selectedPlayer ~= nil
-    if NextSpectateButton then NextSpectateButton.Visible = isSpectating end
-    if PrevSpectateButton then PrevSpectateButton.Visible = isSpectating end
-    if StopSpectateButton then StopSpectateButton.Visible = isSpectating end
-    if TeleportSpectateButton then TeleportSpectateButton.Visible = isSpectating end
+    local isSelected = Player.selectedPlayer ~= nil
+    if NextSpectateButton then NextSpectateButton.Visible = isSelected end
+    if PrevSpectateButton then PrevSpectateButton.Visible = isSelected end
+    if StopSpectateButton then StopSpectateButton.Visible = isSelected end
+    if TeleportSpectateButton then TeleportSpectateButton.Visible = isSelected end
 end
 
 -- Stop Spectating
@@ -1767,7 +1591,7 @@ local function stopFollowing()
     Player.updatePlayerList()
 end
 
--- Follow Player (client-side, follow exact path with history)
+-- Follow Player (client-side, follow exact path with history - improved recording)
 local function followPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then
         print("Cannot follow: Invalid target player")
@@ -1801,11 +1625,11 @@ local function followPlayer(targetPlayer)
     
     print("Started following: " .. targetPlayer.Name)
     
-    -- Record target path
-    Player.followConnections.record = RunService.Heartbeat:Connect(function()
+    -- Record target path more frequently
+    Player.followConnections.record = RunService.RenderStepped:Connect(function()
         if Player.followEnabled then
             table.insert(Player.followPathHistory, {Position = targetRootPart.Position, Time = tick()})
-            if #Player.followPathHistory > 100 then
+            if #Player.followPathHistory > 200 then  -- Increased buffer
                 table.remove(Player.followPathHistory, 1)
             end
         end
@@ -1820,7 +1644,7 @@ local function followPlayer(targetPlayer)
         if #Player.followPathHistory > 0 then
             local nextPos = Player.followPathHistory[1].Position
             humanoid:MoveTo(nextPos)
-            if (Player.rootPart.Position - nextPos).Magnitude < 2 then
+            if (Player.rootPart.Position - nextPos).Magnitude < 1 then  -- Tighter threshold
                 table.remove(Player.followPathHistory, 1)
             end
         end
