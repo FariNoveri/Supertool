@@ -4,6 +4,7 @@
 -- ADDED: Top-right status display, pause/resume with markers, clickable path points
 -- farinoveri30@gmail.com (claude ai)
 -- Fixed bugs: UI textbox, outfit apply, reset character
+-- MODIFIED: Removed Outfit Manager, Added Object Deleter Feature
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -41,13 +42,16 @@ local lastPauseToggleTime = 0
 local lastVisibilityToggleTime = 0
 local DEBOUNCE_TIME = 0.5 -- seconds
 
--- Outfit Manager Variables
-local outfitFrameVisible = false
-local OutfitFrame, OutfitScrollFrame, OutfitLayout, OutfitPresetInput, OutfitStatusLabel
-local OutfitUserIdInput, OutfitShirtInput, OutfitPantsInput, OutfitFaceInput, OutfitHairInput
-local savedOutfits = {}
-local currentOutfitName = nil
-local OUTFIT_FOLDER_PATH = "Supertool/Avatar/"
+-- Object Deleter Variables
+local deleterEnabled = false
+local selectedObject = nil
+local selectionBox = nil
+local confirmationGui = nil
+local successGui = nil
+local deletedObjects = {}  -- Stack for undo: {object = clone, parent = originalParent, name = name}
+local deletedListFrame = nil
+local deletedListVisible = false
+local DeletedScrollFrame, DeletedLayout
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -1295,9 +1299,13 @@ local function setupKeyboardControls()
         
         local currentTime = tick()
         
-        -- FIXED: Ctrl+Z for undo during path recording
+        -- FIXED: Ctrl+Z for undo during path recording or object delete
         if input.KeyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
-            undoToLastMarker()
+            if pathRecording then
+                undoToLastMarker()
+            elseif #deletedObjects > 0 then
+                undoDeleteObject()
+            end
         end
         
         -- Ctrl+P for pause/resume
@@ -1318,508 +1326,229 @@ local function setupKeyboardControls()
     end)
 end
 
--- Outfit Manager Functions
-local function getOrCreateClothing(character, className)
-    local clothing = character:FindFirstChildOfClass(className)
-    if not clothing then
-        clothing = Instance.new(className)
-        clothing.Parent = character
-    end
-    return clothing
-end
-
-local function applyDescriptionManual(desc, character)
-    if not character then return end
-    
-    -- Shirt
-    if desc.Shirt ~= 0 then
-        local shirt = getOrCreateClothing(character, "Shirt")
-        shirt.ShirtTemplate = "rbxassetid://" .. desc.Shirt
-    end
-    
-    -- Pants
-    if desc.Pants ~= 0 then
-        local pants = getOrCreateClothing(character, "Pants")
-        pants.PantsTemplate = "rbxassetid://" .. desc.Pants
-    end
-    
-    -- Face
-    if desc.Face ~= 0 then
-        local head = character:FindFirstChild("Head")
-        if head then
-            local face = head:FindFirstChild("face") or Instance.new("Decal", head)
-            face.Name = "face"
-            face.Texture = "rbxassetid://" .. desc.Face
-        end
-    end
-    
-    -- Hair and accessories
-    if desc.HairAccessory ~= "" then
-        -- Clear existing accessories
-        for _, acc in pairs(character:GetChildren()) do
-            if acc:IsA("Accessory") and acc:FindFirstChild("Hair") then  -- Assume hair has 'Hair' handle or tag
-                acc:Destroy()
-            end
-        end
-        
-        local hairIds = string.split(desc.HairAccessory, ";")
-        for _, id in pairs(hairIds) do
-            local asset = game:GetService("InsertService"):LoadAsset(tonumber(id))
-            local acc = asset:GetChildren()[1]
-            if acc:IsA("Accessory") then
-                acc.Parent = character
-            end
-            asset:Destroy()
-        end
-    end
-    
-    print("[SUPERTOOL] Applied description manually")
-end
-
-local function applyClone()
-    local userId = tonumber(OutfitUserIdInput.Text)
-    if userId and player.Character then
-        local success, desc = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
-        if success then
-            applyDescriptionManual(desc, player.Character)
-        end
-    end
-end
-
-local function applyItem(itemType, input)
-    local id = tonumber(input.Text)
-    if id and player.Character then
-        if itemType == "Shirt" then
-            local shirt = getOrCreateClothing(player.Character, "Shirt")
-            shirt.ShirtTemplate = "rbxassetid://" .. id
-        elseif itemType == "Pants" then
-            local pants = getOrCreateClothing(player.Character, "Pants")
-            pants.PantsTemplate = "rbxassetid://" .. id
-        elseif itemType == "Face" then
-            local head = player.Character:FindFirstChild("Head")
-            if head then
-                local face = head:FindFirstChild("face") or Instance.new("Decal", head)
-                face.Name = "face"
-                face.Texture = "rbxassetid://" .. id
-            end
-        end
-    end
-end
-
-local function applyHair()
-    local idsStr = OutfitHairInput.Text
-    if idsStr and player.Character then
-        -- Clear existing hair
-        for _, acc in pairs(player.Character:GetChildren()) do
-            if acc:IsA("Accessory") and acc:FindFirstChild("Hair") then
-                acc:Destroy()
-            end
-        end
-        
-        local hairIds = string.split(idsStr, ",")
-        for _, id in pairs(hairIds) do
-            local trimmedId = string.gsub(id, "%s+", "")
-            local numId = tonumber(trimmedId)
-            if numId then
-                local asset = game:GetService("InsertService"):LoadAsset(numId)
-                local acc = asset:GetChildren()[1]
-                if acc:IsA("Accessory") then
-                    acc.Parent = player.Character
-                end
-                asset:Destroy()
-            end
-        end
-    end
-end
-
-local function saveOutfitToJSON(outfitName)
-    if not humanoid then return end
-    local desc = humanoid:GetAppliedDescription()
-    local outfitData = {
-        name = outfitName,
-        created = os.time(),
-        Shirt = desc.Shirt,
-        Pants = desc.Pants,
-        Face = desc.Face,
-        HairAccessory = desc.HairAccessory
-    }
-    
-    local success, _ = pcall(function()
-        local sanitizedName = sanitizeFileName(outfitName)
-        local fileName = sanitizedName .. ".json"
-        local filePath = OUTFIT_FOLDER_PATH .. fileName
-        
-        if not isfolder(OUTFIT_FOLDER_PATH) then
-            makefolder(OUTFIT_FOLDER_PATH)
-        end
-        
-        local jsonString = HttpService:JSONEncode(outfitData)
-        writefile(filePath, jsonString)
-        
-        print("[SUPERTOOL] Outfit saved: " .. filePath)
-    end)
-    
-    if success then
-        savedOutfits[outfitName] = outfitData
-        updateOutfitList()
-    end
-end
-
-local function loadOutfitFromJSON(outfitName)
-    local success, result = pcall(function()
-        local sanitizedName = sanitizeFileName(outfitName)
-        local fileName = sanitizedName .. ".json"
-        local filePath = OUTFIT_FOLDER_PATH .. fileName
-        
-        if not isfile(filePath) then return nil end
-        
-        local jsonString = readfile(filePath)
-        return HttpService:JSONDecode(jsonString)
-    end)
-    
-    return success and result or nil
-end
-
-local function deleteOutfitFromJSON(outfitName)
-    local success, _ = pcall(function()
-        local sanitizedName = sanitizeFileName(outfitName)
-        local fileName = sanitizedName .. ".json"
-        local filePath = OUTFIT_FOLDER_PATH .. fileName
-        
-        if isfile(filePath) then
-            delfile(filePath)
-            print("[SUPERTOOL] Outfit deleted: " .. filePath)
-        end
-    end)
-    
-    if success then
-        savedOutfits[outfitName] = nil
-        updateOutfitList()
-    end
-end
-
-local function applyOutfit(outfitName)
-    local outfit = savedOutfits[outfitName] or loadOutfitFromJSON(outfitName)
-    if outfit and player.Character then
-        local desc = Instance.new("HumanoidDescription")
-        desc.Shirt = outfit.Shirt or 0
-        desc.Pants = outfit.Pants or 0
-        desc.Face = outfit.Face or 0
-        desc.HairAccessory = outfit.HairAccessory or ""
-        applyDescriptionManual(desc, player.Character)
-    end
-end
-
-local function loadAllSavedOutfits()
-    local success, result = pcall(function()
-        if not isfolder(OUTFIT_FOLDER_PATH) then return 0 end
-        
-        local files = listfiles(OUTFIT_FOLDER_PATH)
-        local loadedCount = 0
-        
-        for _, filePath in pairs(files) do
-            local fileName = filePath:match("([^/\\]+)%.json$")
-            if fileName then
-                local outfitData = loadOutfitFromJSON(fileName)
-                if outfitData then
-                    savedOutfits[outfitData.name] = outfitData
-                    loadedCount = loadedCount + 1
-                end
-            end
-        end
-        
-        return loadedCount
-    end)
-    
-    if success then
-        print("[SUPERTOOL] Loaded " .. result .. " outfits from disk")
-        return result
+-- Object Deleter Functions
+local function toggleDeleter()
+    deleterEnabled = not deleterEnabled
+    if deleterEnabled then
+        print("[SUPERTOOL] Object Deleter enabled")
     else
-        warn("[SUPERTOOL] Failed to load outfits: " .. tostring(result))
-        return 0
+        print("[SUPERTOOL] Object Deleter disabled")
+        clearSelection()
     end
 end
 
-local function initOutfitUI()
-    if OutfitFrame then return end
+local function clearSelection()
+    if selectionBox then
+        selectionBox:Destroy()
+        selectionBox = nil
+    end
+    selectedObject = nil
+    if confirmationGui then
+        confirmationGui:Destroy()
+        confirmationGui = nil
+    end
+end
+
+local function showConfirmation(obj)
+    clearSelection()
+    selectedObject = obj
     
-    OutfitFrame = Instance.new("Frame")
-    OutfitFrame.Name = "OutfitFrame"
-    OutfitFrame.Parent = ScreenGui
-    OutfitFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    OutfitFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    OutfitFrame.BorderSizePixel = 1
-    OutfitFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
-    OutfitFrame.Size = UDim2.new(0, 320, 0, 450)
-    OutfitFrame.Visible = false
-    OutfitFrame.Active = true
-    OutfitFrame.Draggable = true
-
-    local OutfitTitle = Instance.new("TextLabel")
-    OutfitTitle.Parent = OutfitFrame
-    OutfitTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    OutfitTitle.BorderSizePixel = 0
-    OutfitTitle.Size = UDim2.new(1, 0, 0, 25)
-    OutfitTitle.Font = Enum.Font.GothamBold
-    OutfitTitle.Text = "OUTFIT MANAGER"
-    OutfitTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitTitle.TextSize = 10
-
-    local CloseOutfitButton = Instance.new("TextButton")
-    CloseOutfitButton.Parent = OutfitFrame
-    CloseOutfitButton.BackgroundTransparency = 1
-    CloseOutfitButton.Position = UDim2.new(1, -25, 0, 2)
-    CloseOutfitButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseOutfitButton.Font = Enum.Font.GothamBold
-    CloseOutfitButton.Text = "X"
-    CloseOutfitButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    CloseOutfitButton.TextSize = 12
-
-    local InputSection = Instance.new("Frame")
-    InputSection.Parent = OutfitFrame
-    InputSection.BackgroundTransparency = 1
-    InputSection.Position = UDim2.new(0, 5, 0, 30)
-    InputSection.Size = UDim2.new(1, -10, 0, 150)
-
-    OutfitUserIdInput = Instance.new("TextBox")
-    OutfitUserIdInput.Parent = InputSection
-    OutfitUserIdInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    OutfitUserIdInput.Position = UDim2.new(0, 0, 0, 0)
-    OutfitUserIdInput.Size = UDim2.new(0.7, 0, 0, 25)
-    OutfitUserIdInput.PlaceholderText = "User ID for clone"
-    OutfitUserIdInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitUserIdInput.TextSize = 8
-
-    local CloneButton = Instance.new("TextButton")
-    CloneButton.Parent = InputSection
-    CloneButton.Position = UDim2.new(0.75, 0, 0, 0)
-    CloneButton.Size = UDim2.new(0.25, 0, 0, 25)
-    CloneButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    CloneButton.Text = "Apply Clone"
-    CloneButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloneButton.TextSize = 8
-
-    OutfitShirtInput = Instance.new("TextBox")
-    OutfitShirtInput.Parent = InputSection
-    OutfitShirtInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    OutfitShirtInput.Position = UDim2.new(0, 0, 0, 30)
-    OutfitShirtInput.Size = UDim2.new(0.7, 0, 0, 25)
-    OutfitShirtInput.PlaceholderText = "Shirt ID"
-    OutfitShirtInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitShirtInput.TextSize = 8
-
-    local ShirtButton = Instance.new("TextButton")
-    ShirtButton.Parent = InputSection
-    ShirtButton.Position = UDim2.new(0.75, 0, 0, 30)
-    ShirtButton.Size = UDim2.new(0.25, 0, 0, 25)
-    ShirtButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    ShirtButton.Text = "Apply Shirt"
-    ShirtButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ShirtButton.TextSize = 8
-
-    OutfitPantsInput = Instance.new("TextBox")
-    OutfitPantsInput.Parent = InputSection
-    OutfitPantsInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    OutfitPantsInput.Position = UDim2.new(0, 0, 0, 60)
-    OutfitPantsInput.Size = UDim2.new(0.7, 0, 0, 25)
-    OutfitPantsInput.PlaceholderText = "Pants ID"
-    OutfitPantsInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitPantsInput.TextSize = 8
-
-    local PantsButton = Instance.new("TextButton")
-    PantsButton.Parent = InputSection
-    PantsButton.Position = UDim2.new(0.75, 0, 0, 60)
-    PantsButton.Size = UDim2.new(0.25, 0, 0, 25)
-    PantsButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    PantsButton.Text = "Apply Pants"
-    PantsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PantsButton.TextSize = 8
-
-    OutfitFaceInput = Instance.new("TextBox")
-    OutfitFaceInput.Parent = InputSection
-    OutfitFaceInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    OutfitFaceInput.Position = UDim2.new(0, 0, 0, 90)
-    OutfitFaceInput.Size = UDim2.new(0.7, 0, 0, 25)
-    OutfitFaceInput.PlaceholderText = "Face ID"
-    OutfitFaceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitFaceInput.TextSize = 8
-
-    local FaceButton = Instance.new("TextButton")
-    FaceButton.Parent = InputSection
-    FaceButton.Position = UDim2.new(0.75, 0, 0, 90)
-    FaceButton.Size = UDim2.new(0.25, 0, 0, 25)
-    FaceButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    FaceButton.Text = "Apply Face"
-    FaceButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    FaceButton.TextSize = 8
-
-    OutfitHairInput = Instance.new("TextBox")
-    OutfitHairInput.Parent = InputSection
-    OutfitHairInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    OutfitHairInput.Position = UDim2.new(0, 0, 0, 120)
-    OutfitHairInput.Size = UDim2.new(0.7, 0, 0, 25)
-    OutfitHairInput.PlaceholderText = "Hair IDs (comma separated)"
-    OutfitHairInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitHairInput.TextSize = 8
-
-    local HairButton = Instance.new("TextButton")
-    HairButton.Parent = InputSection
-    HairButton.Position = UDim2.new(0.75, 0, 0, 120)
-    HairButton.Size = UDim2.new(0.25, 0, 0, 25)
-    HairButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    HairButton.Text = "Apply Hair"
-    HairButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    HairButton.TextSize = 8
-
-    OutfitPresetInput = Instance.new("TextBox")
-    OutfitPresetInput.Parent = OutfitFrame
-    OutfitPresetInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    OutfitPresetInput.Position = UDim2.new(0, 5, 0, 185)
-    OutfitPresetInput.Size = UDim2.new(1, -10, 0, 25)
-    OutfitPresetInput.PlaceholderText = "Preset name or search..."
-    OutfitPresetInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitPresetInput.TextSize = 8
-
-    local PresetButtons = Instance.new("Frame")
-    PresetButtons.Parent = OutfitFrame
-    PresetButtons.BackgroundTransparency = 1
-    PresetButtons.Position = UDim2.new(0, 5, 0, 215)
-    PresetButtons.Size = UDim2.new(1, -10, 0, 25)
-
-    local SavePresetButton = Instance.new("TextButton")
-    SavePresetButton.Parent = PresetButtons
-    SavePresetButton.Position = UDim2.new(0, 0, 0, 0)
-    SavePresetButton.Size = UDim2.new(0.5, 0, 1, 0)
-    SavePresetButton.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
-    SavePresetButton.Text = "Save Preset"
-    SavePresetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SavePresetButton.TextSize = 8
-
-    local ResetButton = Instance.new("TextButton")
-    ResetButton.Parent = PresetButtons
-    ResetButton.Position = UDim2.new(0.5, 0, 0, 0)
-    ResetButton.Size = UDim2.new(0.5, 0, 1, 0)
-    ResetButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-    ResetButton.Text = "Reset Avatar"
-    ResetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ResetButton.TextSize = 8
-
-    OutfitScrollFrame = Instance.new("ScrollingFrame")
-    OutfitScrollFrame.Parent = OutfitFrame
-    OutfitScrollFrame.BackgroundTransparency = 1
-    OutfitScrollFrame.Position = UDim2.new(0, 5, 0, 245)
-    OutfitScrollFrame.Size = UDim2.new(1, -10, 1, -250)
-    OutfitScrollFrame.ScrollBarThickness = 3
-    OutfitScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    OutfitScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    OutfitLayout = Instance.new("UIListLayout")
-    OutfitLayout.Parent = OutfitScrollFrame
-    OutfitLayout.Padding = UDim.new(0, 3)
-
-    OutfitStatusLabel = Instance.new("TextLabel")
-    OutfitStatusLabel.Parent = ScreenGui
-    OutfitStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    OutfitStatusLabel.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    OutfitStatusLabel.BorderSizePixel = 1
-    OutfitStatusLabel.Position = UDim2.new(1, -300, 0, 40)
-    OutfitStatusLabel.Size = UDim2.new(0, 290, 0, 30)
-    OutfitStatusLabel.Font = Enum.Font.GothamBold
-    OutfitStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    OutfitStatusLabel.TextSize = 9
-    OutfitStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
-    OutfitStatusLabel.Visible = false
-    OutfitStatusLabel.ZIndex = 100
-
-    -- Events
-    CloseOutfitButton.MouseButton1Click:Connect(function()
-        OutfitFrame.Visible = false
-        outfitFrameVisible = false
+    selectionBox = Instance.new("SelectionBox")
+    selectionBox.Parent = obj
+    selectionBox.Adornee = obj
+    selectionBox.LineThickness = 0.1
+    selectionBox.Color3 = Color3.fromRGB(255, 0, 0)
+    
+    confirmationGui = Instance.new("BillboardGui")
+    confirmationGui.Parent = ScreenGui
+    confirmationGui.Size = UDim2.new(0, 200, 0, 50)
+    confirmationGui.AlwaysOnTop = true
+    confirmationGui.Adornee = obj
+    confirmationGui.StudsOffset = Vector3.new(0, 5, 0)
+    
+    local frame = Instance.new("Frame")
+    frame.Parent = confirmationGui
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    frame.BackgroundTransparency = 0.5
+    
+    local text = Instance.new("TextLabel")
+    text.Parent = frame
+    text.Position = UDim2.new(0, 0, 0, 0)
+    text.Size = UDim2.new(1, 0, 0.5, 0)
+    text.BackgroundTransparency = 1
+    text.Text = "Apakah anda ingin hapus ini?"
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.TextSize = 14
+    
+    local yesButton = Instance.new("TextButton")
+    yesButton.Parent = frame
+    yesButton.Position = UDim2.new(0, 0, 0.5, 0)
+    yesButton.Size = UDim2.new(0.5, 0, 0.5, 0)
+    yesButton.Text = "Ya"
+    yesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    yesButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    
+    local noButton = Instance.new("TextButton")
+    noButton.Parent = frame
+    noButton.Position = UDim2.new(0.5, 0, 0.5, 0)
+    noButton.Size = UDim2.new(0.5, 0, 0.5, 0)
+    noButton.Text = "Tidak"
+    noButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    noButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    
+    yesButton.MouseButton1Click:Connect(function()
+        deleteSelectedObject()
     end)
+    
+    noButton.MouseButton1Click:Connect(clearSelection)
+end
 
-    CloneButton.MouseButton1Click:Connect(applyClone)
-    ShirtButton.MouseButton1Click:Connect(function() applyItem("Shirt", OutfitShirtInput) end)
-    PantsButton.MouseButton1Click:Connect(function() applyItem("Pants", OutfitPantsInput) end)
-    FaceButton.MouseButton1Click:Connect(function() applyItem("Face", OutfitFaceInput) end)
-    HairButton.MouseButton1Click:Connect(applyHair)
-    ResetButton.MouseButton1Click:Connect(resetCharacter)
-    SavePresetButton.MouseButton1Click:Connect(function()
-        local name = OutfitPresetInput.Text
-        if name ~= "" then
-            saveOutfitToJSON(name)
-            OutfitPresetInput.Text = ""
-        end
-    end)
+local function deleteSelectedObject()
+    if not selectedObject then return end
+    
+    local name = selectedObject.Name
+    local parent = selectedObject.Parent
+    local clone = selectedObject:Clone()
+    
+    table.insert(deletedObjects, {object = clone, parent = parent, name = name})
+    
+    selectedObject:Destroy()
+    clearSelection()
+    
+    showSuccess(name)
+    updateDeletedList()
+    
+    print("[SUPERTOOL] Deleted object: " .. name)
+end
 
-    OutfitPresetInput.Changed:Connect(function(property)
-        if property == "Text" then
-            updateOutfitList()
-        end
+local function showSuccess(name)
+    if successGui then successGui:Destroy() end
+    
+    successGui = Instance.new("Frame")
+    successGui.Parent = ScreenGui
+    successGui.Position = UDim2.new(0.5, -100, 0.1, 0)
+    successGui.Size = UDim2.new(0, 200, 0, 50)
+    successGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    successGui.BackgroundTransparency = 0.5
+    
+    local text = Instance.new("TextLabel")
+    text.Parent = successGui
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = "Sukses menghapus " .. name
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.TextSize = 14
+    
+    game:GetService("Debris"):AddItem(successGui, 3)
+end
+
+local function undoDeleteObject()
+    if #deletedObjects == 0 then return end
+    
+    local last = table.remove(deletedObjects)
+    last.object.Parent = last.parent
+    
+    print("[SUPERTOOL] Undid deletion of: " .. last.name)
+    updateDeletedList()
+end
+
+local function initDeletedListUI()
+    if deletedListFrame then return end
+    
+    deletedListFrame = Instance.new("Frame")
+    deletedListFrame.Name = "DeletedListFrame"
+    deletedListFrame.Parent = ScreenGui
+    deletedListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    deletedListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    deletedListFrame.BorderSizePixel = 1
+    deletedListFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
+    deletedListFrame.Size = UDim2.new(0, 200, 0, 300)
+    deletedListFrame.Visible = false
+    deletedListFrame.Active = true
+    deletedListFrame.Draggable = true
+
+    local title = Instance.new("TextLabel")
+    title.Parent = deletedListFrame
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.BorderSizePixel = 0
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.Font = Enum.Font.GothamBold
+    title.Text = "Deleted Objects"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 10
+
+    local closeButton = Instance.new("TextButton")
+    closeButton.Parent = deletedListFrame
+    closeButton.BackgroundTransparency = 1
+    closeButton.Position = UDim2.new(1, -25, 0, 2)
+    closeButton.Size = UDim2.new(0, 20, 0, 20)
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeButton.TextSize = 12
+
+    DeletedScrollFrame = Instance.new("ScrollingFrame")
+    DeletedScrollFrame.Parent = deletedListFrame
+    DeletedScrollFrame.BackgroundTransparency = 1
+    DeletedScrollFrame.Position = UDim2.new(0, 5, 0, 30)
+    DeletedScrollFrame.Size = UDim2.new(1, -10, 1, -35)
+    DeletedScrollFrame.ScrollBarThickness = 3
+    DeletedScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    DeletedScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    DeletedLayout = Instance.new("UIListLayout")
+    DeletedLayout.Parent = DeletedScrollFrame
+    DeletedLayout.Padding = UDim.new(0, 3)
+
+    closeButton.MouseButton1Click:Connect(function()
+        deletedListFrame.Visible = false
+        deletedListVisible = false
     end)
 end
 
-function updateOutfitList()
-    if not OutfitScrollFrame then return end
+local function updateDeletedList()
+    if not DeletedScrollFrame then return end
     
-    for _, child in pairs(OutfitScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then
+    for _, child in pairs(DeletedScrollFrame:GetChildren()) do
+        if child:IsA("TextLabel") then
             child:Destroy()
         end
     end
     
-    local searchText = OutfitPresetInput.Text:lower()
-    for outfitName, _ in pairs(savedOutfits) do
-        if searchText == "" or string.find(outfitName:lower(), searchText) then
-            local outfitItem = Instance.new("Frame")
-            outfitItem.Parent = OutfitScrollFrame
-            outfitItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            outfitItem.BorderColor3 = Color3.fromRGB(40, 40, 40)
-            outfitItem.BorderSizePixel = 1
-            outfitItem.Size = UDim2.new(1, -5, 0, 40)
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Parent = outfitItem
-            nameLabel.Position = UDim2.new(0, 5, 0, 5)
-            nameLabel.Size = UDim2.new(0.5, 0, 1, -10)
-            nameLabel.Text = outfitName
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.TextSize = 9
-            nameLabel.Font = Enum.Font.GothamBold
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            local applyButton = Instance.new("TextButton")
-            applyButton.Parent = outfitItem
-            applyButton.Position = UDim2.new(0.5, 0, 0, 5)
-            applyButton.Size = UDim2.new(0.25, 0, 1, -10)
-            applyButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-            applyButton.Text = "Apply"
-            applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            applyButton.TextSize = 8
-            
-            local deleteButton = Instance.new("TextButton")
-            deleteButton.Parent = outfitItem
-            deleteButton.Position = UDim2.new(0.75, 0, 0, 5)
-            deleteButton.Size = UDim2.new(0.25, 0, 1, -10)
-            deleteButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-            deleteButton.Text = "Delete"
-            deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            deleteButton.TextSize = 8
-            
-            applyButton.MouseButton1Click:Connect(function()
-                applyOutfit(outfitName)
-            end)
-            
-            deleteButton.MouseButton1Click:Connect(function()
-                deleteOutfitFromJSON(outfitName)
-            end)
-        end
+    for i = #deletedObjects, 1, -1 do
+        local item = deletedObjects[i]
+        local label = Instance.new("TextLabel")
+        label.Parent = DeletedScrollFrame
+        label.Size = UDim2.new(1, 0, 0, 20)
+        label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        label.Text = item.name
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 10
     end
     
-    task.wait(0.1)
-    if OutfitLayout then
-        OutfitScrollFrame.CanvasSize = UDim2.new(0, 0, 0, OutfitLayout.AbsoluteContentSize.Y + 10)
+    DeletedScrollFrame.CanvasSize = UDim2.new(0, 0, 0, DeletedLayout.AbsoluteContentSize.Y)
+end
+
+local function toggleDeletedList()
+    if not deletedListFrame then initDeletedListUI() end
+    deletedListVisible = not deletedListVisible
+    deletedListFrame.Visible = deletedListVisible
+    if deletedListVisible then
+        updateDeletedList()
     end
+end
+
+local function setupDeleterInput()
+    UserInputService.InputBegan:Connect(function(input)
+        if deleterEnabled and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            local mouse = player:GetMouse()
+            local target = mouse.Target
+            if target and target:IsA("BasePart") and target ~= workspace.Terrain then
+                showConfirmation(target)
+            end
+        end
+    end)
 end
 
 -- Load utility buttons
@@ -1839,14 +1568,8 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
     createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
-    createButton("Outfit Manager", function()
-        if not OutfitFrame then initOutfitUI() end
-        OutfitFrame.Visible = not OutfitFrame.Visible
-        outfitFrameVisible = OutfitFrame.Visible
-        if outfitFrameVisible then
-            updateOutfitList()
-        end
-    end)
+    createButton("Toggle Deleter", toggleDeleter)
+    createButton("Deleted List", toggleDeletedList)
 end
 
 -- Initialize function
@@ -1877,9 +1600,6 @@ function Utility.init(deps)
         if not isfolder(PATH_FOLDER_PATH) then
             makefolder(PATH_FOLDER_PATH)
         end
-        if not isfolder(OUTFIT_FOLDER_PATH) then
-            makefolder(OUTFIT_FOLDER_PATH)
-        end
     end)
     
     if not success then
@@ -1888,10 +1608,10 @@ function Utility.init(deps)
     
     -- FIXED: Load all existing files on initialization
     local pathCount = loadAllSavedPaths()
-    local outfitCount = loadAllSavedOutfits()
-    print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount .. ", Outfits loaded: " .. outfitCount)
+    print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
     
     setupKeyboardControls()
+    setupDeleterInput()
     
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
@@ -1940,17 +1660,18 @@ function Utility.init(deps)
     
     task.spawn(function()
         initPathUI()
-        initOutfitUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized with Outfit Manager")
-        print("  - REMOVED: All macro functionality")
+        initDeletedListUI()
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized with Object Deleter")
+        print("  - REMOVED: All macro functionality and Outfit Manager")
         print("  - FIXED: Ctrl+Z undo function")
         print("  - FIXED: JSON path loading after relog")
         print("  - ADDED: Top-right status display")
         print("  - ADDED: Clickable path points every 5 meters")
         print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
+        print("  - ADDED: Object Deleter with confirmation, success message, list, and undo")
         print("  - ENHANCED: Better UI with improved controls")
-        print("  - Keyboard Controls: Ctrl+Z (undo during recording)")
-        print("  - JSON Storage: Supertool/Paths/ and Supertool/Avatar/")
+        print("  - Keyboard Controls: Ctrl+Z (undo during recording or delete)")
+        print("  - JSON Storage: Supertool/Paths/")
     end)
 end
 
