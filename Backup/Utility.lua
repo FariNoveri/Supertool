@@ -1331,6 +1331,7 @@ local function toggleDeleter()
     deleterEnabled = not deleterEnabled
     if deleterEnabled then
         print("[SUPERTOOL] Object Deleter enabled")
+        setupDeleterInput() -- Ensure input setup is called
     else
         print("[SUPERTOOL] Object Deleter disabled")
         clearSelection()
@@ -1425,10 +1426,12 @@ local function deleteSelectedObject()
     
     table.insert(deletedObjects, {object = clone, parent = parent, name = name})
     
-    selectedObject.Parent = player.Character
-    selectedObject:Destroy()
-    clearSelection()
+    pcall(function()
+        selectedObject.Parent = player.Character
+        selectedObject:Destroy()
+    end)
     
+    clearSelection()
     showSuccess(name)
     updateDeletedList()
     
