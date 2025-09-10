@@ -1340,53 +1340,113 @@ local function clearSelection()
 end
 
 local function showSuccess(name)
-    if successGui and successGui.Parent then
-        successGui:Destroy()
+    if not name then name = "Unknown" end
+    if not ScreenGui then 
+        print("[SUPERTOOL] Success: Deleted " .. name)
+        return 
     end
     
-    successGui = Instance.new("Frame")
-    successGui.Parent = ScreenGui
-    successGui.Position = UDim2.new(0.5, -100, 0.1, 0)
-    successGui.Size = UDim2.new(0, 200, 0, 50)
-    successGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    successGui.BackgroundTransparency = 0.5
-    successGui.ZIndex = 10
+    -- Clean up existing success GUI first
+    if successGui and successGui.Parent then
+        pcall(function()
+            successGui:Destroy()
+        end)
+        successGui = nil
+    end
     
-    local text = Instance.new("TextLabel")
-    text.Parent = successGui
-    text.Size = UDim2.new(1, 0, 1, 0)
-    text.BackgroundTransparency = 1
-    text.Text = "Sukses menghapus " .. name
-    text.TextColor3 = Color3.fromRGB(255, 255, 255)
-    text.TextSize = 14
-    text.ZIndex = 11
+    local success = pcall(function()
+        successGui = Instance.new("Frame")
+        successGui.Parent = ScreenGui
+        successGui.Position = UDim2.new(0.5, -100, 0.1, 0)
+        successGui.Size = UDim2.new(0, 200, 0, 50)
+        successGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        successGui.BackgroundTransparency = 0.5
+        successGui.ZIndex = 10
+        
+        local text = Instance.new("TextLabel")
+        text.Parent = successGui
+        text.Size = UDim2.new(1, 0, 1, 0)
+        text.BackgroundTransparency = 1
+        text.Text = "Sukses menghapus " .. name
+        text.TextColor3 = Color3.fromRGB(255, 255, 255)
+        text.TextSize = 14
+        text.ZIndex = 11
+        
+        -- Use spawn to avoid blocking
+        task.spawn(function()
+            task.wait(3)
+            if successGui and successGui.Parent then
+                successGui:Destroy()
+                successGui = nil
+            end
+        end)
+    end)
     
-    game:GetService("Debris"):AddItem(successGui, 3)
+    if not success then
+        print("[SUPERTOOL] Success: Deleted " .. name)
+    end
 end
 
+
 -- Fixed deleteSelectedObject function
+-- Fixed deleteSelectedObject function with better error handling
 local function deleteSelectedObject()
-    if not selectedObject then return end
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for deletion")
+        return 
+    end
     
-    local name = selectedObject.Name
+    local name = selectedObject.Name or "Unknown"
     local parent = selectedObject.Parent
-    local clone = selectedObject:Clone()
     
+    -- Create clone before deletion
+    local clone = nil
+    local success1 = pcall(function()
+        clone = selectedObject:Clone()
+    end)
+    
+    if not success1 or not clone then
+        warn("[SUPERTOOL] Failed to clone object before deletion")
+        clearSelection()
+        return
+    end
+    
+    -- Add to deleted objects stack
     table.insert(deletedObjects, {object = clone, parent = parent, name = name})
     
-    -- Fixed: Check if player.Character exists before using it
-    pcall(function()
-        -- Instead of setting parent to player.Character (which might be nil),
-        -- just destroy the object directly
+    -- Delete the object
+    local success2 = pcall(function()
         selectedObject:Destroy()
     end)
     
-    clearSelection()
-    showSuccess(name)
-    updateDeletedList()
+    if not success2 then
+        warn("[SUPERTOOL] Failed to destroy object")
+        -- Remove from stack if destruction failed
+        table.remove(deletedObjects)
+        clearSelection()
+        return
+    end
     
-    print("[SUPERTOOL] Deleted object: " .. name)
+    -- Clear selection
+    clearSelection()
+    
+    -- Show success message (with safety check)
+    if showSuccess then
+        pcall(function()
+            showSuccess(name)
+        end)
+    end
+    
+    -- Update deleted list (with safety check)
+    if updateDeletedList then
+        pcall(function()
+            updateDeletedList()
+        end)
+    end
+    
+    print("[SUPERTOOL] Successfully deleted object: " .. name)
 end
+
 
 local function showConfirmation(obj)
     clearSelection()
@@ -1543,27 +1603,40 @@ local function initDeletedListUI()
     end)
 end
 
+-- Fix updateDeletedList function
 local function updateDeletedList()
-    if not DeletedScrollFrame then return end
+    if not DeletedScrollFrame or not DeletedLayout then 
+        return 
+    end
     
-    for _, child in pairs(DeletedScrollFrame:GetChildren()) do
-        if child:IsA("TextLabel") then
-            child:Destroy()
+    pcall(function()
+        -- Clear existing items
+        for _, child in pairs(DeletedScrollFrame:GetChildren()) do
+            if child:IsA("TextLabel") then
+                child:Destroy()
+            end
         end
-    end
-    
-    for i = #deletedObjects, 1, -1 do
-        local item = deletedObjects[i]
-        local label = Instance.new("TextLabel")
-        label.Parent = DeletedScrollFrame
-        label.Size = UDim2.new(1, 0, 0, 20)
-        label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        label.Text = item.name
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextSize = 10
-    end
-    
-    DeletedScrollFrame.CanvasSize = UDim2.new(0, 0, 0, DeletedLayout.AbsoluteContentSize.Y)
+        
+        -- Add items from deleted objects stack
+        for i = #deletedObjects, 1, -1 do
+            local item = deletedObjects[i]
+            if item and item.name then
+                local label = Instance.new("TextLabel")
+                label.Parent = DeletedScrollFrame
+                label.Size = UDim2.new(1, 0, 0, 20)
+                label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                label.Text = item.name
+                label.TextColor3 = Color3.fromRGB(255, 255, 255)
+                label.TextSize = 10
+            end
+        end
+        
+        -- Update canvas size
+        task.wait(0.1)
+        if DeletedLayout then
+            DeletedScrollFrame.CanvasSize = UDim2.new(0, 0, 0, DeletedLayout.AbsoluteContentSize.Y)
+        end
+    end)
 end
 
 local function toggleDeletedList()
