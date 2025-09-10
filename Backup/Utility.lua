@@ -1364,6 +1364,7 @@ local function showSuccess(name)
     game:GetService("Debris"):AddItem(successGui, 3)
 end
 
+-- Fixed deleteSelectedObject function
 local function deleteSelectedObject()
     if not selectedObject then return end
     
@@ -1373,8 +1374,10 @@ local function deleteSelectedObject()
     
     table.insert(deletedObjects, {object = clone, parent = parent, name = name})
     
+    -- Fixed: Check if player.Character exists before using it
     pcall(function()
-        selectedObject.Parent = player.Character
+        -- Instead of setting parent to player.Character (which might be nil),
+        -- just destroy the object directly
         selectedObject:Destroy()
     end)
     
@@ -1382,7 +1385,7 @@ local function deleteSelectedObject()
     showSuccess(name)
     updateDeletedList()
     
-    print("[SUPERTOOL] Deleted object server-side: " .. name)
+    print("[SUPERTOOL] Deleted object: " .. name)
 end
 
 local function showConfirmation(obj)
