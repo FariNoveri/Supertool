@@ -1413,13 +1413,14 @@ local function deleteSelectedObject()
     
     table.insert(deletedObjects, {object = clone, parent = parent, name = name})
     
+    selectedObject.Parent = player.Character
     selectedObject:Destroy()
     clearSelection()
     
     showSuccess(name)
     updateDeletedList()
     
-    print("[SUPERTOOL] Deleted object: " .. name)
+    print("[SUPERTOOL] Deleted object server-side: " .. name)
 end
 
 local function showSuccess(name)
@@ -1574,6 +1575,13 @@ end
 
 -- Initialize function
 function Utility.init(deps)
+    if not deps then return end
+    if not deps.Players then return end
+    if not deps.RunService then return end
+    if not deps.player then return end
+    if not deps.ScreenGui then return end
+    if not deps.settings then return end
+
     Players = deps.Players
     humanoid = deps.humanoid
     rootPart = deps.rootPart
