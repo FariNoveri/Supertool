@@ -1365,6 +1365,7 @@ local function showConfirmation(obj)
     confirmationGui.Size = UDim2.new(0, 200, 0, 100)
     confirmationGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     confirmationGui.BackgroundTransparency = 0.5
+    confirmationGui.ZIndex = 10 -- Ensure GUI is on top
     
     local text = Instance.new("TextLabel")
     text.Parent = confirmationGui
@@ -1375,6 +1376,7 @@ local function showConfirmation(obj)
     text.TextColor3 = Color3.fromRGB(255, 255, 255)
     text.TextSize = 14
     text.TextWrapped = true
+    text.ZIndex = 11
     
     local yesButton = Instance.new("TextButton")
     yesButton.Parent = confirmationGui
@@ -1383,6 +1385,7 @@ local function showConfirmation(obj)
     yesButton.Text = "Ya"
     yesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     yesButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    yesButton.ZIndex = 11
     
     local noButton = Instance.new("TextButton")
     noButton.Parent = confirmationGui
@@ -1391,9 +1394,26 @@ local function showConfirmation(obj)
     noButton.Text = "Tidak"
     noButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     noButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    noButton.ZIndex = 11
     
-    yesButton.MouseButton1Click:Connect(deleteSelectedObject)
-    noButton.MouseButton1Click:Connect(clearSelection)
+    -- Disconnect existing connections to prevent duplicates
+    local yesConnection, noConnection
+    yesConnection = yesButton.MouseButton1Click:Connect(function()
+        if selectedObject then
+            deleteSelectedObject()
+        end
+        if yesConnection then yesConnection:Disconnect() end
+        if noConnection then noConnection:Disconnect() end
+    end)
+    
+    noConnection = noButton.MouseButton1Click:Connect(function()
+        clearSelection()
+        if yesConnection then yesConnection:Disconnect() end
+        if noConnection then noConnection:Disconnect() end
+    end)
+    
+    -- Auto-cleanup if stuck
+    game:GetService("Debris"):AddItem(confirmationGui, 5) -- Remove GUI after 5 seconds
 end
 
 local function deleteSelectedObject()
