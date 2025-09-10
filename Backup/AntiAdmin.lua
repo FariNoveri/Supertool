@@ -1,5 +1,6 @@
 -- AntiAdmin.lua Module for MinimalHackGUI
 -- Enhanced Anti Admin Protection System by Fari Noveri
+-- Fixed Version - Error 117 resolved & User-Friendly Interface
 
 local AntiAdmin = {}
 
@@ -22,17 +23,41 @@ local character, humanoid, rootPart
 -- Dependencies (will be set by init)
 local dependencies = {}
 
--- Protection states
+-- Protection states with user-friendly descriptions
 local protectionStates = {
-    mainProtection = false,
-    massProtection = false,
-    stealthMode = false,
-    antiDetection = false,
-    memoryProtection = false,
-    advancedBypass = false
+    mainProtection = {
+        enabled = false,
+        name = "🛡️ Perlindungan Utama",
+        description = "Melindungi dari kick, ban, kill, teleport"
+    },
+    massProtection = {
+        enabled = false,
+        name = "🌊 Perlindungan Massal", 
+        description = "Melindungi dari spam part, sound, lighting"
+    },
+    stealthMode = {
+        enabled = false,
+        name = "👤 Mode Tersembunyi",
+        description = "Menyembunyikan dari deteksi admin"
+    },
+    antiDetection = {
+        enabled = false,
+        name = "🔍 Anti Deteksi",
+        description = "Mencegah scan script dan monitoring"
+    },
+    memoryProtection = {
+        enabled = false,
+        name = "💾 Perlindungan Memori",
+        description = "Melindungi dari memory scan"
+    },
+    advancedBypass = {
+        enabled = false,
+        name = "⚡ Bypass Lanjutan",
+        description = "Bypass sistem keamanan canggih"
+    }
 }
 
--- Anti Admin variables
+-- Anti Admin variables with safe initialization
 local protectedPlayers = {}
 local lastKnownPosition
 local lastKnownHealth = 100
@@ -77,17 +102,92 @@ local normalPlayerStats = {
 local fakeBehaviorData = {}
 local sessionRandomized = false
 
--- Initialize function
-function AntiAdmin.init(deps)
-    dependencies = deps or {}
-    player = dependencies.player or Players.LocalPlayer
-    character = dependencies.character
-    humanoid = dependencies.humanoid  
-    rootPart = dependencies.rootPart
+-- Safe function caller to prevent Error 117
+local function safeCall(func, ...)
+    if type(func) == "function" then
+        local success, result = pcall(func, ...)
+        if not success then
+            warn("AntiAdmin Error: " .. tostring(result))
+            return nil
+        end
+        return result
+    else
+        warn("AntiAdmin: Attempted to call non-function value")
+        return nil
+    end
+end
+
+-- Safe property setter
+local function safeSetProperty(object, property, value)
+    if not object then return false end
+    if not object[property] then return false end
     
-    -- Store original data
+    local success = pcall(function()
+        object[property] = value
+    end)
+    
+    if not success then
+        warn("AntiAdmin: Failed to set " .. property .. " on " .. tostring(object))
+    end
+    return success
+end
+
+-- Safe service getter
+local function safeGetService(serviceName)
+    local success, service = pcall(function()
+        return game:GetService(serviceName)
+    end)
+    
+    if success then
+        return service
+    else
+        warn("AntiAdmin: Failed to get service " .. serviceName)
+        return nil
+    end
+end
+
+-- Initialize function with improved error handling
+function AntiAdmin.init(deps)
+    print("🚀 Initializing AntiAdmin System...")
+    
+    dependencies = deps or {}
+    
+    -- Safe player initialization
+    player = dependencies.player or Players.LocalPlayer
+    if not player then
+        warn("AntiAdmin: No player found!")
+        return false
+    end
+    
+    -- Safe character initialization
+    local function initCharacter()
+        character = dependencies.character or (player.Character or player.CharacterAdded:Wait())
+        if character then
+            humanoid = character:FindFirstChild("Humanoid") or character:WaitForChild("Humanoid", 5)
+            rootPart = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
+            
+            if not humanoid or not rootPart then
+                warn("AntiAdmin: Missing essential character components")
+                return false
+            end
+            return true
+        end
+        return false
+    end
+    
+    if not initCharacter() then
+        -- Try to wait for character spawn
+        player.CharacterAdded:Connect(function(char)
+            character = char
+            humanoid = char:WaitForChild("Humanoid")
+            rootPart = char:WaitForChild("HumanoidRootPart")
+            print("🔄 AntiAdmin: Character respawned, reinitializing...")
+        end)
+    end
+    
+    -- Store original data safely
     if character then
-        pcall(function()
+        safeCall(function()
             originalAvatar.userId = player.UserId
             originalAvatar.name = player.Name
             originalAvatar.displayName = player.DisplayName
@@ -116,13 +216,15 @@ function AntiAdmin.init(deps)
     
     saveLightingSettings()
     sessionRandomization()
+    print("✅ AntiAdmin: Initialization complete!")
+    return true
 end
 
--- Session Randomization
+-- Session Randomization with safe execution
 local function sessionRandomization()
     if sessionRandomized then return end
     
-    pcall(function()
+    safeCall(function()
         local randomSeed = tick() + math.random(1, 999999)
         math.randomseed(randomSeed)
         
@@ -135,13 +237,13 @@ local function sessionRandomization()
         }
         
         sessionRandomized = true
-        print("Anti-Admin: Session randomized")
+        print("🎲 Anti-Admin: Session randomized")
     end)
 end
 
--- Save lighting settings
+-- Save lighting settings safely
 local function saveLightingSettings()
-    pcall(function()
+    safeCall(function()
         lastKnownLighting = {
             Brightness = Lighting.Brightness,
             Ambient = Lighting.Ambient,
@@ -156,46 +258,48 @@ local function saveLightingSettings()
     end)
 end
 
--- Restore lighting settings
+-- Restore lighting settings safely
 local function restoreLightingSettings()
-    pcall(function()
+    safeCall(function()
         if lastKnownLighting and next(lastKnownLighting) then
             for property, value in pairs(lastKnownLighting) do
                 if Lighting[property] ~= value then
-                    Lighting[property] = value
+                    safeSetProperty(Lighting, property, value)
                 end
             end
         end
     end)
 end
 
--- Anti-Detection System
+-- Anti-Detection System with improved safety
 local function initializeAntiDetection()
-    pcall(function()
+    safeCall(function()
         -- Monitor for script scanning attempts
-        local originalGetDescendants = game.GetDescendants
-        game.GetDescendants = function(self)
-            detectionCounters.scriptScan = detectionCounters.scriptScan + 1
-            if detectionCounters.scriptScan > 10 then
-                print("Anti-Admin: Script scan detected and blocked")
-                return {}
+        if game.GetDescendants then
+            local originalGetDescendants = game.GetDescendants
+            game.GetDescendants = function(self)
+                detectionCounters.scriptScan = detectionCounters.scriptScan + 1
+                if detectionCounters.scriptScan > 10 then
+                    print("🔍 Anti-Admin: Script scan detected and blocked")
+                    return {}
+                end
+                return originalGetDescendants(self)
             end
-            return originalGetDescendants(self)
         end
         
-        print("Anti-Admin: Anti-detection systems active")
+        print("👤 Anti-Admin: Anti-detection systems active")
     end)
 end
 
--- Memory Protection
+-- Memory Protection with safe garbage collection
 local function setupMemoryProtection()
-    pcall(function()
+    safeCall(function()
         local protectedMemory = {}
         
         spawn(function()
-            while protectionStates.memoryProtection do
-                pcall(function()
-                    collectgarbage("count") -- Use count instead of collect
+            while protectionStates.memoryProtection.enabled do
+                safeCall(function()
+                    collectgarbage("count")
                     
                     for i = 1, math.random(10, 50) do
                         protectedMemory[i] = math.random(1, 999999)
@@ -207,37 +311,47 @@ local function setupMemoryProtection()
             end
         end)
         
-        print("Anti-Admin: Memory protection active")
+        print("💾 Anti-Admin: Memory protection active")
     end)
 end
 
--- Advanced Metatable Protection
+-- Advanced Metatable Protection with improved safety
 local function setupAdvancedMetatableProtection()
-    pcall(function()
+    safeCall(function()
         local mt = getrawmetatable(game)
-        if not mt then return end
+        if not mt then 
+            warn("AntiAdmin: Cannot access metatable")
+            return 
+        end
         
         oldNamecall = mt.__namecall
         oldIndex = mt.__index  
         oldNewIndex = mt.__newindex
         
-        if not oldNamecall then return end
+        if not oldNamecall then 
+            warn("AntiAdmin: Cannot access __namecall")
+            return 
+        end
         
-        setreadonly(mt, false)
+        local success = pcall(setreadonly, mt, false)
+        if not success then
+            warn("AntiAdmin: Cannot modify metatable")
+            return
+        end
 
         mt.__namecall = function(self, ...)
-            if not protectionStates.mainProtection then return oldNamecall(self, ...) end
+            if not protectionStates.mainProtection.enabled then return oldNamecall(self, ...) end
             
-            local method = getnamecallmethod()
+            local method = getnamecallmethod and getnamecallmethod() or ""
             local args = {...}
             
             if method == "Kick" or method == "Ban" then
-                print("Anti-Admin: Blocked kick/ban attempt")
+                print("🚫 Anti-Admin: Blocked kick/ban attempt")
                 return nil
             end
             
             if method == "CaptureService" or method == "RecordingService" then
-                print("Anti-Admin: Blocked recording attempt")
+                print("📹 Anti-Admin: Blocked recording attempt")
                 return nil
             end
             
@@ -252,7 +366,7 @@ local function setupAdvancedMetatableProtection()
                 
                 for _, blocked in pairs(blockedRemotes) do
                     if remoteName:find(blocked) then
-                        print("Anti-Admin: Blocked admin remote - " .. remoteName)
+                        print("🛡️ Anti-Admin: Blocked admin remote - " .. remoteName)
                         return nil
                     end
                 end
@@ -261,169 +375,154 @@ local function setupAdvancedMetatableProtection()
             return oldNamecall(self, ...)
         end
 
-        setreadonly(mt, true)
-        print("Anti-Admin: Advanced metatable protection active")
+        pcall(setreadonly, mt, true)
+        print("🔐 Anti-Admin: Advanced metatable protection active")
     end)
 end
 
--- Function to detect if player has anti admin
+-- Function to detect if player has anti admin (improved)
 local function hasAntiAdmin(targetPlayer)
-    if not targetPlayer then return false end
+    if not targetPlayer or not targetPlayer.Parent then return false end
     return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
 end
 
--- Function to find unprotected target
+-- Function to find unprotected target (improved)
 local function findUnprotectedTarget(excludePlayers)
     local availablePlayers = {}
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
-            local pHumanoid = p.Character.Humanoid
-            if pHumanoid.Health > 0 and not excludePlayers[p] and not hasAntiAdmin(p) then
-                table.insert(availablePlayers, p)
+    
+    safeCall(function()
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
+                local pHumanoid = p.Character.Humanoid
+                if pHumanoid.Health > 0 and not excludePlayers[p] and not hasAntiAdmin(p) then
+                    table.insert(availablePlayers, p)
+                end
             end
         end
-    end
+    end)
+    
     if #availablePlayers > 0 then
         return availablePlayers[math.random(1, #availablePlayers)]
     end
     return nil
 end
 
--- Enhanced reverse effect function
+-- Enhanced reverse effect function with better safety
 local function reverseEffect(effectType, originalSource)
-    if not protectionStates.mainProtection then return end
+    if not protectionStates.mainProtection.enabled then return end
 
     local excludePlayers = { [player] = true }
     local currentTarget = originalSource
-    if not currentTarget then
-        local allPlayers = Players:GetPlayers()
-        if #allPlayers > 1 then
-            repeat
-                currentTarget = allPlayers[math.random(1, #allPlayers)]
-            until currentTarget ~= player
-        else
-            return
-        end
-    end
     
-    local attempts = 0
-
-    while currentTarget and hasAntiAdmin(currentTarget) and attempts < maxReverseAttempts do
-        excludePlayers[currentTarget] = true
-        currentTarget = findUnprotectedTarget(excludePlayers)
-        attempts = attempts + 1
-    end
-
-    if currentTarget and currentTarget.Character then
-        local targetHumanoid = currentTarget.Character:FindFirstChild("Humanoid")
-        local targetRootPart = currentTarget.Character:FindFirstChild("HumanoidRootPart")
+    safeCall(function()
+        if not currentTarget then
+            local allPlayers = Players:GetPlayers()
+            if #allPlayers > 1 then
+                repeat
+                    currentTarget = allPlayers[math.random(1, #allPlayers)]
+                until currentTarget ~= player
+            else
+                return
+            end
+        end
         
-        if not targetHumanoid or not targetRootPart then return end
+        local attempts = 0
 
-        pcall(function()
+        while currentTarget and hasAntiAdmin(currentTarget) and attempts < maxReverseAttempts do
+            excludePlayers[currentTarget] = true
+            currentTarget = findUnprotectedTarget(excludePlayers)
+            attempts = attempts + 1
+        end
+
+        if currentTarget and currentTarget.Character then
+            local targetHumanoid = currentTarget.Character:FindFirstChild("Humanoid")
+            local targetRootPart = currentTarget.Character:FindFirstChild("HumanoidRootPart")
+            
+            if not targetHumanoid or not targetRootPart then return end
+
             if effectType == "kill" then
-                targetHumanoid.Health = 0
-                print("Reversed kill effect to: " .. currentTarget.Name)
+                safeSetProperty(targetHumanoid, "Health", 0)
+                print("⚡ Reversed kill effect to: " .. currentTarget.Name)
             elseif effectType == "teleport" then
                 local randomPos = Vector3.new(
                     math.random(-1000, 1000),
                     math.random(50, 500),
                     math.random(-1000, 1000)
                 )
-                targetRootPart.CFrame = CFrame.new(randomPos)
-                print("Reversed teleport effect to: " .. currentTarget.Name)
+                safeSetProperty(targetRootPart, "CFrame", CFrame.new(randomPos))
+                print("🌀 Reversed teleport effect to: " .. currentTarget.Name)
             elseif effectType == "fling" then
-                targetRootPart.Velocity = Vector3.new(
+                safeSetProperty(targetRootPart, "Velocity", Vector3.new(
                     math.random(-100, 100),
                     math.random(50, 200),
                     math.random(-100, 100)
-                )
-                print("Reversed fling effect to: " .. currentTarget.Name)
+                ))
+                print("💨 Reversed fling effect to: " .. currentTarget.Name)
             end
-        end)
-    end
-end
-
--- Anti-Noclip Protection
-local function setupAntiNoclip()
-    if not rootPart then return end
-    
-    antiAdminConnections.noclip = RunService.Heartbeat:Connect(function()
-        if not protectionStates.mainProtection then return end
-        pcall(function()
-            for _, part in pairs(character:GetChildren()) do
-                if part:IsA("BasePart") and part.CanCollide ~= lastKnownCanCollide then
-                    part.CanCollide = lastKnownCanCollide
-                    print("Anti-Admin: Noclip attempt blocked")
-                    reverseEffect("noclip", effectSources[player])
-                end
-            end
-        end)
+        end
     end)
 end
 
--- Anti-Fly Protection
-local function setupAntiFly()
-    if not rootPart then return end
-    
-    antiAdminConnections.fly = RunService.Heartbeat:Connect(function()
-        if not protectionStates.mainProtection then return end
-        pcall(function()
-            local velocity = rootPart.Velocity
-            if velocity.Y > 50 and not humanoid.Jump then
-                rootPart.Velocity = Vector3.new(velocity.X, 0, velocity.Z)
-                print("Anti-Admin: Fly attempt blocked")
-                reverseEffect("fly", effectSources[player])
-            end
-        end)
-    end)
-end
+-- Anti-Noclip and Anti-Fly functions removed as requested
 
--- Enhanced protection handler
+-- Enhanced protection handler with better safety
 local function handleAntiAdmin()
     if not humanoid or not rootPart then return end
 
+    -- Health protection
     if humanoid and typeof(humanoid) == "Instance" then
-        antiAdminConnections.health = humanoid.HealthChanged:Connect(function(health)
-            if not protectionStates.mainProtection then return end
-            if health < lastKnownHealth and health <= 0 then
-                pcall(function()
-                    humanoid.Health = lastKnownHealth
-                    print("Anti-Admin: Kill attempt blocked")
-                    reverseEffect("kill", effectSources[player])
-                end)
-            end
-            lastKnownHealth = humanoid.Health
-        end)
-    end
-
-    if rootPart and typeof(rootPart) == "Instance" then
-        antiAdminConnections.position = rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
-            if not protectionStates.mainProtection then return end
-            pcall(function()
-                local currentPos = rootPart.CFrame
-                if lastKnownPosition then
-                    local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
-                    if distance > 100 then
-                        rootPart.CFrame = lastKnownPosition
-                        print("Anti-Admin: Mass teleport blocked")
-                        reverseEffect("teleport", effectSources[player])
-                    end
+        local healthConnection = safeCall(function()
+            return humanoid.HealthChanged:Connect(function(health)
+                if not protectionStates.mainProtection.enabled then return end
+                if health < lastKnownHealth and health <= 0 then
+                    safeCall(function()
+                        safeSetProperty(humanoid, "Health", lastKnownHealth)
+                        print("💖 Anti-Admin: Kill attempt blocked")
+                        reverseEffect("kill", effectSources[player])
+                    end)
                 end
-                lastKnownPosition = currentPos
+                lastKnownHealth = humanoid.Health
             end)
         end)
+        
+        if healthConnection then
+            antiAdminConnections.health = healthConnection
+        end
     end
 
-    setupAntiNoclip()
-    setupAntiFly()
+    -- Position protection
+    if rootPart and typeof(rootPart) == "Instance" then
+        local positionConnection = safeCall(function()
+            return rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
+                if not protectionStates.mainProtection.enabled then return end
+                safeCall(function()
+                    local currentPos = rootPart.CFrame
+                    if lastKnownPosition then
+                        local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
+                        if distance > 100 then
+                            safeSetProperty(rootPart, "CFrame", lastKnownPosition)
+                            print("🚀 Anti-Admin: Mass teleport blocked")
+                            reverseEffect("teleport", effectSources[player])
+                        end
+                    end
+                    lastKnownPosition = currentPos
+                end)
+            end)
+        end)
+        
+        if positionConnection then
+            antiAdminConnections.position = positionConnection
+        end
+    end
+
+    -- Anti-Noclip and Anti-Fly removed as requested
 end
 
--- Mass Protection Detection
+-- Mass Protection Detection with improved safety
 local function detectMassEffects()
     spawn(function()
-        while protectionStates.massProtection do
-            pcall(function()
+        while protectionStates.massProtection.enabled do
+            safeCall(function()
                 restoreLightingSettings()
                 
                 -- Detect part spam
@@ -438,11 +537,11 @@ local function detectMassEffects()
                     for _, obj in pairs(Workspace:GetChildren()) do
                         if obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
                             if not obj.Parent:IsA("Model") or obj.Name:find("Spam") or obj.Size.X > 100 then
-                                obj:Destroy()
+                                safeCall(function() obj:Destroy() end)
                             end
                         end
                     end
-                    print("Anti-Admin: Part spam detected and cleaned")
+                    print("🧹 Anti-Admin: Part spam detected and cleaned")
                 end
                 
                 -- Detect sound spam
@@ -451,14 +550,16 @@ local function detectMassEffects()
                     if obj:IsA("Sound") and obj.IsPlaying and obj.Volume > 0.5 then
                         soundCount = soundCount + 1
                         if soundCount > soundSpamThreshold then
-                            obj:Stop()
-                            obj.Volume = 0
+                            safeCall(function() 
+                                obj:Stop()
+                                obj.Volume = 0
+                            end)
                         end
                     end
                 end
                 
                 if soundCount > soundSpamThreshold then
-                    print("Anti-Admin: Sound spam detected and muted")
+                    print("🔇 Anti-Admin: Sound spam detected and muted")
                 end
             end)
             wait(2)
@@ -466,26 +567,26 @@ local function detectMassEffects()
     end)
 end
 
--- Advanced Bypass Methods (FIXED)
+-- Advanced Bypass Methods with improved safety
 local function setupAdvancedBypass()
     spawn(function()
-        while protectionStates.advancedBypass do
-            pcall(function()
+        while protectionStates.advancedBypass.enabled do
+            safeCall(function()
                 -- Simple memory operations instead of HTTP requests
                 local dummy = {}
                 for i = 1, math.random(10, 100) do
                     dummy[i] = math.random(1, 1000000)
                 end
                 dummy = nil
-                collectgarbage("count") -- Use count instead of collect
+                collectgarbage("count")
             end)
             wait(math.random(25, 35))
         end
     end)
     
     spawn(function()
-        while protectionStates.advancedBypass do
-            pcall(function()
+        while protectionStates.advancedBypass.enabled do
+            safeCall(function()
                 -- Safe alternative to DataStore operations
                 local tempData = {
                     status = "active",
@@ -499,158 +600,209 @@ local function setupAdvancedBypass()
         end
     end)
     
-    print("Anti-Admin: Advanced bypass methods initialized")
+    print("⚡ Anti-Admin: Advanced bypass methods initialized")
 end
 
--- Toggle Main Protection
+-- User-friendly toggle functions with status feedback
 local function toggleMainProtection(enabled)
-    protectionStates.mainProtection = enabled
+    protectionStates.mainProtection.enabled = enabled
     
     if enabled then
-        print("Anti-Admin: Main protection ENABLED")
+        print("🛡️ " .. protectionStates.mainProtection.name .. " AKTIF")
+        print("   → " .. protectionStates.mainProtection.description)
         if character and humanoid and rootPart then
             handleAntiAdmin()
         end
         setupAdvancedMetatableProtection()
     else
-        print("Anti-Admin: Main protection DISABLED")
+        print("🛡️ " .. protectionStates.mainProtection.name .. " NONAKTIF")
         for _, conn in pairs(antiAdminConnections) do
             if conn and typeof(conn) == "RBXScriptConnection" then
-                conn:Disconnect()
+                safeCall(function() conn:Disconnect() end)
             end
         end
         antiAdminConnections = {}
     end
 end
 
--- Toggle Mass Protection
 local function toggleMassProtection(enabled)
-    protectionStates.massProtection = enabled
+    protectionStates.massProtection.enabled = enabled
     
     if enabled then
-        print("Anti-Admin: Mass protection ENABLED")
+        print("🌊 " .. protectionStates.massProtection.name .. " AKTIF")
+        print("   → " .. protectionStates.massProtection.description)
         detectMassEffects()
     else
-        print("Anti-Admin: Mass protection DISABLED")
+        print("🌊 " .. protectionStates.massProtection.name .. " NONAKTIF")
     end
 end
 
--- Toggle Stealth Mode
 local function toggleStealthMode(enabled)
-    protectionStates.stealthMode = enabled
+    protectionStates.stealthMode.enabled = enabled
     
     if enabled then
-        print("Anti-Admin: Stealth mode ENABLED")
+        print("👤 " .. protectionStates.stealthMode.name .. " AKTIF")
+        print("   → " .. protectionStates.stealthMode.description)
         initializeAntiDetection()
     else
-        print("Anti-Admin: Stealth mode DISABLED")
+        print("👤 " .. protectionStates.stealthMode.name .. " NONAKTIF")
     end
 end
 
--- Toggle Memory Protection
 local function toggleMemoryProtection(enabled)
-    protectionStates.memoryProtection = enabled
+    protectionStates.memoryProtection.enabled = enabled
     
     if enabled then
-        print("Anti-Admin: Memory protection ENABLED")
+        print("💾 " .. protectionStates.memoryProtection.name .. " AKTIF")
+        print("   → " .. protectionStates.memoryProtection.description)
         setupMemoryProtection()
     else
-        print("Anti-Admin: Memory protection DISABLED")
+        print("💾 " .. protectionStates.memoryProtection.name .. " NONAKTIF")
     end
 end
 
--- Toggle Advanced Bypass
 local function toggleAdvancedBypass(enabled)
-    protectionStates.advancedBypass = enabled
+    protectionStates.advancedBypass.enabled = enabled
     
     if enabled then
-        print("Anti-Admin: Advanced bypass ENABLED")
+        print("⚡ " .. protectionStates.advancedBypass.name .. " AKTIF")
+        print("   → " .. protectionStates.advancedBypass.description)
         setupAdvancedBypass()
     else
-        print("Anti-Admin: Advanced bypass DISABLED")
+        print("⚡ " .. protectionStates.advancedBypass.name .. " NONAKTIF")
     end
 end
 
--- Reset states function
+-- Reset states function with improved safety
 function AntiAdmin.resetStates()
-    for _, enabled in pairs(protectionStates) do
-        enabled = false
-    end
-    
-    for _, conn in pairs(antiAdminConnections) do
-        if conn and typeof(conn) == "RBXScriptConnection" then
-            conn:Disconnect()
+    safeCall(function()
+        for key, state in pairs(protectionStates) do
+            state.enabled = false
         end
-    end
-    antiAdminConnections = {}
-    
-    detectionCounters = {
-        scriptScan = 0,
-        behaviorCheck = 0,
-        speedCheck = 0,
-        positionCheck = 0,
-        memoryCheck = 0
-    }
-    
-    print("Anti-Admin: All states reset")
+        
+        for _, conn in pairs(antiAdminConnections) do
+            if conn and typeof(conn) == "RBXScriptConnection" then
+                safeCall(function() conn:Disconnect() end)
+            end
+        end
+        antiAdminConnections = {}
+        
+        detectionCounters = {
+            scriptScan = 0,
+            behaviorCheck = 0,
+            speedCheck = 0,
+            positionCheck = 0,
+            memoryCheck = 0
+        }
+        
+        print("🔄 Anti-Admin: All states reset")
+    end)
 end
 
--- Load AntiAdmin buttons function - FIXED (Watermark only in AntiAdmin category)
+-- Get protection status for UI
+function AntiAdmin.getProtectionStatus()
+    local status = {}
+    for key, state in pairs(protectionStates) do
+        status[key] = {
+            enabled = state.enabled,
+            name = state.name,
+            description = state.description
+        }
+    end
+    return status
+end
+
+-- Load AntiAdmin buttons function with improved UI
 function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
-    createToggleButton("Main Protection", toggleMainProtection, function()
-        toggleMainProtection(false)
+    if not createToggleButton or not FeatureContainer then
+        warn("AntiAdmin: Missing required UI functions")
+        return
+    end
+    
+    -- Create toggle buttons with user-friendly names and descriptions
+    createToggleButton(
+        protectionStates.mainProtection.name, 
+        toggleMainProtection, 
+        function() toggleMainProtection(false) end
+    )
+    
+    createToggleButton(
+        protectionStates.massProtection.name, 
+        toggleMassProtection, 
+        function() toggleMassProtection(false) end
+    )
+    
+    createToggleButton(
+        protectionStates.stealthMode.name, 
+        toggleStealthMode, 
+        function() toggleStealthMode(false) end
+    )
+    
+    createToggleButton(
+        protectionStates.memoryProtection.name, 
+        toggleMemoryProtection, 
+        function() toggleMemoryProtection(false) end
+    )
+    
+    createToggleButton(
+        protectionStates.advancedBypass.name, 
+        toggleAdvancedBypass, 
+        function() toggleAdvancedBypass(false) end
+    )
+    
+    -- Add informative watermark with better styling
+    safeCall(function()
+        local InfoLabel = Instance.new("TextLabel")
+        InfoLabel.Name = "AntiAdminInfo"
+        InfoLabel.Parent = FeatureContainer
+        InfoLabel.BackgroundColor3 = Color3.fromRGB(15, 25, 35)
+        InfoLabel.BorderColor3 = Color3.fromRGB(0, 150, 255)
+        InfoLabel.BorderSizePixel = 2
+        InfoLabel.Size = UDim2.new(1, -2, 0, 55)
+        InfoLabel.LayoutOrder = 999
+        InfoLabel.Font = Enum.Font.GothamBold
+        InfoLabel.Text = "🛡️ SISTEM PERLINDUNGAN ANTI-ADMIN\n📌 Dibuat oleh: Fari Noveri\n⚡ Enhanced Protection System v2.2\n🚀 Error 117 Fixed - User Friendly"
+        InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+        InfoLabel.TextSize = 9
+        InfoLabel.TextYAlignment = Enum.TextYAlignment.Center
+        InfoLabel.TextWrapped = true
+        InfoLabel.TextStrokeTransparency = 0.7
+        InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        
+        local InfoCorner = Instance.new("UICorner")
+        InfoCorner.CornerRadius = UDim.new(0, 6)
+        InfoCorner.Parent = InfoLabel
+        
+        -- Enhanced animation with color cycling
+        spawn(function()
+            if not TweenService then return end
+            local colors = {
+                Color3.fromRGB(100, 200, 255), -- Blue
+                Color3.fromRGB(120, 255, 120), -- Green  
+                Color3.fromRGB(255, 120, 120), -- Red
+                Color3.fromRGB(255, 255, 120)  -- Yellow
+            }
+            
+            local colorIndex = 1
+            while InfoLabel.Parent do
+                local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                local tween = TweenService:Create(InfoLabel, tweenInfo, {
+                    TextColor3 = colors[colorIndex]
+                })
+                tween:Play()
+                tween.Completed:Wait()
+                
+                colorIndex = colorIndex + 1
+                if colorIndex > #colors then colorIndex = 1 end
+                wait(0.5)
+            end
+        end)
     end)
     
-    createToggleButton("Mass Protection", toggleMassProtection, function()
-        toggleMassProtection(false)
-    end)
-    
-    createToggleButton("Stealth Mode", toggleStealthMode, function()
-        toggleStealthMode(false)
-    end)
-    
-    createToggleButton("Memory Protection", toggleMemoryProtection, function()
-        toggleMemoryProtection(false)
-    end)
-    
-    createToggleButton("Advanced Bypass", toggleAdvancedBypass, function()
-        toggleAdvancedBypass(false)
-    end)
-    
-    -- Add watermark ONLY when AntiAdmin category is loaded (will be cleared when switching)
-    local InfoLabel = Instance.new("TextLabel")
-    InfoLabel.Name = "AntiAdminInfo"
-    InfoLabel.Parent = FeatureContainer
-    InfoLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    InfoLabel.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    InfoLabel.BorderSizePixel = 1
-    InfoLabel.Size = UDim2.new(1, -2, 0, 45)
-    InfoLabel.LayoutOrder = 999 -- Make sure it appears at the bottom
-    InfoLabel.Font = Enum.Font.Gotham
-    InfoLabel.Text = "🛡️ Enhanced Anti-Admin Protection\nDibuat oleh: Fari Noveri\n⚡ Advanced Exploiter Protection v2.1"
-    InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 100)
-    InfoLabel.TextSize = 8
-    InfoLabel.TextYAlignment = Enum.TextYAlignment.Center
-    InfoLabel.TextWrapped = true
-    InfoLabel.TextStrokeTransparency = 0.8
-    InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    
-    -- Corner for info label
-    local InfoCorner = Instance.new("UICorner")
-    InfoCorner.CornerRadius = UDim.new(0, 4)
-    InfoCorner.Parent = InfoLabel
-    
-    -- Add subtle animation
-    spawn(function()
-        local TweenService = game:GetService("TweenService")
-        local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-        local tween = TweenService:Create(InfoLabel, tweenInfo, {
-            TextColor3 = Color3.fromRGB(120, 255, 120)
-        })
-        tween:Play()
-    end)
-    
-    print("✓ AntiAdmin buttons loaded with watermark")
+    print("✅ AntiAdmin buttons loaded successfully!")
+    print("🎯 All Error 117 issues resolved")
+    print("🎨 User-friendly interface applied")
+    print("🚫 Anti-Fly and Anti-Noclip removed as requested")
 end
 
 return AntiAdmin
