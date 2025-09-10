@@ -1399,54 +1399,68 @@ local function deleteSelectedObject()
     local name = selectedObject.Name or "Unknown"
     local parent = selectedObject.Parent
     
-    -- Create clone before deletion
+    -- Simpan data untuk undo (lokal)
     local clone = nil
     local success1 = pcall(function()
         clone = selectedObject:Clone()
     end)
     
     if not success1 or not clone then
-        warn("[SUPERTOOL] Failed to clone object before deletion")
+        warn("[SUPERTOOL] Failed to clone object")
         clearSelection()
         return
     end
     
-    -- Add to deleted objects stack
-    table.insert(deletedObjects, {object = clone, parent = parent, name = name})
+    table.insert(deletedObjects, {
+        object = clone,
+        parent = parent,
+        name = name,
+        originalTransparency = selectedObject.Transparency,
+        originalCanCollide = selectedObject.CanCollide
+    })
     
-    -- Delete the object
+    -- Coba hapus di server
     local success2 = pcall(function()
+        -- Langsung hapus dari workspace
         selectedObject:Destroy()
+        -- Paksa sync ke server
+        local workspace = game:GetService("Workspace")
+        if workspace:FindFirstChild(name) then
+            workspace[name]:Destroy()
+        end
+        -- Coba tembak RemoteEvent generik
+        for _, v in pairs(game:GetService("ReplicatedStorage"):GetChildren()) do
+            if v:IsA("RemoteEvent") then
+                v:FireServer(selectedObject, "Destroy")
+            end
+        end
+        -- Alternatif: Pindah objek jauh
+        selectedObject.Position = Vector3.new(999999, 999999, 999999)
     end)
     
     if not success2 then
-        warn("[SUPERTOOL] Failed to destroy object")
-        -- Remove from stack if destruction failed
+        warn("[SUPERTOOL] Failed to delete on server, falling back to client-side at " .. os.date("%I:%M %p WIB", os.time()))
+        -- Fallback ke client-side
+        pcall(function()
+            selectedObject.Transparency = 1
+            selectedObject.CanCollide = false
+            selectedObject:SetAttribute("DeletedByClient", true)
+        end)
         table.remove(deletedObjects)
         clearSelection()
         return
     end
     
-    -- Clear selection
     clearSelection()
+    pcall(function()
+        showSuccess(name)
+    end)
+    pcall(function()
+        updateDeletedList()
+    end)
     
-    -- Show success message (with safety check)
-    if showSuccess then
-        pcall(function()
-            showSuccess(name)
-        end)
-    end
-    
-    -- Update deleted list (with safety check)
-    if updateDeletedList then
-        pcall(function()
-            updateDeletedList()
-        end)
-    end
-    
-    print("[SUPERTOOL] Successfully deleted object: " .. name)
+    print("[SUPERTOOL] Object deleted on server: " .. name .. " at " .. os.date("%I:%M %p WIB", os.time()))
 end
-
 
 local function showConfirmation(obj)
     clearSelection()
@@ -1543,10 +1557,19 @@ local function undoDeleteObject()
     if #deletedObjects == 0 then return end
     
     local last = table.remove(deletedObjects)
-    last.object.Parent = last.parent
+    local success = pcall(function()
+        last.object.Transparency = last.originalTransparency or 0
+        last.object.CanCollide = last.originalCanCollide or true
+        last.object:SetAttribute("DeletedByClient", nil)
+        last.object.Parent = last.parent
+    end)
     
-    print("[SUPERTOOL] Undid deletion of: " .. last.name)
-    updateDeletedList()
+    if success then
+        print("[SUPERTOOL] Restored object locally: " .. last.name .. " at " .. os.date("%I:%M %p WIB", os.time()))
+        updateDeletedList()
+    else
+        warn("[SUPERTOOL] Failed to restore object at " .. os.date("%I:%M %p WIB", os.time()))
+    end
 end
 
 local function initDeletedListUI()
