@@ -1359,48 +1359,40 @@ local function showConfirmation(obj)
     selectionBox.LineThickness = 0.1
     selectionBox.Color3 = Color3.fromRGB(255, 0, 0)
     
-    confirmationGui = Instance.new("BillboardGui")
+    confirmationGui = Instance.new("Frame")
     confirmationGui.Parent = ScreenGui
-    confirmationGui.Size = UDim2.new(0, 200, 0, 50)
-    confirmationGui.AlwaysOnTop = true
-    confirmationGui.Adornee = obj
-    confirmationGui.StudsOffset = Vector3.new(0, 5, 0)
-    
-    local frame = Instance.new("Frame")
-    frame.Parent = confirmationGui
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    frame.BackgroundTransparency = 0.5
+    confirmationGui.Position = UDim2.new(0.5, -100, 0.5, -50)
+    confirmationGui.Size = UDim2.new(0, 200, 0, 100)
+    confirmationGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    confirmationGui.BackgroundTransparency = 0.5
     
     local text = Instance.new("TextLabel")
-    text.Parent = frame
+    text.Parent = confirmationGui
     text.Position = UDim2.new(0, 0, 0, 0)
     text.Size = UDim2.new(1, 0, 0.5, 0)
     text.BackgroundTransparency = 1
     text.Text = "Apakah anda ingin hapus ini?"
     text.TextColor3 = Color3.fromRGB(255, 255, 255)
     text.TextSize = 14
+    text.TextWrapped = true
     
     local yesButton = Instance.new("TextButton")
-    yesButton.Parent = frame
-    yesButton.Position = UDim2.new(0, 0, 0.5, 0)
-    yesButton.Size = UDim2.new(0.5, 0, 0.5, 0)
+    yesButton.Parent = confirmationGui
+    yesButton.Position = UDim2.new(0, 10, 0.6, 0)
+    yesButton.Size = UDim2.new(0.4, 0, 0.3, 0)
     yesButton.Text = "Ya"
     yesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     yesButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
     
     local noButton = Instance.new("TextButton")
-    noButton.Parent = frame
-    noButton.Position = UDim2.new(0.5, 0, 0.5, 0)
-    noButton.Size = UDim2.new(0.5, 0, 0.5, 0)
+    noButton.Parent = confirmationGui
+    noButton.Position = UDim2.new(0.55, 0, 0.6, 0)
+    noButton.Size = UDim2.new(0.4, 0, 0.3, 0)
     noButton.Text = "Tidak"
     noButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     noButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
     
-    yesButton.MouseButton1Click:Connect(function()
-        deleteSelectedObject()
-    end)
-    
+    yesButton.MouseButton1Click:Connect(deleteSelectedObject)
     noButton.MouseButton1Click:Connect(clearSelection)
 end
 
