@@ -1327,27 +1327,62 @@ local function setupKeyboardControls()
 end
 
 -- Object Deleter Functions
-local function toggleDeleter()
-    deleterEnabled = not deleterEnabled
-    if deleterEnabled then
-        print("[SUPERTOOL] Object Deleter enabled")
-        setupDeleterInput() -- Ensure input setup is called
-    else
-        print("[SUPERTOOL] Object Deleter disabled")
-        clearSelection()
-    end
-end
-
 local function clearSelection()
-    if selectionBox then
+    if selectionBox and selectionBox.Parent then
         selectionBox:Destroy()
         selectionBox = nil
     end
     selectedObject = nil
-    if confirmationGui then
+    if confirmationGui and confirmationGui.Parent then
         confirmationGui:Destroy()
         confirmationGui = nil
     end
+end
+
+local function showSuccess(name)
+    if successGui and successGui.Parent then
+        successGui:Destroy()
+    end
+    
+    successGui = Instance.new("Frame")
+    successGui.Parent = ScreenGui
+    successGui.Position = UDim2.new(0.5, -100, 0.1, 0)
+    successGui.Size = UDim2.new(0, 200, 0, 50)
+    successGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    successGui.BackgroundTransparency = 0.5
+    successGui.ZIndex = 10
+    
+    local text = Instance.new("TextLabel")
+    text.Parent = successGui
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = "Sukses menghapus " .. name
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.TextSize = 14
+    text.ZIndex = 11
+    
+    game:GetService("Debris"):AddItem(successGui, 3)
+end
+
+local function deleteSelectedObject()
+    if not selectedObject then return end
+    
+    local name = selectedObject.Name
+    local parent = selectedObject.Parent
+    local clone = selectedObject:Clone()
+    
+    table.insert(deletedObjects, {object = clone, parent = parent, name = name})
+    
+    pcall(function()
+        selectedObject.Parent = player.Character
+        selectedObject:Destroy()
+    end)
+    
+    clearSelection()
+    showSuccess(name)
+    updateDeletedList()
+    
+    print("[SUPERTOOL] Deleted object server-side: " .. name)
 end
 
 local function showConfirmation(obj)
@@ -1366,7 +1401,7 @@ local function showConfirmation(obj)
     confirmationGui.Size = UDim2.new(0, 200, 0, 100)
     confirmationGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     confirmationGui.BackgroundTransparency = 0.5
-    confirmationGui.ZIndex = 10 -- Ensure GUI is on top
+    confirmationGui.ZIndex = 10
     
     local text = Instance.new("TextLabel")
     text.Parent = confirmationGui
@@ -1397,7 +1432,6 @@ local function showConfirmation(obj)
     noButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
     noButton.ZIndex = 11
     
-    -- Disconnect existing connections to prevent duplicates
     local yesConnection, noConnection
     yesConnection = yesButton.MouseButton1Click:Connect(function()
         if selectedObject then
@@ -1413,50 +1447,33 @@ local function showConfirmation(obj)
         if noConnection then noConnection:Disconnect() end
     end)
     
-    -- Auto-cleanup if stuck
-    game:GetService("Debris"):AddItem(confirmationGui, 5) -- Remove GUI after 5 seconds
+    game:GetService("Debris"):AddItem(confirmationGui, 5)
 end
 
-local function deleteSelectedObject()
-    if not selectedObject then return end
-    
-    local name = selectedObject.Name
-    local parent = selectedObject.Parent
-    local clone = selectedObject:Clone()
-    
-    table.insert(deletedObjects, {object = clone, parent = parent, name = name})
-    
-    pcall(function()
-        selectedObject.Parent = player.Character
-        selectedObject:Destroy()
+local function setupDeleterInput()
+    local connection
+    if connection then connection:Disconnect() end -- Prevent duplicate connections
+    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if deleterEnabled and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            local mouse = player:GetMouse()
+            local target = mouse.Target
+            if target and target:IsA("BasePart") and target ~= workspace.Terrain then
+                showConfirmation(target)
+            end
+        end
     end)
-    
-    clearSelection()
-    showSuccess(name)
-    updateDeletedList()
-    
-    print("[SUPERTOOL] Deleted object server-side: " .. name)
 end
 
-local function showSuccess(name)
-    if successGui then successGui:Destroy() end
-    
-    successGui = Instance.new("Frame")
-    successGui.Parent = ScreenGui
-    successGui.Position = UDim2.new(0.5, -100, 0.1, 0)
-    successGui.Size = UDim2.new(0, 200, 0, 50)
-    successGui.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    successGui.BackgroundTransparency = 0.5
-    
-    local text = Instance.new("TextLabel")
-    text.Parent = successGui
-    text.Size = UDim2.new(1, 0, 1, 0)
-    text.BackgroundTransparency = 1
-    text.Text = "Sukses menghapus " .. name
-    text.TextColor3 = Color3.fromRGB(255, 255, 255)
-    text.TextSize = 14
-    
-    game:GetService("Debris"):AddItem(successGui, 3)
+local function toggleDeleter()
+    deleterEnabled = not deleterEnabled
+    if deleterEnabled then
+        print("[SUPERTOOL] Object Deleter enabled")
+        setupDeleterInput()
+    else
+        print("[SUPERTOOL] Object Deleter disabled")
+        clearSelection()
+    end
 end
 
 local function undoDeleteObject()
@@ -1553,18 +1570,6 @@ local function toggleDeletedList()
     if deletedListVisible then
         updateDeletedList()
     end
-end
-
-local function setupDeleterInput()
-    UserInputService.InputBegan:Connect(function(input)
-        if deleterEnabled and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-            local mouse = player:GetMouse()
-            local target = mouse.Target
-            if target and target:IsA("BasePart") and target ~= workspace.Terrain then
-                showConfirmation(target)
-            end
-        end
-    end)
 end
 
 -- Load utility buttons
