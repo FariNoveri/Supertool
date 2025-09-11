@@ -353,7 +353,24 @@ local function toggleHideBubbleChat(enabled)
     Visual.hideBubbleChat = enabled
     print("Hide Bubble Chat:", enabled)
     if Chat then
-        Chat.BubbleChatEnabled = not enabled
+        if enabled then
+            Chat.BubbleChatEnabled = false
+        else
+            Chat.BubbleChatEnabled = originalBubbleChatEnabled
+        end
+        
+        if connections.bubbleChatMonitor then
+            connections.bubbleChatMonitor:Disconnect()
+            connections.bubbleChatMonitor = nil
+        end
+        
+        if enabled then
+            connections.bubbleChatMonitor = RunService.Heartbeat:Connect(function()
+                if Chat.BubbleChatEnabled then
+                    Chat.BubbleChatEnabled = false
+                end
+            end)
+        end
     else
         warn("Chat service not available")
     end
