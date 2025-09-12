@@ -1660,28 +1660,71 @@ local function toggleDeletedList()
 end
 
 -- Ganti fungsi loadGear yang ada dengan ini:
-local function loadGear(gearId)
+-- Method 1: Direct Tool Creation (bypass FilteringEnabled)
+local function createDirectTool(gearId)
     local success, err = pcall(function()
+        -- Load asset
         local assets = game:GetObjects("rbxassetid://" .. gearId)
-        local tool = assets[1]
+        local originalTool = assets[1]
         
-        if tool and tool:IsA("Tool") then
-            -- JANGAN hapus script apapun
-            tool.Parent = player.Backpack
-            
-            -- Auto equip
-            task.wait(0.5)
-            if player.Character and player.Character:FindFirstChild("Humanoid") then
-                player.Character.Humanoid:EquipTool(tool)
+        if not originalTool or not originalTool:IsA("Tool") then
+            warn("Invalid tool asset")
+            return
+        end
+        
+        -- Create new tool with basic functionality
+        local newTool = Instance.new("Tool")
+        newTool.Name = originalTool.Name
+        newTool.RequiresHandle = true
+        newTool.CanBeDropped = true
+        
+        -- Clone handle and other essential parts
+        for _, child in pairs(originalTool:GetChildren()) do
+            if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") then
+                child:Clone().Parent = newTool
             end
+        end
+        
+        -- Add basic click functionality
+        newTool.Activated:Connect(function()
+            print("Tool activated: " .. newTool.Name)
             
-            print("[SUPERTOOL] Gear loaded: " .. tool.Name)
+            -- Basic damage/effect simulation
+            local character = player.Character
+            if character then
+                local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                if humanoidRootPart then
+                    -- Create visual effect
+                    local effect = Instance.new("Explosion")
+                    effect.Position = humanoidRootPart.Position + humanoidRootPart.CFrame.LookVector * 10
+                    effect.BlastRadius = 20
+                    effect.BlastPressure = 0
+                    effect.Parent = workspace
+                    
+                    -- Play sound
+                    local sound = Instance.new("Sound")
+                    sound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+                    sound.Volume = 0.5
+                    sound.Parent = humanoidRootPart
+                    sound:Play()
+                    
+                    game:GetService("Debris"):AddItem(sound, 2)
+                end
+            end
+        end)
+        
+        newTool.Parent = player.Backpack
+        print("[SUPERTOOL] Direct tool created: " .. newTool.Name)
+        
+        -- Auto equip
+        task.wait(0.1)
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid:EquipTool(newTool)
         end
     end)
     
     if not success then
-        -- Abaikan HTTP error, gear mungkin masih berfungsi
-        print("[SUPERTOOL] Error ignored: " .. tostring(err))
+        warn("[SUPERTOOL] Direct tool creation failed: " .. tostring(err))
     end
 end
 
