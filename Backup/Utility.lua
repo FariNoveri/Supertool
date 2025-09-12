@@ -1155,10 +1155,10 @@ function updatePathList()
             autoRespButton.Size = UDim2.new(0, 45, 0, 20)
             autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
             autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoPlayButton.TextSize = 7
+            autoRespButton.TextSize = 7
             autoRespButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
-            
+
             local toggleShowButton = Instance.new("TextButton")
             toggleShowButton.Parent = pathItem
             toggleShowButton.Position = UDim2.new(0, 155, 0, 38)
@@ -1726,6 +1726,10 @@ local function createDirectTool(gearId)
     if not success then
         warn("[SUPERTOOL] Direct tool creation failed: " .. tostring(err))
     end
+end
+
+local function loadGear(id)
+    createDirectTool(id)
 end
 
 local function initGearUI()
