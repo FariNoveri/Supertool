@@ -57,7 +57,7 @@ local DeletedScrollFrame, DeletedLayout
 
 -- Gear Loader Variables
 local gearFrameVisible = false
-local GearFrame, GearInput, GearScrollFrame, GearLayout
+local GearFrame, GearScrollFrame, GearLayout
 local predefinedGears = {
     {name = "Hyperlaser Gun", id = 130113146},
     {name = "Darkheart", id = 1689527},
@@ -1502,8 +1502,7 @@ local function showConfirmation(obj)
     noButton.Position = UDim2.new(0.55, 0, 0.6, 0)
     noButton.Size = UDim2.new(0.4, 0, 0.3, 0)
     noButton.Text = "Tidak"
-    noButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    noButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    noButton.TextColor3 = Color3.fromRGB(255, 0, 0)
     noButton.ZIndex = 11
     
     local yesConnection, noConnection
@@ -1659,7 +1658,6 @@ local function toggleDeletedList()
     end
 end
 
--- Ganti fungsi loadGear yang ada dengan ini:
 -- Method 1: Direct Tool Creation (bypass FilteringEnabled)
 local function createDirectTool(gearId)
     local success, err = pcall(function()
@@ -1767,33 +1765,11 @@ local function initGearUI()
     CloseGearButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     CloseGearButton.TextSize = 12
 
-    GearInput = Instance.new("TextBox")
-    GearInput.Parent = GearFrame
-    GearInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearInput.BorderSizePixel = 0
-    GearInput.Position = UDim2.new(0, 5, 0, 30)
-    GearInput.Size = UDim2.new(0.7, -10, 0, 25)
-    GearInput.Font = Enum.Font.Gotham
-    GearInput.PlaceholderText = "Enter Gear ID..."
-    GearInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearInput.TextSize = 8
-
-    local LoadCustomButton = Instance.new("TextButton")
-    LoadCustomButton.Parent = GearFrame
-    LoadCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    LoadCustomButton.BorderSizePixel = 0
-    LoadCustomButton.Position = UDim2.new(0.7, 0, 0, 30)
-    LoadCustomButton.Size = UDim2.new(0.3, -5, 0, 25)
-    LoadCustomButton.Font = Enum.Font.GothamBold
-    LoadCustomButton.Text = "LOAD"
-    LoadCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    LoadCustomButton.TextSize = 8
-
     GearScrollFrame = Instance.new("ScrollingFrame")
     GearScrollFrame.Parent = GearFrame
     GearScrollFrame.BackgroundTransparency = 1
-    GearScrollFrame.Position = UDim2.new(0, 5, 0, 60)
-    GearScrollFrame.Size = UDim2.new(1, -10, 1, -65)
+    GearScrollFrame.Position = UDim2.new(0, 5, 0, 30)
+    GearScrollFrame.Size = UDim2.new(1, -10, 1, -35)
     GearScrollFrame.ScrollBarThickness = 3
     GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -1806,16 +1782,6 @@ local function initGearUI()
     CloseGearButton.MouseButton1Click:Connect(function()
         GearFrame.Visible = false
         gearFrameVisible = false
-    end)
-
-    LoadCustomButton.MouseButton1Click:Connect(function()
-        local id = tonumber(GearInput.Text)
-        if id then
-            loadGear(id)
-            GearInput.Text = ""
-        else
-            warn("[SUPERTOOL] Invalid Gear ID")
-        end
     end)
 
     -- Populate predefined gears
