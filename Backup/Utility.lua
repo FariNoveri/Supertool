@@ -1660,28 +1660,49 @@ local function toggleDeletedList()
 end
 
 -- Gear Loader Functions
+-- Fixed Gear Loader Function - Tidak menghapus LocalScript
 local function loadGear(gearId)
     local success, err = pcall(function()
         local assets = game:GetObjects("rbxassetid://" .. gearId)
         local tool = assets[1]
         if tool and tool:IsA("Tool") then
-            -- Remove local scripts to avoid HTTP errors
-            for _, child in ipairs(tool:GetDescendants()) do
-                if child:IsA("LocalScript") or child.Name == "MouseIcon" then
-                    child:Destroy()
-                end
+            -- JANGAN HAPUS LocalScript - gear butuh ini untuk berfungsi!
+            -- Hanya hapus script yang bermasalah spesifik jika perlu
+            
+            -- Optional: Hanya hapus MouseIcon jika menyebabkan error
+            local mouseIcon = tool:FindFirstChild("MouseIcon")
+            if mouseIcon then
+                mouseIcon:Destroy()
             end
+            
             tool.Parent = player.Backpack
             print("[SUPERTOOL] Gear loaded: " .. tool.Name)
+            
+            -- Debug info - cek apakah ada script
+            local scripts = {}
+            for _, child in ipairs(tool:GetDescendants()) do
+                if child:IsA("Script") or child:IsA("LocalScript") then
+                    table.insert(scripts, child.Name .. " (" .. child.ClassName .. ")")
+                end
+            end
+            if #scripts > 0 then
+                print("[SUPERTOOL] Scripts found: " .. table.concat(scripts, ", "))
+            else
+                print("[SUPERTOOL] WARNING: No scripts found - gear might not work!")
+            end
+            
         else
             warn("[SUPERTOOL] Failed to load gear: Not a Tool")
         end
+        
+        -- Clean up unused assets
         for _, asset in ipairs(assets) do
             if asset ~= tool then
                 asset:Destroy()
             end
         end
     end)
+    
     if not success then
         warn("[SUPERTOOL] Error loading gear: " .. err)
     end
