@@ -5,7 +5,7 @@
 -- farinoveri30@gmail.com (claude ai)
 -- Fixed bugs: UI textbox, outfit apply, reset character
 -- MODIFIED: Removed Outfit Manager, Added Object Deleter Feature
--- NEW: Added Gear Loader Feature with input ID or predefined gears
+-- NEW: Added Gear Loader Feature with input ID or predefined gears (exploit-safe)
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -1661,16 +1661,13 @@ end
 -- Gear Loader Functions
 local function loadGear(gearId)
     local success, err = pcall(function()
-        local insertService = game:GetService("InsertService")
-        local asset = insertService:LoadAsset(gearId)
-        local tool = asset:GetChildren()[1]
-        if tool and tool:IsA("Tool") then
-            tool.Parent = player.Backpack
-            print("[SUPERTOOL] Gear loaded: " .. tool.Name)
+        local asset = game:GetObjects("rbxassetid://" .. gearId)[1]
+        if asset and asset:IsA("Tool") then
+            asset.Parent = player.Backpack
+            print("[SUPERTOOL] Gear loaded: " .. asset.Name)
         else
             warn("[SUPERTOOL] Failed to load gear: Not a Tool")
         end
-        asset:Destroy()
     end)
     if not success then
         warn("[SUPERTOOL] Error loading gear: " .. err)
