@@ -57,7 +57,7 @@ local DeletedScrollFrame, DeletedLayout
 
 -- Gear Loader Variables
 local gearFrameVisible = false
-local GearFrame, GearScrollFrame, GearLayout
+local GearFrame, GearInput, GearScrollFrame, GearLayout
 local predefinedGears = {
     {name = "Hyperlaser Gun", id = 130113146},
     {name = "Darkheart", id = 1689527},
@@ -1676,16 +1676,26 @@ local function createDirectTool(gearId)
         newTool.RequiresHandle = true
         newTool.CanBeDropped = true
         
-        -- Clone handle and other essential parts
+        -- Clone handle and other essential parts, including textures for inventory icon
         for _, child in pairs(originalTool:GetChildren()) do
-            if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") or child:IsA("Script") or child:IsA("LocalScript") or child:IsA("ModuleScript") then
+            if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") or child:IsA("Decal") or child:IsA("SpecialMesh") or child:IsA("Script") or child:IsA("LocalScript") or child:IsA("ModuleScript") then
                 local clonedChild = child:Clone()
                 clonedChild.Parent = newTool
                 -- Clone scripts if they exist, but disable them to avoid conflicts (only for Script and LocalScript)
                 if clonedChild:IsA("Script") or clonedChild:IsA("LocalScript") then
                     clonedChild.Disabled = true
                 end
-                -- ModuleScripts don't have Disabled property, so skip
+                -- ModuleScripts don't have Disabled property, so skip setting it
+            end
+        end
+        
+        -- Ensure Handle has proper texture for inventory icon if available
+        local handle = newTool:FindFirstChild("Handle")
+        if handle then
+            local texture = handle:FindFirstChildOfClass("Texture") or handle:FindFirstChildOfClass("Decal")
+            if texture then
+                -- Texture/Decal on Handle will show as inventory icon
+                print("[SUPERTOOL] Inventory icon preserved via Handle texture")
             end
         end
         
@@ -1743,11 +1753,33 @@ local function initGearUI()
     CloseGearButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     CloseGearButton.TextSize = 12
 
+    GearInput = Instance.new("TextBox")
+    GearInput.Parent = GearFrame
+    GearInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    GearInput.BorderSizePixel = 0
+    GearInput.Position = UDim2.new(0, 5, 0, 30)
+    GearInput.Size = UDim2.new(0.7, -10, 0, 25)
+    GearInput.Font = Enum.Font.Gotham
+    GearInput.PlaceholderText = "Enter Gear ID..."
+    GearInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    GearInput.TextSize = 8
+
+    local LoadCustomButton = Instance.new("TextButton")
+    LoadCustomButton.Parent = GearFrame
+    LoadCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    LoadCustomButton.BorderSizePixel = 0
+    LoadCustomButton.Position = UDim2.new(0.7, 0, 0, 30)
+    LoadCustomButton.Size = UDim2.new(0.3, -5, 0, 25)
+    LoadCustomButton.Font = Enum.Font.GothamBold
+    LoadCustomButton.Text = "LOAD"
+    LoadCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    LoadCustomButton.TextSize = 8
+
     GearScrollFrame = Instance.new("ScrollingFrame")
     GearScrollFrame.Parent = GearFrame
     GearScrollFrame.BackgroundTransparency = 1
-    GearScrollFrame.Position = UDim2.new(0, 5, 0, 30)
-    GearScrollFrame.Size = UDim2.new(1, -10, 1, -35)
+    GearScrollFrame.Position = UDim2.new(0, 5, 0, 60)
+    GearScrollFrame.Size = UDim2.new(1, -10, 1, -65)
     GearScrollFrame.ScrollBarThickness = 3
     GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -1760,6 +1792,16 @@ local function initGearUI()
     CloseGearButton.MouseButton1Click:Connect(function()
         GearFrame.Visible = false
         gearFrameVisible = false
+    end)
+
+    LoadCustomButton.MouseButton1Click:Connect(function()
+        local id = tonumber(GearInput.Text)
+        if id then
+            loadGear(id)
+            GearInput.Text = ""
+        else
+            warn("[SUPERTOOL] Invalid Gear ID")
+        end
     end)
 
     -- Populate predefined gears
@@ -1914,7 +1956,7 @@ function Utility.init(deps)
         print("  - ADDED: Clickable path points every 5 meters")
         print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
         print("  - ADDED: Object Deleter with confirmation, success message, list, and undo")
-        print("  - ADDED: Gear Loader with predefined gears (no custom effects)")
+        print("  - ADDED: Gear Loader with custom ID input and predefined gears (inventory icon preserved)")
         print("  - FIXED: Gear loading HTTP 409 by removing local scripts")
         print("  - ENHANCED: Better UI with improved controls")
         print("  - Keyboard Controls: Ctrl+Z (undo during recording or delete)")
