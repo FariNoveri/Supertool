@@ -6,6 +6,7 @@
 -- Fixed bugs: UI textbox, outfit apply, reset character
 -- MODIFIED: Removed Outfit Manager, Added Object Deleter Feature
 -- NEW: Added Gear Loader Feature with input ID or predefined gears (exploit-safe)
+-- FIXED: Gear loading HTTP 409 error by removing local scripts
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -1154,7 +1155,7 @@ function updatePathList()
             autoRespButton.Size = UDim2.new(0, 45, 0, 20)
             autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
             autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoRespButton.TextSize = 7
+            autoPlayButton.TextSize = 7
             autoRespButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
             
@@ -1661,12 +1662,24 @@ end
 -- Gear Loader Functions
 local function loadGear(gearId)
     local success, err = pcall(function()
-        local asset = game:GetObjects("rbxassetid://" .. gearId)[1]
-        if asset and asset:IsA("Tool") then
-            asset.Parent = player.Backpack
-            print("[SUPERTOOL] Gear loaded: " .. asset.Name)
+        local assets = game:GetObjects("rbxassetid://" .. gearId)
+        local tool = assets[1]
+        if tool and tool:IsA("Tool") then
+            -- Remove local scripts to avoid HTTP errors
+            for _, child in ipairs(tool:GetDescendants()) do
+                if child:IsA("LocalScript") or child.Name == "MouseIcon" then
+                    child:Destroy()
+                end
+            end
+            tool.Parent = player.Backpack
+            print("[SUPERTOOL] Gear loaded: " .. tool.Name)
         else
             warn("[SUPERTOOL] Failed to load gear: Not a Tool")
+        end
+        for _, asset in ipairs(assets) do
+            if asset ~= tool then
+                asset:Destroy()
+            end
         end
     end)
     if not success then
@@ -1913,6 +1926,7 @@ function Utility.init(deps)
         print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
         print("  - ADDED: Object Deleter with confirmation, success message, list, and undo")
         print("  - ADDED: Gear Loader with custom ID input and predefined gears")
+        print("  - FIXED: Gear loading HTTP 409 by removing local scripts")
         print("  - ENHANCED: Better UI with improved controls")
         print("  - Keyboard Controls: Ctrl+Z (undo during recording or delete)")
         print("  - JSON Storage: Supertool/Paths/")
