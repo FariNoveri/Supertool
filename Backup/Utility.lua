@@ -1678,38 +1678,15 @@ local function createDirectTool(gearId)
         
         -- Clone handle and other essential parts
         for _, child in pairs(originalTool:GetChildren()) do
-            if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") then
-                child:Clone().Parent = newTool
-            end
-        end
-        
-        -- Add basic click functionality
-        newTool.Activated:Connect(function()
-            print("Tool activated: " .. newTool.Name)
-            
-            -- Basic damage/effect simulation
-            local character = player.Character
-            if character then
-                local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-                if humanoidRootPart then
-                    -- Create visual effect
-                    local effect = Instance.new("Explosion")
-                    effect.Position = humanoidRootPart.Position + humanoidRootPart.CFrame.LookVector * 10
-                    effect.BlastRadius = 20
-                    effect.BlastPressure = 0
-                    effect.Parent = workspace
-                    
-                    -- Play sound
-                    local sound = Instance.new("Sound")
-                    sound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
-                    sound.Volume = 0.5
-                    sound.Parent = humanoidRootPart
-                    sound:Play()
-                    
-                    game:GetService("Debris"):AddItem(sound, 2)
+            if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") or child:IsA("Script") or child:IsA("LocalScript") or child:IsA("ModuleScript") then
+                local clonedChild = child:Clone()
+                clonedChild.Parent = newTool
+                -- Clone scripts if they exist, but disable them to avoid conflicts
+                if clonedChild:IsA("Script") or clonedChild:IsA("LocalScript") or clonedChild:IsA("ModuleScript") then
+                    clonedChild.Disabled = true
                 end
             end
-        end)
+        end
         
         newTool.Parent = player.Backpack
         print("[SUPERTOOL] Direct tool created: " .. newTool.Name)
@@ -1936,7 +1913,7 @@ function Utility.init(deps)
         print("  - ADDED: Clickable path points every 5 meters")
         print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
         print("  - ADDED: Object Deleter with confirmation, success message, list, and undo")
-        print("  - ADDED: Gear Loader with custom ID input and predefined gears")
+        print("  - ADDED: Gear Loader with predefined gears (no custom effects)")
         print("  - FIXED: Gear loading HTTP 409 by removing local scripts")
         print("  - ENHANCED: Better UI with improved controls")
         print("  - Keyboard Controls: Ctrl+Z (undo during recording or delete)")
