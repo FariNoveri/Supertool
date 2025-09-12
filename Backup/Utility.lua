@@ -1681,10 +1681,11 @@ local function createDirectTool(gearId)
             if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") or child:IsA("Script") or child:IsA("LocalScript") or child:IsA("ModuleScript") then
                 local clonedChild = child:Clone()
                 clonedChild.Parent = newTool
-                -- Clone scripts if they exist, but disable them to avoid conflicts
-                if clonedChild:IsA("Script") or clonedChild:IsA("LocalScript") or clonedChild:IsA("ModuleScript") then
+                -- Clone scripts if they exist, but disable them to avoid conflicts (only for Script and LocalScript)
+                if clonedChild:IsA("Script") or clonedChild:IsA("LocalScript") then
                     clonedChild.Disabled = true
                 end
+                -- ModuleScripts don't have Disabled property, so skip
             end
         end
         
