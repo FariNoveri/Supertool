@@ -5,6 +5,7 @@
 -- farinoveri30@gmail.com (claude ai)
 -- Fixed bugs: UI textbox, outfit apply, reset character
 -- MODIFIED: Removed Outfit Manager, Added Object Deleter Feature
+-- NEW: Added Gear Loader Feature with input ID or predefined gears
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -52,6 +53,16 @@ local deletedObjects = {}  -- Stack for undo: {object = clone, parent = original
 local deletedListFrame = nil
 local deletedListVisible = false
 local DeletedScrollFrame, DeletedLayout
+
+-- Gear Loader Variables
+local gearFrameVisible = false
+local GearFrame, GearInput, GearScrollFrame, GearLayout
+local predefinedGears = {
+    {name = "Hyperlaser Gun", id = 130113146},
+    {name = "Darkheart", id = 1689527},
+    {name = "Vampire Vanquisher", id = 108149175},
+    -- Tambah gear lain jika perlu
+}
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -1388,7 +1399,6 @@ local function showSuccess(name)
 end
 
 
--- Fixed deleteSelectedObject function
 -- Fixed deleteSelectedObject function with better error handling
 local function deleteSelectedObject()
     if not selectedObject then 
@@ -1648,6 +1658,136 @@ local function toggleDeletedList()
     end
 end
 
+-- Gear Loader Functions
+local function loadGear(gearId)
+    local success, err = pcall(function()
+        local insertService = game:GetService("InsertService")
+        local asset = insertService:LoadAsset(gearId)
+        local tool = asset:GetChildren()[1]
+        if tool and tool:IsA("Tool") then
+            tool.Parent = player.Backpack
+            print("[SUPERTOOL] Gear loaded: " .. tool.Name)
+        else
+            warn("[SUPERTOOL] Failed to load gear: Not a Tool")
+        end
+        asset:Destroy()
+    end)
+    if not success then
+        warn("[SUPERTOOL] Error loading gear: " .. err)
+    end
+end
+
+local function initGearUI()
+    if GearFrame then return end
+    
+    GearFrame = Instance.new("Frame")
+    GearFrame.Name = "GearFrame"
+    GearFrame.Parent = ScreenGui
+    GearFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    GearFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    GearFrame.BorderSizePixel = 1
+    GearFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
+    GearFrame.Size = UDim2.new(0, 250, 0, 300)
+    GearFrame.Visible = false
+    GearFrame.Active = true
+    GearFrame.Draggable = true
+
+    local GearTitle = Instance.new("TextLabel")
+    GearTitle.Parent = GearFrame
+    GearTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    GearTitle.BorderSizePixel = 0
+    GearTitle.Size = UDim2.new(1, 0, 0, 25)
+    GearTitle.Font = Enum.Font.GothamBold
+    GearTitle.Text = "GEAR LOADER"
+    GearTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    GearTitle.TextSize = 10
+
+    local CloseGearButton = Instance.new("TextButton")
+    CloseGearButton.Parent = GearFrame
+    CloseGearButton.BackgroundTransparency = 1
+    CloseGearButton.Position = UDim2.new(1, -25, 0, 2)
+    CloseGearButton.Size = UDim2.new(0, 20, 0, 20)
+    CloseGearButton.Font = Enum.Font.GothamBold
+    CloseGearButton.Text = "X"
+    CloseGearButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    CloseGearButton.TextSize = 12
+
+    GearInput = Instance.new("TextBox")
+    GearInput.Parent = GearFrame
+    GearInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    GearInput.BorderSizePixel = 0
+    GearInput.Position = UDim2.new(0, 5, 0, 30)
+    GearInput.Size = UDim2.new(0.7, -10, 0, 25)
+    GearInput.Font = Enum.Font.Gotham
+    GearInput.PlaceholderText = "Enter Gear ID..."
+    GearInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    GearInput.TextSize = 8
+
+    local LoadCustomButton = Instance.new("TextButton")
+    LoadCustomButton.Parent = GearFrame
+    LoadCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    LoadCustomButton.BorderSizePixel = 0
+    LoadCustomButton.Position = UDim2.new(0.7, 0, 0, 30)
+    LoadCustomButton.Size = UDim2.new(0.3, -5, 0, 25)
+    LoadCustomButton.Font = Enum.Font.GothamBold
+    LoadCustomButton.Text = "LOAD"
+    LoadCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    LoadCustomButton.TextSize = 8
+
+    GearScrollFrame = Instance.new("ScrollingFrame")
+    GearScrollFrame.Parent = GearFrame
+    GearScrollFrame.BackgroundTransparency = 1
+    GearScrollFrame.Position = UDim2.new(0, 5, 0, 60)
+    GearScrollFrame.Size = UDim2.new(1, -10, 1, -65)
+    GearScrollFrame.ScrollBarThickness = 3
+    GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    GearLayout = Instance.new("UIListLayout")
+    GearLayout.Parent = GearScrollFrame
+    GearLayout.Padding = UDim.new(0, 3)
+
+    -- Event connections
+    CloseGearButton.MouseButton1Click:Connect(function()
+        GearFrame.Visible = false
+        gearFrameVisible = false
+    end)
+
+    LoadCustomButton.MouseButton1Click:Connect(function()
+        local id = tonumber(GearInput.Text)
+        if id then
+            loadGear(id)
+            GearInput.Text = ""
+        else
+            warn("[SUPERTOOL] Invalid Gear ID")
+        end
+    end)
+
+    -- Populate predefined gears
+    for _, gear in ipairs(predefinedGears) do
+        local gearItem = Instance.new("TextButton")
+        gearItem.Parent = GearScrollFrame
+        gearItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        gearItem.Size = UDim2.new(1, 0, 0, 25)
+        gearItem.Text = gear.name .. " (ID: " .. gear.id .. ")"
+        gearItem.TextColor3 = Color3.fromRGB(255, 255, 255)
+        gearItem.TextSize = 8
+        gearItem.Font = Enum.Font.Gotham
+
+        gearItem.MouseButton1Click:Connect(function()
+            loadGear(gear.id)
+        end)
+    end
+
+    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, GearLayout.AbsoluteContentSize.Y + 10)
+end
+
+local function toggleGearManager()
+    if not GearFrame then initGearUI() end
+    gearFrameVisible = not gearFrameVisible
+    GearFrame.Visible = gearFrameVisible
+end
+
 -- Load utility buttons
 function Utility.loadUtilityButtons(createButton)
     createButton("Record Path", startPathRecording)
@@ -1667,6 +1807,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
     createButton("Toggle Deleter", toggleDeleter)
     createButton("Deleted List", toggleDeletedList)
+    createButton("Gear Manager", toggleGearManager)
 end
 
 -- Initialize function
@@ -1765,7 +1906,8 @@ function Utility.init(deps)
     task.spawn(function()
         initPathUI()
         initDeletedListUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized with Object Deleter")
+        initGearUI()
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized with Object Deleter and Gear Loader")
         print("  - REMOVED: All macro functionality and Outfit Manager")
         print("  - FIXED: Ctrl+Z undo function")
         print("  - FIXED: JSON path loading after relog")
@@ -1773,6 +1915,7 @@ function Utility.init(deps)
         print("  - ADDED: Clickable path points every 5 meters")
         print("  - ADDED: Pause/Resume with 'PAUSED HERE' markers")
         print("  - ADDED: Object Deleter with confirmation, success message, list, and undo")
+        print("  - ADDED: Gear Loader with custom ID input and predefined gears")
         print("  - ENHANCED: Better UI with improved controls")
         print("  - Keyboard Controls: Ctrl+Z (undo during recording or delete)")
         print("  - JSON Storage: Supertool/Paths/")
