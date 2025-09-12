@@ -1659,75 +1659,29 @@ local function toggleDeletedList()
     end
 end
 
--- Gear Loader Functions
--- Fixed Gear Loader Function - Tidak menghapus LocalScript
-
--- Fixed Gear Loader dengan HTTP 409 handling
+-- Ganti fungsi loadGear yang ada dengan ini:
 local function loadGear(gearId)
     local success, err = pcall(function()
         local assets = game:GetObjects("rbxassetid://" .. gearId)
         local tool = assets[1]
-        if tool and tool:IsA("Tool") then
-            
-            -- OPSI 1: Biarkan semua script (gear akan full functional tapi mungkin ada HTTP error)
-            -- tool.Parent = player.Backpack
-            
-            -- OPSI 2: Remove hanya script yang menyebabkan HTTP error
-            for _, child in ipairs(tool:GetDescendants()) do
-                if child:IsA("LocalScript") then
-                    -- Cek apakah script mengandung HTTP requests
-                    local source = child.Source or ""
-                    if string.find(source:lower(), "httpservice") or 
-                       string.find(source:lower(), "http") or
-                       string.find(source:lower(), "postasync") or
-                       string.find(source:lower(), "getasync") then
-                        print("[SUPERTOOL] Removing HTTP script: " .. child.Name)
-                        child:Destroy()
-                    end
-                end
-            end
-            
-            tool.Parent = player.Backpack
-            print("[SUPERTOOL] Gear loaded: " .. tool.Name)
-            
-            -- Wait sedikit lalu cek apakah gear berfungsi
-            task.wait(1)
-            if tool.Parent == player.Backpack then
-                print("[SUPERTOOL] Gear successfully added to backpack")
-                
-                -- Cek apakah ada Handle untuk visual
-                local handle = tool:FindFirstChild("Handle")
-                if handle then
-                    print("[SUPERTOOL] Handle found - gear should be visible")
-                else
-                    print("[SUPERTOOL] Warning: No Handle found")
-                end
-                
-                -- Cek activated connection
-                if tool.Activated then
-                    print("[SUPERTOOL] Activated event available")
-                end
-            end
-            
-        else
-            warn("[SUPERTOOL] Failed to load gear: Not a Tool")
-        end
         
-        -- Clean up other assets
-        for _, asset in ipairs(assets) do
-            if asset ~= tool then
-                asset:Destroy()
+        if tool and tool:IsA("Tool") then
+            -- JANGAN hapus script apapun
+            tool.Parent = player.Backpack
+            
+            -- Auto equip
+            task.wait(0.5)
+            if player.Character and player.Character:FindFirstChild("Humanoid") then
+                player.Character.Humanoid:EquipTool(tool)
             end
+            
+            print("[SUPERTOOL] Gear loaded: " .. tool.Name)
         end
     end)
     
     if not success then
-        -- HTTP 409 masih error tapi gear sudah loaded
-        if string.find(tostring(err), "409") then
-            print("[SUPERTOOL] HTTP 409 error (gear may still work): " .. tostring(err))
-        else
-            warn("[SUPERTOOL] Error loading gear: " .. tostring(err))
-        end
+        -- Abaikan HTTP error, gear mungkin masih berfungsi
+        print("[SUPERTOOL] Error ignored: " .. tostring(err))
     end
 end
 
