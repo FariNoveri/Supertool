@@ -61,7 +61,28 @@ local isRespawning = false
 -- New settings GUI
 local settingsFrame
 local speedInput, jumpInput, sprintInput, flyInput, swimInput
+local boostSpeedInput, boostDurationInput, rewindDurationInput
+local slowFallSpeedInput, fastFallSpeedInput, moonGravityMultiplierInput
+local maxExtraJumpsInput, wallClimbSpeedInput, infiniteJumpMultiplierInput
 local applyButton, closeButton
+
+-- Default settings
+local defaultSettings = {
+    WalkSpeed = 50,
+    JumpHeight = 50,
+    SprintSpeed = 300,
+    FlySpeed = 50,
+    SwimSpeed = 100,
+    BoostSpeed = 100,
+    BoostDuration = 0.5,
+    RewindDuration = 2,
+    SlowFallSpeed = -10,
+    FastFallSpeed = -100,
+    MoonGravityMultiplier = 1/6,
+    MaxExtraJumps = 1,
+    WallClimbSpeed = 30,
+    InfiniteJumpMultiplier = 3
+}
 
 -- Chat system
 local function sendServerMessage(message)
@@ -152,8 +173,8 @@ local function createSettingsGUI()
 
     settingsFrame = Instance.new("Frame")
     settingsFrame.Name = "SettingsFrame"
-    settingsFrame.Size = UDim2.new(0, 200, 0, 300)
-    settingsFrame.Position = UDim2.new(0.5, -100, 0.5, -150)
+    settingsFrame.Size = UDim2.new(0, 250, 0, 400)
+    settingsFrame.Position = UDim2.new(0.5, -125, 0.5, -200)
     settingsFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     settingsFrame.BorderSizePixel = 0
     settingsFrame.Visible = false
@@ -174,38 +195,66 @@ local function createSettingsGUI()
     title.TextSize = 16
     title.Parent = settingsFrame
 
-    local function createInputField(name, settingName, defaultValue, yOffset)
+    local scrolling = Instance.new("ScrollingFrame")
+    scrolling.Name = "SettingsScroll"
+    scrolling.Size = UDim2.new(1, 0, 1, -70)
+    scrolling.Position = UDim2.new(0, 0, 0, 30)
+    scrolling.BackgroundTransparency = 1
+    scrolling.ScrollBarThickness = 6
+    scrolling.CanvasSize = UDim2.new(0, 0, 0, 800)
+    scrolling.Parent = settingsFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 5)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Parent = scrolling
+
+    local function createInputField(parent, name, settingName, defaultValue)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 0, 50)
+        frame.BackgroundTransparency = 1
+        frame.Parent = parent
+
         local label = Instance.new("TextLabel")
         label.Name = name .. "Label"
         label.Size = UDim2.new(1, -10, 0, 20)
-        label.Position = UDim2.new(0, 5, 0, yOffset)
+        label.Position = UDim2.new(0, 5, 0, 0)
         label.BackgroundTransparency = 1
         label.Text = name .. ":"
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
         label.Font = Enum.Font.Gotham
         label.TextSize = 12
         label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = settingsFrame
+        label.Parent = frame
 
         local input = Instance.new("TextBox")
         input.Name = name .. "Input"
         input.Size = UDim2.new(1, -10, 0, 30)
-        input.Position = UDim2.new(0, 5, 0, yOffset + 20)
+        input.Position = UDim2.new(0, 5, 0, 20)
         input.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         input.TextColor3 = Color3.fromRGB(255, 255, 255)
         input.Text = tostring(getSettingValue(settingName, defaultValue))
         input.Font = Enum.Font.Gotham
         input.TextSize = 14
-        input.Parent = settingsFrame
+        input.Parent = frame
 
         return input
     end
 
-    speedInput = createInputField("Speed", "WalkSpeed", 50, 40)
-    jumpInput = createInputField("Jump", "JumpHeight", 50, 90)
-    sprintInput = createInputField("Sprint", "SprintSpeed", 300, 140)
-    flyInput = createInputField("Fly", "FlySpeed", 50, 190)
-    swimInput = createInputField("Swim", "SwimSpeed", 100, 240)
+    speedInput = createInputField(scrolling, "Speed", "WalkSpeed", defaultSettings.WalkSpeed)
+    jumpInput = createInputField(scrolling, "Jump", "JumpHeight", defaultSettings.JumpHeight)
+    sprintInput = createInputField(scrolling, "Sprint", "SprintSpeed", defaultSettings.SprintSpeed)
+    flyInput = createInputField(scrolling, "Fly", "FlySpeed", defaultSettings.FlySpeed)
+    swimInput = createInputField(scrolling, "Swim", "SwimSpeed", defaultSettings.SwimSpeed)
+    boostSpeedInput = createInputField(scrolling, "Boost Speed", "BoostSpeed", defaultSettings.BoostSpeed)
+    boostDurationInput = createInputField(scrolling, "Boost Duration", "BoostDuration", defaultSettings.BoostDuration)
+    rewindDurationInput = createInputField(scrolling, "Rewind Duration", "RewindDuration", defaultSettings.RewindDuration)
+    slowFallSpeedInput = createInputField(scrolling, "Slow Fall Speed", "SlowFallSpeed", defaultSettings.SlowFallSpeed)
+    fastFallSpeedInput = createInputField(scrolling, "Fast Fall Speed", "FastFallSpeed", defaultSettings.FastFallSpeed)
+    moonGravityMultiplierInput = createInputField(scrolling, "Moon Gravity Multiplier", "MoonGravityMultiplier", defaultSettings.MoonGravityMultiplier)
+    maxExtraJumpsInput = createInputField(scrolling, "Max Extra Jumps", "MaxExtraJumps", defaultSettings.MaxExtraJumps)
+    wallClimbSpeedInput = createInputField(scrolling, "Wall Climb Speed", "WallClimbSpeed", defaultSettings.WallClimbSpeed)
+    infiniteJumpMultiplierInput = createInputField(scrolling, "Infinite Jump Multiplier", "InfiniteJumpMultiplier", defaultSettings.InfiniteJumpMultiplier)
 
     applyButton = Instance.new("TextButton")
     applyButton.Name = "ApplyButton"
@@ -235,12 +284,30 @@ local function createSettingsGUI()
         local sprintVal = tonumber(sprintInput.Text)
         local flyVal = tonumber(flyInput.Text)
         local swimVal = tonumber(swimInput.Text)
+        local boostSpeedVal = tonumber(boostSpeedInput.Text)
+        local boostDurationVal = tonumber(boostDurationInput.Text)
+        local rewindDurationVal = tonumber(rewindDurationInput.Text)
+        local slowFallSpeedVal = tonumber(slowFallSpeedInput.Text)
+        local fastFallSpeedVal = tonumber(fastFallSpeedInput.Text)
+        local moonGravityMultiplierVal = tonumber(moonGravityMultiplierInput.Text)
+        local maxExtraJumpsVal = tonumber(maxExtraJumpsInput.Text)
+        local wallClimbSpeedVal = tonumber(wallClimbSpeedInput.Text)
+        local infiniteJumpMultiplierVal = tonumber(infiniteJumpMultiplierInput.Text)
 
         if speedVal then settings.WalkSpeed = {value = speedVal} end
         if jumpVal then settings.JumpHeight = {value = jumpVal} end
         if sprintVal then settings.SprintSpeed = {value = sprintVal} end
         if flyVal then settings.FlySpeed = {value = flyVal} end
         if swimVal then settings.SwimSpeed = {value = swimVal} end
+        if boostSpeedVal then settings.BoostSpeed = {value = boostSpeedVal} end
+        if boostDurationVal then settings.BoostDuration = {value = boostDurationVal} end
+        if rewindDurationVal then settings.RewindDuration = {value = rewindDurationVal} end
+        if slowFallSpeedVal then settings.SlowFallSpeed = {value = slowFallSpeedVal} end
+        if fastFallSpeedVal then settings.FastFallSpeed = {value = fastFallSpeedVal} end
+        if moonGravityMultiplierVal then settings.MoonGravityMultiplier = {value = moonGravityMultiplierVal} end
+        if maxExtraJumpsVal then settings.MaxExtraJumps = {value = maxExtraJumpsVal} end
+        if wallClimbSpeedVal then settings.WallClimbSpeed = {value = wallClimbSpeedVal} end
+        if infiniteJumpMultiplierVal then settings.InfiniteJumpMultiplier = {value = infiniteJumpMultiplierVal} end
 
         Movement.applySettings()
         settingsFrame.Visible = false
@@ -449,7 +516,7 @@ local function toggleSpeed(enabled)
     if enabled then
         local function applySpeed()
             if refreshReferences() and humanoid then
-                local speedValue = getSettingValue("WalkSpeed", 50)
+                local speedValue = getSettingValue("WalkSpeed", defaultSettings.WalkSpeed)
                 humanoid.WalkSpeed = speedValue
                 return true
             end
@@ -477,7 +544,7 @@ local function toggleJump(enabled)
     if enabled then
         local function applyJump()
             if refreshReferences() and humanoid then
-                local jumpValue = getSettingValue("JumpHeight", 50)
+                local jumpValue = getSettingValue("JumpHeight", defaultSettings.JumpHeight)
                 if humanoid:FindFirstChild("JumpHeight") then
                     humanoid.JumpHeight = jumpValue
                 else
@@ -523,7 +590,7 @@ local function toggleSlowFall(enabled)
             if rootPart.Velocity.Y < 0 then
                 local slowFallVelocity = Instance.new("BodyVelocity")
                 slowFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
-                slowFallVelocity.Velocity = Vector3.new(0, -10, 0)
+                slowFallVelocity.Velocity = Vector3.new(0, getSettingValue("SlowFallSpeed", defaultSettings.SlowFallSpeed), 0)
                 slowFallVelocity.Parent = rootPart
                 game:GetService("Debris"):AddItem(slowFallVelocity, 0.1)
                 humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
@@ -554,7 +621,7 @@ local function toggleFastFall(enabled)
             if rootPart.Velocity.Y < 0 then
                 local fastFallVelocity = Instance.new("BodyVelocity")
                 fastFallVelocity.MaxForce = Vector3.new(0, 4000, 0)
-                fastFallVelocity.Velocity = Vector3.new(0, -100, 0)
+                fastFallVelocity.Velocity = Vector3.new(0, getSettingValue("FastFallSpeed", defaultSettings.FastFallSpeed), 0)
                 fastFallVelocity.Parent = rootPart
                 game:GetService("Debris"):AddItem(fastFallVelocity, 0.1)
                 humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
@@ -597,7 +664,7 @@ local function toggleSprint(enabled)
                 sprintButton.BackgroundTransparency = Movement.isSprinting and 0.2 or 0.5
                 sprintButton.Text = Movement.isSprinting and "SPRINTING!" or "SPRINT"
                 
-                humanoid.WalkSpeed = Movement.isSprinting and getSettingValue("SprintSpeed", 300) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
+                humanoid.WalkSpeed = Movement.isSprinting and getSettingValue("SprintSpeed", defaultSettings.SprintSpeed) or (Movement.speedEnabled and getSettingValue("WalkSpeed", defaultSettings.WalkSpeed) or Movement.defaultWalkSpeed)
             end
         end)
         
@@ -610,7 +677,7 @@ local function toggleSprint(enabled)
                     sprintButton.BackgroundTransparency = Movement.isSprinting and 0.2 or 0.5
                     sprintButton.Text = Movement.isSprinting and "SPRINTING!" or "SPRINT"
                     
-                    humanoid.WalkSpeed = Movement.isSprinting and getSettingValue("SprintSpeed", 300) or (Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed)
+                    humanoid.WalkSpeed = Movement.isSprinting and getSettingValue("SprintSpeed", defaultSettings.SprintSpeed) or (Movement.speedEnabled and getSettingValue("WalkSpeed", defaultSettings.WalkSpeed) or Movement.defaultWalkSpeed)
                 end
             end
         end)
@@ -622,7 +689,7 @@ local function toggleSprint(enabled)
             sprintButton.Text = "SPRINT"
         end
         if refreshReferences() and humanoid then
-            humanoid.WalkSpeed = Movement.speedEnabled and getSettingValue("WalkSpeed", 50) or Movement.defaultWalkSpeed
+            humanoid.WalkSpeed = Movement.speedEnabled and getSettingValue("WalkSpeed", defaultSettings.WalkSpeed) or Movement.defaultWalkSpeed
         end
         Movement.isSprinting = false
     end
@@ -681,7 +748,7 @@ local function toggleFloat(enabled)
                 if not camera then return end
                 
                 local floatDirection = Vector3.new(0, 0, 0)
-                flySpeed = getSettingValue("FlySpeed", 50)
+                flySpeed = getSettingValue("FlySpeed", defaultSettings.FlySpeed)
                 
                 if joystickDelta.Magnitude > 0.05 then
                     local forward = camera.CFrame.LookVector
@@ -808,13 +875,13 @@ local function toggleBoost(enabled)
                     local boostDirection = camera.CFrame.LookVector
                     local boostForce = Instance.new("BodyVelocity")
                     boostForce.MaxForce = Vector3.new(4000, 0, 4000)
-                    boostForce.Velocity = Vector3.new(boostDirection.X * 100, 0, boostDirection.Z * 100)
+                    boostForce.Velocity = Vector3.new(boostDirection.X * getSettingValue("BoostSpeed", defaultSettings.BoostSpeed), 0, boostDirection.Z * getSettingValue("BoostSpeed", defaultSettings.BoostSpeed))
                     boostForce.Parent = rootPart
                     
-                    game:GetService("Debris"):AddItem(boostForce, 0.5)
+                    game:GetService("Debris"):AddItem(boostForce, getSettingValue("BoostDuration", defaultSettings.BoostDuration))
                     
                     task.spawn(function()
-                        task.wait(0.5)
+                        task.wait(getSettingValue("BoostDuration", defaultSettings.BoostDuration))
                         isBoostActive = false
                         if boostButton then
                             boostButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -840,13 +907,13 @@ local function toggleBoost(enabled)
                         local boostDirection = camera.CFrame.LookVector
                         local boostForce = Instance.new("BodyVelocity")
                         boostForce.MaxForce = Vector3.new(4000, 0, 4000)
-                        boostForce.Velocity = Vector3.new(boostDirection.X * 100, 0, boostDirection.Z * 100)
+                        boostForce.Velocity = Vector3.new(boostDirection.X * getSettingValue("BoostSpeed", defaultSettings.BoostSpeed), 0, boostDirection.Z * getSettingValue("BoostSpeed", defaultSettings.BoostSpeed))
                         boostForce.Parent = rootPart
                         
-                        game:GetService("Debris"):AddItem(boostForce, 0.5)
+                        game:GetService("Debris"):AddItem(boostForce, getSettingValue("BoostDuration", defaultSettings.BoostDuration))
                         
                         task.spawn(function()
-                            task.wait(0.5)
+                            task.wait(getSettingValue("BoostDuration", defaultSettings.BoostDuration))
                             isBoostActive = false
                             if boostButton then
                                 boostButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -939,7 +1006,7 @@ local function toggleRewind(enabled)
             end
             
             local startTime = tick()
-            local rewindDuration = 2
+            local rewindDuration = getSettingValue("RewindDuration", defaultSettings.RewindDuration)
             local historyLength = #reversedHistory
             local frameInterval = 6 / historyLength
             
@@ -1001,7 +1068,7 @@ local function toggleMoonGravity(enabled)
     updateButtonState("Moon Gravity", enabled)
     
     if enabled then
-        Workspace.Gravity = Movement.defaultGravity / 6
+        Workspace.Gravity = Movement.defaultGravity * getSettingValue("MoonGravityMultiplier", defaultSettings.MoonGravityMultiplier)
     else
         Workspace.Gravity = Movement.defaultGravity
     end
@@ -1018,6 +1085,7 @@ local function toggleDoubleJump(enabled)
     end
     
     if enabled then
+        Movement.maxJumps = getSettingValue("MaxExtraJumps", defaultSettings.MaxExtraJumps)
         connections.doubleJump = UserInputService.JumpRequest:Connect(function()
             if not Movement.doubleJumpEnabled then return end
             if not refreshReferences() or not humanoid then return end
@@ -1049,7 +1117,7 @@ local function toggleInfiniteJump(enabled)
             if not Movement.infiniteJumpEnabled then return end
             if not refreshReferences() or not humanoid or not rootPart then return end
             humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            rootPart.Velocity = Vector3.new(rootPart.Velocity.X, getSettingValue("JumpHeight", 50) * 3, rootPart.Velocity.Z)
+            rootPart.Velocity = Vector3.new(rootPart.Velocity.X, getSettingValue("JumpHeight", defaultSettings.JumpHeight) * getSettingValue("InfiniteJumpMultiplier", defaultSettings.InfiniteJumpMultiplier), rootPart.Velocity.Z)
         end)
     end
 end
@@ -1102,7 +1170,7 @@ local function toggleWallClimb(enabled)
             end
             
             if isNearWall then
-                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, 30, rootPart.Velocity.Z)
+                rootPart.Velocity = Vector3.new(rootPart.Velocity.X, getSettingValue("WallClimbSpeed", defaultSettings.WallClimbSpeed), rootPart.Velocity.Z)
                 humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             end
         end)
@@ -1244,7 +1312,7 @@ local function toggleFly(enabled)
             flyBodyGyro.CFrame = camera.CFrame
             
             -- Get fly speed
-            local speed = getSettingValue("FlySpeed", 50)
+            local speed = getSettingValue("FlySpeed", defaultSettings.FlySpeed)
             local moveVector = Vector3.new(0, 0, 0)
             
             -- Joystick controls
@@ -1643,11 +1711,11 @@ local function toggleSwim(enabled)
             if not refreshReferences() or not humanoid then return end
             
             local baseSpeed = Movement.defaultWalkSpeed
-            if Movement.speedEnabled then baseSpeed = getSettingValue("WalkSpeed", 50) end
-            if Movement.isSprinting then baseSpeed = getSettingValue("SprintSpeed", 300) end
+            if Movement.speedEnabled then baseSpeed = getSettingValue("WalkSpeed", defaultSettings.WalkSpeed) end
+            if Movement.isSprinting then baseSpeed = getSettingValue("SprintSpeed", defaultSettings.SprintSpeed) end
             
             if humanoid:GetState() == Enum.HumanoidStateType.Swimming then
-                humanoid.WalkSpeed = getSettingValue("SwimSpeed", 100)
+                humanoid.WalkSpeed = getSettingValue("SwimSpeed", defaultSettings.SwimSpeed)
             else
                 humanoid.WalkSpeed = baseSpeed
             end
@@ -2185,6 +2253,13 @@ function Movement.init(deps)
         end
     end
     Movement.defaultGravity = Workspace.Gravity or 196.2
+    
+    -- Initialize default settings if not present
+    for k, v in pairs(defaultSettings) do
+        if not settings[k] then
+            settings[k] = {value = v}
+        end
+    end
     
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
