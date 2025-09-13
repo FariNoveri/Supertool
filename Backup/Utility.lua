@@ -1934,7 +1934,7 @@ function Utility.loadUtilityButtons(createButton)
         loadAdonisBypass()
     end)
     createButton("Load Kohl's Admin", function()
-        loadstring(game:HttpGet("https://pastebin.com/raw/QHfByBwW"))()
+        loadstring(game:HttpGet("https://pastebin.com/wBmP410Q"))()
     end)
     end
 
