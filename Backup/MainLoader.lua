@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION WITH CREDIT
+-- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION WITH CREDIT + SLIDE NOTIFICATION
 
 -- Services
 local Players = game:GetService("Players")
@@ -6,6 +6,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService") -- Added for slide animation
 
 -- Local Player
 local player = Players.LocalPlayer
@@ -111,6 +112,177 @@ MinimizeButton.Font = Enum.Font.GothamBold
 MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 10
+
+-- ===== SLIDE NOTIFICATION SYSTEM =====
+local function createSlideNotification()
+    -- Notification Frame
+    local NotificationFrame = Instance.new("Frame")
+    NotificationFrame.Name = "SlideNotification"
+    NotificationFrame.Parent = ScreenGui
+    NotificationFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- White background
+    NotificationFrame.BorderSizePixel = 0
+    NotificationFrame.Size = UDim2.new(0, 200, 0, 70)
+    NotificationFrame.Position = UDim2.new(1, 0, 1, -80) -- Start off-screen (right)
+    NotificationFrame.ZIndex = 1000 -- High z-index to appear on top
+    NotificationFrame.Active = true -- Make it clickable
+    
+    -- Rounded corners
+    local NotificationCorner = Instance.new("UICorner")
+    NotificationCorner.CornerRadius = UDim.new(0, 8)
+    NotificationCorner.Parent = NotificationFrame
+    
+    -- Drop shadow effect
+    local Shadow = Instance.new("Frame")
+    Shadow.Name = "Shadow"
+    Shadow.Parent = ScreenGui
+    Shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Shadow.BackgroundTransparency = 0.8
+    Shadow.BorderSizePixel = 0
+    Shadow.Size = UDim2.new(0, 204, 0, 74)
+    Shadow.Position = UDim2.new(1, 2, 1, -78)
+    Shadow.ZIndex = 999
+    
+    local ShadowCorner = Instance.new("UICorner")
+    ShadowCorner.CornerRadius = UDim.new(0, 8)
+    ShadowCorner.Parent = Shadow
+    
+    -- Logo ImageLabel
+    local LogoImage = Instance.new("ImageLabel")
+    LogoImage.Name = "Logo"
+    LogoImage.Parent = NotificationFrame
+    LogoImage.BackgroundTransparency = 1
+    LogoImage.Position = UDim2.new(0, 8, 0, 8)
+    LogoImage.Size = UDim2.new(0, 35, 0, 35)
+    LogoImage.Image = "https://cdn.rafled.com/anime-icons/images/cADJDgHDli9YzzGB5AhH0Aa2dR8Bfu8w.jpg"
+    LogoImage.ScaleType = Enum.ScaleType.Fit
+    
+    -- Logo rounded corners
+    local LogoCorner = Instance.new("UICorner")
+    LogoCorner.CornerRadius = UDim.new(0, 6)
+    LogoCorner.Parent = LogoImage
+    
+    -- Main Text (Made by fari noveri)
+    local MainText = Instance.new("TextLabel")
+    MainText.Name = "MainText"
+    MainText.Parent = NotificationFrame
+    MainText.BackgroundTransparency = 1
+    MainText.Position = UDim2.new(0, 50, 0, 8)
+    MainText.Size = UDim2.new(1, -58, 0, 20)
+    MainText.Font = Enum.Font.GothamBold
+    MainText.Text = "Made by fari noveri"
+    MainText.TextColor3 = Color3.fromRGB(30, 30, 30)
+    MainText.TextSize = 10
+    MainText.TextXAlignment = Enum.TextXAlignment.Left
+    MainText.TextYAlignment = Enum.TextYAlignment.Center
+    
+    -- Sub Text (SuperTool)
+    local SubText = Instance.new("TextLabel")
+    SubText.Name = "SubText"
+    SubText.Parent = NotificationFrame
+    SubText.BackgroundTransparency = 1
+    SubText.Position = UDim2.new(0, 50, 0, 28)
+    SubText.Size = UDim2.new(1, -58, 0, 15)
+    SubText.Font = Enum.Font.Gotham
+    SubText.Text = "SuperTool"
+    SubText.TextColor3 = Color3.fromRGB(100, 100, 100)
+    SubText.TextSize = 9
+    SubText.TextXAlignment = Enum.TextXAlignment.Left
+    SubText.TextYAlignment = Enum.TextYAlignment.Center
+    
+    -- Version/Status Text
+    local StatusText = Instance.new("TextLabel")
+    StatusText.Name = "StatusText"
+    StatusText.Parent = NotificationFrame
+    StatusText.BackgroundTransparency = 1
+    StatusText.Position = UDim2.new(0, 50, 0, 43)
+    StatusText.Size = UDim2.new(1, -58, 0, 15)
+    StatusText.Font = Enum.Font.Gotham
+    StatusText.Text = "Successfully loaded!"
+    StatusText.TextColor3 = Color3.fromRGB(0, 150, 0)
+    StatusText.TextSize = 8
+    StatusText.TextXAlignment = Enum.TextXAlignment.Left
+    StatusText.TextYAlignment = Enum.TextYAlignment.Center
+    
+    -- Click to dismiss button (invisible overlay)
+    local DismissButton = Instance.new("TextButton")
+    DismissButton.Name = "DismissButton"
+    DismissButton.Parent = NotificationFrame
+    DismissButton.BackgroundTransparency = 1
+    DismissButton.Size = UDim2.new(1, 0, 1, 0)
+    DismissButton.Text = ""
+    DismissButton.ZIndex = 1001
+    
+    -- Animation variables
+    local slideInTime = 0.4
+    local stayTime = 4.5
+    local slideOutTime = 0.3
+    
+    local slideInPosition = UDim2.new(1, -210, 1, -80) -- Final position (visible)
+    local slideOutPosition = UDim2.new(1, 0, 1, -80) -- Off-screen right
+    
+    local shadowSlideInPosition = UDim2.new(1, -208, 1, -78)
+    local shadowSlideOutPosition = UDim2.new(1, 2, 1, -78)
+    
+    -- Tween info
+    local slideInInfo = TweenInfo.new(
+        slideInTime,
+        Enum.EasingStyle.Quart,
+        Enum.EasingDirection.Out,
+        0,
+        false,
+        0
+    )
+    
+    local slideOutInfo = TweenInfo.new(
+        slideOutTime,
+        Enum.EasingStyle.Quart,
+        Enum.EasingDirection.In,
+        0,
+        false,
+        0
+    )
+    
+    -- Slide in animation
+    local slideInTween = TweenService:CreateTween(NotificationFrame, slideInInfo, {Position = slideInPosition})
+    local shadowSlideInTween = TweenService:CreateTween(Shadow, slideInInfo, {Position = shadowSlideInPosition})
+    
+    -- Slide out function
+    local function slideOut()
+        local slideOutTween = TweenService:CreateTween(NotificationFrame, slideOutInfo, {Position = slideOutPosition})
+        local shadowSlideOutTween = TweenService:CreateTween(Shadow, slideOutInfo, {Position = shadowSlideOutPosition})
+        
+        slideOutTween:Play()
+        shadowSlideOutTween:Play()
+        
+        slideOutTween.Completed:Connect(function()
+            NotificationFrame:Destroy()
+            Shadow:Destroy()
+        end)
+    end
+    
+    -- Click to dismiss
+    DismissButton.MouseButton1Click:Connect(function()
+        slideOut()
+    end)
+    
+    -- Auto dismiss after stay time
+    local autoDismissConnection
+    
+    -- Start animation sequence
+    slideInTween:Play()
+    shadowSlideInTween:Play()
+    
+    slideInTween.Completed:Connect(function()
+        -- Start auto-dismiss timer after slide in completes
+        autoDismissConnection = task.spawn(function()
+            task.wait(stayTime)
+            slideOut()
+        end)
+    end)
+    
+    print("✨ Slide notification created and animated!")
+end
+-- ===== END SLIDE NOTIFICATION SYSTEM =====
 
 -- Category Container with Scrolling
 local CategoryContainer = Instance.new("ScrollingFrame")
@@ -916,6 +1088,14 @@ task.spawn(function()
     else
         print("✓ Initial interface loaded successfully")
     end
+    
+    -- ===== SHOW SLIDE NOTIFICATION AFTER SUCCESSFUL INITIALIZATION =====
+    task.wait(1) -- Wait a bit more to ensure everything is stable
+    pcall(function()
+        createSlideNotification()
+        print("✓ Slide notification triggered!")
+    end)
+    -- ===== END NOTIFICATION TRIGGER =====
     
     print("=== MinimalHackGUI Initialization Complete ===")
     print("Press HOME key to toggle GUI visibility")
