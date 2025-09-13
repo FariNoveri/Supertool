@@ -8,7 +8,9 @@
 -- NEW: Added Gear Loader Feature with input ID or predefined gears (exploit-safe)
 -- FIXED: Gear loading HTTP 409 error by removing local scripts
 -- REMOVED: Drawing Tool Feature (as per request)
--- ADDED: Adonis Bypass Feature (compatible with Krnl/Solara, FIXED: Krnl HttpGetAsync check, removed Infinite Yield)
+-- REMOVED: Adonis Bypass and Kohl's Admin
+
+-- NEW: Added Object Spawner Feature with input ID or predefined objects
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -67,12 +69,14 @@ local predefinedGears = {
     -- Tambah gear lain jika perlu
 }
 
--- Adonis Bypass Variables
-local adonisBypassed = false
-local bypassLoaded = false
-local executorName = identifyexecutor and identifyexecutor() or "unknown"
-local isSolara = string.find(executorName:lower(), "solara") ~= nil
-local isKrnl = string.find(executorName:lower(), "krnl") ~= nil
+-- Object Spawner Variables
+local objectFrameVisible = false
+local ObjectFrame, ObjectInput, ObjectScrollFrame, ObjectLayout
+local predefinedObjects = {
+    {name = "Basic Part", id = 123456789},  -- Ganti dengan ID asset nyata
+    {name = "Car Model", id = 987654321},   -- Contoh placeholder
+    -- Tambah objek lain jika perlu
+}
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -960,78 +964,6 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
--- Adonis Bypass Function (FIXED: Krnl HttpGetAsync check, removed Infinite Yield)
-local function loadAdonisBypass()
-    if bypassLoaded then
-        print("[SUPERTOOL] Adonis bypass already loaded")
-        return
-    end
-    
-    local success, err = pcall(function()
-        -- Bypass URL universal (dari robloxscripts.com, work di Krnl/Solara 2025)
-        local bypassUrl = "https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua"  -- Atau coba "https://pastebin.com/raw/xxx" kalo ini mati
-        loadstring(game:HttpGet(bypassUrl, true))()
-        
-        -- Khusus Solara: Delay ekstra & disable anti-leak check
-        if isSolara then
-            task.wait(2)  -- Solara butuh waktu lebih buat attach
-            -- Extra: Hook getconnections buat anti-detection
-            local mt = getrawmetatable(game)
-            local old = mt.__namecall
-            setreadonly(mt, false)
-            mt.__namecall = function(self, ...)
-                local args = {...}
-                local method = getnamecallmethod()
-                if method == "FireServer" and isSolara then
-                    -- Bypass namecall detection di Solara
-                    return old(self, ...)
-                end
-                return old(self, ...)
-            end
-            setreadonly(mt, true)
-            print("[SUPERTOOL] Solara-specific hooks applied")
-        elseif isKrnl then
-            -- FIXED: Krnl HttpGetAsync check - manual fallback if nil
-            if HttpGetAsync then
-                -- Use HttpGetAsync if available
-                HttpGetAsync("https://example.com/test", true)  -- Silent test call
-                print("[SUPERTOOL] Krnl HttpGetAsync used")
-            else
-                -- Manual fallback: Use regular HttpGet with retry
-                local function manualHttpGetAsync(url, noCache)
-                    local attempts = 0
-                    while attempts < 3 do
-                        local ok, res = pcall(game.HttpGet, game, url, noCache)
-                        if ok then return res end
-                        attempts = attempts + 1
-                        task.wait(0.5)
-                    end
-                    return nil
-                end
-                _G.HttpGetAsync = manualHttpGetAsync  -- Set global fallback
-                print("[SUPERTOOL] Krnl manual HttpGetAsync fallback set")
-            end
-            task.wait(0.5)
-            print("[SUPERTOOL] Krnl optimizations applied")
-        end
-        
-        adonisBypassed = true
-        bypassLoaded = true
-        print("[SUPERTOOL] Adonis bypass loaded: " .. executorName .. " - Detection bypassed")
-        
-        -- REMOVED: No Infinite Yield load to avoid errors
-        print("[SUPERTOOL] Bypass complete - Load admin commands manually if needed")
-    end)
-    
-    if not success then
-        warn("[SUPERTOOL] Bypass failed di " .. executorName .. ": " .. tostring(err) .. " - Coba URL alternatif atau update executor")
-        -- Fallback URL dari ScriptBlox (universal)
-        pcall(function()
-            loadstring(game:HttpGet("https://scriptblox.com/script/Universal-Script-Adonis-Bypass-7011", true))()
-        end)
-    end
-end
-
 -- UI Components for Path
 local function initPathUI()
     if PathFrame then return end
@@ -1910,6 +1842,132 @@ local function toggleGearManager()
     GearFrame.Visible = gearFrameVisible
 end
 
+-- New Object Spawner Functions
+local function spawnObject(id)
+    local success, err = pcall(function()
+        local assets = game:GetObjects("rbxassetid://" .. id)
+        local obj = assets[1]
+        if obj then
+            obj.Parent = workspace
+            print("[SUPERTOOL] Spawned object: " .. obj.Name)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Object spawn failed: " .. tostring(err))
+    end
+end
+
+local function initObjectUI()
+    if ObjectFrame then return end
+    
+    ObjectFrame = Instance.new("Frame")
+    ObjectFrame.Name = "ObjectFrame"
+    ObjectFrame.Parent = ScreenGui
+    ObjectFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    ObjectFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    ObjectFrame.BorderSizePixel = 1
+    ObjectFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
+    ObjectFrame.Size = UDim2.new(0, 250, 0, 300)
+    ObjectFrame.Visible = false
+    ObjectFrame.Active = true
+    ObjectFrame.Draggable = true
+
+    local ObjectTitle = Instance.new("TextLabel")
+    ObjectTitle.Parent = ObjectFrame
+    ObjectTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    ObjectTitle.BorderSizePixel = 0
+    ObjectTitle.Size = UDim2.new(1, 0, 0, 25)
+    ObjectTitle.Font = Enum.Font.GothamBold
+    ObjectTitle.Text = "OBJECT SPAWNER"
+    ObjectTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ObjectTitle.TextSize = 10
+
+    local CloseObjectButton = Instance.new("TextButton")
+    CloseObjectButton.Parent = ObjectFrame
+    CloseObjectButton.BackgroundTransparency = 1
+    CloseObjectButton.Position = UDim2.new(1, -25, 0, 2)
+    CloseObjectButton.Size = UDim2.new(0, 20, 0, 20)
+    CloseObjectButton.Font = Enum.Font.GothamBold
+    CloseObjectButton.Text = "X"
+    CloseObjectButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    CloseObjectButton.TextSize = 12
+
+    ObjectInput = Instance.new("TextBox")
+    ObjectInput.Parent = ObjectFrame
+    ObjectInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    ObjectInput.BorderSizePixel = 0
+    ObjectInput.Position = UDim2.new(0, 5, 0, 30)
+    ObjectInput.Size = UDim2.new(0.7, -10, 0, 25)
+    ObjectInput.Font = Enum.Font.Gotham
+    ObjectInput.PlaceholderText = "Enter Object ID..."
+    ObjectInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ObjectInput.TextSize = 8
+
+    local SpawnCustomButton = Instance.new("TextButton")
+    SpawnCustomButton.Parent = ObjectFrame
+    SpawnCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    SpawnCustomButton.BorderSizePixel = 0
+    SpawnCustomButton.Position = UDim2.new(0.7, 0, 0, 30)
+    SpawnCustomButton.Size = UDim2.new(0.3, -5, 0, 25)
+    SpawnCustomButton.Font = Enum.Font.GothamBold
+    SpawnCustomButton.Text = "SPAWN"
+    SpawnCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SpawnCustomButton.TextSize = 8
+
+    ObjectScrollFrame = Instance.new("ScrollingFrame")
+    ObjectScrollFrame.Parent = ObjectFrame
+    ObjectScrollFrame.BackgroundTransparency = 1
+    ObjectScrollFrame.Position = UDim2.new(0, 5, 0, 60)
+    ObjectScrollFrame.Size = UDim2.new(1, -10, 1, -65)
+    ObjectScrollFrame.ScrollBarThickness = 3
+    ObjectScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    ObjectLayout = Instance.new("UIListLayout")
+    ObjectLayout.Parent = ObjectScrollFrame
+    ObjectLayout.Padding = UDim.new(0, 3)
+
+    -- Event connections
+    CloseObjectButton.MouseButton1Click:Connect(function()
+        ObjectFrame.Visible = false
+        objectFrameVisible = false
+    end)
+
+    SpawnCustomButton.MouseButton1Click:Connect(function()
+        local id = tonumber(ObjectInput.Text)
+        if id then
+            spawnObject(id)
+            ObjectInput.Text = ""
+        else
+            warn("[SUPERTOOL] Invalid Object ID")
+        end
+    end)
+
+    -- Populate predefined objects
+    for _, obj in ipairs(predefinedObjects) do
+        local objItem = Instance.new("TextButton")
+        objItem.Parent = ObjectScrollFrame
+        objItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        objItem.Size = UDim2.new(1, 0, 0, 25)
+        objItem.Text = obj.name .. " (ID: " .. obj.id .. ")"
+        objItem.TextColor3 = Color3.fromRGB(255, 255, 255)
+        objItem.TextSize = 8
+        objItem.Font = Enum.Font.Gotham
+
+        objItem.MouseButton1Click:Connect(function()
+            spawnObject(obj.id)
+        end)
+    end
+
+    ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, ObjectLayout.AbsoluteContentSize.Y + 10)
+end
+
+local function toggleObjectSpawner()
+    if not ObjectFrame then initObjectUI() end
+    objectFrameVisible = not objectFrameVisible
+    ObjectFrame.Visible = objectFrameVisible
+end
+
 -- Load utility buttons
 function Utility.loadUtilityButtons(createButton)
     createButton("Record Path", startPathRecording)
@@ -1930,13 +1988,8 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Toggle Deleter", toggleDeleter)
     createButton("Deleted List", toggleDeletedList)
     createButton("Gear Manager", toggleGearManager)
-    createButton("Adonis Bypass", function()
-        loadAdonisBypass()
-    end)
-    createButton("Load Kohl's Admin", function()
-        loadstring(game:HttpGet("https://pastebin.com/raw/MhS1eXY9"))()
-    end)
-    end
+    createButton("Object Spawner", toggleObjectSpawner)
+end
 
 -- Initialize function
 function Utility.init(deps)
@@ -1964,13 +2017,6 @@ function Utility.init(deps)
     pathPaused = false
     pathAutoPlaying = false
     pathAutoRespawning = false
-    
-    print("[SUPERTOOL] Executor detected: " .. executorName)
-    if isSolara then
-        warn("[SUPERTOOL] Solara: Gunakan alt account, gak full bypass Byfron/Hyperion")
-    elseif isKrnl then
-        print("[SUPERTOOL] Krnl: Full support, tapi update rutin biar aman")
-    end
 
     -- FIXED: Create folder structure first
     local success = pcall(function()
@@ -1992,11 +2038,6 @@ function Utility.init(deps)
     
     setupKeyboardControls()
     setupDeleterInput()
-    
-    -- Optional auto-bypass kalo Krnl (lebih aman)
-    if isKrnl then
-        task.spawn(loadAdonisBypass)
-    end
     
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
@@ -2047,7 +2088,8 @@ function Utility.init(deps)
         initPathUI()
         initDeletedListUI()
         initGearUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Drawing Tool removed, Infinite Yield removed)")
+        initObjectUI()
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Drawing Tool removed)")
     end)
 end
 
