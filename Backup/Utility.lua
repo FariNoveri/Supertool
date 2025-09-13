@@ -8,7 +8,7 @@
 -- NEW: Added Gear Loader Feature with input ID or predefined gears (exploit-safe)
 -- FIXED: Gear loading HTTP 409 error by removing local scripts
 -- REMOVED: Drawing Tool Feature (as per request)
--- ADDED: Adonis Bypass Feature (compatible with Krnl/Solara)
+-- ADDED: Adonis Bypass Feature (compatible with Krnl/Solara, FIXED: Krnl HttpGetAsync check, removed Infinite Yield)
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -960,7 +960,7 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
--- Adonis Bypass Function
+-- Adonis Bypass Function (FIXED: Krnl HttpGetAsync check, removed Infinite Yield)
 local function loadAdonisBypass()
     if bypassLoaded then
         print("[SUPERTOOL] Adonis bypass already loaded")
@@ -991,9 +991,25 @@ local function loadAdonisBypass()
             setreadonly(mt, true)
             print("[SUPERTOOL] Solara-specific hooks applied")
         elseif isKrnl then
-            -- Krnl: Enable HttpGetAsync kalo belum
-            if not HttpGetAsync then
-                warn("[SUPERTOOL] Krnl detected - Manual HttpGetAsync needed?")
+            -- FIXED: Krnl HttpGetAsync check - manual fallback if nil
+            if HttpGetAsync then
+                -- Use HttpGetAsync if available
+                HttpGetAsync("https://example.com/test", true)  -- Silent test call
+                print("[SUPERTOOL] Krnl HttpGetAsync used")
+            else
+                -- Manual fallback: Use regular HttpGet with retry
+                local function manualHttpGetAsync(url, noCache)
+                    local attempts = 0
+                    while attempts < 3 do
+                        local ok, res = pcall(game.HttpGet, game, url, noCache)
+                        if ok then return res end
+                        attempts = attempts + 1
+                        task.wait(0.5)
+                    end
+                    return nil
+                end
+                _G.HttpGetAsync = manualHttpGetAsync  -- Set global fallback
+                print("[SUPERTOOL] Krnl manual HttpGetAsync fallback set")
             end
             task.wait(0.5)
             print("[SUPERTOOL] Krnl optimizations applied")
@@ -1003,16 +1019,16 @@ local function loadAdonisBypass()
         bypassLoaded = true
         print("[SUPERTOOL] Adonis bypass loaded: " .. executorName .. " - Detection bypassed")
         
-        -- Auto-load Infinite Yield (commands admin)
-        task.wait(1)
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source", true))()
-        print("[SUPERTOOL] Infinite Yield loaded - ;cmds buat admin access")
+        -- REMOVED: No Infinite Yield load to avoid errors
+        print("[SUPERTOOL] Bypass complete - Load admin commands manually if needed")
     end)
     
     if not success then
         warn("[SUPERTOOL] Bypass failed di " .. executorName .. ": " .. tostring(err) .. " - Coba URL alternatif atau update executor")
         -- Fallback URL dari ScriptBlox (universal)
-        loadstring(game:HttpGet("https://scriptblox.com/script/Universal-Script-Adonis-Bypass-7011", true))()
+        pcall(function()
+            loadstring(game:HttpGet("https://scriptblox.com/script/Universal-Script-Adonis-Bypass-7011", true))()
+        end)
     end
 end
 
@@ -2028,7 +2044,7 @@ function Utility.init(deps)
         initPathUI()
         initDeletedListUI()
         initGearUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Drawing Tool removed)")
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Drawing Tool removed, Infinite Yield removed)")
     end)
 end
 
