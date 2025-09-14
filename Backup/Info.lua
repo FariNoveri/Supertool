@@ -304,6 +304,8 @@ function Info.init(deps)
     return true
 end
 
+local defaultImageURL = "https://i0.wp.com/faithcrossroads.org/wp-content/uploads/2020/09/image-coming-soon.jpg?ssl=1"
+
 -- Create a feature entry with name, description, and simple photo placeholder
 local function createFeatureEntry(parent, feature, layoutOrder)
     -- Main container frame
