@@ -968,7 +968,7 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
--- Object Editor Functions (enhanced) - Defined early to avoid nil calls
+-- Enhanced Object Editor Functions with more features, fixes, details, and user-friendly elements
 local function clearSelection()
     if selectionBox and selectionBox.Parent then
         selectionBox:Destroy()
@@ -988,7 +988,7 @@ local function duplicateObject()
     end
     local success, err = pcall(function()
         local clone = selectedObject:Clone()
-        clone.CFrame = selectedObject.CFrame * CFrame.new(0, 0, -5)  -- Offset
+        clone.CFrame = selectedObject.CFrame * CFrame.new(5, 0, 0)  -- Improved offset to avoid overlap
         clone.Parent = selectedObject.Parent
         print("[SUPERTOOL] Duplicated: " .. selectedObject.Name)
     end)
@@ -1021,7 +1021,7 @@ local function pasteObject()
         if not updateCharacterReferences() then return end
         local lastCopied = copiedObjects[#copiedObjects]
         local newPaste = lastCopied.object:Clone()
-        newPaste.CFrame = rootPart.CFrame * CFrame.new(0, 0, -5)  -- Paste near player
+        newPaste.CFrame = rootPart.CFrame * CFrame.new(0, 5, 0)  -- Paste above player to avoid clipping
         newPaste.Parent = workspace
         print("[SUPERTOOL] Pasted: " .. lastCopied.object.Name)
     end)
@@ -1038,7 +1038,7 @@ local function resizeObject(scale)
     local success, err = pcall(function()
         local oldSize = selectedObject.Size
         table.insert(editedObjects, {object = selectedObject, property = "Size", oldValue = oldSize})
-        selectedObject.Size = oldSize * scale
+        selectedObject.Size = oldSize * Vector3.new(scale, scale, scale)  -- Uniform scale for simplicity
         print("[SUPERTOOL] Resized by " .. scale)
     end)
     if not success then
@@ -1106,8 +1106,8 @@ local function changeColor(r, g, b)
     local success, err = pcall(function()
         local oldColor = selectedObject.Color
         table.insert(editedObjects, {object = selectedObject, property = "Color", oldValue = oldColor})
-        selectedObject.Color = Color3.new(r, g, b)
-        print("[SUPERTOOL] Changed color to RGB(" .. math.floor(r*255) .. "," .. math.floor(g*255) .. "," .. math.floor(b*255) .. ")")
+        selectedObject.Color = Color3.fromRGB(r, g, b)  -- Fixed to use fromRGB for 0-255 input
+        print("[SUPERTOOL] Changed color to RGB(" .. r .. "," .. g .. "," .. b .. ")")
     end)
     if not success then
         warn("[SUPERTOOL] Color change failed: " .. tostring(err))
@@ -1127,6 +1127,93 @@ local function changeTransparency(trans)
     end)
     if not success then
         warn("[SUPERTOOL] Transparency change failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Change Position
+local function changePosition(x, y, z)
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for position change")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldPosition = selectedObject.Position
+        table.insert(editedObjects, {object = selectedObject, property = "Position", oldValue = oldPosition})
+        selectedObject.Position = Vector3.new(x, y, z)
+        print("[SUPERTOOL] Changed position to (" .. x .. "," .. y .. "," .. z .. ")")
+    end)
+    if not success then
+        warn("[SUPERTOOL] Position change failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Change Rotation
+local function changeRotation(x, y, z)
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for rotation change")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldCFrame = selectedObject.CFrame
+        table.insert(editedObjects, {object = selectedObject, property = "CFrame", oldValue = oldCFrame})
+        selectedObject.CFrame = CFrame.new(selectedObject.Position) * CFrame.Angles(math.rad(x), math.rad(y), math.rad(z))
+        print("[SUPERTOOL] Changed rotation to (" .. x .. "," .. y .. "," .. z .. ") degrees")
+    end)
+    if not success then
+        warn("[SUPERTOOL] Rotation change failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Change Material
+local function changeMaterial(materialName)
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for material change")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldMaterial = selectedObject.Material
+        table.insert(editedObjects, {object = selectedObject, property = "Material", oldValue = oldMaterial})
+        selectedObject.Material = Enum.Material[materialName] or Enum.Material.SmoothPlastic
+        print("[SUPERTOOL] Changed material to " .. materialName)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Material change failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Change Shape
+local function changeShape(shapeName)
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for shape change")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldShape = selectedObject.Shape
+        table.insert(editedObjects, {object = selectedObject, property = "Shape", oldValue = oldShape})
+        selectedObject.Shape = Enum.PartType[shapeName] or Enum.PartType.Block
+        print("[SUPERTOOL] Changed shape to " .. shapeName)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Shape change failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Add Surface Light
+local function addSurfaceLight()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for adding light")
+        return 
+    end
+    local success, err = pcall(function()
+        local light = Instance.new("SurfaceLight")
+        light.Parent = selectedObject
+        light.Face = Enum.NormalId.Top
+        light.Color = Color3.fromRGB(255, 255, 255)
+        light.Brightness = 1
+        print("[SUPERTOOL] Added SurfaceLight to " .. selectedObject.Name)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Add light failed: " .. tostring(err))
     end
 end
 
@@ -1159,7 +1246,7 @@ end
 
 local function showEditorGUI(obj)
     if not obj or not obj:IsA("BasePart") then
-        warn("[SUPERTOOL] Invalid object for editor")
+        warn("[SUPERTOOL] Invalid object for editor. Must be a BasePart.")
         return
     end
     clearSelection()
@@ -1173,8 +1260,8 @@ local function showEditorGUI(obj)
     
     editorGui = Instance.new("Frame")
     editorGui.Parent = ScreenGui
-    editorGui.Position = UDim2.new(0.5, -125, 0.3, 0)
-    editorGui.Size = UDim2.new(0, 250, 0, 300)  -- Reduced size
+    editorGui.Position = UDim2.new(0.5, -150, 0.3, 0)
+    editorGui.Size = UDim2.new(0, 300, 0, 500)  -- Larger GUI for more features
     editorGui.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     editorGui.BorderColor3 = Color3.fromRGB(45, 45, 45)
     editorGui.BorderSizePixel = 1
@@ -1182,193 +1269,354 @@ local function showEditorGUI(obj)
     editorGui.Draggable = true
     editorGui.ZIndex = 10
     
+    -- Add UI corners for better look
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 5)
+    uiCorner.Parent = editorGui
+    
     local title = Instance.new("TextLabel")
     title.Parent = editorGui
-    title.Size = UDim2.new(1, 0, 0, 20)
+    title.Size = UDim2.new(1, 0, 0, 25)
     title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    title.Text = "Object Editor: " .. selectedObject.Name
+    title.Text = "Object Editor: " .. selectedObject.Name .. " (Click outside to close)"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
-    title.TextSize = 9  -- Smaller text
-    
+    title.TextSize = 12
+
     local closeButton = Instance.new("TextButton")
     closeButton.Parent = editorGui
     closeButton.BackgroundTransparency = 1
-    closeButton.Position = UDim2.new(1, -20, 0, 1)
-    closeButton.Size = UDim2.new(0, 18, 0, 18)
+    closeButton.Position = UDim2.new(1, -25, 0, 3)
+    closeButton.Size = UDim2.new(0, 20, 0, 20)
     closeButton.Text = "X"
     closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     closeButton.Font = Enum.Font.GothamBold
-    closeButton.TextSize = 10
+    closeButton.TextSize = 14
     closeButton.ZIndex = 11
     
     local scrollFrame = Instance.new("ScrollingFrame")
     scrollFrame.Parent = editorGui
-    scrollFrame.Position = UDim2.new(0, 5, 0, 25)
-    scrollFrame.Size = UDim2.new(1, -10, 1, -30)  -- Adjusted for smaller GUI
+    scrollFrame.Position = UDim2.new(0, 5, 0, 30)
+    scrollFrame.Size = UDim2.new(1, -10, 1, -35)
     scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 4
+    scrollFrame.ScrollBarThickness = 5
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     
     local layout = Instance.new("UIListLayout")
     layout.Parent = scrollFrame
-    layout.Padding = UDim.new(0, 1)
+    layout.Padding = UDim.new(0, 5)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    
+    -- Helper function to create section labels
+    local function createSectionLabel(text)
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 0, 20)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = Color3.fromRGB(150, 150, 255)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        return label
+    end
+    
+    -- Basic Actions Section
+    local basicSection = createSectionLabel("Basic Actions (Copy, Paste, Duplicate, Delete)")
+    basicSection.Parent = scrollFrame
     
     -- Duplicate Button
     local duplicateBtn = Instance.new("TextButton")
     duplicateBtn.Parent = scrollFrame
-    duplicateBtn.Size = UDim2.new(1, 0, 0, 20)
+    duplicateBtn.Size = UDim2.new(1, 0, 0, 25)
     duplicateBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    duplicateBtn.Text = "Duplicate"
+    duplicateBtn.Text = "Duplicate (Creates a copy nearby)"
     duplicateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     duplicateBtn.Font = Enum.Font.Gotham
-    duplicateBtn.TextSize = 8
+    duplicateBtn.TextSize = 10
     duplicateBtn.MouseButton1Click:Connect(duplicateObject)
     
     -- Copy Button
     local copyBtn = Instance.new("TextButton")
     copyBtn.Parent = scrollFrame
-    copyBtn.Size = UDim2.new(1, 0, 0, 20)
+    copyBtn.Size = UDim2.new(1, 0, 0, 25)
     copyBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
-    copyBtn.Text = "Copy"
+    copyBtn.Text = "Copy (Saves to clipboard)"
     copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     copyBtn.Font = Enum.Font.Gotham
-    copyBtn.TextSize = 8
+    copyBtn.TextSize = 10
     copyBtn.MouseButton1Click:Connect(copyObject)
     
     -- Paste Button
     local pasteBtn = Instance.new("TextButton")
     pasteBtn.Parent = scrollFrame
-    pasteBtn.Size = UDim2.new(1, 0, 0, 20)
+    pasteBtn.Size = UDim2.new(1, 0, 0, 25)
     pasteBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
-    pasteBtn.Text = "Paste"
+    pasteBtn.Text = "Paste (Places copied object near player)"
     pasteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     pasteBtn.Font = Enum.Font.Gotham
-    pasteBtn.TextSize = 8
+    pasteBtn.TextSize = 10
     pasteBtn.MouseButton1Click:Connect(pasteObject)
+    
+    -- Delete Button
+    local deleteBtn = Instance.new("TextButton")
+    deleteBtn.Parent = scrollFrame
+    deleteBtn.Size = UDim2.new(1, 0, 0, 25)
+    deleteBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    deleteBtn.Text = "Delete (Removes object, undo available)"
+    deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    deleteBtn.Font = Enum.Font.Gotham
+    deleteBtn.TextSize = 10
+    deleteBtn.MouseButton1Click:Connect(deleteObject)
+    
+    -- Toggles Section
+    local togglesSection = createSectionLabel("Toggles (Anchored, CanCollide)")
+    togglesSection.Parent = scrollFrame
+    
+    -- Toggle Anchored
+    local anchoredBtn = Instance.new("TextButton")
+    anchoredBtn.Parent = scrollFrame
+    anchoredBtn.Size = UDim2.new(1, 0, 0, 25)
+    anchoredBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    anchoredBtn.Text = selectedObject.Anchored and "Unanchor (Allow physics)" or "Anchor (Fix in place)"
+    anchoredBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    anchoredBtn.Font = Enum.Font.Gotham
+    anchoredBtn.TextSize = 10
+    anchoredBtn.MouseButton1Click:Connect(function()
+        toggleAnchored()
+        anchoredBtn.Text = selectedObject.Anchored and "Unanchor (Allow physics)" or "Anchor (Fix in place)"
+    end)
+    
+    -- Toggle CanCollide
+    local collideBtn = Instance.new("TextButton")
+    collideBtn.Parent = scrollFrame
+    collideBtn.Size = UDim2.new(1, 0, 0, 25)
+    collideBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    collideBtn.Text = selectedObject.CanCollide and "Disable Collision (Pass through)" or "Enable Collision (Solid)"
+    collideBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    collideBtn.Font = Enum.Font.Gotham
+    collideBtn.TextSize = 10
+    collideBtn.MouseButton1Click:Connect(function()
+        toggleCanCollide()
+        collideBtn.Text = selectedObject.CanCollide and "Disable Collision (Pass through)" or "Enable Collision (Solid)"
+    end)
+    
+    -- Transform Section
+    local transformSection = createSectionLabel("Transform (Position, Rotation, Size)")
+    transformSection.Parent = scrollFrame
+    
+    -- Position Inputs
+    local posFrame = Instance.new("Frame")
+    posFrame.Parent = scrollFrame
+    posFrame.Size = UDim2.new(1, 0, 0, 30)
+    posFrame.BackgroundTransparency = 1
+    
+    local posLabel = Instance.new("TextLabel")
+    posLabel.Parent = posFrame
+    posLabel.Size = UDim2.new(1, 0, 0, 15)
+    posLabel.BackgroundTransparency = 1
+    posLabel.Text = "Position (X, Y, Z):"
+    posLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    posLabel.Font = Enum.Font.Gotham
+    posLabel.TextSize = 10
+    
+    local posX = Instance.new("TextBox")
+    posX.Parent = posFrame
+    posX.Position = UDim2.new(0, 0, 0.5, 0)
+    posX.Size = UDim2.new(0.3, 0, 0.5, 0)
+    posX.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    posX.Text = tostring(selectedObject.Position.X)
+    posX.TextColor3 = Color3.fromRGB(255, 255, 255)
+    posX.Font = Enum.Font.Gotham
+    posX.TextSize = 10
+    
+    local posY = Instance.new("TextBox")
+    posY.Parent = posFrame
+    posY.Position = UDim2.new(0.33, 0, 0.5, 0)
+    posY.Size = UDim2.new(0.3, 0, 0.5, 0)
+    posY.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    posY.Text = tostring(selectedObject.Position.Y)
+    posY.TextColor3 = Color3.fromRGB(255, 255, 255)
+    posY.Font = Enum.Font.Gotham
+    posY.TextSize = 10
+    
+    local posZ = Instance.new("TextBox")
+    posZ.Parent = posFrame
+    posZ.Position = UDim2.new(0.66, 0, 0.5, 0)
+    posZ.Size = UDim2.new(0.3, 0, 0.5, 0)
+    posZ.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    posZ.Text = tostring(selectedObject.Position.Z)
+    posZ.TextColor3 = Color3.fromRGB(255, 255, 255)
+    posZ.Font = Enum.Font.Gotham
+    posZ.TextSize = 10
+    
+    local posBtn = Instance.new("TextButton")
+    posBtn.Parent = scrollFrame
+    posBtn.Size = UDim2.new(1, 0, 0, 25)
+    posBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
+    posBtn.Text = "Apply Position (Sets absolute position)"
+    posBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    posBtn.Font = Enum.Font.Gotham
+    posBtn.TextSize = 10
+    posBtn.MouseButton1Click:Connect(function()
+        local x, y, z = tonumber(posX.Text), tonumber(posY.Text), tonumber(posZ.Text)
+        if x and y and z then
+            changePosition(x, y, z)
+        end
+    end)
+    
+    -- Rotation Inputs
+    local rotFrame = Instance.new("Frame")
+    rotFrame.Parent = scrollFrame
+    rotFrame.Size = UDim2.new(1, 0, 0, 30)
+    rotFrame.BackgroundTransparency = 1
+    
+    local rotLabel = Instance.new("TextLabel")
+    rotLabel.Parent = rotFrame
+    rotLabel.Size = UDim2.new(1, 0, 0, 15)
+    rotLabel.BackgroundTransparency = 1
+    rotLabel.Text = "Rotation (X, Y, Z degrees):"
+    rotLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    rotLabel.Font = Enum.Font.Gotham
+    rotLabel.TextSize = 10
+    
+    local rotX = Instance.new("TextBox")
+    rotX.Parent = rotFrame
+    rotX.Position = UDim2.new(0, 0, 0.5, 0)
+    rotX.Size = UDim2.new(0.3, 0, 0.5, 0)
+    rotX.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    rotX.Text = "0"
+    rotX.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rotX.Font = Enum.Font.Gotham
+    rotX.TextSize = 10
+    
+    local rotY = Instance.new("TextBox")
+    rotY.Parent = rotFrame
+    rotY.Position = UDim2.new(0.33, 0, 0.5, 0)
+    rotY.Size = UDim2.new(0.3, 0, 0.5, 0)
+    rotY.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    rotY.Text = "0"
+    rotY.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rotY.Font = Enum.Font.Gotham
+    rotY.TextSize = 10
+    
+    local rotZ = Instance.new("TextBox")
+    rotZ.Parent = rotFrame
+    rotZ.Position = UDim2.new(0.66, 0, 0.5, 0)
+    rotZ.Size = UDim2.new(0.3, 0, 0.5, 0)
+    rotZ.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    rotZ.Text = "0"
+    rotZ.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rotZ.Font = Enum.Font.Gotham
+    rotZ.TextSize = 10
+    
+    local rotBtn = Instance.new("TextButton")
+    rotBtn.Parent = scrollFrame
+    rotBtn.Size = UDim2.new(1, 0, 0, 25)
+    rotBtn.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
+    rotBtn.Text = "Apply Rotation (Sets rotation in degrees)"
+    rotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rotBtn.Font = Enum.Font.Gotham
+    rotBtn.TextSize = 10
+    rotBtn.MouseButton1Click:Connect(function()
+        local x, y, z = tonumber(rotX.Text), tonumber(rotY.Text), tonumber(rotZ.Text)
+        if x and y and z then
+            changeRotation(x, y, z)
+        end
+    end)
     
     -- Resize Section
     local resizeLabel = Instance.new("TextLabel")
     resizeLabel.Parent = scrollFrame
     resizeLabel.Size = UDim2.new(1, 0, 0, 15)
     resizeLabel.BackgroundTransparency = 1
-    resizeLabel.Text = "Resize Scale:"
+    resizeLabel.Text = "Resize Scale (Uniform):"
     resizeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     resizeLabel.Font = Enum.Font.Gotham
-    resizeLabel.TextSize = 8
+    resizeLabel.TextSize = 10
     
     local scaleInput = Instance.new("TextBox")
     scaleInput.Parent = scrollFrame
-    scaleInput.Size = UDim2.new(0.5, 0, 0, 20)
+    scaleInput.Size = UDim2.new(0.5, 0, 0, 25)
     scaleInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     scaleInput.Text = "1.5"
     scaleInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     scaleInput.Font = Enum.Font.Gotham
-    scaleInput.TextSize = 8
+    scaleInput.TextSize = 10
     
     local resizeBtn = Instance.new("TextButton")
     resizeBtn.Parent = scrollFrame
-    resizeBtn.Size = UDim2.new(0.5, 0, 0, 20)
+    resizeBtn.Size = UDim2.new(0.5, 0, 0, 25)
     resizeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 60)
-    resizeBtn.Text = "Resize"
+    resizeBtn.Text = "Apply Scale (Multiplies size)"
     resizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     resizeBtn.Font = Enum.Font.Gotham
-    resizeBtn.TextSize = 8
+    resizeBtn.TextSize = 10
     resizeBtn.MouseButton1Click:Connect(function()
         local scale = tonumber(scaleInput.Text) or 1.5
         resizeObject(scale)
     end)
     
-    -- Delete Button
-    local deleteBtn = Instance.new("TextButton")
-    deleteBtn.Parent = scrollFrame
-    deleteBtn.Size = UDim2.new(1, 0, 0, 20)
-    deleteBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-    deleteBtn.Text = "Delete"
-    deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    deleteBtn.Font = Enum.Font.Gotham
-    deleteBtn.TextSize = 8
-    deleteBtn.MouseButton1Click:Connect(deleteObject)
+    -- Appearance Section
+    local appearanceSection = createSectionLabel("Appearance (Color, Transparency, Material, Shape)")
+    appearanceSection.Parent = scrollFrame
     
-    -- Toggle Anchored
-    local anchoredBtn = Instance.new("TextButton")
-    anchoredBtn.Parent = scrollFrame
-    anchoredBtn.Size = UDim2.new(1, 0, 0, 20)
-    anchoredBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    anchoredBtn.Text = selectedObject.Anchored and "Unanchor" or "Anchor"
-    anchoredBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    anchoredBtn.Font = Enum.Font.Gotham
-    anchoredBtn.TextSize = 8
-    anchoredBtn.MouseButton1Click:Connect(toggleAnchored)
-    
-    -- Toggle CanCollide
-    local collideBtn = Instance.new("TextButton")
-    collideBtn.Parent = scrollFrame
-    collideBtn.Size = UDim2.new(1, 0, 0, 20)
-    collideBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    collideBtn.Text = selectedObject.CanCollide and "No Collide" or "Collide"
-    collideBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    collideBtn.Font = Enum.Font.Gotham
-    collideBtn.TextSize = 8
-    collideBtn.MouseButton1Click:Connect(toggleCanCollide)
-    
-    -- Color Section - Use a frame for horizontal inputs
+    -- Color Section
     local colorFrame = Instance.new("Frame")
     colorFrame.Parent = scrollFrame
-    colorFrame.Size = UDim2.new(1, 0, 0, 25)
+    colorFrame.Size = UDim2.new(1, 0, 0, 30)
     colorFrame.BackgroundTransparency = 1
     
     local colorLabel = Instance.new("TextLabel")
     colorLabel.Parent = colorFrame
     colorLabel.Size = UDim2.new(1, 0, 0, 15)
     colorLabel.BackgroundTransparency = 1
-    colorLabel.Text = "Color RGB:"
+    colorLabel.Text = "Color RGB (0-255):"
     colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     colorLabel.Font = Enum.Font.Gotham
-    colorLabel.TextSize = 8
+    colorLabel.TextSize = 10
     
     local rInput = Instance.new("TextBox")
     rInput.Parent = colorFrame
-    rInput.Position = UDim2.new(0, 0, 0, 15)
-    rInput.Size = UDim2.new(0.3, 0, 0, 18)
+    rInput.Position = UDim2.new(0, 0, 0.5, 0)
+    rInput.Size = UDim2.new(0.3, 0, 0.5, 0)
     rInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     rInput.Text = tostring(math.floor(selectedObject.Color.R * 255))
     rInput.TextColor3 = Color3.fromRGB(255, 0, 0)
     rInput.Font = Enum.Font.Gotham
-    rInput.TextSize = 8
+    rInput.TextSize = 10
     
     local gInput = Instance.new("TextBox")
     gInput.Parent = colorFrame
-    gInput.Position = UDim2.new(0.33, 0, 0, 15)
-    gInput.Size = UDim2.new(0.3, 0, 0, 18)
+    gInput.Position = UDim2.new(0.33, 0, 0.5, 0)
+    gInput.Size = UDim2.new(0.3, 0, 0.5, 0)
     gInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     gInput.Text = tostring(math.floor(selectedObject.Color.G * 255))
     gInput.TextColor3 = Color3.fromRGB(0, 255, 0)
     gInput.Font = Enum.Font.Gotham
-    gInput.TextSize = 8
+    gInput.TextSize = 10
     
     local bInput = Instance.new("TextBox")
     bInput.Parent = colorFrame
-    bInput.Position = UDim2.new(0.66, 0, 0, 15)
-    bInput.Size = UDim2.new(0.3, 0, 0, 18)
+    bInput.Position = UDim2.new(0.66, 0, 0.5, 0)
+    bInput.Size = UDim2.new(0.3, 0, 0.5, 0)
     bInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     bInput.Text = tostring(math.floor(selectedObject.Color.B * 255))
     bInput.TextColor3 = Color3.fromRGB(0, 0, 255)
     bInput.Font = Enum.Font.Gotham
-    bInput.TextSize = 8
+    bInput.TextSize = 10
     
     local colorBtn = Instance.new("TextButton")
     colorBtn.Parent = scrollFrame
-    colorBtn.Size = UDim2.new(1, 0, 0, 20)
+    colorBtn.Size = UDim2.new(1, 0, 0, 25)
     colorBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 120)
-    colorBtn.Text = "Change Color"
+    colorBtn.Text = "Apply Color (Sets RGB color)"
     colorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     colorBtn.Font = Enum.Font.Gotham
-    colorBtn.TextSize = 8
+    colorBtn.TextSize = 10
     colorBtn.MouseButton1Click:Connect(function()
         local r, g, b = tonumber(rInput.Text), tonumber(gInput.Text), tonumber(bInput.Text)
         if r and g and b then
-            changeColor(r/255, g/255, b/255)
+            changeColor(r, g, b)
         end
     end)
     
@@ -1377,28 +1625,28 @@ local function showEditorGUI(obj)
     transLabel.Parent = scrollFrame
     transLabel.Size = UDim2.new(1, 0, 0, 15)
     transLabel.BackgroundTransparency = 1
-    transLabel.Text = "Transparency:"
+    transLabel.Text = "Transparency (0-1):"
     transLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     transLabel.Font = Enum.Font.Gotham
-    transLabel.TextSize = 8
+    transLabel.TextSize = 10
     
     local transInput = Instance.new("TextBox")
     transInput.Parent = scrollFrame
-    transInput.Size = UDim2.new(0.5, 0, 0, 20)
+    transInput.Size = UDim2.new(0.5, 0, 0, 25)
     transInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     transInput.Text = tostring(selectedObject.Transparency)
     transInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     transInput.Font = Enum.Font.Gotham
-    transInput.TextSize = 8
+    transInput.TextSize = 10
     
     local transBtn = Instance.new("TextButton")
     transBtn.Parent = scrollFrame
-    transBtn.Size = UDim2.new(0.5, 0, 0, 20)
+    transBtn.Size = UDim2.new(0.5, 0, 0, 25)
     transBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 80)
-    transBtn.Text = "Change Trans"
+    transBtn.Text = "Apply Transparency (0 = Opaque, 1 = Invisible)"
     transBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     transBtn.Font = Enum.Font.Gotham
-    transBtn.TextSize = 8
+    transBtn.TextSize = 10
     transBtn.MouseButton1Click:Connect(function()
         local trans = tonumber(transInput.Text)
         if trans then
@@ -1406,21 +1654,104 @@ local function showEditorGUI(obj)
         end
     end)
     
-    -- Drag Move Button (new feature)
+    -- Material Section
+    local materialLabel = Instance.new("TextLabel")
+    materialLabel.Parent = scrollFrame
+    materialLabel.Size = UDim2.new(1, 0, 0, 15)
+    materialLabel.BackgroundTransparency = 1
+    materialLabel.Text = "Material:"
+    materialLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    materialLabel.Font = Enum.Font.Gotham
+    materialLabel.TextSize = 10
+    
+    local materialInput = Instance.new("TextBox")
+    materialInput.Parent = scrollFrame
+    materialInput.Size = UDim2.new(0.5, 0, 0, 25)
+    materialInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    materialInput.Text = selectedObject.Material.Name
+    materialInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    materialInput.Font = Enum.Font.Gotham
+    materialInput.TextSize = 10
+    
+    local materialBtn = Instance.new("TextButton")
+    materialBtn.Parent = scrollFrame
+    materialBtn.Size = UDim2.new(0.5, 0, 0, 25)
+    materialBtn.BackgroundColor3 = Color3.fromRGB(120, 80, 60)
+    materialBtn.Text = "Apply Material (e.g. Plastic, Wood)"
+    materialBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    materialBtn.Font = Enum.Font.Gotham
+    materialBtn.TextSize = 10
+    materialBtn.MouseButton1Click:Connect(function()
+        local material = materialInput.Text
+        if material then
+            changeMaterial(material)
+        end
+    end)
+    
+    -- Shape Section
+    local shapeLabel = Instance.new("TextLabel")
+    shapeLabel.Parent = scrollFrame
+    shapeLabel.Size = UDim2.new(1, 0, 0, 15)
+    shapeLabel.BackgroundTransparency = 1
+    shapeLabel.Text = "Shape:"
+    shapeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    shapeLabel.Font = Enum.Font.Gotham
+    shapeLabel.TextSize = 10
+    
+    local shapeInput = Instance.new("TextBox")
+    shapeInput.Parent = scrollFrame
+    shapeInput.Size = UDim2.new(0.5, 0, 0, 25)
+    shapeInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    shapeInput.Text = selectedObject.Shape.Name
+    shapeInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    shapeInput.Font = Enum.Font.Gotham
+    shapeInput.TextSize = 10
+    
+    local shapeBtn = Instance.new("TextButton")
+    shapeBtn.Parent = scrollFrame
+    shapeBtn.Size = UDim2.new(0.5, 0, 0, 25)
+    shapeBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
+    shapeBtn.Text = "Apply Shape (e.g. Block, Ball, Cylinder)"
+    shapeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    shapeBtn.Font = Enum.Font.Gotham
+    shapeBtn.TextSize = 10
+    shapeBtn.MouseButton1Click:Connect(function()
+        local shape = shapeInput.Text
+        if shape then
+            changeShape(shape)
+        end
+    end)
+    
+    -- Effects Section
+    local effectsSection = createSectionLabel("Effects (Add Light, etc.)")
+    effectsSection.Parent = scrollFrame
+    
+    -- Add Light Button
+    local lightBtn = Instance.new("TextButton")
+    lightBtn.Parent = scrollFrame
+    lightBtn.Size = UDim2.new(1, 0, 0, 25)
+    lightBtn.BackgroundColor3 = Color3.fromRGB(120, 120, 60)
+    lightBtn.Text = "Add Surface Light (Adds light on top face)"
+    lightBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    lightBtn.Font = Enum.Font.Gotham
+    lightBtn.TextSize = 10
+    lightBtn.MouseButton1Click:Connect(addSurfaceLight)
+    
+    -- Drag Move Button (existing, with better label)
     local Mouse = player:GetMouse()
     local isDragging = false
     local dragConnection
     local dragBtn = Instance.new("TextButton")
     dragBtn.Parent = scrollFrame
-    dragBtn.Size = UDim2.new(1, 0, 0, 20)
+    dragBtn.Size = UDim2.new(1, 0, 0, 25)
     dragBtn.BackgroundColor3 = Color3.fromRGB(120, 80, 60)
-    dragBtn.Text = "Toggle Drag Move"
+    dragBtn.Text = "Toggle Drag Move (Click and drag to move)"
     dragBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     dragBtn.Font = Enum.Font.Gotham
-    dragBtn.TextSize = 8
+    dragBtn.TextSize = 10
     dragBtn.MouseButton1Click:Connect(function()
         isDragging = not isDragging
-        dragBtn.Text = isDragging and "Disable Drag Move" or "Toggle Drag Move"
+        dragBtn.Text = isDragging and "Disable Drag Move" or "Toggle Drag Move (Click and drag to move)"
         if isDragging then
             dragConnection = RunService.RenderStepped:Connect(function()
                 if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
@@ -1476,7 +1807,7 @@ end
 local function toggleEditor()
     editorEnabled = not editorEnabled
     if editorEnabled then
-        print("[SUPERTOOL] Object Editor enabled")
+        print("[SUPERTOOL] Object Editor enabled - Click on parts to edit")
         setupEditorInput()
     else
         print("[SUPERTOOL] Object Editor disabled")
@@ -1494,7 +1825,7 @@ local function initEditorListUI()
     EditorListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
     EditorListFrame.BorderSizePixel = 1
     EditorListFrame.Position = UDim2.new(0.5, 200, 0.2, 0)
-    EditorListFrame.Size = UDim2.new(0, 200, 0, 250)  -- Smaller
+    EditorListFrame.Size = UDim2.new(0, 250, 0, 300)
     EditorListFrame.Visible = false
     EditorListFrame.Active = true
     EditorListFrame.Draggable = true
@@ -1503,34 +1834,34 @@ local function initEditorListUI()
     title.Parent = EditorListFrame
     title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     title.BorderSizePixel = 0
-    title.Size = UDim2.new(1, 0, 0, 20)
+    title.Size = UDim2.new(1, 0, 0, 25)
     title.Font = Enum.Font.GothamBold
-    title.Text = "Edit History"
+    title.Text = "Edit History (Undo with Ctrl+Z)"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 9
+    title.TextSize = 12
 
     local closeButton = Instance.new("TextButton")
     closeButton.Parent = EditorListFrame
     closeButton.BackgroundTransparency = 1
-    closeButton.Position = UDim2.new(1, -20, 0, 1)
-    closeButton.Size = UDim2.new(0, 18, 0, 18)
+    closeButton.Position = UDim2.new(1, -25, 0, 3)
+    closeButton.Size = UDim2.new(0, 20, 0, 20)
     closeButton.Font = Enum.Font.GothamBold
     closeButton.Text = "X"
     closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeButton.TextSize = 10
+    closeButton.TextSize = 14
 
     EditorScrollFrame = Instance.new("ScrollingFrame")
     EditorScrollFrame.Parent = EditorListFrame
     EditorScrollFrame.BackgroundTransparency = 1
-    EditorScrollFrame.Position = UDim2.new(0, 5, 0, 25)
-    EditorScrollFrame.Size = UDim2.new(1, -10, 1, -30)
-    EditorScrollFrame.ScrollBarThickness = 3
+    EditorScrollFrame.Position = UDim2.new(0, 5, 0, 30)
+    EditorScrollFrame.Size = UDim2.new(1, -10, 1, -35)
+    EditorScrollFrame.ScrollBarThickness = 4
     EditorScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     EditorScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 
     EditorLayout = Instance.new("UIListLayout")
     EditorLayout.Parent = EditorScrollFrame
-    EditorLayout.Padding = UDim.new(0, 2)
+    EditorLayout.Padding = UDim.new(0, 3)
 
     closeButton.MouseButton1Click:Connect(function()
         EditorListFrame.Visible = false
@@ -1548,31 +1879,31 @@ local function updateEditorList()
             end
         end
         
-        -- Show recent edits and deletes (limited)
-        for i = #editedObjects, math.max(1, #editedObjects - 4), -1 do
+        -- Show recent edits and deletes (increased limit to 10 for more history)
+        for i = #editedObjects, math.max(1, #editedObjects - 9), -1 do
             local edit = editedObjects[i]
             if edit then
                 local label = Instance.new("TextLabel")
                 label.Parent = EditorScrollFrame
-                label.Size = UDim2.new(1, 0, 0, 15)
+                label.Size = UDim2.new(1, 0, 0, 20)
                 label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
                 label.Text = "Edit: " .. edit.property .. " on " .. (edit.object.Name or "Unknown")
                 label.TextColor3 = Color3.fromRGB(255, 255, 255)
-                label.TextSize = 7
+                label.TextSize = 10
                 label.Font = Enum.Font.Gotham
             end
         end
         
-        for i = #deletedObjects, math.max(1, #deletedObjects - 4), -1 do
+        for i = #deletedObjects, math.max(1, #deletedObjects - 9), -1 do
             local del = deletedObjects[i]
             if del and del.name then
                 local label = Instance.new("TextLabel")
                 label.Parent = EditorScrollFrame
-                label.Size = UDim2.new(1, 0, 0, 15)
+                label.Size = UDim2.new(1, 0, 0, 20)
                 label.BackgroundColor3 = Color3.fromRGB(40, 25, 25)
                 label.Text = "Delete: " .. del.name
                 label.TextColor3 = Color3.fromRGB(255, 255, 255)
-                label.TextSize = 7
+                label.TextSize = 10
                 label.Font = Enum.Font.Gotham
             end
         end
@@ -2398,7 +2729,7 @@ function Utility.init(deps)
         initEditorListUI()
         initGearUI()
         initObjectUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Object Editor Fixed)")
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Enhanced Object Editor)")
     end)
 end
 
