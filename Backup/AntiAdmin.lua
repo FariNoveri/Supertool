@@ -1,6 +1,6 @@
 -- AntiAdmin.lua Module for MinimalHackGUI
 -- Sistem perlindungan anti-admin buatan Fari Noveri
--- Versi sudah diperbaiki, error 117 hilang, gampang dipahami
+-- Versi sudah diperbaiki, error 117 & 217 hilang, gampang dipahami
 -- Tanggal dan waktu: 13:17 WIB, Minggu, 14 September 2025
 
 local AntiAdmin = {}
@@ -274,7 +274,8 @@ end
 -- Mulai anti ketahuan
 local function initializeAntiDetection()
     safeCall(function()
-        if game.GetDescendants then
+        -- Cek apakah game.GetDescendants ada sebelum override
+        if game.GetDescendants and type(game.GetDescendants) == "function" then
             local originalGetDescendants = game.GetDescendants
             game.GetDescendants = function(self)
                 detectionCounters.scriptScan = detectionCounters.scriptScan + 1
@@ -317,6 +318,12 @@ end
 -- Set pelindung metatable canggih
 local function setupAdvancedMetatableProtection()
     safeCall(function()
+        -- Cek apakah getrawmetatable ada
+        if not getrawmetatable then
+            warn("AntiAdmin: getrawmetatable tidak tersedia")
+            return 
+        end
+        
         local mt = getrawmetatable(game)
         if not mt then 
             warn("AntiAdmin: Ga bisa akses metatable")
@@ -332,6 +339,12 @@ local function setupAdvancedMetatableProtection()
             return 
         end
         
+        -- Cek apakah setreadonly ada
+        if not setreadonly then
+            warn("AntiAdmin: setreadonly tidak tersedia")
+            return
+        end
+        
         local success = pcall(setreadonly, mt, false)
         if not success then
             warn("AntiAdmin: Ga bisa ubah metatable")
@@ -341,7 +354,11 @@ local function setupAdvancedMetatableProtection()
         mt.__namecall = function(self, ...)
             if not protectionStates.mainProtection.enabled then return oldNamecall(self, ...) end
             
-            local method = getnamecallmethod and getnamecallmethod() or ""
+            -- Cek apakah getnamecallmethod ada
+            local method = ""
+            if getnamecallmethod and type(getnamecallmethod) == "function" then
+                method = getnamecallmethod() or ""
+            end
             local args = {...}
             
             if method == "Kick" or method == "Ban" then
@@ -748,7 +765,7 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         function() toggleAdvancedBypass(false) end
     )
     
-    -- Tambah label info dengan deskripsi fitur yang rapi
+    -- Tambah label info dengan deskripsi fitur yang rapi (FIXED)
     safeCall(function()
         local InfoLabel = Instance.new("TextLabel")
         InfoLabel.Name = "AntiAdminInfo"
@@ -756,22 +773,57 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoLabel.BackgroundColor3 = Color3.fromRGB(15, 25, 35)
         InfoLabel.BorderColor3 = Color3.fromRGB(0, 150, 255)
         InfoLabel.BorderSizePixel = 2
-        InfoLabel.Size = UDim2.new(1, -2, 0, 55)
+        InfoLabel.Size = UDim2.new(1, -2, 0, 200) -- Tinggi diperbesar untuk muat semua teks
         InfoLabel.LayoutOrder = 999
         InfoLabel.Font = Enum.Font.GothamBold
-        InfoLabel.Text = "🛡️ SISTEM ANTI-ADMIN\n📌 Buatan: Fari Noveri\n⚡ Versi 2.2\n🚀 Error 117 Hilang\n🎯 Fitur:\n- 🛡️ Pelindung Utama: Melindungi dari tendang, blokir, bunuh, atau pindah karakter. Bisa balik serang ke admin!\n- 🌊 Pelindung Spam: Melindungi dari spam benda (hapus jika lebih dari 50), suara berisik (mute jika lebih dari 3), dan perubahan cahaya aneh.\n- 👤 Mode Siluman: Menyembunyikan dari admin dengan ngacak data biar kayak pemain biasa.\n- 🔍 Anti Ketahuan: Memblokir admin yang coba cek script.\n- 💾 Pelindung Memori: Melindungi dari admin yang coba cek memori game.\n- ⚡ Jalan Pintas Canggih: Melewati sistem keamanan admin dengan trik ringan.\n🎨 Gampang dipakai!"
+        InfoLabel.TextSize = 12 -- Diperbesar dari 9 ke 12
         InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-        InfoLabel.TextSize = 9
-        InfoLabel.TextYAlignment = Enum.TextYAlignment.Center
+        InfoLabel.TextYAlignment = Enum.TextYAlignment.Top -- Ubah ke Top biar mulai dari atas
+        InfoLabel.TextXAlignment = Enum.TextXAlignment.Left -- Rata kiri
         InfoLabel.TextWrapped = true
         InfoLabel.TextStrokeTransparency = 0.7
         InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        
+        -- Teks yang rapi dengan format kebawah (FIXED)
+        InfoLabel.Text = [[🛡️ SISTEM ANTI-ADMIN
+📌 Buatan: Fari Noveri | ⚡ Versi 2.2 | 🚀 Error 117 & 217 Hilang
+
+🎯 FITUR TERSEDIA:
+
+🛡️ Pelindung Utama
+   → Melindungi dari tendang, blokir, bunuh, pindah karakter
+   → Bisa balik serang ke admin!
+
+🌊 Pelindung Spam  
+   → Hapus spam benda (>50 objek)
+   → Mute suara berisik (>3 suara)
+   → Blokir perubahan cahaya aneh
+
+👤 Mode Siluman
+   → Sembunyi dari admin
+   → Ngacak data jadi kayak pemain biasa
+
+💾 Pelindung Memori
+   → Lindungi dari cek memori game
+
+⚡ Jalan Pintas Canggih
+   → Lewati sistem keamanan admin
+
+🎨 Interface gampang dipakai!]]
+
+        -- Tambahkan padding untuk teks (FIXED)
+        local TextPadding = Instance.new("UIPadding")
+        TextPadding.Parent = InfoLabel
+        TextPadding.PaddingLeft = UDim.new(0, 8)
+        TextPadding.PaddingRight = UDim.new(0, 8)
+        TextPadding.PaddingTop = UDim.new(0, 5)
+        TextPadding.PaddingBottom = UDim.new(0, 5)
         
         local InfoCorner = Instance.new("UICorner")
         InfoCorner.CornerRadius = UDim.new(0, 6)
         InfoCorner.Parent = InfoLabel
         
-        -- Animasi warna
+        -- Animasi warna (FIXED dengan pengecekan safety)
         spawn(function()
             if not TweenService then return end
             local colors = {
@@ -782,23 +834,25 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
             }
             
             local colorIndex = 1
-            while InfoLabel.Parent do
-                local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-                local tween = TweenService:Create(InfoLabel, tweenInfo, {
-                    TextColor3 = colors[colorIndex]
-                })
-                tween:Play()
-                tween.Completed:Wait()
-                
-                colorIndex = colorIndex + 1
-                if colorIndex > #colors then colorIndex = 1 end
-                wait(0.5)
+            while InfoLabel and InfoLabel.Parent do
+                safeCall(function()
+                    local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    local tween = TweenService:Create(InfoLabel, tweenInfo, {
+                        TextColor3 = colors[colorIndex]
+                    })
+                    tween:Play()
+                    tween.Completed:Wait()
+                    
+                    colorIndex = colorIndex + 1
+                    if colorIndex > #colors then colorIndex = 1 end
+                    wait(0.5)
+                end)
             end
         end)
     end)
     
     print("✅ Tombol AntiAdmin dimuat!")
-    print("🎯 Error 117 hilang")
+    print("🎯 Error 117 & 217 hilang")
     print("🎨 Antarmuka gampang")
     print("🚫 Anti-Fly dan Anti-Noclip dihapus")
 end
