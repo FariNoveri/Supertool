@@ -11,6 +11,7 @@
 -- REMOVED: Adonis Bypass and Kohl's Admin
 
 -- NEW: Added Object Spawner Feature with input ID or predefined objects
+-- NEW: Added manual toggle for chat feature
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -77,6 +78,10 @@ local predefinedObjects = {
     {name = "Car Model", id = 987654321},   -- Contoh placeholder
     -- Tambah objek lain jika perlu
 }
+
+-- Chat Feature Variables
+local chatFeatureEnabled = false
+local chatToggleButton = nil
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -1956,7 +1961,7 @@ local function initObjectUI()
 
         objItem.MouseButton1Click:Connect(function()
             spawnObject(obj.id)
-        end)
+        end
     end
 
     ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, ObjectLayout.AbsoluteContentSize.Y + 10)
@@ -1966,6 +1971,50 @@ local function toggleObjectSpawner()
     if not ObjectFrame then initObjectUI() end
     objectFrameVisible = not objectFrameVisible
     ObjectFrame.Visible = objectFrameVisible
+end
+
+-- Chat Feature Functions
+local function toggleChatFeature()
+    chatFeatureEnabled = not chatFeatureEnabled
+    chatToggleButton.Text = chatFeatureEnabled and "Chat Feature: ON" or "Chat Feature: OFF"
+    print("[SUPERTOOL] Chat feature " .. (chatFeatureEnabled and "enabled" or "disabled"))
+end
+
+local function displayGlobalText(text)
+    local part = Instance.new("Part")
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Position = Vector3.new(0, 50, 0)  -- Position in center of map or adjust
+    part.Parent = workspace
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Parent = part
+    billboard.Size = UDim2.new(0, 400, 0, 100)
+    billboard.AlwaysOnTop = true
+    billboard.MaxDistance = 1000
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Parent = billboard
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = text
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.TextStrokeTransparency = 0.5
+    textLabel.TextSize = 50
+    textLabel.Font = Enum.Font.GothamBold
+
+    game:GetService("Debris"):AddItem(part, 5)  -- Auto destroy after 5 seconds
+end
+
+local function setupChatListener()
+    player.Chatted:Connect(function(message)
+        if not chatFeatureEnabled then return end
+        if string.sub(message, 1, 2) == ";m" or string.sub(message, 1, 2) == ":m" then
+            local text = string.sub(message, 4)  -- Remove prefix and space
+            displayGlobalText(text)
+        end
+    end)
 end
 
 -- Load utility buttons
@@ -1989,6 +2038,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Deleted List", toggleDeletedList)
     createButton("Gear Manager", toggleGearManager)
     createButton("Object Spawner", toggleObjectSpawner)
+    chatToggleButton = createButton("Chat Feature: OFF", toggleChatFeature)
 end
 
 -- Initialize function
@@ -2038,6 +2088,7 @@ function Utility.init(deps)
     
     setupKeyboardControls()
     setupDeleterInput()
+    setupChatListener()
     
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
