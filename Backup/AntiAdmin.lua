@@ -1,10 +1,11 @@
 -- AntiAdmin.lua Module for MinimalHackGUI
--- Enhanced Anti Admin Protection System by Fari Noveri
--- Fixed Version - Error 117 resolved & User-Friendly Interface
+-- Sistem perlindungan anti-admin super canggih buatan Fari Noveri
+-- Versi sudah diperbaiki, error 117 hilang, gampang banget dipahami
+-- Tanggal dan waktu: 12:47 WIB, Minggu, 14 September 2025
 
 local AntiAdmin = {}
 
--- Services
+-- Layanan Roblox yang dipakai
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -16,48 +17,48 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 
--- Variables
+-- Variabel penting
 local player = Players.LocalPlayer
 local character, humanoid, rootPart
 
--- Dependencies (will be set by init)
+-- Dependensi (diatur saat mulai)
 local dependencies = {}
 
--- Protection states with user-friendly descriptions
+-- Daftar perlindungan dengan penjelasan super gampang
 local protectionStates = {
     mainProtection = {
         enabled = false,
-        name = "🛡️ Perlindungan Utama",
-        description = "Melindungi dari kick, ban, kill, teleport"
+        name = "🛡️ Pelindung Utama",
+        description = "Ngejaga kamu dari admin nakal yang coba tendang (kick) dari game, blokir permanen (ban), bunuh karakter (kill), atau pindahin karakter ke tempat lain (teleport). Bisa balik serang ke admin atau pemain lain, pantau nyawa (health) dan posisi biar ga diganggu!"
     },
     massProtection = {
         enabled = false,
-        name = "🌊 Perlindungan Massal", 
-        description = "Melindungi dari spam part, sound, lighting"
+        name = "🌊 Pelindung dari Spam",
+        description = "Ngejaga dari spam benda (lebih dari 50 benda dihapus otomatis), suara berisik (lebih dari 3 suara keras dimute), dan perubahan cahaya (lighting) yang bikin game rusak. Semua dikembalikan ke normal!"
     },
     stealthMode = {
         enabled = false,
-        name = "👤 Mode Tersembunyi",
-        description = "Menyembunyikan dari deteksi admin"
+        name = "👤 Mode Siluman",
+        description = "Bikin kamu kayak pemain biasa supaya admin susah lacak. Ngacak data seperti waktu masuk game, jumlah klik, atau gerakan kamera biar admin ga curiga."
     },
     antiDetection = {
         enabled = false,
-        name = "🔍 Anti Deteksi",
-        description = "Mencegah scan script dan monitoring"
+        name = "🔍 Anti Ketahuan",
+        description = "Blokir admin yang coba cek script atau pantau aktivitas kamu dengan nge-hack fungsi scan game (GetDescendants). Admin ga akan tahu apa-apa!"
     },
     memoryProtection = {
         enabled = false,
-        name = "💾 Perlindungan Memori",
-        description = "Melindungi dari memory scan"
+        name = "💾 Pelindung Memori",
+        description = "Ngejaga dari admin yang coba cek memori game. Bikin data acak-acakan (dummy) supaya admin ga bisa lihat apa yang kamu lakukan."
     },
     advancedBypass = {
         enabled = false,
-        name = "⚡ Bypass Lanjutan",
-        description = "Bypass sistem keamanan canggih"
+        name = "⚡ Jalan Pintas Canggih",
+        description = "Bisa lewatin sistem keamanan admin yang canggih dengan trik ringan, kayak bikin data palsu biar kelihatan normal."
     }
 }
 
--- Anti Admin variables with safe initialization
+-- Variabel untuk perlindungan
 local protectedPlayers = {}
 local lastKnownPosition
 local lastKnownHealth = 100
@@ -75,7 +76,7 @@ local antiAdminConnections = {}
 local maxReverseAttempts = 10
 local oldNamecall, oldIndex, oldNewIndex
 
--- Mass Protection variables
+-- Variabel anti-spam
 local lastKnownLighting = {}
 local originalAvatar = {}
 local partSpamThreshold = 50
@@ -84,7 +85,7 @@ local resetSpamThreshold = 5
 local resetCount = 0
 local lastResetTime = 0
 
--- Advanced Protection variables
+-- Variabel pelindung canggih
 local detectionCounters = {
     scriptScan = 0,
     behaviorCheck = 0,
@@ -102,7 +103,7 @@ local normalPlayerStats = {
 local fakeBehaviorData = {}
 local sessionRandomized = false
 
--- Safe function caller to prevent Error 117
+-- Fungsi aman biar ga error
 local function safeCall(func, ...)
     if type(func) == "function" then
         local success, result = pcall(func, ...)
@@ -112,12 +113,12 @@ local function safeCall(func, ...)
         end
         return result
     else
-        warn("AntiAdmin: Attempted to call non-function value")
+        warn("AntiAdmin: Bukan fungsi yang dipanggil")
         return nil
     end
 end
 
--- Safe property setter
+-- Fungsi aman buat ganti properti
 local function safeSetProperty(object, property, value)
     if not object then return false end
     if not object[property] then return false end
@@ -127,12 +128,12 @@ local function safeSetProperty(object, property, value)
     end)
     
     if not success then
-        warn("AntiAdmin: Failed to set " .. property .. " on " .. tostring(object))
+        warn("AntiAdmin: Gagal ganti " .. property .. " di " .. tostring(object))
     end
     return success
 end
 
--- Safe service getter
+-- Fungsi aman buat ambil layanan
 local function safeGetService(serviceName)
     local success, service = pcall(function()
         return game:GetService(serviceName)
@@ -141,25 +142,25 @@ local function safeGetService(serviceName)
     if success then
         return service
     else
-        warn("AntiAdmin: Failed to get service " .. serviceName)
+        warn("AntiAdmin: Gagal ambil layanan " .. serviceName)
         return nil
     end
 end
 
--- Initialize function with improved error handling
+-- Mulai sistem
 function AntiAdmin.init(deps)
-    print("🚀 Initializing AntiAdmin System...")
+    print("🚀 Mulai sistem AntiAdmin...")
     
     dependencies = deps or {}
     
-    -- Safe player initialization
+    -- Cek pemain
     player = dependencies.player or Players.LocalPlayer
     if not player then
-        warn("AntiAdmin: No player found!")
+        warn("AntiAdmin: Pemain ga ketemu!")
         return false
     end
     
-    -- Safe character initialization
+    -- Cek karakter
     local function initCharacter()
         character = dependencies.character or (player.Character or player.CharacterAdded:Wait())
         if character then
@@ -167,7 +168,7 @@ function AntiAdmin.init(deps)
             rootPart = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
             
             if not humanoid or not rootPart then
-                warn("AntiAdmin: Missing essential character components")
+                warn("AntiAdmin: Bagian karakter penting ga ada")
                 return false
             end
             return true
@@ -176,16 +177,15 @@ function AntiAdmin.init(deps)
     end
     
     if not initCharacter() then
-        -- Try to wait for character spawn
         player.CharacterAdded:Connect(function(char)
             character = char
             humanoid = char:WaitForChild("Humanoid")
             rootPart = char:WaitForChild("HumanoidRootPart")
-            print("🔄 AntiAdmin: Character respawned, reinitializing...")
+            print("🔄 AntiAdmin: Karakter muncul lagi, mulai ulang...")
         end)
     end
     
-    -- Store original data safely
+    -- Simpan data asli karakter
     if character then
         safeCall(function()
             originalAvatar.userId = player.UserId
@@ -216,11 +216,11 @@ function AntiAdmin.init(deps)
     
     saveLightingSettings()
     sessionRandomization()
-    print("✅ AntiAdmin: Initialization complete!")
+    print("✅ AntiAdmin: Inisialisasi selesai!")
     return true
 end
 
--- Session Randomization with safe execution
+-- Ngacak data biar admin ga curiga
 local function sessionRandomization()
     if sessionRandomized then return end
     
@@ -229,19 +229,19 @@ local function sessionRandomization()
         math.randomseed(randomSeed)
         
         fakeBehaviorData = {
-            joinTime = tick() - math.random(300, 3600),
-            clickCount = math.random(50, 500),
-            keyPresses = math.random(100, 1000),
-            cameraMovements = math.random(200, 800),
-            lastActivity = tick()
+            joinTime = tick() - math.random(300, 3600), -- waktu masuk game
+            clickCount = math.random(50, 500), -- jumlah klik
+            keyPresses = math.random(100, 1000), -- jumlah tekan tombol
+            cameraMovements = math.random(200, 800), -- gerakan kamera
+            lastActivity = tick() -- aktivitas terakhir
         }
         
         sessionRandomized = true
-        print("🎲 Anti-Admin: Session randomized")
+        print("🎲 Anti-Admin: Data sesi sudah diacak")
     end)
 end
 
--- Save lighting settings safely
+-- Simpan pengaturan cahaya
 local function saveLightingSettings()
     safeCall(function()
         lastKnownLighting = {
@@ -258,7 +258,7 @@ local function saveLightingSettings()
     end)
 end
 
--- Restore lighting settings safely
+-- Kembalikan pengaturan cahaya
 local function restoreLightingSettings()
     safeCall(function()
         if lastKnownLighting and next(lastKnownLighting) then
@@ -271,27 +271,25 @@ local function restoreLightingSettings()
     end)
 end
 
--- Anti-Detection System with improved safety
+-- Sistem anti-deteksi
 local function initializeAntiDetection()
     safeCall(function()
-        -- Monitor for script scanning attempts
         if game.GetDescendants then
             local originalGetDescendants = game.GetDescendants
             game.GetDescendants = function(self)
                 detectionCounters.scriptScan = detectionCounters.scriptScan + 1
                 if detectionCounters.scriptScan > 10 then
-                    print("🔍 Anti-Admin: Script scan detected and blocked")
+                    print("🔍 Anti-Admin: Coba scan script diblokir")
                     return {}
                 end
                 return originalGetDescendants(self)
             end
         end
-        
-        print("👤 Anti-Admin: Anti-detection systems active")
+        print("👤 Anti-Admin: Anti-deteksi jalan")
     end)
 end
 
--- Memory Protection with safe garbage collection
+-- Ngejaga memori
 local function setupMemoryProtection()
     safeCall(function()
         local protectedMemory = {}
@@ -300,27 +298,24 @@ local function setupMemoryProtection()
             while protectionStates.memoryProtection.enabled do
                 safeCall(function()
                     collectgarbage("count")
-                    
                     for i = 1, math.random(10, 50) do
                         protectedMemory[i] = math.random(1, 999999)
                     end
-                    
                     detectionCounters.memoryCheck = 0
                 end)
                 wait(math.random(5, 15))
             end
         end)
-        
-        print("💾 Anti-Admin: Memory protection active")
+        print("💾 Anti-Admin: Pelindung memori aktif")
     end)
 end
 
--- Advanced Metatable Protection with improved safety
+-- Perlindungan canggih pake metatable
 local function setupAdvancedMetatableProtection()
     safeCall(function()
         local mt = getrawmetatable(game)
         if not mt then 
-            warn("AntiAdmin: Cannot access metatable")
+            warn("AntiAdmin: Gagal akses metatable")
             return 
         end
         
@@ -329,13 +324,13 @@ local function setupAdvancedMetatableProtection()
         oldNewIndex = mt.__newindex
         
         if not oldNamecall then 
-            warn("AntiAdmin: Cannot access __namecall")
+            warn("AntiAdmin: Gagal akses __namecall")
             return 
         end
         
         local success = pcall(setreadonly, mt, false)
         if not success then
-            warn("AntiAdmin: Cannot modify metatable")
+            warn("AntiAdmin: Gagal ubah metatable")
             return
         end
 
@@ -346,12 +341,12 @@ local function setupAdvancedMetatableProtection()
             local args = {...}
             
             if method == "Kick" or method == "Ban" then
-                print("🚫 Anti-Admin: Blocked kick/ban attempt")
+                print("🚫 Anti-Admin: Coba tendang/blokir diblokir")
                 return nil
             end
             
             if method == "CaptureService" or method == "RecordingService" then
-                print("📹 Anti-Admin: Blocked recording attempt")
+                print("📹 Anti-Admin: Coba rekam diblokir")
                 return nil
             end
             
@@ -366,7 +361,7 @@ local function setupAdvancedMetatableProtection()
                 
                 for _, blocked in pairs(blockedRemotes) do
                     if remoteName:find(blocked) then
-                        print("🛡️ Anti-Admin: Blocked admin remote - " .. remoteName)
+                        print("🛡️ Anti-Admin: Perintah admin diblokir - " .. remoteName)
                         return nil
                     end
                 end
@@ -376,17 +371,17 @@ local function setupAdvancedMetatableProtection()
         end
 
         pcall(setreadonly, mt, true)
-        print("🔐 Anti-Admin: Advanced metatable protection active")
+        print("🔐 Anti-Admin: Perlindungan metatable jalan")
     end)
 end
 
--- Function to detect if player has anti admin (improved)
+-- Cek apakah pemain punya pelindung
 local function hasAntiAdmin(targetPlayer)
     if not targetPlayer or not targetPlayer.Parent then return false end
     return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
 end
 
--- Function to find unprotected target (improved)
+-- Cari pemain tanpa pelindung
 local function findUnprotectedTarget(excludePlayers)
     local availablePlayers = {}
     
@@ -407,7 +402,7 @@ local function findUnprotectedTarget(excludePlayers)
     return nil
 end
 
--- Enhanced reverse effect function with better safety
+-- Balik serang admin/pemain lain
 local function reverseEffect(effectType, originalSource)
     if not protectionStates.mainProtection.enabled then return end
 
@@ -442,7 +437,7 @@ local function reverseEffect(effectType, originalSource)
 
             if effectType == "kill" then
                 safeSetProperty(targetHumanoid, "Health", 0)
-                print("⚡ Reversed kill effect to: " .. currentTarget.Name)
+                print("⚡ Balik bunuh ke: " .. currentTarget.Name)
             elseif effectType == "teleport" then
                 local randomPos = Vector3.new(
                     math.random(-1000, 1000),
@@ -450,26 +445,24 @@ local function reverseEffect(effectType, originalSource)
                     math.random(-1000, 1000)
                 )
                 safeSetProperty(targetRootPart, "CFrame", CFrame.new(randomPos))
-                print("🌀 Reversed teleport effect to: " .. currentTarget.Name)
+                print("🌀 Balik teleport ke: " .. currentTarget.Name)
             elseif effectType == "fling" then
                 safeSetProperty(targetRootPart, "Velocity", Vector3.new(
                     math.random(-100, 100),
                     math.random(50, 200),
                     math.random(-100, 100)
                 ))
-                print("💨 Reversed fling effect to: " .. currentTarget.Name)
+                print("💨 Balik lempar ke: " .. currentTarget.Name)
             end
         end
     end)
 end
 
--- Anti-Noclip and Anti-Fly functions removed as requested
-
--- Enhanced protection handler with better safety
+-- Ngejaga dari serangan admin
 local function handleAntiAdmin()
     if not humanoid or not rootPart then return end
 
-    -- Health protection
+    -- Jaga nyawa
     if humanoid and typeof(humanoid) == "Instance" then
         local healthConnection = safeCall(function()
             return humanoid.HealthChanged:Connect(function(health)
@@ -477,7 +470,7 @@ local function handleAntiAdmin()
                 if health < lastKnownHealth and health <= 0 then
                     safeCall(function()
                         safeSetProperty(humanoid, "Health", lastKnownHealth)
-                        print("💖 Anti-Admin: Kill attempt blocked")
+                        print("💖 Anti-Admin: Coba bunuh diblokir")
                         reverseEffect("kill", effectSources[player])
                     end)
                 end
@@ -490,7 +483,7 @@ local function handleAntiAdmin()
         end
     end
 
-    -- Position protection
+    -- Jaga posisi
     if rootPart and typeof(rootPart) == "Instance" then
         local positionConnection = safeCall(function()
             return rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
@@ -501,7 +494,7 @@ local function handleAntiAdmin()
                         local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
                         if distance > 100 then
                             safeSetProperty(rootPart, "CFrame", lastKnownPosition)
-                            print("🚀 Anti-Admin: Mass teleport blocked")
+                            print("🚀 Anti-Admin: Teleport jauh diblokir")
                             reverseEffect("teleport", effectSources[player])
                         end
                     end
@@ -514,18 +507,16 @@ local function handleAntiAdmin()
             antiAdminConnections.position = positionConnection
         end
     end
-
-    -- Anti-Noclip and Anti-Fly removed as requested
 end
 
--- Mass Protection Detection with improved safety
+-- Ngejaga dari spam
 local function detectMassEffects()
     spawn(function()
         while protectionStates.massProtection.enabled do
             safeCall(function()
                 restoreLightingSettings()
                 
-                -- Detect part spam
+                -- Cek benda spam
                 local partCount = 0
                 for _, obj in pairs(Workspace:GetChildren()) do
                     if obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
@@ -541,10 +532,10 @@ local function detectMassEffects()
                             end
                         end
                     end
-                    print("🧹 Anti-Admin: Part spam detected and cleaned")
+                    print("🧹 Anti-Admin: Benda spam dibersihin")
                 end
                 
-                -- Detect sound spam
+                -- Cek suara spam
                 local soundCount = 0
                 for _, obj in pairs(Workspace:GetDescendants()) do
                     if obj:IsA("Sound") and obj.IsPlaying and obj.Volume > 0.5 then
@@ -559,7 +550,7 @@ local function detectMassEffects()
                 end
                 
                 if soundCount > soundSpamThreshold then
-                    print("🔇 Anti-Admin: Sound spam detected and muted")
+                    print("🔇 Anti-Admin: Suara spam dimute")
                 end
             end)
             wait(2)
@@ -567,12 +558,11 @@ local function detectMassEffects()
     end)
 end
 
--- Advanced Bypass Methods with improved safety
+-- Jalan pintas canggih
 local function setupAdvancedBypass()
     spawn(function()
         while protectionStates.advancedBypass.enabled do
             safeCall(function()
-                -- Simple memory operations instead of HTTP requests
                 local dummy = {}
                 for i = 1, math.random(10, 100) do
                     dummy[i] = math.random(1, 1000000)
@@ -587,35 +577,33 @@ local function setupAdvancedBypass()
     spawn(function()
         while protectionStates.advancedBypass.enabled do
             safeCall(function()
-                -- Safe alternative to DataStore operations
                 local tempData = {
                     status = "active",
                     timestamp = tick(),
                     random = math.random(1, 9999)
                 }
-                -- Simulate data operations without actual DataStore calls
                 tempData = nil
             end)
             wait(math.random(40, 60))
         end
     end)
     
-    print("⚡ Anti-Admin: Advanced bypass methods initialized")
+    print("⚡ Anti-Admin: Jalan pintas canggih jalan")
 end
 
--- User-friendly toggle functions with status feedback
+-- Tombol nyala/mati pelindung
 local function toggleMainProtection(enabled)
     protectionStates.mainProtection.enabled = enabled
     
     if enabled then
-        print("🛡️ " .. protectionStates.mainProtection.name .. " AKTIF")
-        print("   → " .. protectionStates.mainProtection.description)
+        print("🛡️ Pelindung Utama NYALA")
+        print("   → Ngejaga dari tendang, blokir, bunuh, teleport")
         if character and humanoid and rootPart then
             handleAntiAdmin()
         end
         setupAdvancedMetatableProtection()
     else
-        print("🛡️ " .. protectionStates.mainProtection.name .. " NONAKTIF")
+        print("🛡️ Pelindung Utama MATI")
         for _, conn in pairs(antiAdminConnections) do
             if conn and typeof(conn) == "RBXScriptConnection" then
                 safeCall(function() conn:Disconnect() end)
@@ -629,11 +617,11 @@ local function toggleMassProtection(enabled)
     protectionStates.massProtection.enabled = enabled
     
     if enabled then
-        print("🌊 " .. protectionStates.massProtection.name .. " AKTIF")
-        print("   → " .. protectionStates.massProtection.description)
+        print("🌊 Pelindung Spam NYALA")
+        print("   → Ngejaga dari benda, suara, dan cahaya spam")
         detectMassEffects()
     else
-        print("🌊 " .. protectionStates.massProtection.name .. " NONAKTIF")
+        print("🌊 Pelindung Spam MATI")
     end
 end
 
@@ -641,11 +629,11 @@ local function toggleStealthMode(enabled)
     protectionStates.stealthMode.enabled = enabled
     
     if enabled then
-        print("👤 " .. protectionStates.stealthMode.name .. " AKTIF")
-        print("   → " .. protectionStates.stealthMode.description)
+        print("👤 Mode Siluman NYALA")
+        print("   → Bikin susah ketahuan admin")
         initializeAntiDetection()
     else
-        print("👤 " .. protectionStates.stealthMode.name .. " NONAKTIF")
+        print("👤 Mode Siluman MATI")
     end
 end
 
@@ -653,11 +641,11 @@ local function toggleMemoryProtection(enabled)
     protectionStates.memoryProtection.enabled = enabled
     
     if enabled then
-        print("💾 " .. protectionStates.memoryProtection.name .. " AKTIF")
-        print("   → " .. protectionStates.memoryProtection.description)
+        print("💾 Pelindung Memori NYALA")
+        print("   → Ngejaga dari cek memori admin")
         setupMemoryProtection()
     else
-        print("💾 " .. protectionStates.memoryProtection.name .. " NONAKTIF")
+        print("💾 Pelindung Memori MATI")
     end
 end
 
@@ -665,15 +653,15 @@ local function toggleAdvancedBypass(enabled)
     protectionStates.advancedBypass.enabled = enabled
     
     if enabled then
-        print("⚡ " .. protectionStates.advancedBypass.name .. " AKTIF")
-        print("   → " .. protectionStates.advancedBypass.description)
+        print("⚡ Jalan Pintas Canggih NYALA")
+        print("   → Lewatin keamanan admin")
         setupAdvancedBypass()
     else
-        print("⚡ " .. protectionStates.advancedBypass.name .. " NONAKTIF")
+        print("⚡ Jalan Pintas Canggih MATI")
     end
 end
 
--- Reset states function with improved safety
+-- Reset semua pengaturan
 function AntiAdmin.resetStates()
     safeCall(function()
         for key, state in pairs(protectionStates) do
@@ -695,11 +683,11 @@ function AntiAdmin.resetStates()
             memoryCheck = 0
         }
         
-        print("🔄 Anti-Admin: All states reset")
+        print("🔄 Anti-Admin: Semua direset")
     end)
 end
 
--- Get protection status for UI
+-- Ambil status pelindung
 function AntiAdmin.getProtectionStatus()
     local status = {}
     for key, state in pairs(protectionStates) do
@@ -712,14 +700,14 @@ function AntiAdmin.getProtectionStatus()
     return status
 end
 
--- Load AntiAdmin buttons function with improved UI
+-- Muat tombol AntiAdmin
 function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
     if not createToggleButton or not FeatureContainer then
-        warn("AntiAdmin: Missing required UI functions")
+        warn("AntiAdmin: Tombol atau kontainer ga ada")
         return
     end
     
-    -- Create toggle buttons with user-friendly names and descriptions
+    -- Buat tombol buat nyalain/matikan
     createToggleButton(
         protectionStates.mainProtection.name, 
         toggleMainProtection, 
@@ -750,7 +738,7 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         function() toggleAdvancedBypass(false) end
     )
     
-    -- Add informative watermark with better styling
+    -- Tambah info di layar
     safeCall(function()
         local InfoLabel = Instance.new("TextLabel")
         InfoLabel.Name = "AntiAdminInfo"
@@ -761,7 +749,7 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoLabel.Size = UDim2.new(1, -2, 0, 55)
         InfoLabel.LayoutOrder = 999
         InfoLabel.Font = Enum.Font.GothamBold
-        InfoLabel.Text = "🛡️ SISTEM PERLINDUNGAN ANTI-ADMIN\n📌 Dibuat oleh: Fari Noveri\n⚡ Enhanced Protection System v2.2\n🚀 Error 117 Fixed - User Friendly"
+        InfoLabel.Text = "🛡️ SISTEM ANTI-ADMIN\n📌 Dibuat oleh: Fari Noveri\n⚡ Versi 2.2 - Error 117 Hilang\n🚀 Gampang Dipake, Aman!"
         InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
         InfoLabel.TextSize = 9
         InfoLabel.TextYAlignment = Enum.TextYAlignment.Center
@@ -773,14 +761,14 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoCorner.CornerRadius = UDim.new(0, 6)
         InfoCorner.Parent = InfoLabel
         
-        -- Enhanced animation with color cycling
+        -- Animasi warna keren
         spawn(function()
             if not TweenService then return end
             local colors = {
-                Color3.fromRGB(100, 200, 255), -- Blue
-                Color3.fromRGB(120, 255, 120), -- Green  
-                Color3.fromRGB(255, 120, 120), -- Red
-                Color3.fromRGB(255, 255, 120)  -- Yellow
+                Color3.fromRGB(100, 200, 255), -- Biru
+                Color3.fromRGB(120, 255, 120), -- Hijau
+                Color3.fromRGB(255, 120, 120), -- Merah
+                Color3.fromRGB(255, 255, 120)  -- Kuning
             }
             
             local colorIndex = 1
@@ -799,10 +787,10 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         end)
     end)
     
-    print("✅ AntiAdmin buttons loaded successfully!")
-    print("🎯 All Error 117 issues resolved")
-    print("🎨 User-friendly interface applied")
-    print("🚫 Anti-Fly and Anti-Noclip removed as requested")
+    print("✅ Tombol AntiAdmin dimuat!")
+    print("🎯 Error 117 sudah beres")
+    print("🎨 Tampilan gampang dipake")
+    print("🚫 Anti-Fly dan Anti-Noclip dihapus")
 end
 
 return AntiAdmin
