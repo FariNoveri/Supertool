@@ -1961,7 +1961,7 @@ local function initObjectUI()
 
         objItem.MouseButton1Click:Connect(function()
             spawnObject(obj.id)
-        end
+        end)
     end
 
     ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, ObjectLayout.AbsoluteContentSize.Y + 10)
