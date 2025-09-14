@@ -773,43 +773,54 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoLabel.BackgroundColor3 = Color3.fromRGB(15, 25, 35)
         InfoLabel.BorderColor3 = Color3.fromRGB(0, 150, 255)
         InfoLabel.BorderSizePixel = 2
-        InfoLabel.Size = UDim2.new(1, -2, 0, 200) -- Tinggi diperbesar untuk muat semua teks
+        InfoLabel.Size = UDim2.new(1, -2, 0, 280) -- Tinggi diperbesar lagi untuk muat semua teks
         InfoLabel.LayoutOrder = 999
-        InfoLabel.Font = Enum.Font.GothamBold
-        InfoLabel.TextSize = 12 -- Diperbesar dari 9 ke 12
+        InfoLabel.Font = Enum.Font.Gotham -- Ganti ke Gotham biasa, bukan Bold
+        InfoLabel.TextSize = 10 -- Kecilkan dikit biar muat lebih banyak
         InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
         InfoLabel.TextYAlignment = Enum.TextYAlignment.Top -- Ubah ke Top biar mulai dari atas
         InfoLabel.TextXAlignment = Enum.TextXAlignment.Left -- Rata kiri
         InfoLabel.TextWrapped = true
         InfoLabel.TextStrokeTransparency = 0.7
         InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        InfoLabel.TextScaled = false -- Matikan TextScaled biar ga auto kecil
         
-        -- Teks yang rapi dengan format kebawah (FIXED)
+        -- Teks yang rapi dengan format kebawah (FIXED LAGI)
         InfoLabel.Text = [[🛡️ SISTEM ANTI-ADMIN
-📌 Buatan: Fari Noveri | ⚡ Versi 2.2 | 🚀 Error 117 & 217 Hilang
+📌 Buatan: Fari Noveri
+⚡ Versi 2.2 | 🚀 Error 117 & 217 Hilang
 
 🎯 FITUR TERSEDIA:
 
 🛡️ Pelindung Utama
-   → Melindungi dari tendang, blokir, bunuh, pindah karakter
-   → Bisa balik serang ke admin!
+→ Melindungi dari tendang, blokir, bunuh
+→ Melindungi dari pindah karakter paksa  
+→ Bisa balik serang ke admin!
 
 🌊 Pelindung Spam  
-   → Hapus spam benda (>50 objek)
-   → Mute suara berisik (>3 suara)
-   → Blokir perubahan cahaya aneh
+→ Hapus spam benda (>50 objek)
+→ Mute suara berisik (>3 suara)
+→ Blokir perubahan cahaya aneh
+→ Restore lighting otomatis
 
 👤 Mode Siluman
-   → Sembunyi dari admin
-   → Ngacak data jadi kayak pemain biasa
+→ Sembunyi dari admin
+→ Ngacak data jadi kayak pemain biasa
+→ Block script scanning
 
 💾 Pelindung Memori
-   → Lindungi dari cek memori game
+→ Lindungi dari cek memori game
+→ Fake memory usage
+→ Counter detection methods
 
 ⚡ Jalan Pintas Canggih
-   → Lewati sistem keamanan admin
+→ Lewati sistem keamanan admin
+→ Advanced bypass techniques
+→ Memory protection tricks
 
-🎨 Interface gampang dipakai!]]
+🎨 Interface gampang dipakai!
+✅ Full compatibility dengan semua executor
+🔧 Auto-skip fitur yang ga support]]
 
         -- Tambahkan padding untuk teks (FIXED)
         local TextPadding = Instance.new("UIPadding")
