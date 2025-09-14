@@ -318,7 +318,7 @@ local function toggleHideAllNicknames(enabled)
     Visual.hideAllNicknames = enabled
     print("Hide All Nicknames:", enabled)
     
-    for _, targetPlayer in pairs(Players:GetPlayers()) do
+    local function hideNickname(targetPlayer)
         if targetPlayer ~= player and targetPlayer.Character then
             local head = targetPlayer.Character:FindFirstChild("Head")
             if head then
@@ -329,6 +329,51 @@ local function toggleHideAllNicknames(enabled)
             end
         end
     end
+    
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        hideNickname(targetPlayer)
+    end
+    
+    if enabled then
+        if connections.hideAllNickPlayerAdded then
+            connections.hideAllNickPlayerAdded:Disconnect()
+        end
+        connections.hideAllNickPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
+            if newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function()
+                    task.wait(0.3)
+                    if Visual.hideAllNicknames then
+                        hideNickname(newPlayer)
+                    end
+                end)
+            end
+        end)
+        
+        for _, targetPlayer in pairs(Players:GetPlayers()) do
+            if targetPlayer ~= player then
+                if connections["hideAllNickCharAdded" .. targetPlayer.UserId] then
+                    connections["hideAllNickCharAdded" .. targetPlayer.UserId]:Disconnect()
+                end
+                connections["hideAllNickCharAdded" .. targetPlayer.UserId] = targetPlayer.CharacterAdded:Connect(function()
+                    task.wait(0.3)
+                    if Visual.hideAllNicknames then
+                        hideNickname(targetPlayer)
+                    end
+                end)
+            end
+        end
+    else
+        if connections.hideAllNickPlayerAdded then
+            connections.hideAllNickPlayerAdded:Disconnect()
+            connections.hideAllNickPlayerAdded = nil
+        end
+        for key, conn in pairs(connections) do
+            if string.match(key, "hideAllNickCharAdded") then
+                conn:Disconnect()
+                connections[key] = nil
+            end
+        end
+    end
 end
 
 -- Hide Own Nickname - Hides only the player's nickname
@@ -336,14 +381,35 @@ local function toggleHideOwnNickname(enabled)
     Visual.hideOwnNickname = enabled
     print("Hide Own Nickname:", enabled)
     
-    local character = player.Character
-    if character then
-        local head = character:FindFirstChild("Head")
-        if head then
-            local billboard = head:FindFirstChildOfClass("BillboardGui")
-            if billboard then
-                billboard.Enabled = not enabled
+    local function hideOwn()
+        local character = player.Character
+        if character then
+            local head = character:FindFirstChild("Head")
+            if head then
+                local billboard = head:FindFirstChildOfClass("BillboardGui")
+                if billboard then
+                    billboard.Enabled = not enabled
+                end
             end
+        end
+    end
+    
+    hideOwn()
+    
+    if enabled then
+        if connections.hideOwnNickCharAdded then
+            connections.hideOwnNickCharAdded:Disconnect()
+        end
+        connections.hideOwnNickCharAdded = player.CharacterAdded:Connect(function()
+            task.wait(0.3)
+            if Visual.hideOwnNickname then
+                hideOwn()
+            end
+        end)
+    else
+        if connections.hideOwnNickCharAdded then
+            connections.hideOwnNickCharAdded:Disconnect()
+            connections.hideOwnNickCharAdded = nil
         end
     end
 end
@@ -407,10 +473,14 @@ local function toggleHideAllCharactersExceptSelf(enabled)
     Visual.hideAllCharactersExceptSelf = enabled
     print("Hide All Characters Except Self:", enabled)
     
-    for _, targetPlayer in pairs(Players:GetPlayers()) do
+    local function hideOther(targetPlayer)
         if targetPlayer ~= player then
             hideCharacter(targetPlayer, enabled)
         end
+    end
+    
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        hideOther(targetPlayer)
     end
     
     if enabled then
@@ -436,6 +506,28 @@ local function toggleHideAllCharactersExceptSelf(enabled)
                 characterTransparencies[leavingPlayer] = nil
             end
         end)
+        
+        for _, targetPlayer in pairs(Players:GetPlayers()) do
+            if targetPlayer ~= player then
+                if connections["hideAllCharsCharAdded" .. targetPlayer.UserId] then
+                    connections["hideAllCharsCharAdded" .. targetPlayer.UserId]:Disconnect()
+                end
+                if connections["hideAllCharsCharRemoving" .. targetPlayer.UserId] then
+                    connections["hideAllCharsCharRemoving" .. targetPlayer.UserId]:Disconnect()
+                end
+                connections["hideAllCharsCharAdded" .. targetPlayer.UserId] = targetPlayer.CharacterAdded:Connect(function()
+                    task.wait(0.3)
+                    if Visual.hideAllCharactersExceptSelf then
+                        hideOther(targetPlayer)
+                    end
+                end)
+                connections["hideAllCharsCharRemoving" .. targetPlayer.UserId] = targetPlayer.CharacterRemoving:Connect(function()
+                    if characterTransparencies[targetPlayer] then
+                        characterTransparencies[targetPlayer] = nil
+                    end
+                end)
+            end
+        end
     else
         if connections.hideAllCharsPlayerAdded then
             connections.hideAllCharsPlayerAdded:Disconnect()
@@ -445,6 +537,12 @@ local function toggleHideAllCharactersExceptSelf(enabled)
             connections.hideAllCharsPlayerRemoving:Disconnect()
             connections.hideAllCharsPlayerRemoving = nil
         end
+        for key, conn in pairs(connections) do
+            if string.match(key, "hideAllCharsCharAdded") or string.match(key, "hideAllCharsCharRemoving") then
+                conn:Disconnect()
+                connections[key] = nil
+            end
+        end
     end
 end
 
@@ -452,7 +550,38 @@ end
 local function toggleHideSelfCharacter(enabled)
     Visual.hideSelfCharacter = enabled
     print("Hide Self Character:", enabled)
+    
     hideCharacter(player, enabled)
+    
+    if enabled then
+        if connections.hideSelfCharAdded then
+            connections.hideSelfCharAdded:Disconnect()
+        end
+        connections.hideSelfCharAdded = player.CharacterAdded:Connect(function()
+            task.wait(0.3)
+            if Visual.hideSelfCharacter then
+                hideCharacter(player, true)
+            end
+        end)
+        
+        if connections.hideSelfCharRemoving then
+            connections.hideSelfCharRemoving:Disconnect()
+        end
+        connections.hideSelfCharRemoving = player.CharacterRemoving:Connect(function()
+            if characterTransparencies[player] then
+                characterTransparencies[player] = nil
+            end
+        end)
+    else
+        if connections.hideSelfCharAdded then
+            connections.hideSelfCharAdded:Disconnect()
+            connections.hideSelfCharAdded = nil
+        end
+        if connections.hideSelfCharRemoving then
+            connections.hideSelfCharRemoving:Disconnect()
+            connections.hideSelfCharRemoving = nil
+        end
+    end
 end
 
 -- NoClipCamera - Camera passes through objects while maintaining normal movement
@@ -820,7 +949,8 @@ local function toggleFreecam(enabled)
         camera.CameraSubject = nil
         
         if UserInputService then
-            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+            UserInputService.MouseIconEnabled = false
         end
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
@@ -896,11 +1026,9 @@ local function toggleFreecam(enabled)
                 if not Visual.freecamEnabled or processed then return end
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    if UserInputService:IsMouseButtonPressed(Enum.MouseButton.Right) then
-                        local sensitivity = 0.003
-                        freecamYaw = freecamYaw - input.Delta.X * sensitivity
-                        freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
-                    end
+                    local sensitivity = 0.003
+                    freecamYaw = freecamYaw - input.Delta.X * sensitivity
+                    freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
                 end
             end)
             if connections and type(connections) == "table" then
@@ -934,7 +1062,7 @@ local function toggleFreecam(enabled)
             end
         end
         
-        print("Freecam enabled - Use Right Click + Mouse to rotate camera, WASD/QEZC to move")
+        print("Freecam enabled - Mouse locked, WASD/QE to move")
         
     else
         if connections and type(connections) == "table" and connections.freecamConnection then
@@ -975,6 +1103,7 @@ local function toggleFreecam(enabled)
         
         if UserInputService then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
         end
         
         freecamCFrame = nil
