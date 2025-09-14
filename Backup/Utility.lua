@@ -1406,12 +1406,56 @@ local function showEditorGUI(obj)
         end
     end)
     
+    -- Drag Move Button (new feature)
+    local Mouse = player:GetMouse()
+    local isDragging = false
+    local dragConnection
+    local dragBtn = Instance.new("TextButton")
+    dragBtn.Parent = scrollFrame
+    dragBtn.Size = UDim2.new(1, 0, 0, 20)
+    dragBtn.BackgroundColor3 = Color3.fromRGB(120, 80, 60)
+    dragBtn.Text = "Toggle Drag Move"
+    dragBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    dragBtn.Font = Enum.Font.Gotham
+    dragBtn.TextSize = 8
+    dragBtn.MouseButton1Click:Connect(function()
+        isDragging = not isDragging
+        dragBtn.Text = isDragging and "Disable Drag Move" or "Toggle Drag Move"
+        if isDragging then
+            dragConnection = RunService.RenderStepped:Connect(function()
+                if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
+                if not selectedObject or not selectedObject.Parent then return end
+                local camera = workspace.CurrentCamera
+                local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+                local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+                local normal = camera.CFrame.LookVector
+                local denominator = ray.Direction:Dot(normal)
+                if math.abs(denominator) > 1e-6 then
+                    local t = (selectedObject.Position - ray.Origin):Dot(normal) / denominator
+                    local hit = ray.Origin + ray.Direction * t
+                    selectedObject.CFrame = CFrame.new(hit) * (selectedObject.CFrame - selectedObject.CFrame.Position)
+                end
+            end)
+        else
+            if dragConnection then
+                dragConnection:Disconnect()
+                dragConnection = nil
+            end
+        end
+    end)
+    
     -- Update canvas size
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     end)
     
-    closeButton.MouseButton1Click:Connect(clearSelection)
+    closeButton.MouseButton1Click:Connect(function()
+        if dragConnection then
+            dragConnection:Disconnect()
+            dragConnection = nil
+        end
+        clearSelection()
+    end)
 end
 
 local function setupEditorInput()
