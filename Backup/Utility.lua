@@ -14,6 +14,7 @@
 -- NEW: Added Object Spawner Feature with input ID or predefined objects
 -- REMOVED: Chat Feature entirely
 -- FIXED: Object Editor nil calls and GUI size issues
+-- NEW FIXES: Persistent GUI position, fixed drag reset, added freeze, copy list with delete, HEX color, remove effects
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -57,11 +58,14 @@ local selectedObject = nil
 local selectionBox = nil
 local editorGui = nil
 local deletedObjects = {}  -- Stack for undo: {object = clone, parent = originalParent, name = name}
-local copiedObjects = {}  -- Stack for copied objects: {object = clone, originalCFrame = cframe}
+local copiedObjects = {}  -- List for copied objects: {object = clone, originalCFrame = cframe}
 local editedObjects = {}  -- Stack for undo edits: {object = obj, property = prop, oldValue = value}
 local EditorScrollFrame, EditorLayout
 local editorListVisible = false
 local EditorListFrame
+local lastGuiPosition = UDim2.new(0.5, -150, 0.3, 0)  -- Default position
+local copyListFrame = nil
+local copyListVisible = false
 
 -- Gear Loader Variables
 local gearFrameVisible = false
@@ -976,6 +980,7 @@ local function clearSelection()
     end
     selectedObject = nil
     if editorGui and editorGui.Parent then
+        lastGuiPosition = editorGui.Position  -- Save last position
         editorGui:Destroy()
         editorGui = nil
     end
@@ -1005,28 +1010,35 @@ local function copyObject()
     local success, err = pcall(function()
         local clone = selectedObject:Clone()
         table.insert(copiedObjects, {object = clone, originalCFrame = selectedObject.CFrame})
-        print("[SUPERTOOL] Copied: " .. selectedObject.Name)
+        print("[SUPERTOOL] Copied: " .. selectedObject.Name .. " to list (#" .. #copiedObjects .. ")")
     end)
     if not success then
         warn("[SUPERTOOL] Copy failed: " .. tostring(err))
     end
 end
 
-local function pasteObject()
-    if #copiedObjects == 0 then 
-        warn("[SUPERTOOL] No object copied to paste")
+local function pasteObject(index)
+    if #copiedObjects == 0 or not index or index < 1 or index > #copiedObjects then 
+        warn("[SUPERTOOL] Invalid copy index to paste")
         return 
     end
     local success, err = pcall(function()
         if not updateCharacterReferences() then return end
-        local lastCopied = copiedObjects[#copiedObjects]
-        local newPaste = lastCopied.object:Clone()
+        local copied = copiedObjects[index]
+        local newPaste = copied.object:Clone()
         newPaste.CFrame = rootPart.CFrame * CFrame.new(0, 5, 0)  -- Paste above player to avoid clipping
         newPaste.Parent = workspace
-        print("[SUPERTOOL] Pasted: " .. lastCopied.object.Name)
+        print("[SUPERTOOL] Pasted from list #" .. index .. ": " .. copied.object.Name)
     end)
     if not success then
         warn("[SUPERTOOL] Paste failed: " .. tostring(err))
+    end
+end
+
+local function deleteCopy(index)
+    if index and index >= 1 and index <= #copiedObjects then
+        table.remove(copiedObjects, index)
+        print("[SUPERTOOL] Deleted copy #" .. index .. " from list")
     end
 end
 
@@ -1098,16 +1110,20 @@ local function toggleCanCollide()
     end
 end
 
-local function changeColor(r, g, b)
+local function changeColor(hex)
     if not selectedObject then 
         warn("[SUPERTOOL] No object selected for color change")
         return 
     end
     local success, err = pcall(function()
+        local r, g, b = hex:match("#?(%x%x)(%x%x)(%x%x)")
+        r = tonumber(r, 16)
+        g = tonumber(g, 16)
+        b = tonumber(b, 16)
         local oldColor = selectedObject.Color
         table.insert(editedObjects, {object = selectedObject, property = "Color", oldValue = oldColor})
-        selectedObject.Color = Color3.fromRGB(r, g, b)  -- Fixed to use fromRGB for 0-255 input
-        print("[SUPERTOOL] Changed color to RGB(" .. r .. "," .. g .. "," .. b .. ")")
+        selectedObject.Color = Color3.fromRGB(r, g, b)
+        print("[SUPERTOOL] Changed color to HEX #" .. hex)
     end)
     if not success then
         warn("[SUPERTOOL] Color change failed: " .. tostring(err))
@@ -1217,6 +1233,53 @@ local function addSurfaceLight()
     end
 end
 
+-- New Feature: Freeze Object
+local function freezeObject()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for freeze")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldAnchored = selectedObject.Anchored
+        local oldVelocity = selectedObject.Velocity
+        table.insert(editedObjects, {object = selectedObject, property = "Anchored", oldValue = oldAnchored})
+        table.insert(editedObjects, {object = selectedObject, property = "Velocity", oldValue = oldVelocity})
+        selectedObject.Anchored = true
+        selectedObject.Velocity = Vector3.new(0, 0, 0)
+        print("[SUPERTOOL] Froze object: " .. selectedObject.Name)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Freeze failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Remove Effects (e.g., slippery, custom physics)
+local function removeEffects()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for removing effects")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldProperties = selectedObject.CustomPhysicalProperties
+        table.insert(editedObjects, {object = selectedObject, property = "CustomPhysicalProperties", oldValue = oldProperties})
+        selectedObject.CustomPhysicalProperties = nil  -- Remove custom physics
+        for _, surface in pairs(Enum.SurfaceType:GetEnumItems()) do
+            if selectedObject.TopSurface == surface or selectedObject.BottomSurface == surface or selectedObject.LeftSurface == surface or selectedObject.RightSurface == surface or selectedObject.FrontSurface == surface or selectedObject.BackSurface == surface then
+                selectedObject.TopSurface = Enum.SurfaceType.Smooth
+                selectedObject.BottomSurface = Enum.SurfaceType.Smooth
+                selectedObject.LeftSurface = Enum.SurfaceType.Smooth
+                selectedObject.RightSurface = Enum.SurfaceType.Smooth
+                selectedObject.FrontSurface = Enum.SurfaceType.Smooth
+                selectedObject.BackSurface = Enum.SurfaceType.Smooth
+            end
+        end
+        print("[SUPERTOOL] Removed effects from: " .. selectedObject.Name)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Remove effects failed: " .. tostring(err))
+    end
+end
+
 local function undoObjectEdit()
     if #editedObjects > 0 then
         local lastEdit = table.remove(editedObjects)
@@ -1244,6 +1307,130 @@ local function undoObjectEdit()
     updateEditorList()
 end
 
+local function initCopyListUI()
+    if copyListFrame then return end
+    
+    copyListFrame = Instance.new("Frame")
+    copyListFrame.Name = "CopyListFrame"
+    copyListFrame.Parent = ScreenGui
+    copyListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    copyListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    copyListFrame.BorderSizePixel = 1
+    copyListFrame.Position = UDim2.new(0.5, 200, 0.5, 0)
+    copyListFrame.Size = UDim2.new(0, 250, 0, 300)
+    copyListFrame.Visible = false
+    copyListFrame.Active = true
+    copyListFrame.Draggable = true
+
+    local title = Instance.new("TextLabel")
+    title.Parent = copyListFrame
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.BorderSizePixel = 0
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.Font = Enum.Font.GothamBold
+    title.Text = "Copy List"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 12
+
+    local closeButton = Instance.new("TextButton")
+    closeButton.Parent = copyListFrame
+    closeButton.BackgroundTransparency = 1
+    closeButton.Position = UDim2.new(1, -25, 0, 3)
+    closeButton.Size = UDim2.new(0, 20, 0, 20)
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeButton.TextSize = 14
+
+    local copyScrollFrame = Instance.new("ScrollingFrame")
+    copyScrollFrame.Parent = copyListFrame
+    copyScrollFrame.BackgroundTransparency = 1
+    copyScrollFrame.Position = UDim2.new(0, 5, 0, 30)
+    copyScrollFrame.Size = UDim2.new(1, -10, 1, -35)
+    copyScrollFrame.ScrollBarThickness = 4
+    copyScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    copyScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    local copyLayout = Instance.new("UIListLayout")
+    copyLayout.Parent = copyScrollFrame
+    copyLayout.Padding = UDim.new(0, 3)
+
+    closeButton.MouseButton1Click:Connect(function()
+        copyListFrame.Visible = false
+        copyListVisible = false
+    end)
+end
+
+local function updateCopyList()
+    if not copyListFrame then initCopyListUI() end
+    local scrollFrame = copyListFrame:FindFirstChildOfClass("ScrollingFrame")
+    if not scrollFrame then return end
+    
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    for i, copied in ipairs(copiedObjects) do
+        local itemFrame = Instance.new("Frame")
+        itemFrame.Parent = scrollFrame
+        itemFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        itemFrame.Size = UDim2.new(1, 0, 0, 30)
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Parent = itemFrame
+        nameLabel.Position = UDim2.new(0, 5, 0, 5)
+        nameLabel.Size = UDim2.new(0.6, 0, 1, -10)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = "#" .. i .. ": " .. copied.object.Name
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 10
+        nameLabel.Font = Enum.Font.Gotham
+        
+        local pasteBtn = Instance.new("TextButton")
+        pasteBtn.Parent = itemFrame
+        pasteBtn.Position = UDim2.new(0.65, 0, 0, 5)
+        pasteBtn.Size = UDim2.new(0.15, 0, 1, -10)
+        pasteBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+        pasteBtn.Text = "Paste"
+        pasteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        pasteBtn.TextSize = 10
+        pasteBtn.Font = Enum.Font.Gotham
+        pasteBtn.MouseButton1Click:Connect(function()
+            pasteObject(i)
+        end)
+        
+        local deleteBtn = Instance.new("TextButton")
+        deleteBtn.Parent = itemFrame
+        deleteBtn.Position = UDim2.new(0.82, 0, 0, 5)
+        deleteBtn.Size = UDim2.new(0.15, 0, 1, -10)
+        deleteBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+        deleteBtn.Text = "Delete"
+        deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        deleteBtn.TextSize = 10
+        deleteBtn.Font = Enum.Font.Gotham
+        deleteBtn.MouseButton1Click:Connect(function()
+            deleteCopy(i)
+            updateCopyList()
+        end)
+    end
+    
+    local layout = scrollFrame:FindFirstChildOfClass("UIListLayout")
+    if layout then
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+    end
+end
+
+local function toggleCopyList()
+    if not copyListFrame then initCopyListUI() end
+    copyListVisible = not copyListVisible
+    copyListFrame.Visible = copyListVisible
+    if copyListVisible then
+        updateCopyList()
+    end
+end
+
 local function showEditorGUI(obj)
     if not obj or not obj:IsA("BasePart") then
         warn("[SUPERTOOL] Invalid object for editor. Must be a BasePart.")
@@ -1260,7 +1447,7 @@ local function showEditorGUI(obj)
     
     editorGui = Instance.new("Frame")
     editorGui.Parent = ScreenGui
-    editorGui.Position = UDim2.new(0.5, -150, 0.3, 0)
+    editorGui.Position = lastGuiPosition  -- Use last position
     editorGui.Size = UDim2.new(0, 300, 0, 500)  -- Larger GUI for more features
     editorGui.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     editorGui.BorderColor3 = Color3.fromRGB(45, 45, 45)
@@ -1340,22 +1527,22 @@ local function showEditorGUI(obj)
     copyBtn.Parent = scrollFrame
     copyBtn.Size = UDim2.new(1, 0, 0, 25)
     copyBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
-    copyBtn.Text = "Copy (Saves to clipboard)"
+    copyBtn.Text = "Copy to List (Saves to copy list)"
     copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     copyBtn.Font = Enum.Font.Gotham
     copyBtn.TextSize = 10
     copyBtn.MouseButton1Click:Connect(copyObject)
     
-    -- Paste Button
-    local pasteBtn = Instance.new("TextButton")
-    pasteBtn.Parent = scrollFrame
-    pasteBtn.Size = UDim2.new(1, 0, 0, 25)
-    pasteBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
-    pasteBtn.Text = "Paste (Places copied object near player)"
-    pasteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    pasteBtn.Font = Enum.Font.Gotham
-    pasteBtn.TextSize = 10
-    pasteBtn.MouseButton1Click:Connect(pasteObject)
+    -- View Copy List Button
+    local viewCopyListBtn = Instance.new("TextButton")
+    viewCopyListBtn.Parent = scrollFrame
+    viewCopyListBtn.Size = UDim2.new(1, 0, 0, 25)
+    viewCopyListBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
+    viewCopyListBtn.Text = "View Copy List (Paste/Delete from list)"
+    viewCopyListBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    viewCopyListBtn.Font = Enum.Font.Gotham
+    viewCopyListBtn.TextSize = 10
+    viewCopyListBtn.MouseButton1Click:Connect(toggleCopyList)
     
     -- Delete Button
     local deleteBtn = Instance.new("TextButton")
@@ -1561,62 +1748,36 @@ local function showEditorGUI(obj)
     appearanceSection.Parent = scrollFrame
     
     -- Color Section
-    local colorFrame = Instance.new("Frame")
-    colorFrame.Parent = scrollFrame
-    colorFrame.Size = UDim2.new(1, 0, 0, 30)
-    colorFrame.BackgroundTransparency = 1
-    
     local colorLabel = Instance.new("TextLabel")
-    colorLabel.Parent = colorFrame
+    colorLabel.Parent = scrollFrame
     colorLabel.Size = UDim2.new(1, 0, 0, 15)
     colorLabel.BackgroundTransparency = 1
-    colorLabel.Text = "Color RGB (0-255):"
+    colorLabel.Text = "Color HEX (#RRGGBB):"
     colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     colorLabel.Font = Enum.Font.Gotham
     colorLabel.TextSize = 10
     
-    local rInput = Instance.new("TextBox")
-    rInput.Parent = colorFrame
-    rInput.Position = UDim2.new(0, 0, 0.5, 0)
-    rInput.Size = UDim2.new(0.3, 0, 0.5, 0)
-    rInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    rInput.Text = tostring(math.floor(selectedObject.Color.R * 255))
-    rInput.TextColor3 = Color3.fromRGB(255, 0, 0)
-    rInput.Font = Enum.Font.Gotham
-    rInput.TextSize = 10
-    
-    local gInput = Instance.new("TextBox")
-    gInput.Parent = colorFrame
-    gInput.Position = UDim2.new(0.33, 0, 0.5, 0)
-    gInput.Size = UDim2.new(0.3, 0, 0.5, 0)
-    gInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    gInput.Text = tostring(math.floor(selectedObject.Color.G * 255))
-    gInput.TextColor3 = Color3.fromRGB(0, 255, 0)
-    gInput.Font = Enum.Font.Gotham
-    gInput.TextSize = 10
-    
-    local bInput = Instance.new("TextBox")
-    bInput.Parent = colorFrame
-    bInput.Position = UDim2.new(0.66, 0, 0.5, 0)
-    bInput.Size = UDim2.new(0.3, 0, 0.5, 0)
-    bInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    bInput.Text = tostring(math.floor(selectedObject.Color.B * 255))
-    bInput.TextColor3 = Color3.fromRGB(0, 0, 255)
-    bInput.Font = Enum.Font.Gotham
-    bInput.TextSize = 10
+    local hexInput = Instance.new("TextBox")
+    hexInput.Parent = scrollFrame
+    hexInput.Size = UDim2.new(0.5, 0, 0, 25)
+    hexInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    hexInput.Text = string.format("#%02X%02X%02X", math.floor(selectedObject.Color.R * 255), math.floor(selectedObject.Color.G * 255), math.floor(selectedObject.Color.B * 255))
+    hexInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hexInput.Font = Enum.Font.Gotham
+    hexInput.TextSize = 10
     
     local colorBtn = Instance.new("TextButton")
     colorBtn.Parent = scrollFrame
-    colorBtn.Size = UDim2.new(1, 0, 0, 25)
+    colorBtn.Size = UDim2.new(0.5, 0, 0, 25)
     colorBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 120)
-    colorBtn.Text = "Apply Color (Sets RGB color)"
+    colorBtn.Text = "Apply Color (Sets HEX color)"
     colorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     colorBtn.Font = Enum.Font.Gotham
     colorBtn.TextSize = 10
     colorBtn.MouseButton1Click:Connect(function()
-        local r, g, b = tonumber(rInput.Text), tonumber(gInput.Text), tonumber(bInput.Text)
-        if r and g and b then
-            changeColor(r, g, b)
+        local hex = hexInput.Text:gsub("#", "")
+        if #hex == 6 then
+            changeColor(hex)
         end
     end)
     
@@ -1723,7 +1884,7 @@ local function showEditorGUI(obj)
     end)
     
     -- Effects Section
-    local effectsSection = createSectionLabel("Effects (Add Light, etc.)")
+    local effectsSection = createSectionLabel("Effects (Add Light, Freeze, Remove Effects)")
     effectsSection.Parent = scrollFrame
     
     -- Add Light Button
@@ -1736,6 +1897,28 @@ local function showEditorGUI(obj)
     lightBtn.Font = Enum.Font.Gotham
     lightBtn.TextSize = 10
     lightBtn.MouseButton1Click:Connect(addSurfaceLight)
+    
+    -- Freeze Button
+    local freezeBtn = Instance.new("TextButton")
+    freezeBtn.Parent = scrollFrame
+    freezeBtn.Size = UDim2.new(1, 0, 0, 25)
+    freezeBtn.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
+    freezeBtn.Text = "Freeze (Stops movement)"
+    freezeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    freezeBtn.Font = Enum.Font.Gotham
+    freezeBtn.TextSize = 10
+    freezeBtn.MouseButton1Click:Connect(freezeObject)
+    
+    -- Remove Effects Button
+    local removeEffectsBtn = Instance.new("TextButton")
+    removeEffectsBtn.Parent = scrollFrame
+    removeEffectsBtn.Size = UDim2.new(1, 0, 0, 25)
+    removeEffectsBtn.BackgroundColor3 = Color3.fromRGB(150, 100, 50)
+    removeEffectsBtn.Text = "Remove Effects (e.g. Slippery surfaces)"
+    removeEffectsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    removeEffectsBtn.Font = Enum.Font.Gotham
+    removeEffectsBtn.TextSize = 10
+    removeEffectsBtn.MouseButton1Click:Connect(removeEffects)
     
     -- Drag Move Button (existing, with better label)
     local Mouse = player:GetMouse()
@@ -2129,7 +2312,7 @@ function updatePathList()
             autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
             autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             autoRespButton.TextSize = 7
-            autoRespButton.Font = Enum.Font.GothamBold
+            autoPlayButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
 
             local toggleShowButton = Instance.new("TextButton")
@@ -2727,9 +2910,10 @@ function Utility.init(deps)
     task.spawn(function()
         initPathUI()
         initEditorListUI()
+        initCopyListUI()
         initGearUI()
         initObjectUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Enhanced Object Editor)")
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Enhanced Object Editor with fixes)")
     end)
 end
 
