@@ -13,6 +13,7 @@
 
 -- NEW: Added Object Spawner Feature with input ID or predefined objects
 -- REMOVED: Chat Feature entirely
+-- FIXED: Object Editor nil calls and GUI size issues
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -967,6 +968,587 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
+-- Object Editor Functions (enhanced) - Defined early to avoid nil calls
+local function clearSelection()
+    if selectionBox and selectionBox.Parent then
+        selectionBox:Destroy()
+        selectionBox = nil
+    end
+    selectedObject = nil
+    if editorGui and editorGui.Parent then
+        editorGui:Destroy()
+        editorGui = nil
+    end
+end
+
+local function duplicateObject()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for duplicate")
+        return 
+    end
+    local success, err = pcall(function()
+        local clone = selectedObject:Clone()
+        clone.CFrame = selectedObject.CFrame * CFrame.new(0, 0, -5)  -- Offset
+        clone.Parent = selectedObject.Parent
+        print("[SUPERTOOL] Duplicated: " .. selectedObject.Name)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Duplicate failed: " .. tostring(err))
+    end
+end
+
+local function copyObject()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for copy")
+        return 
+    end
+    local success, err = pcall(function()
+        local clone = selectedObject:Clone()
+        table.insert(copiedObjects, {object = clone, originalCFrame = selectedObject.CFrame})
+        print("[SUPERTOOL] Copied: " .. selectedObject.Name)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Copy failed: " .. tostring(err))
+    end
+end
+
+local function pasteObject()
+    if #copiedObjects == 0 then 
+        warn("[SUPERTOOL] No object copied to paste")
+        return 
+    end
+    local success, err = pcall(function()
+        if not updateCharacterReferences() then return end
+        local lastCopied = copiedObjects[#copiedObjects]
+        local newPaste = lastCopied.object:Clone()
+        newPaste.CFrame = rootPart.CFrame * CFrame.new(0, 0, -5)  -- Paste near player
+        newPaste.Parent = workspace
+        print("[SUPERTOOL] Pasted: " .. lastCopied.object.Name)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Paste failed: " .. tostring(err))
+    end
+end
+
+local function resizeObject(scale)
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for resize")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldSize = selectedObject.Size
+        table.insert(editedObjects, {object = selectedObject, property = "Size", oldValue = oldSize})
+        selectedObject.Size = oldSize * scale
+        print("[SUPERTOOL] Resized by " .. scale)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Resize failed: " .. tostring(err))
+    end
+end
+
+local function deleteObject()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for delete")
+        return 
+    end
+    local success, err = pcall(function()
+        local name = selectedObject.Name
+        local parent = selectedObject.Parent
+        local clone = selectedObject:Clone()
+        table.insert(deletedObjects, {object = clone, parent = parent, name = name})
+        selectedObject:Destroy()
+        clearSelection()
+        print("[SUPERTOOL] Deleted: " .. name)
+        updateEditorList()
+    end)
+    if not success then
+        warn("[SUPERTOOL] Delete failed: " .. tostring(err))
+    end
+end
+
+local function toggleAnchored()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for anchor toggle")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldValue = selectedObject.Anchored
+        table.insert(editedObjects, {object = selectedObject, property = "Anchored", oldValue = oldValue})
+        selectedObject.Anchored = not oldValue
+        print("[SUPERTOOL] Toggled Anchored to " .. tostring(not oldValue))
+    end)
+    if not success then
+        warn("[SUPERTOOL] Anchor toggle failed: " .. tostring(err))
+    end
+end
+
+local function toggleCanCollide()
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for collide toggle")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldValue = selectedObject.CanCollide
+        table.insert(editedObjects, {object = selectedObject, property = "CanCollide", oldValue = oldValue})
+        selectedObject.CanCollide = not oldValue
+        print("[SUPERTOOL] Toggled CanCollide to " .. tostring(not oldValue))
+    end)
+    if not success then
+        warn("[SUPERTOOL] Collide toggle failed: " .. tostring(err))
+    end
+end
+
+local function changeColor(r, g, b)
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for color change")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldColor = selectedObject.Color
+        table.insert(editedObjects, {object = selectedObject, property = "Color", oldValue = oldColor})
+        selectedObject.Color = Color3.new(r, g, b)
+        print("[SUPERTOOL] Changed color to RGB(" .. math.floor(r*255) .. "," .. math.floor(g*255) .. "," .. math.floor(b*255) .. ")")
+    end)
+    if not success then
+        warn("[SUPERTOOL] Color change failed: " .. tostring(err))
+    end
+end
+
+local function changeTransparency(trans)
+    if not selectedObject then 
+        warn("[SUPERTOOL] No object selected for transparency change")
+        return 
+    end
+    local success, err = pcall(function()
+        local oldTrans = selectedObject.Transparency
+        table.insert(editedObjects, {object = selectedObject, property = "Transparency", oldValue = oldTrans})
+        selectedObject.Transparency = math.clamp(trans, 0, 1)
+        print("[SUPERTOOL] Changed transparency to " .. trans)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Transparency change failed: " .. tostring(err))
+    end
+end
+
+local function undoObjectEdit()
+    if #editedObjects > 0 then
+        local lastEdit = table.remove(editedObjects)
+        local success, err = pcall(function()
+            if lastEdit.object and lastEdit.object.Parent then
+                lastEdit.object[lastEdit.property] = lastEdit.oldValue
+                print("[SUPERTOOL] Undid edit on " .. lastEdit.property)
+            end
+        end)
+        if not success then
+            warn("[SUPERTOOL] Undo edit failed: " .. tostring(err))
+        end
+    elseif #deletedObjects > 0 then
+        local lastDelete = table.remove(deletedObjects)
+        local success, err = pcall(function()
+            if lastDelete.object then
+                lastDelete.object.Parent = lastDelete.parent
+                print("[SUPERTOOL] Undid deletion of: " .. lastDelete.name)
+            end
+        end)
+        if not success then
+            warn("[SUPERTOOL] Undo delete failed: " .. tostring(err))
+        end
+    end
+    updateEditorList()
+end
+
+local function showEditorGUI(obj)
+    if not obj or not obj:IsA("BasePart") then
+        warn("[SUPERTOOL] Invalid object for editor")
+        return
+    end
+    clearSelection()
+    selectedObject = obj
+    
+    selectionBox = Instance.new("SelectionBox")
+    selectionBox.Parent = selectedObject
+    selectionBox.Adornee = selectedObject
+    selectionBox.LineThickness = 0.1
+    selectionBox.Color3 = Color3.fromRGB(0, 255, 0)
+    
+    editorGui = Instance.new("Frame")
+    editorGui.Parent = ScreenGui
+    editorGui.Position = UDim2.new(0.5, -125, 0.3, 0)
+    editorGui.Size = UDim2.new(0, 250, 0, 300)  -- Reduced size
+    editorGui.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    editorGui.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    editorGui.BorderSizePixel = 1
+    editorGui.Active = true
+    editorGui.Draggable = true
+    editorGui.ZIndex = 10
+    
+    local title = Instance.new("TextLabel")
+    title.Parent = editorGui
+    title.Size = UDim2.new(1, 0, 0, 20)
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.Text = "Object Editor: " .. selectedObject.Name
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 9  -- Smaller text
+    
+    local closeButton = Instance.new("TextButton")
+    closeButton.Parent = editorGui
+    closeButton.BackgroundTransparency = 1
+    closeButton.Position = UDim2.new(1, -20, 0, 1)
+    closeButton.Size = UDim2.new(0, 18, 0, 18)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.TextSize = 10
+    closeButton.ZIndex = 11
+    
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Parent = editorGui
+    scrollFrame.Position = UDim2.new(0, 5, 0, 25)
+    scrollFrame.Size = UDim2.new(1, -10, 1, -30)  -- Adjusted for smaller GUI
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.ScrollBarThickness = 4
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scrollFrame
+    layout.Padding = UDim.new(0, 1)
+    
+    -- Duplicate Button
+    local duplicateBtn = Instance.new("TextButton")
+    duplicateBtn.Parent = scrollFrame
+    duplicateBtn.Size = UDim2.new(1, 0, 0, 20)
+    duplicateBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    duplicateBtn.Text = "Duplicate"
+    duplicateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    duplicateBtn.Font = Enum.Font.Gotham
+    duplicateBtn.TextSize = 8
+    duplicateBtn.MouseButton1Click:Connect(duplicateObject)
+    
+    -- Copy Button
+    local copyBtn = Instance.new("TextButton")
+    copyBtn.Parent = scrollFrame
+    copyBtn.Size = UDim2.new(1, 0, 0, 20)
+    copyBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
+    copyBtn.Text = "Copy"
+    copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    copyBtn.Font = Enum.Font.Gotham
+    copyBtn.TextSize = 8
+    copyBtn.MouseButton1Click:Connect(copyObject)
+    
+    -- Paste Button
+    local pasteBtn = Instance.new("TextButton")
+    pasteBtn.Parent = scrollFrame
+    pasteBtn.Size = UDim2.new(1, 0, 0, 20)
+    pasteBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
+    pasteBtn.Text = "Paste"
+    pasteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pasteBtn.Font = Enum.Font.Gotham
+    pasteBtn.TextSize = 8
+    pasteBtn.MouseButton1Click:Connect(pasteObject)
+    
+    -- Resize Section
+    local resizeLabel = Instance.new("TextLabel")
+    resizeLabel.Parent = scrollFrame
+    resizeLabel.Size = UDim2.new(1, 0, 0, 15)
+    resizeLabel.BackgroundTransparency = 1
+    resizeLabel.Text = "Resize Scale:"
+    resizeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    resizeLabel.Font = Enum.Font.Gotham
+    resizeLabel.TextSize = 8
+    
+    local scaleInput = Instance.new("TextBox")
+    scaleInput.Parent = scrollFrame
+    scaleInput.Size = UDim2.new(0.5, 0, 0, 20)
+    scaleInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    scaleInput.Text = "1.5"
+    scaleInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    scaleInput.Font = Enum.Font.Gotham
+    scaleInput.TextSize = 8
+    
+    local resizeBtn = Instance.new("TextButton")
+    resizeBtn.Parent = scrollFrame
+    resizeBtn.Size = UDim2.new(0.5, 0, 0, 20)
+    resizeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 60)
+    resizeBtn.Text = "Resize"
+    resizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    resizeBtn.Font = Enum.Font.Gotham
+    resizeBtn.TextSize = 8
+    resizeBtn.MouseButton1Click:Connect(function()
+        local scale = tonumber(scaleInput.Text) or 1.5
+        resizeObject(scale)
+    end)
+    
+    -- Delete Button
+    local deleteBtn = Instance.new("TextButton")
+    deleteBtn.Parent = scrollFrame
+    deleteBtn.Size = UDim2.new(1, 0, 0, 20)
+    deleteBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    deleteBtn.Text = "Delete"
+    deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    deleteBtn.Font = Enum.Font.Gotham
+    deleteBtn.TextSize = 8
+    deleteBtn.MouseButton1Click:Connect(deleteObject)
+    
+    -- Toggle Anchored
+    local anchoredBtn = Instance.new("TextButton")
+    anchoredBtn.Parent = scrollFrame
+    anchoredBtn.Size = UDim2.new(1, 0, 0, 20)
+    anchoredBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    anchoredBtn.Text = selectedObject.Anchored and "Unanchor" or "Anchor"
+    anchoredBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    anchoredBtn.Font = Enum.Font.Gotham
+    anchoredBtn.TextSize = 8
+    anchoredBtn.MouseButton1Click:Connect(toggleAnchored)
+    
+    -- Toggle CanCollide
+    local collideBtn = Instance.new("TextButton")
+    collideBtn.Parent = scrollFrame
+    collideBtn.Size = UDim2.new(1, 0, 0, 20)
+    collideBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    collideBtn.Text = selectedObject.CanCollide and "No Collide" or "Collide"
+    collideBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    collideBtn.Font = Enum.Font.Gotham
+    collideBtn.TextSize = 8
+    collideBtn.MouseButton1Click:Connect(toggleCanCollide)
+    
+    -- Color Section - Use a frame for horizontal inputs
+    local colorFrame = Instance.new("Frame")
+    colorFrame.Parent = scrollFrame
+    colorFrame.Size = UDim2.new(1, 0, 0, 25)
+    colorFrame.BackgroundTransparency = 1
+    
+    local colorLabel = Instance.new("TextLabel")
+    colorLabel.Parent = colorFrame
+    colorLabel.Size = UDim2.new(1, 0, 0, 15)
+    colorLabel.BackgroundTransparency = 1
+    colorLabel.Text = "Color RGB:"
+    colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    colorLabel.Font = Enum.Font.Gotham
+    colorLabel.TextSize = 8
+    
+    local rInput = Instance.new("TextBox")
+    rInput.Parent = colorFrame
+    rInput.Position = UDim2.new(0, 0, 0, 15)
+    rInput.Size = UDim2.new(0.3, 0, 0, 18)
+    rInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    rInput.Text = tostring(math.floor(selectedObject.Color.R * 255))
+    rInput.TextColor3 = Color3.fromRGB(255, 0, 0)
+    rInput.Font = Enum.Font.Gotham
+    rInput.TextSize = 8
+    
+    local gInput = Instance.new("TextBox")
+    gInput.Parent = colorFrame
+    gInput.Position = UDim2.new(0.33, 0, 0, 15)
+    gInput.Size = UDim2.new(0.3, 0, 0, 18)
+    gInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    gInput.Text = tostring(math.floor(selectedObject.Color.G * 255))
+    gInput.TextColor3 = Color3.fromRGB(0, 255, 0)
+    gInput.Font = Enum.Font.Gotham
+    gInput.TextSize = 8
+    
+    local bInput = Instance.new("TextBox")
+    bInput.Parent = colorFrame
+    bInput.Position = UDim2.new(0.66, 0, 0, 15)
+    bInput.Size = UDim2.new(0.3, 0, 0, 18)
+    bInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    bInput.Text = tostring(math.floor(selectedObject.Color.B * 255))
+    bInput.TextColor3 = Color3.fromRGB(0, 0, 255)
+    bInput.Font = Enum.Font.Gotham
+    bInput.TextSize = 8
+    
+    local colorBtn = Instance.new("TextButton")
+    colorBtn.Parent = scrollFrame
+    colorBtn.Size = UDim2.new(1, 0, 0, 20)
+    colorBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 120)
+    colorBtn.Text = "Change Color"
+    colorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    colorBtn.Font = Enum.Font.Gotham
+    colorBtn.TextSize = 8
+    colorBtn.MouseButton1Click:Connect(function()
+        local r, g, b = tonumber(rInput.Text), tonumber(gInput.Text), tonumber(bInput.Text)
+        if r and g and b then
+            changeColor(r/255, g/255, b/255)
+        end
+    end)
+    
+    -- Transparency Section
+    local transLabel = Instance.new("TextLabel")
+    transLabel.Parent = scrollFrame
+    transLabel.Size = UDim2.new(1, 0, 0, 15)
+    transLabel.BackgroundTransparency = 1
+    transLabel.Text = "Transparency:"
+    transLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    transLabel.Font = Enum.Font.Gotham
+    transLabel.TextSize = 8
+    
+    local transInput = Instance.new("TextBox")
+    transInput.Parent = scrollFrame
+    transInput.Size = UDim2.new(0.5, 0, 0, 20)
+    transInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    transInput.Text = tostring(selectedObject.Transparency)
+    transInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    transInput.Font = Enum.Font.Gotham
+    transInput.TextSize = 8
+    
+    local transBtn = Instance.new("TextButton")
+    transBtn.Parent = scrollFrame
+    transBtn.Size = UDim2.new(0.5, 0, 0, 20)
+    transBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 80)
+    transBtn.Text = "Change Trans"
+    transBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    transBtn.Font = Enum.Font.Gotham
+    transBtn.TextSize = 8
+    transBtn.MouseButton1Click:Connect(function()
+        local trans = tonumber(transInput.Text)
+        if trans then
+            changeTransparency(trans)
+        end
+    end)
+    
+    -- Update canvas size
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+    end)
+    
+    closeButton.MouseButton1Click:Connect(clearSelection)
+end
+
+local function setupEditorInput()
+    local connection
+    if connection then connection:Disconnect() end
+    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if editorEnabled and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            local mouse = player:GetMouse()
+            local target = mouse.Target
+            if target and target:IsA("BasePart") and target ~= workspace.Terrain then
+                showEditorGUI(target)
+            end
+        end
+    end)
+end
+
+local function toggleEditor()
+    editorEnabled = not editorEnabled
+    if editorEnabled then
+        print("[SUPERTOOL] Object Editor enabled")
+        setupEditorInput()
+    else
+        print("[SUPERTOOL] Object Editor disabled")
+        clearSelection()
+    end
+end
+
+local function initEditorListUI()
+    if EditorListFrame then return end
+    
+    EditorListFrame = Instance.new("Frame")
+    EditorListFrame.Name = "EditorListFrame"
+    EditorListFrame.Parent = ScreenGui
+    EditorListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    EditorListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    EditorListFrame.BorderSizePixel = 1
+    EditorListFrame.Position = UDim2.new(0.5, 200, 0.2, 0)
+    EditorListFrame.Size = UDim2.new(0, 200, 0, 250)  -- Smaller
+    EditorListFrame.Visible = false
+    EditorListFrame.Active = true
+    EditorListFrame.Draggable = true
+
+    local title = Instance.new("TextLabel")
+    title.Parent = EditorListFrame
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.BorderSizePixel = 0
+    title.Size = UDim2.new(1, 0, 0, 20)
+    title.Font = Enum.Font.GothamBold
+    title.Text = "Edit History"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 9
+
+    local closeButton = Instance.new("TextButton")
+    closeButton.Parent = EditorListFrame
+    closeButton.BackgroundTransparency = 1
+    closeButton.Position = UDim2.new(1, -20, 0, 1)
+    closeButton.Size = UDim2.new(0, 18, 0, 18)
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeButton.TextSize = 10
+
+    EditorScrollFrame = Instance.new("ScrollingFrame")
+    EditorScrollFrame.Parent = EditorListFrame
+    EditorScrollFrame.BackgroundTransparency = 1
+    EditorScrollFrame.Position = UDim2.new(0, 5, 0, 25)
+    EditorScrollFrame.Size = UDim2.new(1, -10, 1, -30)
+    EditorScrollFrame.ScrollBarThickness = 3
+    EditorScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    EditorScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+    EditorLayout = Instance.new("UIListLayout")
+    EditorLayout.Parent = EditorScrollFrame
+    EditorLayout.Padding = UDim.new(0, 2)
+
+    closeButton.MouseButton1Click:Connect(function()
+        EditorListFrame.Visible = false
+        editorListVisible = false
+    end)
+end
+
+local function updateEditorList()
+    if not EditorScrollFrame or not EditorLayout then return end
+    
+    pcall(function()
+        for _, child in pairs(EditorScrollFrame:GetChildren()) do
+            if child:IsA("TextLabel") then
+                child:Destroy()
+            end
+        end
+        
+        -- Show recent edits and deletes (limited)
+        for i = #editedObjects, math.max(1, #editedObjects - 4), -1 do
+            local edit = editedObjects[i]
+            if edit then
+                local label = Instance.new("TextLabel")
+                label.Parent = EditorScrollFrame
+                label.Size = UDim2.new(1, 0, 0, 15)
+                label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                label.Text = "Edit: " .. edit.property .. " on " .. (edit.object.Name or "Unknown")
+                label.TextColor3 = Color3.fromRGB(255, 255, 255)
+                label.TextSize = 7
+                label.Font = Enum.Font.Gotham
+            end
+        end
+        
+        for i = #deletedObjects, math.max(1, #deletedObjects - 4), -1 do
+            local del = deletedObjects[i]
+            if del and del.name then
+                local label = Instance.new("TextLabel")
+                label.Parent = EditorScrollFrame
+                label.Size = UDim2.new(1, 0, 0, 15)
+                label.BackgroundColor3 = Color3.fromRGB(40, 25, 25)
+                label.Text = "Delete: " .. del.name
+                label.TextColor3 = Color3.fromRGB(255, 255, 255)
+                label.TextSize = 7
+                label.Font = Enum.Font.Gotham
+            end
+        end
+        
+        task.wait(0.1)
+        if EditorLayout then
+            EditorScrollFrame.CanvasSize = UDim2.new(0, 0, 0, EditorLayout.AbsoluteContentSize.Y)
+        end
+    end)
+end
+
+local function toggleEditorList()
+    if not EditorListFrame then initEditorListUI() end
+    editorListVisible = not editorListVisible
+    EditorListFrame.Visible = editorListVisible
+    if editorListVisible then
+        updateEditorList()
+    end
+end
+
 -- UI Components for Path
 local function initPathUI()
     if PathFrame then return end
@@ -1352,511 +1934,6 @@ local function setupKeyboardControls()
             end
         end
     end)
-end
-
--- Object Editor Functions (enhanced)
-local function clearSelection()
-    if selectionBox and selectionBox.Parent then
-        selectionBox:Destroy()
-        selectionBox = nil
-    end
-    selectedObject = nil
-    if editorGui and editorGui.Parent then
-        editorGui:Destroy()
-        editorGui = nil
-    end
-end
-
-local function showEditorGUI(obj)
-    clearSelection()
-    selectedObject = obj
-    
-    if not selectedObject:IsA("BasePart") then
-        warn("[SUPERTOOL] Selected object is not a BasePart")
-        return
-    end
-    
-    selectionBox = Instance.new("SelectionBox")
-    selectionBox.Parent = selectedObject
-    selectionBox.Adornee = selectedObject
-    selectionBox.LineThickness = 0.1
-    selectionBox.Color3 = Color3.fromRGB(0, 255, 0)
-    
-    editorGui = Instance.new("Frame")
-    editorGui.Parent = ScreenGui
-    editorGui.Position = UDim2.new(0.5, -150, 0.3, 0)
-    editorGui.Size = UDim2.new(0, 300, 0, 400)
-    editorGui.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    editorGui.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    editorGui.BorderSizePixel = 1
-    editorGui.Active = true
-    editorGui.Draggable = true
-    editorGui.ZIndex = 10
-    
-    local title = Instance.new("TextLabel")
-    title.Parent = editorGui
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    title.Text = "Object Editor: " .. selectedObject.Name
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 10
-    
-    local closeButton = Instance.new("TextButton")
-    closeButton.Parent = editorGui
-    closeButton.BackgroundTransparency = 1
-    closeButton.Position = UDim2.new(1, -25, 0, 2)
-    closeButton.Size = UDim2.new(0, 20, 0, 20)
-    closeButton.Text = "X"
-    closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeButton.Font = Enum.Font.GothamBold
-    closeButton.TextSize = 12
-    closeButton.ZIndex = 11
-    
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Parent = editorGui
-    scrollFrame.Position = UDim2.new(0, 5, 0, 30)
-    scrollFrame.Size = UDim2.new(1, -10, 1, -35)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 5
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    
-    local layout = Instance.new("UIListLayout")
-    layout.Parent = scrollFrame
-    layout.Padding = UDim.new(0, 2)
-    
-    -- Duplicate Button
-    local duplicateBtn = Instance.new("TextButton")
-    duplicateBtn.Parent = scrollFrame
-    duplicateBtn.Size = UDim2.new(1, 0, 0, 25)
-    duplicateBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    duplicateBtn.Text = "Duplicate Object"
-    duplicateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    duplicateBtn.Font = Enum.Font.Gotham
-    duplicateBtn.TextSize = 9
-    duplicateBtn.MouseButton1Click:Connect(function()
-        duplicateObject()
-    end)
-    
-    -- Copy Button (copy to clipboard stack)
-    local copyBtn = Instance.new("TextButton")
-    copyBtn.Parent = scrollFrame
-    copyBtn.Size = UDim2.new(1, 0, 0, 25)
-    copyBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 120)
-    copyBtn.Text = "Copy Object"
-    copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    copyBtn.Font = Enum.Font.Gotham
-    copyBtn.TextSize = 9
-    copyBtn.MouseButton1Click:Connect(function()
-        copyObject()
-    end)
-    
-    -- Paste Button (from copied)
-    local pasteBtn = Instance.new("TextButton")
-    pasteBtn.Parent = scrollFrame
-    pasteBtn.Size = UDim2.new(1, 0, 0, 25)
-    pasteBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
-    pasteBtn.Text = "Paste Copied Object"
-    pasteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    pasteBtn.Font = Enum.Font.Gotham
-    pasteBtn.TextSize = 9
-    pasteBtn.MouseButton1Click:Connect(function()
-        pasteObject()
-    end)
-    
-    -- Resize Section
-    local resizeLabel = Instance.new("TextLabel")
-    resizeLabel.Parent = scrollFrame
-    resizeLabel.Size = UDim2.new(1, 0, 0, 20)
-    resizeLabel.BackgroundTransparency = 1
-    resizeLabel.Text = "Resize (Scale Factor):"
-    resizeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    resizeLabel.Font = Enum.Font.Gotham
-    resizeLabel.TextSize = 9
-    
-    local scaleInput = Instance.new("TextBox")
-    scaleInput.Parent = scrollFrame
-    scaleInput.Size = UDim2.new(0.5, 0, 0, 25)
-    scaleInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    scaleInput.Text = "1.5"
-    scaleInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    scaleInput.Font = Enum.Font.Gotham
-    scaleInput.TextSize = 9
-    
-    local resizeBtn = Instance.new("TextButton")
-    resizeBtn.Parent = scrollFrame
-    resizeBtn.Size = UDim2.new(0.5, 0, 0, 25)
-    resizeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 60)
-    resizeBtn.Text = "Enlarge/Resize"
-    resizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    resizeBtn.Font = Enum.Font.Gotham
-    resizeBtn.TextSize = 9
-    resizeBtn.MouseButton1Click:Connect(function()
-        local scale = tonumber(scaleInput.Text) or 1.5
-        resizeObject(scale)
-    end)
-    
-    -- Delete Button
-    local deleteBtn = Instance.new("TextButton")
-    deleteBtn.Parent = scrollFrame
-    deleteBtn.Size = UDim2.new(1, 0, 0, 25)
-    deleteBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-    deleteBtn.Text = "Delete Object"
-    deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    deleteBtn.Font = Enum.Font.Gotham
-    deleteBtn.TextSize = 9
-    deleteBtn.MouseButton1Click:Connect(function()
-        deleteObject()
-    end)
-    
-    -- Toggle Anchored
-    local anchoredBtn = Instance.new("TextButton")
-    anchoredBtn.Parent = scrollFrame
-    anchoredBtn.Size = UDim2.new(1, 0, 0, 25)
-    anchoredBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    anchoredBtn.Text = selectedObject.Anchored and "Unanchor" or "Anchor"
-    anchoredBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    anchoredBtn.Font = Enum.Font.Gotham
-    anchoredBtn.TextSize = 9
-    anchoredBtn.MouseButton1Click:Connect(function()
-        toggleAnchored()
-    end)
-    
-    -- Toggle CanCollide
-    local collideBtn = Instance.new("TextButton")
-    collideBtn.Parent = scrollFrame
-    collideBtn.Size = UDim2.new(1, 0, 0, 25)
-    collideBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    collideBtn.Text = selectedObject.CanCollide and "No Collide" or "Collide"
-    collideBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    collideBtn.Font = Enum.Font.Gotham
-    collideBtn.TextSize = 9
-    collideBtn.MouseButton1Click:Connect(function()
-        toggleCanCollide()
-    end)
-    
-    -- Color Picker (simple RGB inputs)
-    local colorLabel = Instance.new("TextLabel")
-    colorLabel.Parent = scrollFrame
-    colorLabel.Size = UDim2.new(1, 0, 0, 20)
-    colorLabel.BackgroundTransparency = 1
-    colorLabel.Text = "Color (R,G,B):"
-    colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    colorLabel.Font = Enum.Font.Gotham
-    colorLabel.TextSize = 9
-    
-    local rInput = Instance.new("TextBox")
-    rInput.Parent = scrollFrame
-    rInput.Size = UDim2.new(0.3, 0, 0, 25)
-    rInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    rInput.Text = tostring(math.floor(selectedObject.Color.R * 255))
-    rInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rInput.Font = Enum.Font.Gotham
-    rInput.TextSize = 9
-    
-    local gInput = Instance.new("TextBox")
-    gInput.Parent = scrollFrame
-    gInput.Position = UDim2.new(0.3, 0, 0, 0)
-    gInput.Size = UDim2.new(0.3, 0, 0, 25)
-    gInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    gInput.Text = tostring(math.floor(selectedObject.Color.G * 255))
-    gInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    gInput.Font = Enum.Font.Gotham
-    gInput.TextSize = 9
-    
-    local bInput = Instance.new("TextBox")
-    bInput.Parent = scrollFrame
-    bInput.Position = UDim2.new(0.6, 0, 0, 0)
-    bInput.Size = UDim2.new(0.3, 0, 0, 25)
-    bInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    bInput.Text = tostring(math.floor(selectedObject.Color.B * 255))
-    bInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    bInput.Font = Enum.Font.Gotham
-    bInput.TextSize = 9
-    
-    local colorBtn = Instance.new("TextButton")
-    colorBtn.Parent = scrollFrame
-    colorBtn.Position = UDim2.new(0, 0, 0, 25)
-    colorBtn.Size = UDim2.new(1, 0, 0, 25)
-    colorBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 120)
-    colorBtn.Text = "Change Color"
-    colorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    colorBtn.Font = Enum.Font.Gotham
-    colorBtn.TextSize = 9
-    colorBtn.MouseButton1Click:Connect(function()
-        local r, g, b = tonumber(rInput.Text), tonumber(gInput.Text), tonumber(bInput.Text)
-        if r and g and b then
-            changeColor(r/255, g/255, b/255)
-        end
-    end)
-    
-    -- Transparency Slider (simple input)
-    local transLabel = Instance.new("TextLabel")
-    transLabel.Parent = scrollFrame
-    transLabel.Size = UDim2.new(1, 0, 0, 20)
-    transLabel.BackgroundTransparency = 1
-    transLabel.Text = "Transparency (0-1):"
-    transLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    transLabel.Font = Enum.Font.Gotham
-    transLabel.TextSize = 9
-    
-    local transInput = Instance.new("TextBox")
-    transInput.Parent = scrollFrame
-    transInput.Size = UDim2.new(0.5, 0, 0, 25)
-    transInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    transInput.Text = tostring(selectedObject.Transparency)
-    transInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    transInput.Font = Enum.Font.Gotham
-    transInput.TextSize = 9
-    
-    local transBtn = Instance.new("TextButton")
-    transBtn.Parent = scrollFrame
-    transBtn.Size = UDim2.new(0.5, 0, 0, 25)
-    transBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 80)
-    transBtn.Text = "Change Transparency"
-    transBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    transBtn.Font = Enum.Font.Gotham
-    transBtn.TextSize = 9
-    transBtn.MouseButton1Click:Connect(function()
-        local trans = tonumber(transInput.Text)
-        if trans then
-            changeTransparency(trans)
-        end
-    end)
-    
-    -- Update canvas size
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
-    end)
-    
-    closeButton.MouseButton1Click:Connect(clearSelection)
-end
-
--- Object Manipulation Functions
-local function duplicateObject()
-    if not selectedObject then return end
-    local clone = selectedObject:Clone()
-    clone.CFrame = selectedObject.CFrame * CFrame.new(0, 0, -5)  -- Offset
-    clone.Parent = selectedObject.Parent
-    print("[SUPERTOOL] Duplicated: " .. selectedObject.Name)
-end
-
-local function copyObject()
-    if not selectedObject then return end
-    local clone = selectedObject:Clone()
-    table.insert(copiedObjects, {object = clone, originalCFrame = selectedObject.CFrame})
-    print("[SUPERTOOL] Copied: " .. selectedObject.Name)
-end
-
-local function pasteObject()
-    if #copiedObjects == 0 then return end
-    local lastCopied = copiedObjects[#copiedObjects]
-    local newPaste = lastCopied.object:Clone()
-    newPaste.CFrame = rootPart.CFrame * CFrame.new(0, 0, -5)  -- Paste near player
-    newPaste.Parent = workspace
-    print("[SUPERTOOL] Pasted: " .. lastCopied.object.Name)
-end
-
-local function resizeObject(scale)
-    if not selectedObject then return end
-    local oldSize = selectedObject.Size
-    table.insert(editedObjects, {object = selectedObject, property = "Size", oldValue = oldSize})
-    selectedObject.Size = oldSize * scale
-    print("[SUPERTOOL] Resized by " .. scale)
-end
-
-local function deleteObject()
-    if not selectedObject then return end
-    local name = selectedObject.Name
-    local parent = selectedObject.Parent
-    local clone = selectedObject:Clone()
-    table.insert(deletedObjects, {object = clone, parent = parent, name = name})
-    selectedObject:Destroy()
-    clearSelection()
-    print("[SUPERTOOL] Deleted: " .. name)
-    updateEditorList()
-end
-
-local function toggleAnchored()
-    if not selectedObject then return end
-    local oldValue = selectedObject.Anchored
-    table.insert(editedObjects, {object = selectedObject, property = "Anchored", oldValue = oldValue})
-    selectedObject.Anchored = not oldValue
-    print("[SUPERTOOL] Toggled Anchored to " .. tostring(not oldValue))
-end
-
-local function toggleCanCollide()
-    if not selectedObject then return end
-    local oldValue = selectedObject.CanCollide
-    table.insert(editedObjects, {object = selectedObject, property = "CanCollide", oldValue = oldValue})
-    selectedObject.CanCollide = not oldValue
-    print("[SUPERTOOL] Toggled CanCollide to " .. tostring(not oldValue))
-end
-
-local function changeColor(r, g, b)
-    if not selectedObject then return end
-    local oldColor = selectedObject.Color
-    table.insert(editedObjects, {object = selectedObject, property = "Color", oldValue = oldColor})
-    selectedObject.Color = Color3.new(r, g, b)
-    print("[SUPERTOOL] Changed color to RGB(" .. math.floor(r*255) .. "," .. math.floor(g*255) .. "," .. math.floor(b*255) .. ")")
-end
-
-local function changeTransparency(trans)
-    if not selectedObject then return end
-    local oldTrans = selectedObject.Transparency
-    table.insert(editedObjects, {object = selectedObject, property = "Transparency", oldValue = oldTrans})
-    selectedObject.Transparency = math.clamp(trans, 0, 1)
-    print("[SUPERTOOL] Changed transparency to " .. trans)
-end
-
-local function undoObjectEdit()
-    if #editedObjects > 0 then
-        local lastEdit = table.remove(editedObjects)
-        if lastEdit.object and lastEdit.object.Parent then
-            lastEdit.object[lastEdit.property] = lastEdit.oldValue
-            print("[SUPERTOOL] Undid edit on " .. lastEdit.property)
-        end
-    elseif #deletedObjects > 0 then
-        local lastDelete = table.remove(deletedObjects)
-        if lastDelete.object then
-            lastDelete.object.Parent = lastDelete.parent
-            print("[SUPERTOOL] Undid deletion of: " .. lastDelete.name)
-        end
-    end
-    updateEditorList()
-end
-
-local function setupEditorInput()
-    local connection
-    if connection then connection:Disconnect() end
-    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if editorEnabled and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-            local mouse = player:GetMouse()
-            local target = mouse.Target
-            if target and target:IsA("BasePart") and target ~= workspace.Terrain then
-                showEditorGUI(target)
-            end
-        end
-    end)
-end
-
-local function toggleEditor()
-    editorEnabled = not editorEnabled
-    if editorEnabled then
-        print("[SUPERTOOL] Object Editor enabled")
-        setupEditorInput()
-    else
-        print("[SUPERTOOL] Object Editor disabled")
-        clearSelection()
-    end
-end
-
-local function initEditorListUI()
-    if EditorListFrame then return end
-    
-    EditorListFrame = Instance.new("Frame")
-    EditorListFrame.Name = "EditorListFrame"
-    EditorListFrame.Parent = ScreenGui
-    EditorListFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    EditorListFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    EditorListFrame.BorderSizePixel = 1
-    EditorListFrame.Position = UDim2.new(0.5, 200, 0.2, 0)
-    EditorListFrame.Size = UDim2.new(0, 200, 0, 300)
-    EditorListFrame.Visible = false
-    EditorListFrame.Active = true
-    EditorListFrame.Draggable = true
-
-    local title = Instance.new("TextLabel")
-    title.Parent = EditorListFrame
-    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    title.BorderSizePixel = 0
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.Font = Enum.Font.GothamBold
-    title.Text = "Edit History"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 10
-
-    local closeButton = Instance.new("TextButton")
-    closeButton.Parent = EditorListFrame
-    closeButton.BackgroundTransparency = 1
-    closeButton.Position = UDim2.new(1, -25, 0, 2)
-    closeButton.Size = UDim2.new(0, 20, 0, 20)
-    closeButton.Font = Enum.Font.GothamBold
-    closeButton.Text = "X"
-    closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeButton.TextSize = 12
-
-    EditorScrollFrame = Instance.new("ScrollingFrame")
-    EditorScrollFrame.Parent = EditorListFrame
-    EditorScrollFrame.BackgroundTransparency = 1
-    EditorScrollFrame.Position = UDim2.new(0, 5, 0, 30)
-    EditorScrollFrame.Size = UDim2.new(1, -10, 1, -35)
-    EditorScrollFrame.ScrollBarThickness = 3
-    EditorScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    EditorScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
-    EditorLayout = Instance.new("UIListLayout")
-    EditorLayout.Parent = EditorScrollFrame
-    EditorLayout.Padding = UDim.new(0, 3)
-
-    closeButton.MouseButton1Click:Connect(function()
-        EditorListFrame.Visible = false
-        editorListVisible = false
-    end)
-end
-
-local function updateEditorList()
-    if not EditorScrollFrame or not EditorLayout then return end
-    
-    pcall(function()
-        for _, child in pairs(EditorScrollFrame:GetChildren()) do
-            if child:IsA("TextLabel") then
-                child:Destroy()
-            end
-        end
-        
-        -- Show recent edits and deletes
-        for i = #editedObjects, math.max(1, #editedObjects - 4), -1 do
-            local edit = editedObjects[i]
-            if edit then
-                local label = Instance.new("TextLabel")
-                label.Parent = EditorScrollFrame
-                label.Size = UDim2.new(1, 0, 0, 20)
-                label.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-                label.Text = "Edit: " .. edit.property .. " on " .. (edit.object.Name or "Unknown")
-                label.TextColor3 = Color3.fromRGB(255, 255, 255)
-                label.TextSize = 8
-            end
-        end
-        
-        for i = #deletedObjects, math.max(1, #deletedObjects - 4), -1 do
-            local del = deletedObjects[i]
-            if del and del.name then
-                local label = Instance.new("TextLabel")
-                label.Parent = EditorScrollFrame
-                label.Size = UDim2.new(1, 0, 0, 20)
-                label.BackgroundColor3 = Color3.fromRGB(40, 25, 25)
-                label.Text = "Delete: " .. del.name
-                label.TextColor3 = Color3.fromRGB(255, 255, 255)
-                label.TextSize = 8
-            end
-        end
-        
-        task.wait(0.1)
-        if EditorLayout then
-            EditorScrollFrame.CanvasSize = UDim2.new(0, 0, 0, EditorLayout.AbsoluteContentSize.Y)
-        end
-    end)
-end
-
-local function toggleEditorList()
-    if not EditorListFrame then initEditorListUI() end
-    editorListVisible = not editorListVisible
-    EditorListFrame.Visible = editorListVisible
-    if editorListVisible then
-        updateEditorList()
-    end
 end
 
 -- Method 1: Direct Tool Creation (bypass FilteringEnabled)
@@ -2277,7 +2354,7 @@ function Utility.init(deps)
         initEditorListUI()
         initGearUI()
         initObjectUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Object Editor Added)")
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Object Editor Fixed)")
     end)
 end
 

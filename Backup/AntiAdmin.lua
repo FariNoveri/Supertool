@@ -1,6 +1,6 @@
 -- AntiAdmin.lua Module for MinimalHackGUI
 -- Sistem perlindungan anti-admin buatan Fari Noveri
--- Versi sudah diperbaiki, error 117 & 217 hilang, gampang dipahami
+-- Versi Single Button dengan Settings
 -- Tanggal dan waktu: 13:17 WIB, Minggu, 14 September 2025
 
 local AntiAdmin = {}
@@ -24,37 +24,47 @@ local character, humanoid, rootPart
 -- Dependensi (diatur saat mulai)
 local dependencies = {}
 
--- Daftar perlindungan tanpa deskripsi (dipindah ke InfoLabel.Text)
+-- Settings GUI References
+local settingsFrame = nil
+local isSettingsOpen = false
+
+-- Daftar perlindungan dengan checkbox states
 local protectionStates = {
     mainProtection = {
         enabled = false,
+        selected = true, -- Default selected
         name = "🛡️ Pelindung Utama",
-        description = ""
+        description = "Melindungi dari tendang, blokir, bunuh, pindah karakter. Bisa balik serang ke admin!"
     },
     massProtection = {
         enabled = false,
+        selected = true,
         name = "🌊 Pelindung Spam",
-        description = ""
+        description = "Hapus spam benda (>50 objek), mute suara berisik (>3 suara), blokir perubahan cahaya aneh"
     },
     stealthMode = {
         enabled = false,
+        selected = false,
         name = "👤 Mode Siluman",
-        description = ""
+        description = "Sembunyi dari admin dengan ngacak data jadi kayak pemain biasa"
     },
     antiDetection = {
         enabled = false,
+        selected = false,
         name = "🔍 Anti Ketahuan",
-        description = ""
+        description = "Memblokir admin yang coba cek script dan scan system"
     },
     memoryProtection = {
         enabled = false,
+        selected = false,
         name = "💾 Pelindung Memori",
-        description = ""
+        description = "Melindungi dari admin yang coba cek memori game"
     },
     advancedBypass = {
         enabled = false,
+        selected = false,
         name = "⚡ Jalan Pintas Canggih",
-        description = ""
+        description = "Melewati sistem keamanan admin dengan trik advanced"
     }
 }
 
@@ -274,17 +284,25 @@ end
 -- Mulai anti ketahuan
 local function initializeAntiDetection()
     safeCall(function()
-        -- Cek apakah game.GetDescendants ada sebelum override
-        if game.GetDescendants and type(game.GetDescendants) == "function" then
-            local originalGetDescendants = game.GetDescendants
-            game.GetDescendants = function(self)
-                detectionCounters.scriptScan = detectionCounters.scriptScan + 1
-                if detectionCounters.scriptScan > 10 then
-                    print("🔍 Anti-Admin: Scan script ditemukan dan diblokir")
-                    return {}
+        -- Skip jika game.GetDescendants ga ada
+        local hasGetDescendants = pcall(function() 
+            return game.GetDescendants and type(game.GetDescendants) == "function"
+        end)
+        
+        if hasGetDescendants then
+            pcall(function()
+                local originalGetDescendants = game.GetDescendants
+                game.GetDescendants = function(self)
+                    detectionCounters.scriptScan = detectionCounters.scriptScan + 1
+                    if detectionCounters.scriptScan > 10 then
+                        print("🔍 Anti-Admin: Scan script ditemukan dan diblokir")
+                        return {}
+                    end
+                    return originalGetDescendants(self)
                 end
-                return originalGetDescendants(self)
-            end
+            end)
+        else
+            print("👤 Anti-Admin: GetDescendants ga tersedia, skip hook ini")
         end
         
         print("👤 Anti-Admin: Anti ketahuan aktif")
@@ -318,48 +336,45 @@ end
 -- Set pelindung metatable canggih
 local function setupAdvancedMetatableProtection()
     safeCall(function()
-        -- Cek apakah getrawmetatable ada
-        if not getrawmetatable then
-            warn("AntiAdmin: getrawmetatable tidak tersedia")
-            return 
-        end
+        -- Skip metatable protection jika fungsi exploit ga ada
+        local hasMetatableFunctions = pcall(function() 
+            return getrawmetatable and setreadonly and getnamecallmethod
+        end)
         
-        local mt = getrawmetatable(game)
-        if not mt then 
-            warn("AntiAdmin: Ga bisa akses metatable")
-            return 
-        end
-        
-        oldNamecall = mt.__namecall
-        oldIndex = mt.__index  
-        oldNewIndex = mt.__newindex
-        
-        if not oldNamecall then 
-            warn("AntiAdmin: Ga bisa akses __namecall")
-            return 
-        end
-        
-        -- Cek apakah setreadonly ada
-        if not setreadonly then
-            warn("AntiAdmin: setreadonly tidak tersedia")
+        if not hasMetatableFunctions then
+            print("🔐 Anti-Admin: Executor ga support metatable, skip proteksi ini")
             return
         end
         
-        local success = pcall(setreadonly, mt, false)
-        if not success then
-            warn("AntiAdmin: Ga bisa ubah metatable")
+        local success, mt = pcall(getrawmetatable, game)
+        if not success or not mt then 
+            print("🔐 Anti-Admin: Ga bisa akses metatable, skip proteksi ini")
+            return 
+        end
+        
+        local success2, oldCall = pcall(function() return mt.__namecall end)
+        if not success2 or not oldCall then 
+            print("🔐 Anti-Admin: Ga bisa akses __namecall, skip proteksi ini")
+            return 
+        end
+        
+        oldNamecall = oldCall
+        
+        local success3 = pcall(setreadonly, mt, false)
+        if not success3 then
+            print("🔐 Anti-Admin: Ga bisa ubah metatable readonly, skip proteksi ini")
             return
         end
 
         mt.__namecall = function(self, ...)
-            if not protectionStates.mainProtection.enabled then return oldNamecall(self, ...) end
-            
-            -- Cek apakah getnamecallmethod ada
-            local method = ""
-            if getnamecallmethod and type(getnamecallmethod) == "function" then
-                method = getnamecallmethod() or ""
+            if not protectionStates.mainProtection.enabled then 
+                return oldNamecall(self, ...) 
             end
-            local args = {...}
+            
+            local method = ""
+            pcall(function()
+                method = getnamecallmethod() or ""
+            end)
             
             if method == "Kick" or method == "Ban" then
                 print("🚫 Anti-Admin: Blokir tendang/blokir")
@@ -371,7 +386,7 @@ local function setupAdvancedMetatableProtection()
                 return nil
             end
             
-            if (method == "FireServer" or method == "InvokeServer") then
+            if (method == "FireServer" or method == "InvokeServer") and self and self.Name then
                 local remoteName = tostring(self.Name):lower()
                 local blockedRemotes = {
                     "admin", "mod", "ban", "kick", "tp", "teleport", 
@@ -614,13 +629,12 @@ local function setupAdvancedBypass()
     print("⚡ Anti-Admin: Jalan pintas canggih dimulai")
 end
 
--- Hidupkan pelindung utama
+-- Individual protection toggles
 local function toggleMainProtection(enabled)
     protectionStates.mainProtection.enabled = enabled
     
     if enabled then
         print("🛡️ " .. protectionStates.mainProtection.name .. " HIDUP")
-        print("   → Melindungi dari tendang, blokir, bunuh, atau pindah karakter. Bisa balik serang ke admin!")
         if character and humanoid and rootPart then
             handleAntiAdmin()
         end
@@ -636,64 +650,361 @@ local function toggleMainProtection(enabled)
     end
 end
 
--- Hidupkan pelindung spam
 local function toggleMassProtection(enabled)
     protectionStates.massProtection.enabled = enabled
     
     if enabled then
         print("🌊 " .. protectionStates.massProtection.name .. " HIDUP")
-        print("   → Melindungi dari spam benda (hapus jika lebih dari 50), suara berisik (mute jika lebih dari 3), dan perubahan cahaya aneh.")
         detectMassEffects()
     else
         print("🌊 " .. protectionStates.massProtection.name .. " MATI")
     end
 end
 
--- Hidupkan mode siluman
 local function toggleStealthMode(enabled)
     protectionStates.stealthMode.enabled = enabled
     
     if enabled then
         print("👤 " .. protectionStates.stealthMode.name .. " HIDUP")
-        print("   → Menyembunyikan dari admin dengan ngacak data biar kayak pemain biasa.")
         initializeAntiDetection()
     else
         print("👤 " .. protectionStates.stealthMode.name .. " MATI")
     end
 end
 
--- Hidupkan pelindung memori
 local function toggleMemoryProtection(enabled)
     protectionStates.memoryProtection.enabled = enabled
     
     if enabled then
         print("💾 " .. protectionStates.memoryProtection.name .. " HIDUP")
-        print("   → Melindungi dari admin yang coba cek memori game.")
         setupMemoryProtection()
     else
         print("💾 " .. protectionStates.memoryProtection.name .. " MATI")
     end
 end
 
--- Hidupkan jalan pintas canggih
 local function toggleAdvancedBypass(enabled)
     protectionStates.advancedBypass.enabled = enabled
     
     if enabled then
         print("⚡ " .. protectionStates.advancedBypass.name .. " HIDUP")
-        print("   → Melewati sistem keamanan admin dengan trik ringan.")
         setupAdvancedBypass()
     else
         print("⚡ " .. protectionStates.advancedBypass.name .. " MATI")
     end
 end
 
+-- Function mapping
+local protectionFunctions = {
+    mainProtection = toggleMainProtection,
+    massProtection = toggleMassProtection,
+    stealthMode = toggleStealthMode,
+    antiDetection = toggleStealthMode, -- Same as stealth mode
+    memoryProtection = toggleMemoryProtection,
+    advancedBypass = toggleAdvancedBypass
+}
+
+-- Apply selected protections
+local function applySelectedProtections()
+    print("🚀 Mengaktifkan proteksi terpilih...")
+    
+    for key, state in pairs(protectionStates) do
+        if state.selected and protectionFunctions[key] then
+            protectionFunctions[key](true)
+        elseif not state.selected and protectionFunctions[key] then
+            protectionFunctions[key](false)
+        end
+    end
+    
+    print("✅ Proteksi diterapkan!")
+end
+
+-- Stop all protections
+local function stopAllProtections()
+    print("🛑 Menonaktifkan semua proteksi...")
+    
+    for key, state in pairs(protectionStates) do
+        if protectionFunctions[key] then
+            protectionFunctions[key](false)
+        end
+    end
+    
+    -- Reset detection counters
+    detectionCounters = {
+        scriptScan = 0,
+        behaviorCheck = 0,
+        speedCheck = 0,
+        positionCheck = 0,
+        memoryCheck = 0
+    }
+    
+    print("🔄 Semua proteksi dinonaktifkan!")
+end
+
+-- Create Settings GUI
+local function createSettingsGUI(parent)
+    if settingsFrame then
+        settingsFrame:Destroy()
+    end
+    
+    -- Main settings frame
+    settingsFrame = Instance.new("Frame")
+    settingsFrame.Name = "AntiAdminSettings"
+    settingsFrame.Parent = parent
+    settingsFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 30)
+    settingsFrame.BorderColor3 = Color3.fromRGB(0, 150, 255)
+    settingsFrame.BorderSizePixel = 2
+    settingsFrame.Size = UDim2.new(0, 400, 0, 450)
+    settingsFrame.Position = UDim2.new(0.5, -200, 0.5, -225)
+    settingsFrame.Visible = false
+    
+    local settingsCorner = Instance.new("UICorner")
+    settingsCorner.CornerRadius = UDim.new(0, 8)
+    settingsCorner.Parent = settingsFrame
+    
+    -- Title
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Parent = settingsFrame
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Size = UDim2.new(1, 0, 0, 40)
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.Text = "🛡️ ANTI-ADMIN SETTINGS"
+    titleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+    titleLabel.TextSize = 16
+    titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+    
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Parent = settingsFrame
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -35, 0, 5)
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Text = "✕"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 14
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 4)
+    closeCorner.Parent = closeButton
+    
+    -- Scroll frame for checkboxes
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Parent = settingsFrame
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.Size = UDim2.new(1, -20, 1, -100)
+    scrollFrame.Position = UDim2.new(0, 10, 0, 50)
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.ScrollBarThickness = 6
+    scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
+    
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Parent = scrollFrame
+    listLayout.Padding = UDim.new(0, 5)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    
+    -- Create checkboxes
+    local checkboxes = {}
+    local yPos = 0
+    
+    for key, state in pairs(protectionStates) do
+        local checkboxFrame = Instance.new("Frame")
+        checkboxFrame.Parent = scrollFrame
+        checkboxFrame.BackgroundColor3 = Color3.fromRGB(25, 30, 35)
+        checkboxFrame.BorderSizePixel = 0
+        checkboxFrame.Size = UDim2.new(1, -20, 0, 80)
+        
+        local checkboxCorner = Instance.new("UICorner")
+        checkboxCorner.CornerRadius = UDim.new(0, 6)
+        checkboxCorner.Parent = checkboxFrame
+        
+        -- Checkbox
+        local checkbox = Instance.new("TextButton")
+        checkbox.Parent = checkboxFrame
+        checkbox.BackgroundColor3 = Color3.fromRGB(40, 45, 50)
+        checkbox.BorderColor3 = Color3.fromRGB(0, 150, 255)
+        checkbox.BorderSizePixel = 2
+        checkbox.Size = UDim2.new(0, 25, 0, 25)
+        checkbox.Position = UDim2.new(0, 10, 0, 10)
+        checkbox.Font = Enum.Font.GothamBold
+        checkbox.Text = state.selected and "✓" or ""
+        checkbox.TextColor3 = Color3.fromRGB(0, 255, 0)
+        checkbox.TextSize = 16
+        
+        local checkboxCorner2 = Instance.new("UICorner")
+        checkboxCorner2.CornerRadius = UDim.new(0, 4)
+        checkboxCorner2.Parent = checkbox
+        
+        -- Feature name
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Parent = checkboxFrame
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Size = UDim2.new(1, -50, 0, 25)
+        nameLabel.Position = UDim2.new(0, 45, 0, 10)
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.Text = state.name
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 12
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+        
+        -- Feature description
+        local descLabel = Instance.new("TextLabel")
+        descLabel.Parent = checkboxFrame
+        descLabel.BackgroundTransparency = 1
+        descLabel.Size = UDim2.new(1, -50, 0, 40)
+        descLabel.Position = UDim2.new(0, 45, 0, 35)
+        descLabel.Font = Enum.Font.Gotham
+        descLabel.Text = state.description
+        descLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+        descLabel.TextSize = 10
+        descLabel.TextXAlignment = Enum.TextXAlignment.Left
+        descLabel.TextYAlignment = Enum.TextYAlignment.Top
+        descLabel.TextWrapped = true
+        
+        -- Checkbox functionality
+        checkboxes[key] = checkbox
+        checkbox.MouseButton1Click:Connect(function()
+            state.selected = not state.selected
+            checkbox.Text = state.selected and "✓" or ""
+            checkbox.BackgroundColor3 = state.selected and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 45, 50)
+            
+            -- Visual feedback
+            local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+            local tween = TweenService:Create(checkbox, tweenInfo, {
+                Size = UDim2.new(0, 30, 0, 30)
+            })
+            tween:Play()
+            tween.Completed:Connect(function()
+                local tween2 = TweenService:Create(checkbox, tweenInfo, {
+                    Size = UDim2.new(0, 25, 0, 25)
+                })
+                tween2:Play()
+            end)
+        end)
+        
+        yPos = yPos + 85
+    end
+    
+    -- Update canvas size
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yPos)
+    
+    -- Apply button
+    local applyButton = Instance.new("TextButton")
+    applyButton.Parent = settingsFrame
+    applyButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    applyButton.Size = UDim2.new(0, 120, 0, 35)
+    applyButton.Position = UDim2.new(0, 20, 1, -45)
+    applyButton.Font = Enum.Font.GothamBold
+    applyButton.Text = "🚀 TERAPKAN"
+    applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    applyButton.TextSize = 14
+    
+    local applyCorner = Instance.new("UICorner")
+    applyCorner.CornerRadius = UDim.new(0, 6)
+    applyCorner.Parent = applyButton
+    
+    -- Stop All button
+    local stopButton = Instance.new("TextButton")
+    stopButton.Parent = settingsFrame
+    stopButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    stopButton.Size = UDim2.new(0, 120, 0, 35)
+    stopButton.Position = UDim2.new(0, 150, 1, -45)
+    stopButton.Font = Enum.Font.GothamBold
+    stopButton.Text = "🛑 STOP ALL"
+    stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    stopButton.TextSize = 14
+    
+    local stopCorner = Instance.new("UICorner")
+    stopCorner.CornerRadius = UDim.new(0, 6)
+    stopCorner.Parent = stopButton
+    
+    -- Select All button
+    local selectAllButton = Instance.new("TextButton")
+    selectAllButton.Parent = settingsFrame
+    selectAllButton.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+    selectAllButton.Size = UDim2.new(0, 100, 0, 35)
+    selectAllButton.Position = UDim2.new(1, -120, 1, -45)
+    selectAllButton.Font = Enum.Font.GothamBold
+    selectAllButton.Text = "☑️ ALL"
+    selectAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    selectAllButton.TextSize = 14
+    
+    local selectAllCorner = Instance.new("UICorner")
+    selectAllCorner.CornerRadius = UDim.new(0, 6)
+    selectAllCorner.Parent = selectAllButton
+    
+    -- Button functionalities
+    closeButton.MouseButton1Click:Connect(function()
+        settingsFrame.Visible = false
+        isSettingsOpen = false
+    end)
+    
+    applyButton.MouseButton1Click:Connect(function()
+        applySelectedProtections()
+        settingsFrame.Visible = false
+        isSettingsOpen = false
+    end)
+    
+    stopButton.MouseButton1Click:Connect(function()
+        stopAllProtections()
+        settingsFrame.Visible = false
+        isSettingsOpen = false
+    end)
+    
+    selectAllButton.MouseButton1Click:Connect(function()
+        local allSelected = true
+        for key, state in pairs(protectionStates) do
+            if not state.selected then
+                allSelected = false
+                break
+            end
+        end
+        
+        for key, state in pairs(protectionStates) do
+            state.selected = not allSelected
+            local checkbox = checkboxes[key]
+            if checkbox then
+                checkbox.Text = state.selected and "✓" or ""
+                checkbox.BackgroundColor3 = state.selected and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 45, 50)
+            end
+        end
+        
+        selectAllButton.Text = allSelected and "☑️ ALL" or "✅ NONE"
+    end)
+    
+    return settingsFrame
+end
+
+-- Toggle settings window
+local function toggleSettings(parent)
+    if isSettingsOpen then
+        if settingsFrame then
+            settingsFrame.Visible = false
+        end
+        isSettingsOpen = false
+    else
+        if not settingsFrame then
+            createSettingsGUI(parent)
+        end
+        settingsFrame.Visible = true
+        isSettingsOpen = true
+    end
+end
+
 -- Reset semua status
 function AntiAdmin.resetStates()
     safeCall(function()
+        stopAllProtections()
+        
         for key, state in pairs(protectionStates) do
             state.enabled = false
+            state.selected = false
         end
+        
+        -- Reset default selections
+        protectionStates.mainProtection.selected = true
+        protectionStates.massProtection.selected = true
         
         for _, conn in pairs(antiAdminConnections) do
             if conn and typeof(conn) == "RBXScriptConnection" then
@@ -720,6 +1031,7 @@ function AntiAdmin.getProtectionStatus()
     for key, state in pairs(protectionStates) do
         status[key] = {
             enabled = state.enabled,
+            selected = state.selected,
             name = state.name,
             description = state.description
         }
@@ -727,45 +1039,92 @@ function AntiAdmin.getProtectionStatus()
     return status
 end
 
--- Muat tombol anti-admin
+-- Main function to load single button
 function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
     if not createToggleButton or not FeatureContainer then
         warn("AntiAdmin: Fungsi UI ga ada")
         return
     end
     
-    -- Buat tombol toggle
-    createToggleButton(
-        protectionStates.mainProtection.name, 
-        toggleMainProtection, 
-        function() toggleMainProtection(false) end
-    )
+    -- Create single main button
+    local mainButton = Instance.new("TextButton")
+    mainButton.Name = "AntiAdminMain"
+    mainButton.Parent = FeatureContainer
+    mainButton.BackgroundColor3 = Color3.fromRGB(30, 35, 40)
+    mainButton.BorderColor3 = Color3.fromRGB(0, 150, 255)
+    mainButton.BorderSizePixel = 2
+    mainButton.Size = UDim2.new(1, -2, 0, 45)
+    mainButton.Font = Enum.Font.GothamBold
+    mainButton.Text = "🛡️ ANTI-ADMIN SETTINGS"
+    mainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    mainButton.TextSize = 14
+    mainButton.TextStrokeTransparency = 0.7
+    mainButton.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     
-    createToggleButton(
-        protectionStates.massProtection.name, 
-        toggleMassProtection, 
-        function() toggleMassProtection(false) end
-    )
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0, 6)
+    mainCorner.Parent = mainButton
     
-    createToggleButton(
-        protectionStates.stealthMode.name, 
-        toggleStealthMode, 
-        function() toggleStealthMode(false) end
-    )
+    -- Button click functionality
+    mainButton.MouseButton1Click:Connect(function()
+        toggleSettings(FeatureContainer.Parent or FeatureContainer)
+    end)
     
-    createToggleButton(
-        protectionStates.memoryProtection.name, 
-        toggleMemoryProtection, 
-        function() toggleMemoryProtection(false) end
-    )
+    -- Hover effects
+    mainButton.MouseEnter:Connect(function()
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(mainButton, tweenInfo, {
+            BackgroundColor3 = Color3.fromRGB(0, 120, 200),
+            BorderColor3 = Color3.fromRGB(100, 200, 255)
+        })
+        tween:Play()
+    end)
     
-    createToggleButton(
-        protectionStates.advancedBypass.name, 
-        toggleAdvancedBypass, 
-        function() toggleAdvancedBypass(false) end
-    )
+    mainButton.MouseLeave:Connect(function()
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(mainButton, tweenInfo, {
+            BackgroundColor3 = Color3.fromRGB(30, 35, 40),
+            BorderColor3 = Color3.fromRGB(0, 150, 255)
+        })
+        tween:Play()
+    end)
     
-    -- Tambah label info dengan deskripsi fitur yang rapi (FIXED)
+    -- Status indicator
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Parent = mainButton
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Size = UDim2.new(0, 120, 1, 0)
+    statusLabel.Position = UDim2.new(1, -125, 0, 0)
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.Text = "⚙️ Klik untuk Settings"
+    statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    statusLabel.TextSize = 10
+    statusLabel.TextYAlignment = Enum.TextYAlignment.Center
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Right
+    
+    -- Update status indicator
+    spawn(function()
+        while mainButton.Parent do
+            local activeCount = 0
+            for _, state in pairs(protectionStates) do
+                if state.enabled then
+                    activeCount = activeCount + 1
+                end
+            end
+            
+            if activeCount > 0 then
+                statusLabel.Text = "🟢 " .. activeCount .. " Aktif"
+                statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            else
+                statusLabel.Text = "🔴 Nonaktif"
+                statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+            end
+            
+            wait(1)
+        end
+    end)
+    
+    -- Info label (compact version)
     safeCall(function()
         local InfoLabel = Instance.new("TextLabel")
         InfoLabel.Name = "AntiAdminInfo"
@@ -773,56 +1132,32 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoLabel.BackgroundColor3 = Color3.fromRGB(15, 25, 35)
         InfoLabel.BorderColor3 = Color3.fromRGB(0, 150, 255)
         InfoLabel.BorderSizePixel = 2
-        InfoLabel.Size = UDim2.new(1, -2, 0, 280) -- Tinggi diperbesar lagi untuk muat semua teks
+        InfoLabel.Size = UDim2.new(1, -2, 0, 120)
         InfoLabel.LayoutOrder = 999
-        InfoLabel.Font = Enum.Font.Gotham -- Ganti ke Gotham biasa, bukan Bold
-        InfoLabel.TextSize = 10 -- Kecilkan dikit biar muat lebih banyak
+        InfoLabel.Font = Enum.Font.Gotham
+        InfoLabel.TextSize = 10
         InfoLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-        InfoLabel.TextYAlignment = Enum.TextYAlignment.Top -- Ubah ke Top biar mulai dari atas
-        InfoLabel.TextXAlignment = Enum.TextXAlignment.Left -- Rata kiri
+        InfoLabel.TextYAlignment = Enum.TextYAlignment.Top
+        InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
         InfoLabel.TextWrapped = true
         InfoLabel.TextStrokeTransparency = 0.7
         InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        InfoLabel.TextScaled = false -- Matikan TextScaled biar ga auto kecil
+        InfoLabel.TextScaled = false
         
-        -- Teks yang rapi dengan format kebawah (FIXED LAGI)
-        InfoLabel.Text = [[🛡️ SISTEM ANTI-ADMIN
-📌 Buatan: Fari Noveri
-⚡ Versi 2.2 | 🚀 Error 117 & 217 Hilang
+        InfoLabel.Text = [[🛡️ SISTEM ANTI-ADMIN v2.3
+📌 Buatan: Fari Noveri | 🚀 Error 117 & 217 Fixed
 
-🎯 FITUR TERSEDIA:
+✨ FITUR BARU:
+• Single button dengan settings GUI
+• Checkbox untuk pilih fitur yang mau diaktifin
+• Status indicator real-time
+• Select All / Stop All buttons
+• Improved UI dengan hover effects
 
-🛡️ Pelindung Utama
-→ Melindungi dari tendang, blokir, bunuh
-→ Melindungi dari pindah karakter paksa  
-→ Bisa balik serang ke admin!
+🎯 Klik tombol di atas untuk buka settings!
+⚙️ Pilih fitur yang diinginkan lalu klik TERAPKAN
+🛑 Gunakan STOP ALL untuk matikan semua proteksi]]
 
-🌊 Pelindung Spam  
-→ Hapus spam benda (>50 objek)
-→ Mute suara berisik (>3 suara)
-→ Blokir perubahan cahaya aneh
-→ Restore lighting otomatis
-
-👤 Mode Siluman
-→ Sembunyi dari admin
-→ Ngacak data jadi kayak pemain biasa
-→ Block script scanning
-
-💾 Pelindung Memori
-→ Lindungi dari cek memori game
-→ Fake memory usage
-→ Counter detection methods
-
-⚡ Jalan Pintas Canggih
-→ Lewati sistem keamanan admin
-→ Advanced bypass techniques
-→ Memory protection tricks
-
-🎨 Interface gampang dipakai!
-✅ Full compatibility dengan semua executor
-🔧 Auto-skip fitur yang ga support]]
-
-        -- Tambahkan padding untuk teks (FIXED)
         local TextPadding = Instance.new("UIPadding")
         TextPadding.Parent = InfoLabel
         TextPadding.PaddingLeft = UDim.new(0, 8)
@@ -834,7 +1169,7 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoCorner.CornerRadius = UDim.new(0, 6)
         InfoCorner.Parent = InfoLabel
         
-        -- Animasi warna (FIXED dengan pengecekan safety)
+        -- Animated glow effect
         spawn(function()
             if not TweenService then return end
             local colors = {
@@ -862,10 +1197,11 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         end)
     end)
     
-    print("✅ Tombol AntiAdmin dimuat!")
-    print("🎯 Error 117 & 217 hilang")
-    print("🎨 Antarmuka gampang")
-    print("🚫 Anti-Fly dan Anti-Noclip dihapus")
+    print("✅ AntiAdmin Single Button dimuat!")
+    print("🎯 Error 117 & 217 fixed")
+    print("⚙️ Single button dengan settings GUI")
+    print("📋 Checkbox system untuk pilih fitur")
+    print("🔄 Status indicator real-time")
 end
 
 return AntiAdmin
