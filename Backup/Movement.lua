@@ -25,6 +25,7 @@ Movement.slowFallEnabled = false
 Movement.fastFallEnabled = false
 Movement.sprintEnabled = false
 Movement.isSprinting = false
+Movement.isRewinding = false
 
 -- Default values
 Movement.defaultWalkSpeed = 16
@@ -997,8 +998,9 @@ local function toggleRewind(enabled)
         local function performRewind()
             if #positionHistory < 30 then return end
             
+            Movement.isRewinding = true
             rewindButton.BackgroundTransparency = 0.1
-            rewindButton.Text = "REWINDING"
+            rewindButton.Text = "STOP"
             
             local reversedHistory = {}
             for i = #positionHistory, 1, -1 do
@@ -1008,10 +1010,19 @@ local function toggleRewind(enabled)
             local startTime = tick()
             local rewindDuration = getSettingValue("RewindDuration", defaultSettings.RewindDuration)
             local historyLength = #reversedHistory
-            local frameInterval = 6 / historyLength
             
             local rewindConnection
             rewindConnection = RunService.Heartbeat:Connect(function()
+                if not Movement.isRewinding then
+                    rewindConnection:Disconnect()
+                    if rewindButton then
+                        rewindButton.BackgroundTransparency = 0.5
+                        rewindButton.Text = "⏪"
+                    end
+                    positionHistory = {}
+                    return
+                end
+                
                 if not refreshReferences() or not rootPart then
                     rewindConnection:Disconnect()
                     return
@@ -1020,12 +1031,20 @@ local function toggleRewind(enabled)
                 local elapsed = tick() - startTime
                 local progress = math.min(elapsed / rewindDuration, 1)
                 
-                local frameIndex = math.floor(progress * (historyLength - 1)) + 1
-                if frameIndex > historyLength then
-                    frameIndex = historyLength
+                local index = progress * (historyLength - 1) + 1
+                local floorIndex = math.floor(index)
+                local ceilIndex = math.ceil(index)
+                local frac = index - floorIndex
+                
+                local targetCFrame
+                if ceilIndex <= historyLength then
+                    local c1 = reversedHistory[floorIndex].cframe
+                    local c2 = reversedHistory[ceilIndex].cframe
+                    targetCFrame = c1:Lerp(c2, frac)
+                else
+                    targetCFrame = reversedHistory[historyLength].cframe
                 end
                 
-                local targetCFrame = reversedHistory[frameIndex].cframe
                 rootPart.CFrame = targetCFrame
                 rootPart.Velocity = Vector3.new(0, 0, 0)
                 
@@ -1036,13 +1055,18 @@ local function toggleRewind(enabled)
                         rewindButton.Text = "⏪"
                     end
                     positionHistory = {}
+                    Movement.isRewinding = false
                 end
             end)
         end
         
         connections.rewindInput = rewindButton.MouseButton1Click:Connect(function()
             if refreshReferences() and rootPart then
-                performRewind()
+                if Movement.isRewinding then
+                    Movement.isRewinding = false
+                else
+                    performRewind()
+                end
             end
         end)
         
@@ -1050,7 +1074,11 @@ local function toggleRewind(enabled)
             if gameProcessed or not Movement.rewindEnabled then return end
             if input.KeyCode == Enum.KeyCode.T then
                 if refreshReferences() and rootPart then
-                    performRewind()
+                    if Movement.isRewinding then
+                        Movement.isRewinding = false
+                    else
+                        performRewind()
+                    end
                 end
             end
         end)
@@ -1779,32 +1807,44 @@ end
 
 -- Reset states
 function Movement.resetStates()
-    local currentStates = {
-        speedEnabled = Movement.speedEnabled,
-        jumpEnabled = Movement.jumpEnabled,
-        flyEnabled = Movement.flyEnabled,
-        noclipEnabled = Movement.noclipEnabled,
-        infiniteJumpEnabled = Movement.infiniteJumpEnabled,
-        walkOnWaterEnabled = Movement.walkOnWaterEnabled,
-        swimEnabled = Movement.swimEnabled,
-        moonGravityEnabled = Movement.moonGravityEnabled,
-        doubleJumpEnabled = Movement.doubleJumpEnabled,
-        wallClimbEnabled = Movement.wallClimbEnabled,
-        playerNoclipEnabled = Movement.playerNoclipEnabled,
-        floatEnabled = Movement.floatEnabled,
-        rewindEnabled = Movement.rewindEnabled,
-        boostEnabled = Movement.boostEnabled,
-        slowFallEnabled = Movement.slowFallEnabled,
-        fastFallEnabled = Movement.fastFallEnabled,
-        sprintEnabled = Movement.sprintEnabled
-    }
-    
-    if currentStates.moonGravityEnabled then
-        Movement.moonGravityEnabled = false
-        updateButtonState("Moon Gravity", false)
-    end
-    
     isRespawning = true
+    
+    Movement.speedEnabled = false
+    Movement.jumpEnabled = false
+    Movement.flyEnabled = false
+    Movement.noclipEnabled = false
+    Movement.infiniteJumpEnabled = false
+    Movement.walkOnWaterEnabled = false
+    Movement.swimEnabled = false
+    Movement.moonGravityEnabled = false
+    Movement.doubleJumpEnabled = false
+    Movement.wallClimbEnabled = false
+    Movement.playerNoclipEnabled = false
+    Movement.floatEnabled = false
+    Movement.rewindEnabled = false
+    Movement.boostEnabled = false
+    Movement.slowFallEnabled = false
+    Movement.fastFallEnabled = false
+    Movement.sprintEnabled = false
+    Movement.isRewinding = false
+    
+    updateButtonState("Speed Hack", false)
+    updateButtonState("Jump Hack", false)
+    updateButtonState("Moon Gravity", false)
+    updateButtonState("Double Jump", false)
+    updateButtonState("Infinite Jump", false)
+    updateButtonState("Wall Climb", false)
+    updateButtonState("Player NoClip", false)
+    updateButtonState("Fly", false)
+    updateButtonState("NoClip", false)
+    updateButtonState("Walk on Water", false)
+    updateButtonState("Super Swim", false)
+    updateButtonState("Float", false)
+    updateButtonState("Smooth Rewind", false)
+    updateButtonState("Boost (NOS)", false)
+    updateButtonState("Slow Fall", false)
+    updateButtonState("Fast Fall", false)
+    updateButtonState("Sprint", false)
     
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
@@ -1925,32 +1965,6 @@ function Movement.updateReferences(newHumanoid, newRootPart)
     
     task.spawn(function()
         task.wait(0.3)
-        
-        local statesToReapply = {
-            {Movement.speedEnabled, toggleSpeed, "Speed"},
-            {Movement.jumpEnabled, toggleJump, "Jump"},
-            {Movement.moonGravityEnabled, toggleMoonGravity, "Moon Gravity"},
-            {Movement.doubleJumpEnabled, toggleDoubleJump, "Double Jump"},
-            {Movement.infiniteJumpEnabled, toggleInfiniteJump, "Infinite Jump"},
-            {Movement.wallClimbEnabled, toggleWallClimb, "Wall Climb"},
-            {Movement.playerNoclipEnabled, togglePlayerNoclip, "Player NoClip"},
-            {Movement.noclipEnabled, toggleNoclip, "NoClip"},
-            {Movement.walkOnWaterEnabled, toggleWalkOnWater, "Walk on Water"},
-            {Movement.swimEnabled, toggleSwim, "Super Swim"},
-            {Movement.floatEnabled, toggleFloat, "Float"},
-            {Movement.flyEnabled, toggleFly, "Fly"},
-            {Movement.rewindEnabled, toggleRewind, "Smooth Rewind"},
-            {Movement.boostEnabled, toggleBoost, "Boost"},
-            {Movement.slowFallEnabled, toggleSlowFall, "Slow Fall"},
-            {Movement.fastFallEnabled, toggleFastFall, "Fast Fall"},
-            {Movement.sprintEnabled, toggleSprint, "Sprint"}
-        }
-        
-        for _, state in ipairs(statesToReapply) do
-            if state[1] then
-                state[2](true)
-            end
-        end
         
         for featureName, enabled in pairs({
             ["Speed Hack"] = Movement.speedEnabled,
