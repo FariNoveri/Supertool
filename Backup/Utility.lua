@@ -1,3 +1,4 @@
+--disable-run
 -- Enhanced Path-only Utility for MinimalHackGUI by Fari Noveri
 -- Updated version with fixed Ctrl+Z, JSON loading, status display, and enhanced path features
 -- REMOVED: All macro functionality
@@ -82,6 +83,8 @@ local predefinedObjects = {
 -- Chat Feature Variables
 local chatFeatureEnabled = false
 local chatToggleButton = nil
+local lastSend = 0
+local COOLDOWN = 4  -- Cooldown 4 detik biar aman dari spam detect
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -1973,46 +1976,121 @@ local function toggleObjectSpawner()
     ObjectFrame.Visible = objectFrameVisible
 end
 
--- Chat Feature Functions
+-- Chat Feature Functions - FIXED BYPASS VERSION
+local function displayGlobalText(text)
+    local success, err = pcall(function()
+        -- Step 1: Otomatis cari object existing di server/workspace yang bisa dipake buat billboard
+        local existingGui = nil
+        local searchNames = {"Sign", "BillboardGui", "SurfaceGui", "GuiMain", "InfoBoard", "TextLabel"}  -- Nama umum di banyak game
+        for _, name in ipairs(searchNames) do
+            existingGui = workspace:FindFirstChild(name, true)  -- Cari recursive di workspace
+            if existingGui and (existingGui:IsA("BillboardGui") or existingGui:IsA("SurfaceGui")) then
+                print("[SUPERTOOL] Ditemuin existing GUI: " .. name .. " - Cloning!")
+                break
+            end
+        end
+        
+        local billboard = nil
+        local part = nil
+        
+        if existingGui then
+            -- Clone existing GUI dari server (ini replicated, aman!)
+            billboard = existingGui:Clone()
+            if existingGui.Parent and existingGui.Parent:IsA("BasePart") then
+                part = existingGui.Parent:Clone()  -- Clone parent Part juga kalo ada
+                if part then
+                    part.Name = "ServerClone_" .. math.random(100, 999)  -- Random minimal
+                    part.Position = rootPart.Position + Vector3.new(0, 15, 0)
+                    part.Anchored = true
+                    part.CanCollide = false
+                    part.Transparency = 1
+                    part.Parent = workspace
+                end
+            end
+            billboard.Parent = part or workspace
+        else
+            -- Fallback: Spawn minimal, tapi mimic server object
+            print("[SUPERTOOL] Ga nemu existing, spawn fallback")
+            part = Instance.new("Part")
+            part.Name = "MapSign" .. math.random(1, 100)  -- Kayak sign server
+            part.Anchored = true
+            part.CanCollide = false
+            part.Transparency = 1
+            part.Material = Enum.Material.Plastic  -- Server-like
+            part.Position = rootPart.Position + Vector3.new(0, 18, math.random(-3, 3))
+            part.Parent = workspace
+            
+            billboard = Instance.new("BillboardGui")
+            billboard.Name = "InfoGui"
+            billboard.Parent = part
+            billboard.Size = UDim2.new(0, 400, 0, 100)
+            billboard.AlwaysOnTop = true
+            billboard.MaxDistance = 800
+        end
+        
+        -- Modif text (ini yang bikin visible semua via replication)
+        local frame = billboard:FindFirstChild("Frame") or Instance.new("Frame")
+        if not frame.Parent then
+            frame.Parent = billboard
+            frame.Size = UDim2.new(1, 0, 1, 0)
+            frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            frame.BackgroundTransparency = 0.3
+        end
+        
+        local textLabel = frame:FindFirstChild("TextLabel") or Instance.new("TextLabel")
+        textLabel.Parent = frame
+        textLabel.Size = UDim2.new(1, -10, 1, -10)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = text  -- Ini yang lo ubah!
+        textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)  -- Kuning
+        textLabel.TextStrokeTransparency = 0
+        textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        textLabel.TextSize = 22
+        textLabel.Font = Enum.Font.SourceSansBold  -- Font server-like
+        textLabel.TextWrapped = true
+        
+        -- Lock biar tahan sebentar
+        if part then
+            pcall(function() part.Locked = true end)
+        end
+        
+        -- Auto clean setelah 5 detik
+        game:GetService("Debris"):AddItem(part or billboard, 5)
+        
+        print("[SUPERTOOL] Server-clone msg: " .. text)
+    end)
+    
+    if not success then
+        warn("[SUPERTOOL] Clone gagal: " .. tostring(err) .. " - Coba manual chat")
+        -- Fallback ultimate: Fire chat event kalo ada
+        local chatRemote = game.ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents") or game.ReplicatedStorage:FindFirstChild("ChatRemote")
+        if chatRemote then
+            pcall(function() chatRemote:FireServer(text, "All") end)  -- Trigger server chat
+        end
+    end
+end
+
 local function toggleChatFeature()
     chatFeatureEnabled = not chatFeatureEnabled
     chatToggleButton.Text = chatFeatureEnabled and "Chat Feature: ON" or "Chat Feature: OFF"
     print("[SUPERTOOL] Chat feature " .. (chatFeatureEnabled and "enabled" or "disabled"))
 end
 
-local function displayGlobalText(text)
-    local part = Instance.new("Part")
-    part.Anchored = true
-    part.CanCollide = false
-    part.Transparency = 1
-    part.Position = Vector3.new(0, 50, 0)  -- Position in center of map or adjust
-    part.Parent = workspace
-
-    local billboard = Instance.new("BillboardGui")
-    billboard.Parent = part
-    billboard.Size = UDim2.new(0, 400, 0, 100)
-    billboard.AlwaysOnTop = true
-    billboard.MaxDistance = 1000
-
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Parent = billboard
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = text
-    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textLabel.TextStrokeTransparency = 0.5
-    textLabel.TextSize = 50
-    textLabel.Font = Enum.Font.GothamBold
-
-    game:GetService("Debris"):AddItem(part, 5)  -- Auto destroy after 5 seconds
-end
-
 local function setupChatListener()
     player.Chatted:Connect(function(message)
         if not chatFeatureEnabled then return end
-        if string.sub(message, 1, 2) == ";m" or string.sub(message, 1, 2) == ":m" then
-            local text = string.sub(message, 4)  -- Remove prefix and space
-            displayGlobalText(text)
+        if tick() - lastSend < COOLDOWN then
+            print("[SUPERTOOL] Tunggu " .. math.ceil(COOLDOWN - (tick() - lastSend)) .. " detik bro!")
+            return
+        end
+        if string.sub(message, 1, 5) == "!msg " then
+            local text = string.sub(message, 6)
+            if text ~= "" and string.len(text) <= 40 then
+                lastSend = tick()
+                displayGlobalText(text)
+            else
+                print("[SUPERTOOL] Pesan kosong atau kepanjangan, max 40 char!")
+            end
         end
     end)
 end
@@ -2140,7 +2218,7 @@ function Utility.init(deps)
         initDeletedListUI()
         initGearUI()
         initObjectUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Drawing Tool removed)")
+        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Drawing Tool removed) - Chat Bypass ON")
     end)
 end
 
