@@ -15,6 +15,7 @@
 -- REMOVED: Chat Feature entirely
 -- FIXED: Object Editor nil calls and GUI size issues
 -- NEW FIXES: Persistent GUI position, fixed drag reset, added freeze, copy list with delete, HEX color, remove effects
+-- FIXED: Drag feature no longer resets on new object selection
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -66,6 +67,8 @@ local EditorListFrame
 local lastGuiPosition = UDim2.new(0.5, -150, 0.3, 0)  -- Default position
 local copyListFrame = nil
 local copyListVisible = false
+local isDragging = false
+local dragConnection = nil
 
 -- Gear Loader Variables
 local gearFrameVisible = false
@@ -1922,13 +1925,11 @@ local function showEditorGUI(obj)
     
     -- Drag Move Button (existing, with better label)
     local Mouse = player:GetMouse()
-    local isDragging = false
-    local dragConnection
     local dragBtn = Instance.new("TextButton")
     dragBtn.Parent = scrollFrame
     dragBtn.Size = UDim2.new(1, 0, 0, 25)
     dragBtn.BackgroundColor3 = Color3.fromRGB(120, 80, 60)
-    dragBtn.Text = "Toggle Drag Move (Click and drag to move)"
+    dragBtn.Text = isDragging and "Disable Drag Move" or "Toggle Drag Move (Click and drag to move)"
     dragBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     dragBtn.Font = Enum.Font.Gotham
     dragBtn.TextSize = 10
@@ -1936,6 +1937,9 @@ local function showEditorGUI(obj)
         isDragging = not isDragging
         dragBtn.Text = isDragging and "Disable Drag Move" or "Toggle Drag Move (Click and drag to move)"
         if isDragging then
+            if dragConnection then
+                dragConnection:Disconnect()
+            end
             dragConnection = RunService.RenderStepped:Connect(function()
                 if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
                 if not selectedObject or not selectedObject.Parent then return end
@@ -1957,6 +1961,27 @@ local function showEditorGUI(obj)
             end
         end
     end)
+    
+    -- If was dragging, reconnect for new object
+    if isDragging then
+        if dragConnection then
+            dragConnection:Disconnect()
+        end
+        dragConnection = RunService.RenderStepped:Connect(function()
+            if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
+            if not selectedObject or not selectedObject.Parent then return end
+            local camera = workspace.CurrentCamera
+            local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+            local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+            local normal = camera.CFrame.LookVector
+            local denominator = ray.Direction:Dot(normal)
+            if math.abs(denominator) > 1e-6 then
+                local t = (selectedObject.Position - ray.Origin):Dot(normal) / denominator
+                local hit = ray.Origin + ray.Direction * t
+                selectedObject.CFrame = CFrame.new(hit) * (selectedObject.CFrame - selectedObject.CFrame.Position)
+            end
+        end)
+    end
     
     -- Update canvas size
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -2312,7 +2337,7 @@ function updatePathList()
             autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
             autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             autoRespButton.TextSize = 7
-            autoPlayButton.Font = Enum.Font.GothamBold
+            autoRespButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
 
             local toggleShowButton = Instance.new("TextButton")
