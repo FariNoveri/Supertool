@@ -263,7 +263,7 @@ local function restoreLightingSettings()
     safeCall(function()
         if lastKnownLighting and next(lastKnownLighting) then
             for property, value in pairs(lastKnownLighting) do
-                if Lighting[property] != value then
+                if Lighting[property] ~= value then
                     safeSetProperty(Lighting, property, value)
                 end
             end
