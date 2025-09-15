@@ -106,24 +106,9 @@ local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local PATH_FOLDER_PATH = "Supertool/Paths/"
-
--- Path movement detection constants
-local WALK_THRESHOLD = 5 -- studs per second
-local JUMP_THRESHOLD = 20 -- studs per second Y velocity
-local FALL_THRESHOLD = -10 -- studs per second Y velocity
-local SWIM_THRESHOLD = 2 -- when in water
-local MARKER_DISTANCE = 5 -- meters between path markers
-local CLICKABLE_RADIUS = 5 -- meters radius for clickable path points
-
--- Movement colors
-local movementColors = {
-    swimming = Color3.fromRGB(128, 0, 128),
-    jumping = Color3.fromRGB(255, 0, 0),
-    falling = Color3.fromRGB(255, 255, 0),
-    walking = Color3.fromRGB(0, 255, 0),
-    idle = Color3.fromRGB(200, 200, 200),
-    paused = Color3.fromRGB(255, 255, 255)
-}
+local OBJECT_EDITOR_FOLDER = "ObjectEditorMap/"
+local currentPlaceId = game.PlaceId
+local objectEdits = {}  -- To store edits {path = {prop = value}}
 
 -- Helper function for sanitize filename
 local function sanitizeFileName(name)
@@ -987,6 +972,55 @@ function renamePathInJSON(oldName, newName)
     return success and error or false
 end
 
+-- Helper to get full path of object
+local function getFullPath(obj)
+    local path = obj.Name
+    local parent = obj.Parent
+    while parent and parent ~= workspace do
+        path = parent.Name .. "." .. path
+        parent = parent.Parent
+    end
+    return "workspace." .. path
+end
+
+-- Save object edits to JSON
+local function saveObjectEdits(update)
+    local filePath = OBJECT_EDITOR_FOLDER .. tostring(currentPlaceId) .. ".json"
+    if not isfolder(OBJECT_EDITOR_FOLDER) then
+        makefolder(OBJECT_EDITOR_FOLDER)
+    end
+    local data = {}
+    if update and isfile(filePath) then
+        local jsonString = readfile(filePath)
+        data = HttpService:JSONDecode(jsonString)
+    end
+    for path, props in pairs(objectEdits) do
+        data[path] = props
+    end
+    local jsonString = HttpService:JSONEncode(data)
+    writefile(filePath, jsonString)
+    print("[SUPERTOOL] Object edits saved to " .. filePath)
+end
+
+-- Load object edits from JSON
+local function loadObjectEdits()
+    local filePath = OBJECT_EDITOR_FOLDER .. tostring(currentPlaceId) .. ".json"
+    if isfile(filePath) then
+        local jsonString = readfile(filePath)
+        local data = HttpService:JSONDecode(jsonString)
+        for path, props in pairs(data) do
+            local obj = loadstring("return " .. path)()
+            if obj then
+                for prop, value in pairs(props) do
+                    obj[prop] = value
+                end
+            end
+        end
+        objectEdits = data
+        print("[SUPERTOOL] Loaded object edits for place " .. currentPlaceId)
+    end
+end
+
 -- Enhanced Object Editor Functions with more features, fixes, details, and user-friendly elements
 local function clearSelection()
     for _, box in pairs(selectionBoxes) do
@@ -1082,6 +1116,9 @@ local function resizeObject(scale)
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
             obj.Size = oldSize * Vector3.new(scale, scale, scale)  -- Uniform scale for simplicity
             print("[SUPERTOOL] Resized " .. obj.Name .. " by " .. scale)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Size = obj.Size
         end
     end)
     if not success then
@@ -1122,6 +1159,9 @@ local function toggleAnchored()
             table.insert(editedObjects, {object = obj, property = "Anchored", oldValue = oldValue})
             obj.Anchored = not oldValue
             print("[SUPERTOOL] Toggled Anchored to " .. tostring(not oldValue) .. " for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Anchored = obj.Anchored
         end
     end)
     if not success then
@@ -1140,6 +1180,9 @@ local function toggleCanCollide()
             table.insert(editedObjects, {object = obj, property = "CanCollide", oldValue = oldValue})
             obj.CanCollide = not oldValue
             print("[SUPERTOOL] Toggled CanCollide to " .. tostring(not oldValue) .. " for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].CanCollide = obj.CanCollide
         end
     end)
     if not success then
@@ -1162,6 +1205,9 @@ local function changeColor(hex)
             table.insert(editedObjects, {object = obj, property = "Color", oldValue = oldColor})
             obj.Color = Color3.fromRGB(r, g, b)
             print("[SUPERTOOL] Changed color to HEX #" .. hex .. " for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Color = {obj.Color.R, obj.Color.G, obj.Color.B}
         end
     end)
     if not success then
@@ -1180,6 +1226,9 @@ local function changeTransparency(trans)
             table.insert(editedObjects, {object = obj, property = "Transparency", oldValue = oldTrans})
             obj.Transparency = math.clamp(trans, 0, 1)
             print("[SUPERTOOL] Changed transparency to " .. trans .. " for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Transparency = obj.Transparency
         end
     end)
     if not success then
@@ -1199,6 +1248,9 @@ local function changePosition(x, y, z)
             table.insert(editedObjects, {object = obj, property = "Position", oldValue = oldPosition})
             obj.Position = Vector3.new(x, y, z)
             print("[SUPERTOOL] Changed position to (" .. x .. "," .. y .. "," .. z .. ") for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Position = {x, y, z}
         end
     end)
     if not success then
@@ -1218,6 +1270,9 @@ local function changeRotation(x, y, z)
             table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
             obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(x), math.rad(y), math.rad(z))
             print("[SUPERTOOL] Changed rotation to (" .. x .. "," .. y .. "," .. z .. ") degrees for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Orientation = {x, y, z}
         end
     end)
     if not success then
@@ -1233,6 +1288,9 @@ local function changeRotX(x)
             local oldCFrame = obj.CFrame
             table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
             obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(x), ry, rz)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Orientation = {math.deg(rx), math.deg(ry), math.deg(rz)}
         end
     end)
     if not success then
@@ -1248,6 +1306,9 @@ local function changeRotY(y)
             local oldCFrame = obj.CFrame
             table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
             obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(rx, math.rad(y), rz)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Orientation = {math.deg(rx), math.deg(ry), math.deg(rz)}
         end
     end)
     if not success then
@@ -1263,6 +1324,9 @@ local function changeRotZ(z)
             local oldCFrame = obj.CFrame
             table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
             obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(rx, ry, math.rad(z))
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Orientation = {math.deg(rx), math.deg(ry), math.deg(rz)}
         end
     end)
     if not success then
@@ -1277,6 +1341,9 @@ local function changeSizeX(x)
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
             obj.Size = Vector3.new(x, obj.Size.Y, obj.Size.Z)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
     if not success then
@@ -1291,6 +1358,9 @@ local function changeSizeY(y)
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
             obj.Size = Vector3.new(obj.Size.X, y, obj.Size.Z)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
     if not success then
@@ -1305,6 +1375,9 @@ local function changeSizeZ(z)
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
             obj.Size = Vector3.new(obj.Size.X, obj.Size.Y, z)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
     if not success then
@@ -1319,6 +1392,9 @@ local function resetSize()
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
             obj.Size = Vector3.new(4, 2, 4)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Size = {4, 2, 4}
         end
     end)
     if not success then
@@ -1338,6 +1414,9 @@ local function changeMaterial(materialName)
             table.insert(editedObjects, {object = obj, property = "Material", oldValue = oldMaterial})
             obj.Material = Enum.Material[materialName] or Enum.Material.SmoothPlastic
             print("[SUPERTOOL] Changed material to " .. materialName .. " for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Material = materialName
         end
     end)
     if not success then
@@ -1357,6 +1436,9 @@ local function changeShape(shapeName)
             table.insert(editedObjects, {object = obj, property = "Shape", oldValue = oldShape})
             obj.Shape = Enum.PartType[shapeName] or Enum.PartType.Block
             print("[SUPERTOOL] Changed shape to " .. shapeName .. " for " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Shape = shapeName
         end
     end)
     if not success then
@@ -1378,6 +1460,9 @@ local function addSurfaceLight()
             light.Color = Color3.fromRGB(255, 255, 255)
             light.Brightness = 1
             print("[SUPERTOOL] Added SurfaceLight to " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].SurfaceLight = true
         end
     end)
     if not success then
@@ -1400,6 +1485,10 @@ local function freezeObject()
             obj.Anchored = true
             obj.Velocity = Vector3.new(0, 0, 0)
             print("[SUPERTOOL] Froze object: " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Anchored = true
+            objectEdits[path].Velocity = {0, 0, 0}
         end
     end)
     if not success then
@@ -1419,6 +1508,9 @@ local function unfreezeObject()
             table.insert(editedObjects, {object = obj, property = "Anchored", oldValue = oldAnchored})
             obj.Anchored = false
             print("[SUPERTOOL] Unfroze object: " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].Anchored = false
         end
     end)
     if not success then
@@ -1448,6 +1540,11 @@ local function removeEffects()
                 end
             end
             print("[SUPERTOOL] Removed effects from: " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].CustomPhysicalProperties = nil
+            objectEdits[path].TopSurface = "Smooth"
+            -- Repeat for other surfaces
         end
     end)
     if not success then
@@ -1467,6 +1564,9 @@ local function setSlippery()
             table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
             obj.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.01, 0.5, 100, 1)  -- Low friction for slippery
             print("[SUPERTOOL] Applied slippery effect to: " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].CustomPhysicalProperties = {Density = 0.7, Friction = 0.01, Elasticity = 0.5, FrictionWeight = 100, ElasticityWeight = 1}
         end
     end)
     if not success then
@@ -1486,6 +1586,9 @@ local function setCustomPhysics(density, friction, elasticity, frictionWeight, e
             table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
             obj.CustomPhysicalProperties = PhysicalProperties.new(density, friction, elasticity, frictionWeight, elasticityWeight)
             print("[SUPERTOOL] Set custom physics for: " .. obj.Name)
+            local path = getFullPath(obj)
+            objectEdits[path] = objectEdits[path] or {}
+            objectEdits[path].CustomPhysicalProperties = {Density = density, Friction = friction, Elasticity = elasticity, FrictionWeight = frictionWeight, ElasticityWeight = elasticityWeight}
         end
     end)
     if not success then
@@ -2102,6 +2205,9 @@ local function showEditorGUI()
                     local newY = math.deg(currentRot[2]) + (axis == 'Y' and delta or 0)
                     local newZ = math.deg(currentRot[3]) + (axis == 'Z' and delta or 0)
                     obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(newX), math.rad(newY), math.rad(newZ))
+                    local path = getFullPath(obj)
+                    objectEdits[path] = objectEdits[path] or {}
+                    objectEdits[path].Orientation = {newX, newY, newZ}
                 end
             end)
         end)
@@ -2269,6 +2375,32 @@ local function showEditorGUI()
         end
     end)
     
+    -- Save and Update Buttons
+    local saveBtn = Instance.new("TextButton")
+    saveBtn.Parent = scrollFrame
+    saveBtn.Size = UDim2.new(0.5, 0, 0, 25)
+    saveBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    saveBtn.Text = "Save Edits"
+    saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    saveBtn.Font = Enum.Font.Gotham
+    saveBtn.TextSize = 10
+    saveBtn.MouseButton1Click:Connect(function()
+        saveObjectEdits(false)
+    end)
+    
+    local updateBtn = Instance.new("TextButton")
+    updateBtn.Parent = scrollFrame
+    updateBtn.Position = UDim2.new(0.5, 0, 0, 0)
+    updateBtn.Size = UDim2.new(0.5, 0, 0, 25)
+    updateBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
+    updateBtn.Text = "Update Edits"
+    updateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    updateBtn.Font = Enum.Font.Gotham
+    updateBtn.TextSize = 10
+    updateBtn.MouseButton1Click:Connect(function()
+        saveObjectEdits(true)
+    end)
+    
     -- Update canvas size
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
@@ -2316,6 +2448,9 @@ local function updateDrag()
     local delta = currentHit - dragStartHit
     for i, obj in ipairs(selectedObjects) do
         obj.Position = dragStartPositions[i] + delta
+        local path = getFullPath(obj)
+        objectEdits[path] = objectEdits[path] or {}
+        objectEdits[path].Position = {obj.Position.X, obj.Position.Y, obj.Position.Z}
     end
 end
 
@@ -3319,6 +3454,9 @@ function Utility.init(deps)
         if not isfolder(PATH_FOLDER_PATH) then
             makefolder(PATH_FOLDER_PATH)
         end
+        if not isfolder(OBJECT_EDITOR_FOLDER) then
+            makefolder(OBJECT_EDITOR_FOLDER)
+        end
     end)
     
     if not success then
@@ -3328,6 +3466,8 @@ function Utility.init(deps)
     -- FIXED: Load all existing files on initialization
     local pathCount = loadAllSavedPaths()
     print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
+    
+    loadObjectEdits()
     
     setupKeyboardControls()
     setupEditorInput()
@@ -3349,6 +3489,8 @@ function Utility.init(deps)
                         playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
                 end
+                -- Re-apply object edits after respawn
+                loadObjectEdits()
             end)
         end)
         
