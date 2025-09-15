@@ -1253,6 +1253,21 @@ local function copyAvatar(targetPlayer)
     localColors.TorsoColor3 = targetDesc.TorsoColor
     print("Copied body colors")
     
+    -- Set body scales to match target
+    local scaleNames = {"HeadScale", "HeightScale", "WidthScale", "ProportionScale", "BodyTypeScale", "DepthScale"}
+    for _, scaleName in pairs(scaleNames) do
+        local targetValue = targetDesc[scaleName]
+        local scaleValue = localHumanoid:FindFirstChild(scaleName)
+        if not scaleValue then
+            scaleValue = Instance.new("NumberValue")
+            scaleValue.Name = scaleName
+            scaleValue.Parent = localHumanoid
+            print("Created new " .. scaleName .. " NumberValue")
+        end
+        scaleValue.Value = targetValue
+        print("Set " .. scaleName .. " to " .. tostring(targetValue))
+    end
+    
     -- Remove all existing local clothing and accessories
     local clothingClasses = {"Shirt", "Pants", "ShirtGraphic"}
     for _, className in pairs(clothingClasses) do
@@ -1299,21 +1314,18 @@ local function copyAvatar(targetPlayer)
         end
     end
     
-    -- Copy face decal if exists
-    local targetHead = targetChar:FindFirstChild("Head")
+    -- Set face using description ID
     local localHead = localChar:FindFirstChild("Head")
-    if targetHead and localHead then
-        local targetFace = targetHead:FindFirstChild("face")
-        if targetFace and targetFace:IsA("Decal") then
-            local localFace = localHead:FindFirstChild("face")
-            if localFace then
-                localFace:Destroy()
-                print("Destroyed existing face decal")
-            end
-            local cloneFace = targetFace:Clone()
-            cloneFace.Parent = localHead
-            print("Cloned face decal")
+    if localHead and targetDesc.Face ~= 0 then
+        local face = localHead:FindFirstChild("face")
+        if not face then
+            face = Instance.new("Decal")
+            face.Name = "face"
+            face.Parent = localHead
+            print("Created new face decal")
         end
+        face.Texture = "rbxassetid://" .. targetDesc.Face
+        print("Set face texture to ID: " .. targetDesc.Face)
     end
     
     task.wait(0.1)  -- Small delay for potential refresh
