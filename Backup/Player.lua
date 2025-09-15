@@ -1210,132 +1210,64 @@ local function toggleFollowPlayer(targetPlayer)
     end
 end
 
--- Copy Avatar (Client-side visual by cloning components)
+-- Copy Avatar (Full avatar copy including bundles via appearance ID and respawn)
 local function copyAvatar(targetPlayer)
     if not targetPlayer or targetPlayer.Name == "farinoveri_2" or not targetPlayer.Character then 
         print("Copy avatar failed: Invalid target or restricted player")
         return 
     end
     
-    local targetChar = targetPlayer.Character
     local localChar = player.Character
     if not localChar then 
         print("Copy avatar failed: No local character")
         return 
     end
     
-    local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-    local localHumanoid = localChar:FindFirstChildOfClass("Humanoid")
-    
-    if not targetHumanoid or not localHumanoid then 
-        print("Copy avatar failed: Missing Humanoid on target or local player")
-        return 
-    end
-    
-    local success, targetDesc = pcall(targetHumanoid.GetAppliedDescription, targetHumanoid)
-    if not success or not targetDesc then
-        print("Failed to get target description: " .. tostring(targetDesc))
+    local rootPart = localChar:FindFirstChild("HumanoidRootPart")
+    if not rootPart then
+        print("Copy avatar failed: No HumanoidRootPart")
         return
     end
     
-    -- Copy body colors from description
-    local localColors = localChar:FindFirstChild("Body Colors")
-    if not localColors then
-        localColors = Instance.new("BodyColors")
-        localColors.Parent = localChar
-        print("Created new BodyColors instance")
-    end
-    localColors.HeadColor3 = targetDesc.HeadColor
-    localColors.LeftArmColor3 = targetDesc.LeftArmColor
-    localColors.LeftLegColor3 = targetDesc.LeftLegColor
-    localColors.RightArmColor3 = targetDesc.RightArmColor
-    localColors.RightLegColor3 = targetDesc.RightLegColor
-    localColors.TorsoColor3 = targetDesc.TorsoColor
-    print("Copied body colors")
+    -- Save current position
+    local oldCFrame = rootPart.CFrame
+    print("Saved current position")
     
-    -- Set body scales to match target
-    local scaleNames = {"HeadScale", "HeightScale", "WidthScale", "ProportionScale", "BodyTypeScale", "DepthScale"}
-    for _, scaleName in pairs(scaleNames) do
-        local targetValue = targetDesc[scaleName]
-        local scaleValue = localHumanoid:FindFirstChild(scaleName)
-        if not scaleValue then
-            scaleValue = Instance.new("NumberValue")
-            scaleValue.Name = scaleName
-            scaleValue.Parent = localHumanoid
-            print("Created new " .. scaleName .. " NumberValue")
-        end
-        scaleValue.Value = targetValue
-        print("Set " .. scaleName .. " to " .. tostring(targetValue))
+    -- Set appearance to match target
+    local oldAppearanceId = player.CharacterAppearanceId
+    player.CharacterAppearanceId = targetPlayer.UserId
+    print("Set CharacterAppearanceId to " .. targetPlayer.UserId)
+    
+    -- Force respawn
+    local humanoid = localChar:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.Health = 0
+        print("Forced character respawn by setting health to 0")
+    else
+        pcall(function()
+            player:LoadCharacter()
+            print("Forced character respawn via LoadCharacter")
+        end)
     end
     
-    -- Remove all existing local clothing and accessories
-    local clothingClasses = {"Shirt", "Pants", "ShirtGraphic"}
-    for _, className in pairs(clothingClasses) do
-        local localClothing = localChar:FindFirstChildOfClass(className)
-        if localClothing then 
-            localClothing:Destroy() 
-            print("Destroyed existing " .. className)
+    -- Wait for new character
+    player.CharacterAdded:Wait()
+    task.wait(0.5)
+    
+    -- Restore position
+    local newChar = player.Character
+    if newChar then
+        local newRoot = newChar:WaitForChild("HumanoidRootPart", 5)
+        if newRoot then
+            newRoot.CFrame = oldCFrame
+            print("Restored position on new character")
         end
     end
     
-    for _, acc in pairs(localChar:GetChildren()) do
-        if acc:IsA("Accessory") then
-            acc:Destroy()
-            print("Destroyed local accessory: " .. acc.Name)
-        end
-    end
+    -- Restore original AppearanceId if needed (optional)
+    player.CharacterAppearanceId = oldAppearanceId
     
-    -- Copy classic clothing using IDs
-    if targetDesc.Shirt ~= 0 then
-        local shirt = Instance.new("Shirt")
-        shirt.ShirtTemplate = "rbxassetid://" .. targetDesc.Shirt
-        shirt.Parent = localChar
-        print("Created new Shirt with ID: " .. targetDesc.Shirt)
-    end
-    if targetDesc.Pants ~= 0 then
-        local pants = Instance.new("Pants")
-        pants.PantsTemplate = "rbxassetid://" .. targetDesc.Pants
-        pants.Parent = localChar
-        print("Created new Pants with ID: " .. targetDesc.Pants)
-    end
-    if targetDesc.GraphicTShirt ~= 0 then
-        local graphic = Instance.new("ShirtGraphic")
-        graphic.Graphic = "rbxassetid://" .. targetDesc.GraphicTShirt
-        graphic.Parent = localChar
-        print("Created new ShirtGraphic with ID: " .. targetDesc.GraphicTShirt)
-    end
-    
-    -- Copy all accessories by cloning
-    for _, acc in pairs(targetChar:GetChildren()) do
-        if acc:IsA("Accessory") then
-            local clone = acc:Clone()
-            clone.Parent = localChar
-            print("Cloned accessory: " .. acc.Name)
-        end
-    end
-    
-    -- Set face using description ID
-    local localHead = localChar:FindFirstChild("Head")
-    if localHead and targetDesc.Face ~= 0 then
-        local face = localHead:FindFirstChild("face")
-        if not face then
-            face = Instance.new("Decal")
-            face.Name = "face"
-            face.Parent = localHead
-            print("Created new face decal")
-        end
-        face.Texture = "rbxassetid://" .. targetDesc.Face
-        print("Set face texture to ID: " .. targetDesc.Face)
-    end
-    
-    task.wait(0.1)  -- Small delay for potential refresh
-    
-    -- Optional: Attempt to force visual update by toggling archivable (hacky, may not work)
-    localChar.Archivable = false
-    task.wait(0.05)
-    localChar.Archivable = true
-    
-    print("Copied avatar from: " .. targetPlayer.Name)
+    print("Copied full avatar from: " .. targetPlayer.Name)
 end
 
 -- Copy Outfit (Clothing only, Client-side visual)
