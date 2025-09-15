@@ -52,6 +52,7 @@ Player.teleportFuture = {}
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
 local EmoteGuiFrame
+local SearchBox
 
 local StarterGui = game:GetService("StarterGui")
 
@@ -1422,38 +1423,42 @@ local function spectatePrevPlayer()
     stopSpectating()
 end
 
--- Copy Avatar
+-- Copy Avatar (Client-side visual only)
 local function copyAvatar(targetPlayer)
     if not targetPlayer or targetPlayer.Name == "farinoveri_2" then return end
     if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
-        warn("Target has no character")
+        warn("Target has no character for copy avatar")
         return
     end
     local success, description = pcall(function()
         return targetPlayer.Character.Humanoid:GetAppliedDescription()
     end)
-    if success then
+    if success and description then
         if player.Character and player.Character:FindFirstChild("Humanoid") then
-            player.Character.Humanoid:ApplyDescription(description)
-            print("Copied avatar from: " .. targetPlayer.Name)
+            pcall(function()
+                player.Character.Humanoid:ApplyDescription(description)
+            end)
+            print("Copied avatar (visual) from: " .. targetPlayer.Name)
+        else
+            warn("Local player has no character for apply avatar")
         end
     else
-        warn("Failed to get avatar description: " .. tostring(description))
+        warn("Failed to get target avatar description (client-side)")
     end
 end
 
--- Copy Outfit (Clothing only)
+-- Copy Outfit (Clothing only, Client-side visual)
 local function copyOutfit(targetPlayer)
     if not targetPlayer or targetPlayer.Name == "farinoveri_2" then return end
     if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
-        warn("Target has no character")
+        warn("Target has no character for copy outfit")
         return
     end
     local success, targetDesc = pcall(function()
         return targetPlayer.Character.Humanoid:GetAppliedDescription()
     end)
-    if not success then
-        warn("Failed to get target description")
+    if not success or not targetDesc then
+        warn("Failed to get target outfit description (client-side)")
         return
     end
     if player.Character and player.Character:FindFirstChild("Humanoid") then
@@ -1462,19 +1467,21 @@ local function copyOutfit(targetPlayer)
             return localHumanoid:GetAppliedDescription()
         end)
         local descToApply
-        if success2 then
+        if success2 and localDesc then
             descToApply = localDesc
         else
             descToApply = Instance.new("HumanoidDescription")
         end
-        -- Copy clothing
+        -- Copy only clothing (visual)
         descToApply.Shirt = targetDesc.Shirt
         descToApply.Pants = targetDesc.Pants
         descToApply.GraphicTShirt = targetDesc.GraphicTShirt
         pcall(function()
             localHumanoid:ApplyDescription(descToApply)
         end)
-        print("Copied outfit from: " .. targetPlayer.Name)
+        print("Copied outfit (visual) from: " .. targetPlayer.Name)
+    else
+        warn("Local player has no character for apply outfit")
     end
 end
 
@@ -2141,9 +2148,11 @@ local function initUI()
         teleportToSpectatedPlayer()
     end)
 
-    SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
-        Player.updatePlayerList()
-    end)
+    if SearchBox then
+        SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            Player.updatePlayerList()
+        end)
+    end
 
     -- Initialize Player List
     Player.updatePlayerList()
