@@ -1269,6 +1269,62 @@ local function changeRotZ(z)
     end
 end
 
+local function changeSizeX(x)
+    if #selectedObjects == 0 then return end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local oldSize = obj.Size
+            table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
+            obj.Size = Vector3.new(x, obj.Size.Y, obj.Size.Z)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Size X change failed: " .. tostring(err))
+    end
+end
+
+local function changeSizeY(y)
+    if #selectedObjects == 0 then return end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local oldSize = obj.Size
+            table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
+            obj.Size = Vector3.new(obj.Size.X, y, obj.Size.Z)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Size Y change failed: " .. tostring(err))
+    end
+end
+
+local function changeSizeZ(z)
+    if #selectedObjects == 0 then return end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local oldSize = obj.Size
+            table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
+            obj.Size = Vector3.new(obj.Size.X, obj.Size.Y, z)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Size Z change failed: " .. tostring(err))
+    end
+end
+
+local function resetSize()
+    if #selectedObjects == 0 then return end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local oldSize = obj.Size
+            table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
+            obj.Size = Vector3.new(4, 2, 4)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Reset size failed: " .. tostring(err))
+    end
+end
+
 -- New Feature: Change Material
 local function changeMaterial(materialName)
     if #selectedObjects == 0 then 
@@ -1347,6 +1403,25 @@ local function freezeObject()
     end)
     if not success then
         warn("[SUPERTOOL] Freeze failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Unfreeze Object
+local function unfreezeObject()
+    if #selectedObjects == 0 then 
+        warn("[SUPERTOOL] No object selected for unfreeze")
+        return 
+    end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local oldAnchored = obj.Anchored
+            table.insert(editedObjects, {object = obj, property = "Anchored", oldValue = oldAnchored})
+            obj.Anchored = false
+            print("[SUPERTOOL] Unfroze object: " .. obj.Name)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Unfreeze failed: " .. tostring(err))
     end
 end
 
@@ -2005,6 +2080,23 @@ local function showEditorGUI()
     createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Roll +10", 'Z', 10)
     createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Roll -10", 'Z', -10)
     
+    -- Size Sliders
+    local sx, sy, sz = selectedObjects[1].Size.X, selectedObjects[1].Size.Y, selectedObjects[1].Size.Z
+    createSlider(scrollFrame, "Size X:", 0.1, 100, sx, changeSizeX)
+    createSlider(scrollFrame, "Size Y:", 0.1, 100, sy, changeSizeY)
+    createSlider(scrollFrame, "Size Z:", 0.1, 100, sz, changeSizeZ)
+    
+    -- Reset Size Button
+    local resetSizeBtn = Instance.new("TextButton")
+    resetSizeBtn.Parent = scrollFrame
+    resetSizeBtn.Size = UDim2.new(1, 0, 0, 25)
+    resetSizeBtn.BackgroundColor3 = Color3.fromRGB(150, 100, 50)
+    resetSizeBtn.Text = "Reset Size"
+    resetSizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    resetSizeBtn.Font = Enum.Font.Gotham
+    resetSizeBtn.TextSize = 10
+    resetSizeBtn.MouseButton1Click:Connect(resetSize)
+    
     -- Effects Section
     local effectsSection = createSectionLabel("Effects (Add Light, Freeze, Remove Effects)")
     effectsSection.Parent = scrollFrame
@@ -2030,6 +2122,17 @@ local function showEditorGUI()
     freezeBtn.Font = Enum.Font.Gotham
     freezeBtn.TextSize = 10
     freezeBtn.MouseButton1Click:Connect(freezeObject)
+    
+    -- Unfreeze Button
+    local unfreezeBtn = Instance.new("TextButton")
+    unfreezeBtn.Parent = scrollFrame
+    unfreezeBtn.Size = UDim2.new(1, 0, 0, 25)
+    unfreezeBtn.BackgroundColor3 = Color3.fromRGB(120, 80, 60)
+    unfreezeBtn.Text = "Unfreeze (Allows movement)"
+    unfreezeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    unfreezeBtn.Font = Enum.Font.Gotham
+    unfreezeBtn.TextSize = 10
+    unfreezeBtn.MouseButton1Click:Connect(unfreezeObject)
     
     -- Remove Effects Button
     local removeEffectsBtn = Instance.new("TextButton")
@@ -2116,19 +2219,24 @@ local function setupEditorInput()
     selectionConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
-            if isDragging then return end  -- Don't select new when dragging
+            if isDragging then return end
             local mouse = player:GetMouse()
             local target = mouse.Target
             if target and target:IsA("BasePart") and target ~= workspace.Terrain then
-                if not allowMultiMoreThan2 and #selectedObjects >= 2 then return end
-                table.insert(selectedObjects, target)
-                local box = Instance.new("SelectionBox")
-                box.Parent = target
-                box.Adornee = target
-                box.LineThickness = 0.1
-                box.Color3 = Color3.fromRGB(0, 255, 0)
-                table.insert(selectionBoxes, box)
-                showEditorGUI()
+                local isShift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+                if not isShift then
+                    clearSelection()
+                end
+                if #selectedObjects < (allowMultiMoreThan2 and math.huge or 2) then
+                    table.insert(selectedObjects, target)
+                    local box = Instance.new("SelectionBox")
+                    box.Parent = target
+                    box.Adornee = target
+                    box.LineThickness = 0.1
+                    box.Color3 = Color3.fromRGB(0, 255, 0)
+                    table.insert(selectionBoxes, box)
+                    showEditorGUI()
+                end
             end
         end
     end)
