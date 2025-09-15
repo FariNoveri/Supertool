@@ -76,6 +76,10 @@ local rightClickConnection = nil
 local lastRightClickTime = 0
 local DOUBLE_CLICK_TIME = 0.5  -- seconds for double click
 local pasteConfirmationEnabled = true  -- Toggle for confirmation
+local allowMultiMoreThan2 = true  -- Toggle for selecting more than 2 objects
+local dragStartPositions = {}
+local dragStartHit = nil
+local dragSteppedConn = nil
 
 -- Gear Loader Variables
 local gearFrameVisible = false
@@ -1220,6 +1224,51 @@ local function changeRotation(x, y, z)
     end
 end
 
+local function changeRotX(x)
+    if #selectedObjects == 0 then return end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local rx, ry, rz = obj.CFrame:ToEulerAnglesXYZ()
+            local oldCFrame = obj.CFrame
+            table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
+            obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(x), ry, rz)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Rot X change failed: " .. tostring(err))
+    end
+end
+
+local function changeRotY(y)
+    if #selectedObjects == 0 then return end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local rx, ry, rz = obj.CFrame:ToEulerAnglesXYZ()
+            local oldCFrame = obj.CFrame
+            table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
+            obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(rx, math.rad(y), rz)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Rot Y change failed: " .. tostring(err))
+    end
+end
+
+local function changeRotZ(z)
+    if #selectedObjects == 0 then return end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local rx, ry, rz = obj.CFrame:ToEulerAnglesXYZ()
+            local oldCFrame = obj.CFrame
+            table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
+            obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(rx, ry, math.rad(z))
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Rot Z change failed: " .. tostring(err))
+    end
+end
+
 -- New Feature: Change Material
 local function changeMaterial(materialName)
     if #selectedObjects == 0 then 
@@ -1484,6 +1533,80 @@ local function toggleCopyList()
     end
 end
 
+local function createSlider(parent, labelText, min, max, initial, callback)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Parent = parent
+    sliderFrame.Size = UDim2.new(1, 0, 0, 25)
+    sliderFrame.BackgroundTransparency = 1
+
+    local label = Instance.new("TextLabel")
+    label.Parent = sliderFrame
+    label.Size = UDim2.new(0.3, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = labelText
+    label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 10
+    label.TextXAlignment = Enum.TextXAlignment.Left
+
+    local track = Instance.new("Frame")
+    track.Parent = sliderFrame
+    track.Position = UDim2.new(0.3, 0, 0.25, 0)
+    track.Size = UDim2.new(0.6, 0, 0.5, 0)
+    track.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+
+    local knob = Instance.new("TextButton")
+    knob.Parent = track
+    knob.Size = UDim2.new(0, 10, 2, 0)
+    knob.Position = UDim2.new(0, 0, -0.5, 0)
+    knob.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    knob.Text = ""
+
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Parent = sliderFrame
+    valueLabel.Position = UDim2.new(0.9, 0, 0, 0)
+    valueLabel.Size = UDim2.new(0.1, 0, 1, 0)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    valueLabel.TextSize = 10
+    valueLabel.Font = Enum.Font.Gotham
+
+    local function updateValue()
+        local frac = knob.Position.X.Scale
+        local value = min + (max - min) * frac
+        value = math.round(value)
+        valueLabel.Text = tostring(value)
+        callback(value)
+    end
+
+    local dragConn
+    knob.MouseButton1Down:Connect(function()
+        local mouseStart = UserInputService:GetMouseLocation().X
+        local knobStart = knob.Position.X.Scale
+        dragConn = RunService.RenderStepped:Connect(function()
+            local mouseCurrent = UserInputService:GetMouseLocation().X
+            local delta = (mouseCurrent - mouseStart) / track.AbsoluteSize.X
+            local newFrac = math.clamp(knobStart + delta, 0, 1)
+            knob.Position = UDim2.new(newFrac, 0, -0.5, 0)
+            updateValue()
+        end)
+    end)
+
+    local endConn = UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and dragConn then
+            dragConn:Disconnect()
+            endConn:Disconnect()
+        end
+    end)
+
+    -- Set initial
+    local initFrac = (initial - min) / (max - min)
+    knob.Position = UDim2.new(math.clamp(initFrac, 0, 1), 0, -0.5, 0)
+    updateValue()
+
+    return sliderFrame
+end
+
 local function showEditorGUI()
     if #selectedObjects == 0 then return end
     
@@ -1535,7 +1658,6 @@ local function showEditorGUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 5
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scrollFrame.CanvasPosition = Vector2.new(0, lastScrollPosition)  -- Restore scroll position
     
     local layout = Instance.new("UIListLayout")
     layout.Parent = scrollFrame
@@ -1602,6 +1724,53 @@ local function showEditorGUI()
     deleteBtn.Font = Enum.Font.Gotham
     deleteBtn.TextSize = 10
     deleteBtn.MouseButton1Click:Connect(deleteObject)
+    
+    -- Clear Selection Button
+    local clearBtn = Instance.new("TextButton")
+    clearBtn.Parent = scrollFrame
+    clearBtn.Size = UDim2.new(1, 0, 0, 25)
+    clearBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
+    clearBtn.Text = "Clear Selection"
+    clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    clearBtn.Font = Enum.Font.Gotham
+    clearBtn.TextSize = 10
+    clearBtn.MouseButton1Click:Connect(clearSelection)
+    
+    -- Paste Confirmation Toggle
+    local confirmToggle = Instance.new("TextButton")
+    confirmToggle.Parent = scrollFrame
+    confirmToggle.Size = UDim2.new(1, 0, 0, 25)
+    confirmToggle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    confirmToggle.Text = "Paste Confirmation: " .. (pasteConfirmationEnabled and "ON" or "OFF")
+    confirmToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmToggle.Font = Enum.Font.Gotham
+    confirmToggle.TextSize = 10
+    confirmToggle.MouseButton1Click:Connect(function()
+        pasteConfirmationEnabled = not pasteConfirmationEnabled
+        confirmToggle.Text = "Paste Confirmation: " .. (pasteConfirmationEnabled and "ON" or "OFF")
+    end)
+    
+    -- Multi-Select Toggle
+    local multiToggle = Instance.new("TextButton")
+    multiToggle.Parent = scrollFrame
+    multiToggle.Size = UDim2.new(1, 0, 0, 25)
+    multiToggle.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    multiToggle.Text = "Allow Select >2: " .. (allowMultiMoreThan2 and "ON" or "OFF")
+    multiToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    multiToggle.Font = Enum.Font.Gotham
+    multiToggle.TextSize = 10
+    multiToggle.MouseButton1Click:Connect(function()
+        allowMultiMoreThan2 = not allowMultiMoreThan2
+        multiToggle.Text = "Allow Select >2: " .. (allowMultiMoreThan2 and "ON" or "OFF")
+        if not allowMultiMoreThan2 and #selectedObjects > 2 then
+            while #selectedObjects > 2 do
+                local removed = table.remove(selectedObjects, 1)
+                local box = table.remove(selectionBoxes, 1)
+                if box then box:Destroy() end
+            end
+            showEditorGUI()
+        end
+    end)
     
     -- Toggles Section (multi)
     local togglesSection = createSectionLabel("Toggles (Anchored, CanCollide)")
@@ -1756,64 +1925,23 @@ local function showEditorGUI()
     createHoldButton(moveFrame, UDim2.new(0.2, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Forward", Vector3.new(0, 0, -0.5))
     createHoldButton(moveFrame, UDim2.new(0.6, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Backward", Vector3.new(0, 0, 0.5))
     
-    -- Rotation Inputs
-    local rotFrame = Instance.new("Frame")
-    rotFrame.Parent = scrollFrame
-    rotFrame.Size = UDim2.new(1, 0, 0, 30)
-    rotFrame.BackgroundTransparency = 1
+    -- Rotation Sliders
+    local rx, ry, rz = selectedObjects[1].CFrame:ToEulerAnglesXYZ()
+    createSlider(scrollFrame, "Rotation X:", -180, 180, math.deg(rx), changeRotX)
+    createSlider(scrollFrame, "Rotation Y:", -180, 180, math.deg(ry), changeRotY)
+    createSlider(scrollFrame, "Rotation Z:", -180, 180, math.deg(rz), changeRotZ)
     
-    local rotLabel = Instance.new("TextLabel")
-    rotLabel.Parent = rotFrame
-    rotLabel.Size = UDim2.new(1, 0, 0, 15)
-    rotLabel.BackgroundTransparency = 1
-    rotLabel.Text = "Rotation (X, Y, Z degrees):"
-    rotLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    rotLabel.Font = Enum.Font.Gotham
-    rotLabel.TextSize = 10
-    
-    local rotX = Instance.new("TextBox")
-    rotX.Parent = rotFrame
-    rotX.Position = UDim2.new(0, 0, 0.5, 0)
-    rotX.Size = UDim2.new(0.3, 0, 0.5, 0)
-    rotX.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    rotX.Text = "0"
-    rotX.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rotX.Font = Enum.Font.Gotham
-    rotX.TextSize = 10
-    
-    local rotY = Instance.new("TextBox")
-    rotY.Parent = rotFrame
-    rotY.Position = UDim2.new(0.33, 0, 0.5, 0)
-    rotY.Size = UDim2.new(0.3, 0, 0.5, 0)
-    rotY.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    rotY.Text = "0"
-    rotY.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rotY.Font = Enum.Font.Gotham
-    rotY.TextSize = 10
-    
-    local rotZ = Instance.new("TextBox")
-    rotZ.Parent = rotFrame
-    rotZ.Position = UDim2.new(0.66, 0, 0.5, 0)
-    rotZ.Size = UDim2.new(0.3, 0, 0.5, 0)
-    rotZ.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    rotZ.Text = "0"
-    rotZ.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rotZ.Font = Enum.Font.Gotham
-    rotZ.TextSize = 10
-    
-    local rotBtn = Instance.new("TextButton")
-    rotBtn.Parent = scrollFrame
-    rotBtn.Size = UDim2.new(1, 0, 0, 25)
-    rotBtn.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
-    rotBtn.Text = "Apply Rotation (Sets rotation in degrees)"
-    rotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rotBtn.Font = Enum.Font.Gotham
-    rotBtn.TextSize = 10
-    rotBtn.MouseButton1Click:Connect(function()
-        local x, y, z = tonumber(rotX.Text), tonumber(rotY.Text), tonumber(rotZ.Text)
-        if x and y and z then
-            changeRotation(x, y, z)
-        end
+    -- Reset Rotation Button
+    local resetRotBtn = Instance.new("TextButton")
+    resetRotBtn.Parent = scrollFrame
+    resetRotBtn.Size = UDim2.new(1, 0, 0, 25)
+    resetRotBtn.BackgroundColor3 = Color3.fromRGB(150, 100, 50)
+    resetRotBtn.Text = "Reset Rotation"
+    resetRotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    resetRotBtn.Font = Enum.Font.Gotham
+    resetRotBtn.TextSize = 10
+    resetRotBtn.MouseButton1Click:Connect(function()
+        changeRotation(0, 0, 0)
     end)
     
     -- Rotation Buttons
@@ -1915,7 +2043,6 @@ local function showEditorGUI()
     removeEffectsBtn.MouseButton1Click:Connect(removeEffects)
     
     -- Drag Move Button (existing, with better label)
-    local Mouse = player:GetMouse()
     local dragBtn = Instance.new("TextButton")
     dragBtn.Parent = scrollFrame
     dragBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -1927,82 +2054,73 @@ local function showEditorGUI()
     dragBtn.MouseButton1Click:Connect(function()
         isDragging = not isDragging
         dragBtn.Text = isDragging and "Disable Drag Move" or "Toggle Drag Move (Click and drag to move)"
-        if isDragging then
-            if dragConnection then
-                dragConnection:Disconnect()
-            end
-            dragConnection = RunService.RenderStepped:Connect(function()
-                if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
-                if #selectedObjects == 0 then return end
-                local camera = workspace.CurrentCamera
-                local mousePos = Vector2.new(Mouse.X, Mouse.Y)
-                local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
-                local normal = camera.CFrame.LookVector
-                local denominator = ray.Direction:Dot(normal)
-                if math.abs(denominator) > 1e-6 then
-                    local t = (selectedObjects[1].Position - ray.Origin):Dot(normal) / denominator
-                    local hit = ray.Origin + ray.Direction * t
-                    for _, obj in pairs(selectedObjects) do
-                        obj.CFrame = CFrame.new(hit) * (obj.CFrame - obj.CFrame.Position)
-                    end
-                end
-            end)
-        else
-            if dragConnection then
-                dragConnection:Disconnect()
-                dragConnection = nil
-            end
+        if not isDragging and dragSteppedConn then
+            dragSteppedConn:Disconnect()
+            dragSteppedConn = nil
         end
     end)
-    
-    -- If was dragging, reconnect for new object
-    if isDragging then
-        if dragConnection then
-            dragConnection:Disconnect()
-        end
-        dragConnection = RunService.RenderStepped:Connect(function()
-            if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
-            if #selectedObjects == 0 then return end
-            local camera = workspace.CurrentCamera
-            local mousePos = Vector2.new(Mouse.X, Mouse.Y)
-            local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
-            local normal = camera.CFrame.LookVector
-            local denominator = ray.Direction:Dot(normal)
-            if math.abs(denominator) > 1e-6 then
-                local t = (selectedObjects[1].Position - ray.Origin):Dot(normal) / denominator
-                local hit = ray.Origin + ray.Direction * t
-                for _, obj in pairs(selectedObjects) do
-                    obj.CFrame = CFrame.new(hit) * (obj.CFrame - obj.CFrame.Position)
-                end
-            end
-        end)
-    end
     
     -- Update canvas size
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     end)
     
+    task.wait(0.1)
+    scrollFrame.CanvasPosition = Vector2.new(0, lastScrollPosition)
+    
     closeButton.MouseButton1Click:Connect(function()
-        if dragConnection then
-            dragConnection:Disconnect()
-            dragConnection = nil
+        if dragSteppedConn then
+            dragSteppedConn:Disconnect()
+            dragSteppedConn = nil
         end
         clearSelection()
     end)
 end
 
+local function startDrag()
+    if #selectedObjects == 0 or not isDragging then return end
+    local camera = workspace.CurrentCamera
+    local mousePos = UserInputService:GetMouseLocation()
+    local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+    local centerObj = selectedObjects[1]
+    local normal = camera.CFrame.LookVector
+    local denominator = ray.Direction:Dot(normal)
+    if math.abs(denominator) < 1e-6 then return end
+    local t = (centerObj.Position - ray.Origin):Dot(normal) / denominator
+    dragStartHit = ray.Origin + ray.Direction * t
+    dragStartPositions = {}
+    for i, obj in ipairs(selectedObjects) do
+        dragStartPositions[i] = obj.Position
+    end
+end
+
+local function updateDrag()
+    if not dragStartHit then return end
+    local camera = workspace.CurrentCamera
+    local mousePos = UserInputService:GetMouseLocation()
+    local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+    local normal = camera.CFrame.LookVector
+    local denominator = ray.Direction:Dot(normal)
+    if math.abs(denominator) < 1e-6 then return end
+    local t = (dragStartPositions[1] - ray.Origin):Dot(normal) / denominator
+    local currentHit = ray.Origin + ray.Direction * t
+    local delta = currentHit - dragStartHit
+    for i, obj in ipairs(selectedObjects) do
+        obj.Position = dragStartPositions[i] + delta
+    end
+end
+
 local function setupEditorInput()
-    local connection
-    local multiSelectConnection
-    local isSelecting = false
-    if connection then connection:Disconnect() end
-    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    local selectionConnection
+    if selectionConnection then selectionConnection:Disconnect() end
+    selectionConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if isDragging then return end  -- Don't select new when dragging
             local mouse = player:GetMouse()
             local target = mouse.Target
             if target and target:IsA("BasePart") and target ~= workspace.Terrain then
+                if not allowMultiMoreThan2 and #selectedObjects >= 2 then return end
                 table.insert(selectedObjects, target)
                 local box = Instance.new("SelectionBox")
                 box.Parent = target
@@ -2010,17 +2128,37 @@ local function setupEditorInput()
                 box.LineThickness = 0.1
                 box.Color3 = Color3.fromRGB(0, 255, 0)
                 table.insert(selectionBoxes, box)
-                isSelecting = true
                 showEditorGUI()
             end
         end
     end)
     
-    multiSelectConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    local multiSelectConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isSelecting = false
             showEditorGUI()
+        end
+    end)
+    
+    -- Drag input
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
+            startDrag()
+            if dragSteppedConn then dragSteppedConn:Disconnect() end
+            dragSteppedConn = RunService.RenderStepped:Connect(updateDrag)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if dragSteppedConn then
+                dragSteppedConn:Disconnect()
+                dragSteppedConn = nil
+            end
+            dragStartHit = nil
+            dragStartPositions = {}
         end
     end)
 end
@@ -2046,8 +2184,60 @@ local function toggleEditor()
                         params.FilterDescendantsInstances = {player.Character}
                         params.FilterType = Enum.RaycastFilterType.Exclude
                         local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+                        local pastePos
                         if result then
-                            pasteObject(#copiedObjects, result.Position)
+                            pastePos = result.Position
+                        end
+                        if pasteConfirmationEnabled then
+                            local confirmFrame = Instance.new("Frame")
+                            confirmFrame.Parent = ScreenGui
+                            confirmFrame.Position = UDim2.fromOffset(mouse.X, mouse.Y)
+                            confirmFrame.Size = UDim2.new(0, 150, 0, 50)
+                            confirmFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                            confirmFrame.BorderSizePixel = 1
+                            confirmFrame.ZIndex = 100
+
+                            local text = Instance.new("TextLabel")
+                            text.Parent = confirmFrame
+                            text.Size = UDim2.new(1, 0, 0.5, 0)
+                            text.BackgroundTransparency = 1
+                            text.Text = "Paste here?"
+                            text.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            text.Font = Enum.Font.Gotham
+                            text.TextSize = 12
+
+                            local yesBtn = Instance.new("TextButton")
+                            yesBtn.Parent = confirmFrame
+                            yesBtn.Position = UDim2.new(0, 0, 0.5, 0)
+                            yesBtn.Size = UDim2.new(0.5, 0, 0.5, 0)
+                            yesBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+                            yesBtn.Text = "Yes"
+                            yesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            yesBtn.Font = Enum.Font.Gotham
+                            yesBtn.TextSize = 12
+                            yesBtn.MouseButton1Click:Connect(function()
+                                if pastePos then
+                                    pasteObject(#copiedObjects, pastePos)
+                                end
+                                confirmFrame:Destroy()
+                            end)
+
+                            local noBtn = Instance.new("TextButton")
+                            noBtn.Parent = confirmFrame
+                            noBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+                            noBtn.Size = UDim2.new(0.5, 0, 0.5, 0)
+                            noBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+                            noBtn.Text = "No"
+                            noBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            noBtn.Font = Enum.Font.Gotham
+                            noBtn.TextSize = 12
+                            noBtn.MouseButton1Click:Connect(function()
+                                confirmFrame:Destroy()
+                            end)
+                        else
+                            if pastePos then
+                                pasteObject(#copiedObjects, pastePos)
+                            end
                         end
                     end
                 end
@@ -2377,7 +2567,7 @@ function updatePathList()
             autoRespButton.Size = UDim2.new(0, 45, 0, 20)
             autoRespButton.BackgroundColor3 = Color3.fromRGB(120, 60, 100)
             autoRespButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            autoRespButton.TextSize = 7
+            autoPlayButton.TextSize = 7
             autoRespButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
 
