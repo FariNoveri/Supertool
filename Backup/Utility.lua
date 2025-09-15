@@ -1012,7 +1012,21 @@ local function loadObjectEdits()
             local obj = loadstring("return " .. path)()
             if obj then
                 for prop, value in pairs(props) do
-                    obj[prop] = value
+                    if prop == "Position" then
+                        obj.Position = Vector3.new(unpack(value))
+                    elseif prop == "Size" then
+                        obj.Size = Vector3.new(unpack(value))
+                    elseif prop == "Color" then
+                        obj.Color = Color3.new(unpack(value))
+                    elseif prop == "Orientation" then
+                        obj.Orientation = Vector3.new(unpack(value))
+                    elseif prop == "CustomPhysicalProperties" then
+                        obj.CustomPhysicalProperties = PhysicalProperties.new(value.Density, value.Friction, value.Elasticity, value.FrictionWeight, value.ElasticityWeight)
+                    elseif prop == "SurfaceLight" then
+                        addSurfaceLight(obj)
+                    else
+                        obj[prop] = value
+                    end
                 end
             end
         end
@@ -1118,7 +1132,7 @@ local function resizeObject(scale)
             print("[SUPERTOOL] Resized " .. obj.Name .. " by " .. scale)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
-            objectEdits[path].Size = obj.Size
+            objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
     if not success then
