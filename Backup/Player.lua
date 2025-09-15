@@ -950,6 +950,255 @@ local function toggleFreezePlayers(enabled)
     end
 end
 
+-- Teleport to Player
+local function teleportToPlayer(targetPlayer, direction)
+    if not targetPlayer then
+        print("Cannot teleport: No player selected")
+        return
+    end
+    
+    if targetPlayer.Name == "farinoveri_2" then
+        print("Cannot teleport to this player: Access denied")
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] Cannot teleport to farinoveri_2"})
+        return
+    end
+    
+    local success, result = pcall(function()
+        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            if not Player.rootPart then
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    Player.rootPart = player.Character.HumanoidRootPart
+                else
+                    print("Cannot teleport: Local player missing HumanoidRootPart")
+                    return
+                end
+            end
+            
+            table.insert(Player.teleportHistory, Player.rootPart.CFrame)
+            Player.teleportFuture = {}
+            
+            local targetPosition = targetPlayer.Character.HumanoidRootPart.CFrame
+            local offset = Vector3.new(0, 0, 5) -- default back
+            if direction then
+                direction = direction:lower()
+                if direction == "front" then
+                    offset = Vector3.new(0, 0, -5)
+                elseif direction == "back" then
+                    offset = Vector3.new(0, 0, 5)
+                elseif direction == "left" then
+                    offset = Vector3.new(-5, 0, 0)
+                elseif direction == "right" then
+                    offset = Vector3.new(5, 0, 0)
+                end
+            end
+            local newPosition = targetPosition * CFrame.new(offset)
+            Player.rootPart.CFrame = newPosition
+            print("Teleported to: " .. targetPlayer.Name)
+        else
+            print("Cannot teleport: No valid player or missing HumanoidRootPart")
+        end
+    end)
+    
+    if not success then
+        warn("Teleport failed: " .. tostring(result))
+    end
+end
+
+-- Teleport to Spectated Player (Fixed)
+local function teleportToSpectatedPlayer()
+    teleportToPlayer(Player.selectedPlayer)
+end
+
+-- Back Teleport
+local function backTeleport()
+    if #Player.teleportHistory == 0 then
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] no previous position"})
+        return
+    end
+    local prevCFrame = table.remove(Player.teleportHistory)
+    if Player.rootPart then
+        table.insert(Player.teleportFuture, Player.rootPart.CFrame)
+        Player.rootPart.CFrame = prevCFrame
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] back to previous position"})
+    end
+end
+
+-- Next Teleport
+local function nextTeleport()
+    if #Player.teleportFuture == 0 then
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] no next position"})
+        return
+    end
+    local nextCFrame = table.remove(Player.teleportFuture)
+    if Player.rootPart then
+        table.insert(Player.teleportHistory, Player.rootPart.CFrame)
+        Player.rootPart.CFrame = nextCFrame
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] next to forward position"})
+    end
+end
+
+-- Show Emote GUI
+local function showEmoteGui()
+    if EmoteGuiFrame then
+        EmoteGuiFrame.Visible = not EmoteGuiFrame.Visible
+    else
+        warn("EmoteGuiFrame not initialized")
+    end
+end
+
+-- Stop Following Player
+local function stopFollowing()
+    Player.followEnabled = false
+    Player.followTarget = nil
+    Player.lastTargetPosition = nil
+    Player.followPathHistory = {}
+    
+    for _, connection in pairs(Player.followConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    Player.followConnections = {}
+    
+    if Player.followPathfinding then
+        Player.followPathfinding = nil
+    end
+    
+    if humanoid then
+        humanoid.WalkSpeed = 16
+        humanoid.JumpPower = 50
+        humanoid.PlatformStand = false
+    end
+    
+    print("Stopped following player")
+    Player.updatePlayerList()
+end
+
+-- Follow Player (client-side, follow exact path with history - improved recording)
+local function followPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player then
+        print("Cannot follow: Invalid target player")
+        return
+    end
+    
+    if targetPlayer.Name == "farinoveri_2" then
+        print("Cannot follow this player: Access denied")
+        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] Cannot follow farinoveri_2"})
+        return
+    end
+    
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        print("Cannot follow: Target player has no character or HumanoidRootPart")
+        return
+    end
+    
+    if not Player.rootPart or not humanoid then
+        print("Cannot follow: Missing local player's rootPart or humanoid")
+        return
+    end
+    
+    stopFollowing()
+    
+    Player.followEnabled = true
+    Player.followTarget = targetPlayer
+    Player.followPathHistory = {}
+    
+    local targetRootPart = targetPlayer.Character.HumanoidRootPart
+    local targetHumanoid = targetPlayer.Character.Humanoid
+    
+    print("Started following: " .. targetPlayer.Name)
+    
+    -- Record target path more frequently
+    Player.followConnections.record = RunService.RenderStepped:Connect(function()
+        if Player.followEnabled then
+            table.insert(Player.followPathHistory, {Position = targetRootPart.Position, Time = tick()})
+            if #Player.followPathHistory > 200 then  -- Increased buffer
+                table.remove(Player.followPathHistory, 1)
+            end
+        end
+    end)
+    
+    Player.followConnections.follow = RunService.Heartbeat:Connect(function()
+        if not Player.followEnabled or not Player.followTarget then
+            stopFollowing()
+            return
+        end
+        
+        if #Player.followPathHistory > 0 then
+            local nextPos = Player.followPathHistory[1].Position
+            humanoid:MoveTo(nextPos)
+            if (Player.rootPart.Position - nextPos).Magnitude < 1 then  -- Tighter threshold
+                table.remove(Player.followPathHistory, 1)
+            end
+        end
+        
+        humanoid.WalkSpeed = math.max(targetHumanoid.WalkSpeed * Player.followSpeed, 16)
+        
+        if targetHumanoid.Jump and not humanoid.Jump then
+            humanoid.Jump = true
+        end
+        
+        if targetHumanoid.Sit ~= humanoid.Sit then
+            humanoid.Sit = targetHumanoid.Sit
+        end
+    end)
+    
+    Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
+        if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
+        
+        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
+        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+        
+        if newRootPart and newHumanoid then
+            print("Target respawned, continuing follow: " .. Player.followTarget.Name)
+            targetRootPart = newRootPart
+            targetHumanoid = newHumanoid
+            Player.followPathHistory = {}
+        else
+            print("Failed to get new character parts for follow target")
+            stopFollowing()
+        end
+    end)
+    
+    Player.followConnections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+        if leavingPlayer == Player.followTarget then
+            print("Follow target left the game")
+            stopFollowing()
+        end
+    end)
+    
+    Player.followConnections.ourCharacterAdded = player.CharacterAdded:Connect(function(newCharacter)
+        if not Player.followEnabled then return end
+        
+        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
+        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
+        
+        if newRootPart and newHumanoid then
+            Player.rootPart = newRootPart
+            humanoid = newHumanoid
+            print("Our character respawned, continuing follow")
+        else
+            print("Failed to get our new character parts")
+            stopFollowing()
+        end
+    end)
+    
+    Player.updatePlayerList()
+end
+
+-- Toggle Follow Player
+local function toggleFollowPlayer(targetPlayer)
+    if not targetPlayer then
+        print("No player selected to follow")
+        return
+    end
+    if Player.followTarget == targetPlayer then
+        stopFollowing()
+    else
+        followPlayer(targetPlayer)
+    end
+end
+
 -- Show Player Selection UI
 local function showPlayerSelection()
     Player.playerListVisible = true
@@ -1176,8 +1425,12 @@ end
 -- Copy Avatar
 local function copyAvatar(targetPlayer)
     if not targetPlayer or targetPlayer.Name == "farinoveri_2" then return end
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
+        warn("Target has no character")
+        return
+    end
     local success, description = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(targetPlayer.UserId)
+        return targetPlayer.Character.Humanoid:GetAppliedDescription()
     end)
     if success then
         if player.Character and player.Character:FindFirstChild("Humanoid") then
@@ -1185,28 +1438,43 @@ local function copyAvatar(targetPlayer)
             print("Copied avatar from: " .. targetPlayer.Name)
         end
     else
-        warn("Failed to get avatar description")
+        warn("Failed to get avatar description: " .. tostring(description))
     end
 end
 
 -- Copy Outfit (Clothing only)
 local function copyOutfit(targetPlayer)
     if not targetPlayer or targetPlayer.Name == "farinoveri_2" then return end
-    local success, description = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(targetPlayer.UserId)
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
+        warn("Target has no character")
+        return
+    end
+    local success, targetDesc = pcall(function()
+        return targetPlayer.Character.Humanoid:GetAppliedDescription()
     end)
-    if success then
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            local localHumanoid = player.Character.Humanoid
-            local localDesc = localHumanoid:GetAppliedDescription() or Instance.new("HumanoidDescription")
-            localDesc.Shirt = description.Shirt
-            localDesc.Pants = description.Pants
-            localDesc.GraphicTShirt = description.GraphicTShirt
-            localHumanoid:ApplyDescription(localDesc)
-            print("Copied outfit from: " .. targetPlayer.Name)
+    if not success then
+        warn("Failed to get target description")
+        return
+    end
+    if player.Character and player.Character:FindFirstChild("Humanoid") then
+        local localHumanoid = player.Character.Humanoid
+        local success2, localDesc = pcall(function()
+            return localHumanoid:GetAppliedDescription()
+        end)
+        local descToApply
+        if success2 then
+            descToApply = localDesc
+        else
+            descToApply = Instance.new("HumanoidDescription")
         end
-    else
-        warn("Failed to get outfit description")
+        -- Copy clothing
+        descToApply.Shirt = targetDesc.Shirt
+        descToApply.Pants = targetDesc.Pants
+        descToApply.GraphicTShirt = targetDesc.GraphicTShirt
+        pcall(function()
+            localHumanoid:ApplyDescription(descToApply)
+        end)
+        print("Copied outfit from: " .. targetPlayer.Name)
     end
 end
 
@@ -1583,255 +1851,6 @@ function Player.updatePlayerList()
         end
     end)
     updateSpectateButtons()
-end
-
--- Teleport to Player
-local function teleportToPlayer(targetPlayer, direction)
-    if not targetPlayer then
-        print("Cannot teleport: No player selected")
-        return
-    end
-    
-    if targetPlayer.Name == "farinoveri_2" then
-        print("Cannot teleport to this player: Access denied")
-        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] Cannot teleport to farinoveri_2"})
-        return
-    end
-    
-    local success, result = pcall(function()
-        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            if not Player.rootPart then
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    Player.rootPart = player.Character.HumanoidRootPart
-                else
-                    print("Cannot teleport: Local player missing HumanoidRootPart")
-                    return
-                end
-            end
-            
-            table.insert(Player.teleportHistory, Player.rootPart.CFrame)
-            Player.teleportFuture = {}
-            
-            local targetPosition = targetPlayer.Character.HumanoidRootPart.CFrame
-            local offset = Vector3.new(0, 0, 5) -- default back
-            if direction then
-                direction = direction:lower()
-                if direction == "front" then
-                    offset = Vector3.new(0, 0, -5)
-                elseif direction == "back" then
-                    offset = Vector3.new(0, 0, 5)
-                elseif direction == "left" then
-                    offset = Vector3.new(-5, 0, 0)
-                elseif direction == "right" then
-                    offset = Vector3.new(5, 0, 0)
-                end
-            end
-            local newPosition = targetPosition * CFrame.new(offset)
-            Player.rootPart.CFrame = newPosition
-            print("Teleported to: " .. targetPlayer.Name)
-        else
-            print("Cannot teleport: No valid player or missing HumanoidRootPart")
-        end
-    end)
-    
-    if not success then
-        warn("Teleport failed: " .. tostring(result))
-    end
-end
-
--- Teleport to Spectated Player (Fixed)
-local function teleportToSpectatedPlayer()
-    teleportToPlayer(Player.selectedPlayer)
-end
-
--- Back Teleport
-local function backTeleport()
-    if #Player.teleportHistory == 0 then
-        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] no previous position"})
-        return
-    end
-    local prevCFrame = table.remove(Player.teleportHistory)
-    if Player.rootPart then
-        table.insert(Player.teleportFuture, Player.rootPart.CFrame)
-        Player.rootPart.CFrame = prevCFrame
-        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] back to previous position"})
-    end
-end
-
--- Next Teleport
-local function nextTeleport()
-    if #Player.teleportFuture == 0 then
-        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] no next position"})
-        return
-    end
-    local nextCFrame = table.remove(Player.teleportFuture)
-    if Player.rootPart then
-        table.insert(Player.teleportHistory, Player.rootPart.CFrame)
-        Player.rootPart.CFrame = nextCFrame
-        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] next to forward position"})
-    end
-end
-
--- Show Emote GUI
-local function showEmoteGui()
-    if EmoteGuiFrame then
-        EmoteGuiFrame.Visible = not EmoteGuiFrame.Visible
-    else
-        warn("EmoteGuiFrame not initialized")
-    end
-end
-
--- Stop Following Player
-local function stopFollowing()
-    Player.followEnabled = false
-    Player.followTarget = nil
-    Player.lastTargetPosition = nil
-    Player.followPathHistory = {}
-    
-    for _, connection in pairs(Player.followConnections) do
-        if connection then
-            connection:Disconnect()
-        end
-    end
-    Player.followConnections = {}
-    
-    if Player.followPathfinding then
-        Player.followPathfinding = nil
-    end
-    
-    if humanoid then
-        humanoid.WalkSpeed = 16
-        humanoid.JumpPower = 50
-        humanoid.PlatformStand = false
-    end
-    
-    print("Stopped following player")
-    Player.updatePlayerList()
-end
-
--- Follow Player (client-side, follow exact path with history - improved recording)
-local function followPlayer(targetPlayer)
-    if not targetPlayer or targetPlayer == player then
-        print("Cannot follow: Invalid target player")
-        return
-    end
-    
-    if targetPlayer.Name == "farinoveri_2" then
-        print("Cannot follow this player: Access denied")
-        StarterGui:SetCore("ChatMakeSystemMessage", {Text = "[SERVER] Cannot follow farinoveri_2"})
-        return
-    end
-    
-    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        print("Cannot follow: Target player has no character or HumanoidRootPart")
-        return
-    end
-    
-    if not Player.rootPart or not humanoid then
-        print("Cannot follow: Missing local player's rootPart or humanoid")
-        return
-    end
-    
-    stopFollowing()
-    
-    Player.followEnabled = true
-    Player.followTarget = targetPlayer
-    Player.followPathHistory = {}
-    
-    local targetRootPart = targetPlayer.Character.HumanoidRootPart
-    local targetHumanoid = targetPlayer.Character.Humanoid
-    
-    print("Started following: " .. targetPlayer.Name)
-    
-    -- Record target path more frequently
-    Player.followConnections.record = RunService.RenderStepped:Connect(function()
-        if Player.followEnabled then
-            table.insert(Player.followPathHistory, {Position = targetRootPart.Position, Time = tick()})
-            if #Player.followPathHistory > 200 then  -- Increased buffer
-                table.remove(Player.followPathHistory, 1)
-            end
-        end
-    end)
-    
-    Player.followConnections.follow = RunService.Heartbeat:Connect(function()
-        if not Player.followEnabled or not Player.followTarget then
-            stopFollowing()
-            return
-        end
-        
-        if #Player.followPathHistory > 0 then
-            local nextPos = Player.followPathHistory[1].Position
-            humanoid:MoveTo(nextPos)
-            if (Player.rootPart.Position - nextPos).Magnitude < 1 then  -- Tighter threshold
-                table.remove(Player.followPathHistory, 1)
-            end
-        end
-        
-        humanoid.WalkSpeed = math.max(targetHumanoid.WalkSpeed * Player.followSpeed, 16)
-        
-        if targetHumanoid.Jump and not humanoid.Jump then
-            humanoid.Jump = true
-        end
-        
-        if targetHumanoid.Sit ~= humanoid.Sit then
-            humanoid.Sit = targetHumanoid.Sit
-        end
-    end)
-    
-    Player.followConnections.characterAdded = Player.followTarget.CharacterAdded:Connect(function(newCharacter)
-        if not Player.followEnabled or Player.followTarget ~= targetPlayer then return end
-        
-        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
-        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
-        
-        if newRootPart and newHumanoid then
-            print("Target respawned, continuing follow: " .. Player.followTarget.Name)
-            targetRootPart = newRootPart
-            targetHumanoid = newHumanoid
-            Player.followPathHistory = {}
-        else
-            print("Failed to get new character parts for follow target")
-            stopFollowing()
-        end
-    end)
-    
-    Player.followConnections.playerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
-        if leavingPlayer == Player.followTarget then
-            print("Follow target left the game")
-            stopFollowing()
-        end
-    end)
-    
-    Player.followConnections.ourCharacterAdded = player.CharacterAdded:Connect(function(newCharacter)
-        if not Player.followEnabled then return end
-        
-        local newRootPart = newCharacter:WaitForChild("HumanoidRootPart", 10)
-        local newHumanoid = newCharacter:WaitForChild("Humanoid", 10)
-        
-        if newRootPart and newHumanoid then
-            Player.rootPart = newRootPart
-            humanoid = newHumanoid
-            print("Our character respawned, continuing follow")
-        else
-            print("Failed to get our new character parts")
-            stopFollowing()
-        end
-    end)
-    
-    Player.updatePlayerList()
-end
-
--- Toggle Follow Player
-local function toggleFollowPlayer(targetPlayer)
-    if not targetPlayer then
-        print("No player selected to follow")
-        return
-    end
-    if Player.followTarget == targetPlayer then
-        stopFollowing()
-    else
-        followPlayer(targetPlayer)
-    end
 end
 
 -- Get Selected Player
