@@ -1692,12 +1692,14 @@ local function createSlider(parent, labelText, min, max, initial, callback)
     valueLabel.TextSize = 10
     valueLabel.Font = Enum.Font.Gotham
 
-    local function updateValue()
+    local function updateValue(noCallback)
         local frac = knob.Position.X.Scale
         local value = min + (max - min) * frac
         value = math.round(value)
         valueLabel.Text = tostring(value)
-        callback(value)
+        if not noCallback then
+            callback(value)
+        end
     end
 
     local dragConn
@@ -1723,7 +1725,7 @@ local function createSlider(parent, labelText, min, max, initial, callback)
     -- Set initial
     local initFrac = (initial - min) / (max - min)
     knob.Position = UDim2.new(math.clamp(initFrac, 0, 1), 0, -0.5, 0)
-    updateValue()
+    updateValue(true)  -- Initial update without callback
 
     return sliderFrame
 end
