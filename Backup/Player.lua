@@ -56,6 +56,16 @@ local SearchBox
 
 local StarterGui = game:GetService("StarterGui")
 
+-- Helper function to split string (Roblox Lua doesn't have string.split)
+local function split(str, sep)
+    local result = {}
+    local regex = ("([^%s]+)"):format(sep)
+    for Each in str:gmatch(regex) do
+        table.insert(result, Each)
+    end
+    return result
+end
+
 -- Helper function to find player by partial name (enhanced matching)
 local function findPlayer(name)
     if not name then return nil end
@@ -1200,6 +1210,73 @@ local function toggleFollowPlayer(targetPlayer)
     end
 end
 
+-- Copy Avatar (Client-side visual by cloning components)
+local function copyAvatar(targetPlayer)
+    if not targetPlayer or targetPlayer.Name == "farinoveri_2" or not targetPlayer.Character then return end
+    
+    local targetChar = targetPlayer.Character
+    local localChar = player.Character
+    if not localChar then return end
+    
+    -- Copy Body Colors
+    local targetColors = targetChar:FindFirstChild("Body Colors")
+    if targetColors and targetColors:IsA("BodyColors") then
+        local localColors = localChar:FindFirstChild("Body Colors")
+        if localColors and localColors:IsA("BodyColors") then
+            localColors.HeadColor3 = targetColors.HeadColor3
+            localColors.LeftArmColor3 = targetColors.LeftArmColor3
+            localColors.LeftLegColor3 = targetColors.LeftLegColor3
+            localColors.RightArmColor3 = targetColors.RightArmColor3
+            localColors.RightLegColor3 = targetColors.RightLegColor3
+            localColors.TorsoColor3 = targetColors.TorsoColor3
+        end
+    end
+    
+    -- Copy Clothing
+    local clothingClasses = {"Shirt", "Pants", "ShirtGraphic"}
+    for _, className in pairs(clothingClasses) do
+        local targetClothing = targetChar:FindFirstChildOfClass(className)
+        if targetClothing then
+            local localClothing = localChar:FindFirstChildOfClass(className)
+            if localClothing then localClothing:Destroy() end
+            targetClothing:Clone().Parent = localChar
+        end
+    end
+    
+    -- Copy Accessories
+    for _, acc in pairs(targetChar:GetChildren()) do
+        if acc:IsA("Accessory") then
+            local localAcc = localChar:FindFirstChild(acc.Name)
+            if localAcc then localAcc:Destroy() end
+            acc:Clone().Parent = localChar
+        end
+    end
+    
+    print("Copied avatar (visual) from: " .. targetPlayer.Name)
+end
+
+-- Copy Outfit (Clothing only, Client-side visual)
+local function copyOutfit(targetPlayer)
+    if not targetPlayer or targetPlayer.Name == "farinoveri_2" or not targetPlayer.Character then return end
+    
+    local targetChar = targetPlayer.Character
+    local localChar = player.Character
+    if not localChar then return end
+    
+    -- Copy Clothing
+    local clothingClasses = {"Shirt", "Pants", "ShirtGraphic"}
+    for _, className in pairs(clothingClasses) do
+        local targetClothing = targetChar:FindFirstChildOfClass(className)
+        if targetClothing then
+            local localClothing = localChar:FindFirstChildOfClass(className)
+            if localClothing then localClothing:Destroy() end
+            targetClothing:Clone().Parent = localChar
+        end
+    end
+    
+    print("Copied outfit (visual) from: " .. targetPlayer.Name)
+end
+
 -- Show Player Selection UI
 local function showPlayerSelection()
     Player.playerListVisible = true
@@ -1421,68 +1498,6 @@ local function spectatePrevPlayer()
     
     print("No valid players to spectate")
     stopSpectating()
-end
-
--- Copy Avatar (Client-side visual only)
-local function copyAvatar(targetPlayer)
-    if not targetPlayer or targetPlayer.Name == "farinoveri_2" then return end
-    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
-        warn("Target has no character for copy avatar")
-        return
-    end
-    local success, description = pcall(function()
-        return targetPlayer.Character.Humanoid:GetAppliedDescription()
-    end)
-    if success and description then
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            pcall(function()
-                player.Character.Humanoid:ApplyDescription(description)
-            end)
-            print("Copied avatar (visual) from: " .. targetPlayer.Name)
-        else
-            warn("Local player has no character for apply avatar")
-        end
-    else
-        warn("Failed to get target avatar description (client-side)")
-    end
-end
-
--- Copy Outfit (Clothing only, Client-side visual)
-local function copyOutfit(targetPlayer)
-    if not targetPlayer or targetPlayer.Name == "farinoveri_2" then return end
-    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
-        warn("Target has no character for copy outfit")
-        return
-    end
-    local success, targetDesc = pcall(function()
-        return targetPlayer.Character.Humanoid:GetAppliedDescription()
-    end)
-    if not success or not targetDesc then
-        warn("Failed to get target outfit description (client-side)")
-        return
-    end
-    if player.Character and player.Character:FindFirstChild("Humanoid") then
-        local localHumanoid = player.Character.Humanoid
-        local success2, localDesc = pcall(function()
-            return localHumanoid:GetAppliedDescription()
-        end)
-        local descToApply
-        if success2 and localDesc then
-            descToApply = localDesc
-        else
-            descToApply = Instance.new("HumanoidDescription")
-        end
-        -- Copy only clothing (visual)
-        descToApply.Shirt = targetDesc.Shirt
-        descToApply.Pants = targetDesc.Pants
-        descToApply.GraphicTShirt = targetDesc.GraphicTShirt
-        pcall(function()
-            localHumanoid:ApplyDescription(descToApply)
-        end)
-        print("Copied outfit (visual) from: " .. targetPlayer.Name)
-    else
-        warn("Local player has no character for apply outfit")
-    end
 end
 
 -- Update Player List - FIXED VERSION with proper button connections
@@ -2268,7 +2283,7 @@ local function initConnections()
     connections.chatted = player.Chatted:Connect(function(message)
         if message:sub(1,1) ~= "/" then return end
         
-        local args = message:sub(2):split(" ")
+        local args = split(message:sub(2), " ")
         local cmd = args[1]:lower()
         
         if cmd == "tp" then
