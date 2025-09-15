@@ -1257,24 +1257,78 @@ end
 
 -- Copy Outfit (Clothing only, Client-side visual)
 local function copyOutfit(targetPlayer)
-    if not targetPlayer or targetPlayer.Name == "farinoveri_2" or not targetPlayer.Character then return end
+    if not targetPlayer or targetPlayer.Name == "farinoveri_2" or not targetPlayer.Character then 
+        print("Copy outfit failed: Invalid target or restricted player")
+        return 
+    end
     
-    local targetChar = targetPlayer.Character
-    local localChar = player.Character
-    if not localChar then return end
+    local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+    local localHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
     
-    -- Copy Clothing
+    if not targetHumanoid or not localHumanoid then 
+        print("Copy outfit failed: Missing Humanoid on target or local player")
+        return 
+    end
+    
+    local success, targetDesc = pcall(targetHumanoid.GetAppliedDescription, targetHumanoid)
+    if not success or not targetDesc then
+        print("Failed to get target description: " .. tostring(targetDesc))
+        return
+    end
+    
+    local success, localDesc = pcall(localHumanoid.GetAppliedDescription, localHumanoid)
+    if not success or not localDesc then
+        print("Failed to get local description: " .. tostring(localDesc))
+        return
+    end
+    
+    print("Target Shirt ID: " .. tostring(targetDesc.Shirt))
+    print("Target Pants ID: " .. tostring(targetDesc.Pants))
+    print("Target GraphicTShirt ID: " .. tostring(targetDesc.GraphicTShirt))
+    
+    localDesc.Shirt = targetDesc.Shirt
+    localDesc.Pants = targetDesc.Pants
+    localDesc.GraphicTShirt = targetDesc.GraphicTShirt
+    
+    local applySuccess, err = pcall(localHumanoid.ApplyDescription, localHumanoid, localDesc)
+    if applySuccess then
+        print("Successfully applied updated description for outfit")
+    else
+        warn("Failed to apply description: " .. tostring(err))
+    end
+    
+    -- Fallback: Clean up and re-clone classic clothing instances if needed
     local clothingClasses = {"Shirt", "Pants", "ShirtGraphic"}
     for _, className in pairs(clothingClasses) do
-        local targetClothing = targetChar:FindFirstChildOfClass(className)
-        if targetClothing then
-            local localClothing = localChar:FindFirstChildOfClass(className)
-            if localClothing then localClothing:Destroy() end
-            targetClothing:Clone().Parent = localChar
+        local localClothing = player.Character:FindFirstChildOfClass(className)
+        if localClothing then 
+            localClothing:Destroy() 
+            print("Destroyed existing " .. className)
         end
     end
     
-    print("Copied outfit (visual) from: " .. targetPlayer.Name)
+    task.wait(0.1)  -- Small delay for refresh
+    
+    if targetDesc.Shirt ~= 0 then
+        local shirt = Instance.new("Shirt")
+        shirt.ShirtTemplate = "rbxassetid://" .. targetDesc.Shirt
+        shirt.Parent = player.Character
+        print("Created new Shirt with ID: " .. targetDesc.Shirt)
+    end
+    if targetDesc.Pants ~= 0 then
+        local pants = Instance.new("Pants")
+        pants.PantsTemplate = "rbxassetid://" .. targetDesc.Pants
+        pants.Parent = player.Character
+        print("Created new Pants with ID: " .. targetDesc.Pants)
+    end
+    if targetDesc.GraphicTShirt ~= 0 then
+        local graphic = Instance.new("ShirtGraphic")
+        graphic.Graphic = "rbxassetid://" .. targetDesc.GraphicTShirt
+        graphic.Parent = player.Character
+        print("Created new ShirtGraphic with ID: " .. targetDesc.GraphicTShirt)
+    end
+    
+    print("Copied outfit from: " .. targetPlayer.Name)
 end
 
 -- Show Player Selection UI
