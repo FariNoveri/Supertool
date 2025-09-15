@@ -80,6 +80,7 @@ local allowMultiMoreThan2 = true  -- Toggle for selecting more than 2 objects
 local dragStartPositions = {}
 local dragStartHit = nil
 local dragSteppedConn = nil
+local confirmFrame = nil
 
 -- Gear Loader Variables
 local gearFrameVisible = false
@@ -1454,6 +1455,44 @@ local function removeEffects()
     end
 end
 
+-- New Feature: Set Slippery
+local function setSlippery()
+    if #selectedObjects == 0 then 
+        warn("[SUPERTOOL] No object selected for slippery effect")
+        return 
+    end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local oldProperties = obj.CustomPhysicalProperties
+            table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
+            obj.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.01, 0.5, 100, 1)  -- Low friction for slippery
+            print("[SUPERTOOL] Applied slippery effect to: " .. obj.Name)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Set slippery failed: " .. tostring(err))
+    end
+end
+
+-- New Feature: Set Custom Physical Properties
+local function setCustomPhysics(density, friction, elasticity, frictionWeight, elasticityWeight)
+    if #selectedObjects == 0 then 
+        warn("[SUPERTOOL] No object selected for custom physics")
+        return 
+    end
+    local success, err = pcall(function()
+        for _, obj in pairs(selectedObjects) do
+            local oldProperties = obj.CustomPhysicalProperties
+            table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
+            obj.CustomPhysicalProperties = PhysicalProperties.new(density, friction, elasticity, frictionWeight, elasticityWeight)
+            print("[SUPERTOOL] Set custom physics for: " .. obj.Name)
+        end
+    end)
+    if not success then
+        warn("[SUPERTOOL] Set custom physics failed: " .. tostring(err))
+    end
+end
+
 local function undoObjectEdit()
     if #editedObjects > 0 then
         local lastEdit = table.remove(editedObjects)
@@ -1575,7 +1614,14 @@ local function updateCopyList()
         pasteBtn.TextSize = 10
         pasteBtn.Font = Enum.Font.Gotham
         pasteBtn.MouseButton1Click:Connect(function()
-            pasteObject(i)
+            local mouse = player:GetMouse()
+            local ray = workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y)
+            local params = RaycastParams.new()
+            params.FilterDescendantsInstances = {player.Character}
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+            local pastePos = result and result.Position or copied.originalCFrame.Position
+            pasteObject(i, pastePos)
         end)
         
         local deleteBtn = Instance.new("TextButton")
@@ -2145,6 +2191,64 @@ local function showEditorGUI()
     removeEffectsBtn.TextSize = 10
     removeEffectsBtn.MouseButton1Click:Connect(removeEffects)
     
+    -- Slippery Button
+    local slipperyBtn = Instance.new("TextButton")
+    slipperyBtn.Parent = scrollFrame
+    slipperyBtn.Size = UDim2.new(1, 0, 0, 25)
+    slipperyBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 150)
+    slipperyBtn.Text = "Set Slippery"
+    slipperyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    slipperyBtn.Font = Enum.Font.Gotham
+    slipperyBtn.TextSize = 10
+    slipperyBtn.MouseButton1Click:Connect(setSlippery)
+    
+    -- Custom Physics Section
+    local physicsSection = createSectionLabel("Custom Physics (Density, Friction, etc)")
+    physicsSection.Parent = scrollFrame
+    
+    createSlider(scrollFrame, "Density:", 0.01, 10, 1, function(value)
+        for _, obj in pairs(selectedObjects) do
+            local props = obj.CustomPhysicalProperties or PhysicalProperties.new(Enum.Material.Plastic)
+            setCustomPhysics(value, props.Friction, props.Elasticity, props.FrictionWeight, props.ElasticityWeight)
+        end
+    end)
+    
+    createSlider(scrollFrame, "Friction:", 0, 2, 0.7, function(value)
+        for _, obj in pairs(selectedObjects) do
+            local props = obj.CustomPhysicalProperties or PhysicalProperties.new(Enum.Material.Plastic)
+            setCustomPhysics(props.Density, value, props.Elasticity, props.FrictionWeight, props.ElasticityWeight)
+        end
+    end)
+    
+    createSlider(scrollFrame, "Elasticity:", 0, 1, 0.5, function(value)
+        for _, obj in pairs(selectedObjects) do
+            local props = obj.CustomPhysicalProperties or PhysicalProperties.new(Enum.Material.Plastic)
+            setCustomPhysics(props.Density, props.Friction, value, props.FrictionWeight, props.ElasticityWeight)
+        end
+    end)
+    
+    -- Color Change
+    local colorLabel = Instance.new("TextLabel")
+    colorLabel.Parent = scrollFrame
+    colorLabel.Size = UDim2.new(1, 0, 0, 15)
+    colorLabel.BackgroundTransparency = 1
+    colorLabel.Text = "Color (HEX):"
+    colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    colorLabel.Font = Enum.Font.Gotham
+    colorLabel.TextSize = 10
+    
+    local colorInput = Instance.new("TextBox")
+    colorInput.Parent = scrollFrame
+    colorInput.Size = UDim2.new(1, 0, 0, 25)
+    colorInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    colorInput.PlaceholderText = "#RRGGBB"
+    colorInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    colorInput.Font = Enum.Font.Gotham
+    colorInput.TextSize = 10
+    colorInput.FocusLost:Connect(function()
+        changeColor(colorInput.Text)
+    end)
+    
     -- Drag Move Button (existing, with better label)
     local dragBtn = Instance.new("TextButton")
     dragBtn.Parent = scrollFrame
@@ -2219,24 +2323,19 @@ local function setupEditorInput()
     selectionConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
-            if isDragging then return end
+            if isDragging then return end  -- Don't select new when dragging
             local mouse = player:GetMouse()
             local target = mouse.Target
             if target and target:IsA("BasePart") and target ~= workspace.Terrain then
-                local isShift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
-                if not isShift then
-                    clearSelection()
-                end
-                if #selectedObjects < (allowMultiMoreThan2 and math.huge or 2) then
-                    table.insert(selectedObjects, target)
-                    local box = Instance.new("SelectionBox")
-                    box.Parent = target
-                    box.Adornee = target
-                    box.LineThickness = 0.1
-                    box.Color3 = Color3.fromRGB(0, 255, 0)
-                    table.insert(selectionBoxes, box)
-                    showEditorGUI()
-                end
+                if not allowMultiMoreThan2 and #selectedObjects >= 2 then return end
+                table.insert(selectedObjects, target)
+                local box = Instance.new("SelectionBox")
+                box.Parent = target
+                box.Adornee = target
+                box.LineThickness = 0.1
+                box.Color3 = Color3.fromRGB(0, 255, 0)
+                table.insert(selectionBoxes, box)
+                showEditorGUI()
             end
         end
     end)
@@ -2297,7 +2396,10 @@ local function toggleEditor()
                             pastePos = result.Position
                         end
                         if pasteConfirmationEnabled then
-                            local confirmFrame = Instance.new("Frame")
+                            if confirmFrame then
+                                confirmFrame:Destroy()
+                            end
+                            confirmFrame = Instance.new("Frame")
                             confirmFrame.Parent = ScreenGui
                             confirmFrame.Position = UDim2.fromOffset(mouse.X, mouse.Y)
                             confirmFrame.Size = UDim2.new(0, 150, 0, 50)
@@ -2328,6 +2430,7 @@ local function toggleEditor()
                                     pasteObject(#copiedObjects, pastePos)
                                 end
                                 confirmFrame:Destroy()
+                                confirmFrame = nil
                             end)
 
                             local noBtn = Instance.new("TextButton")
@@ -2341,6 +2444,7 @@ local function toggleEditor()
                             noBtn.TextSize = 12
                             noBtn.MouseButton1Click:Connect(function()
                                 confirmFrame:Destroy()
+                                confirmFrame = nil
                             end)
                         else
                             if pastePos then
