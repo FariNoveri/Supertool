@@ -1210,7 +1210,7 @@ local function copyOutfit(targetPlayer)
     end
 end
 
--- Update Player List - REMOVED INDIVIDUAL FREEZE, MAGNET, PHYSICS, FLING BUTTONS
+-- Update Player List - FIXED VERSION with proper button connections
 function Player.updatePlayerList()
     if not PlayerListScrollFrame then
         warn("PlayerListScrollFrame not initialized")
@@ -1270,7 +1270,7 @@ function Player.updatePlayerList()
             playerItem.Parent = PlayerListScrollFrame
             playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             playerItem.BorderSizePixel = 0
-            playerItem.Size = UDim2.new(1, -5, 0, 190) -- Increased height for additional button
+            playerItem.Size = UDim2.new(1, -5, 0, 190)
             playerItem.LayoutOrder = playerCount
             playerItem.ZIndex = 1
             
@@ -1414,116 +1414,145 @@ function Player.updatePlayerList()
             copyOutfitButton.ZIndex = 2
             copyOutfitButton.Active = true
             
-            -- FIXED Button Events with proper scope
-            local currentPlayer = p  -- Capture the current player in the loop
-            
-            selectButton.MouseButton1Click:Connect(function()
-                Player.selectedPlayer = currentPlayer
-                Player.currentSpectateIndex = table.find(Player.spectatePlayerList, currentPlayer) or 0
-                if SelectedPlayerLabel then
-                    SelectedPlayerLabel.Text = "SELECTED: " .. currentPlayer.Name:upper()
-                end
-                -- Update all select buttons
-                for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
-                    if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
-                        local btn = item.SelectButton
-                        btn.BackgroundColor3 = item.Name == currentPlayer.Name .. "Item" and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
-                        btn.Text = item.Name == currentPlayer.Name .. "Item" and "SELECTED" or "SELECT PLAYER"
+            -- FIXED Button Events - Use closure to capture the current player properly
+            local function createButtonConnections(currentPlayer)
+                selectButton.MouseButton1Click:Connect(function()
+                    print("SELECT clicked for: " .. currentPlayer.Name)
+                    Player.selectedPlayer = currentPlayer
+                    Player.currentSpectateIndex = table.find(Player.spectatePlayerList, currentPlayer) or 0
+                    if SelectedPlayerLabel then
+                        SelectedPlayerLabel.Text = "SELECTED: " .. currentPlayer.Name:upper()
                     end
-                end
-                updateSpectateButtons()
-                print("Selected player: " .. currentPlayer.Name)
-            end)
-            
-            spectateButton.MouseButton1Click:Connect(function()
-                Player.currentSpectateIndex = table.find(Player.spectatePlayerList, currentPlayer) or 0
-                spectatePlayer(currentPlayer)
-            end)
-            
-            stopSpectateButton.MouseButton1Click:Connect(function()
-                stopSpectating()
-            end)
-            
-            teleportButton.MouseButton1Click:Connect(function()
-                teleportToPlayer(currentPlayer)
-            end)
-            
-            followButton.MouseButton1Click:Connect(function()
-                toggleFollowPlayer(currentPlayer)
-                task.spawn(function()
-                    task.wait(0.1)
-                    Player.updatePlayerList()
+                    -- Update all select buttons
+                    for _, item in pairs(PlayerListScrollFrame:GetChildren()) do
+                        if item:IsA("Frame") and item:FindFirstChild("SelectButton") then
+                            local btn = item.SelectButton
+                            btn.BackgroundColor3 = item.Name == currentPlayer.Name .. "Item" and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(60, 60, 60)
+                            btn.Text = item.Name == currentPlayer.Name .. "Item" and "SELECTED" or "SELECT PLAYER"
+                        end
+                    end
+                    updateSpectateButtons()
                 end)
-            end)
-            
-            stopFollowButton.MouseButton1Click:Connect(function()
-                if Player.followTarget == currentPlayer then
-                    stopFollowing()
+                
+                spectateButton.MouseButton1Click:Connect(function()
+                    print("SPECTATE clicked for: " .. currentPlayer.Name)
+                    Player.currentSpectateIndex = table.find(Player.spectatePlayerList, currentPlayer) or 0
+                    spectatePlayer(currentPlayer)
+                end)
+                
+                stopSpectateButton.MouseButton1Click:Connect(function()
+                    print("STOP SPECTATE clicked")
+                    stopSpectating()
+                end)
+                
+                teleportButton.MouseButton1Click:Connect(function()
+                    print("TELEPORT clicked for: " .. currentPlayer.Name)
+                    teleportToPlayer(currentPlayer)
+                end)
+                
+                followButton.MouseButton1Click:Connect(function()
+                    print("FOLLOW clicked for: " .. currentPlayer.Name)
+                    toggleFollowPlayer(currentPlayer)
                     task.spawn(function()
                         task.wait(0.1)
                         Player.updatePlayerList()
                     end)
-                end
-            end)
+                end)
+                
+                stopFollowButton.MouseButton1Click:Connect(function()
+                    print("STOP FOLLOW clicked for: " .. currentPlayer.Name)
+                    if Player.followTarget == currentPlayer then
+                        stopFollowing()
+                        task.spawn(function()
+                            task.wait(0.1)
+                            Player.updatePlayerList()
+                        end)
+                    end
+                end)
+                
+                bringButton.MouseButton1Click:Connect(function()
+                    print("BRING clicked for: " .. currentPlayer.Name)
+                    bringPlayer(currentPlayer)
+                end)
+                
+                copyAvatarButton.MouseButton1Click:Connect(function()
+                    print("COPY AVATAR clicked for: " .. currentPlayer.Name)
+                    copyAvatar(currentPlayer)
+                end)
+                
+                copyOutfitButton.MouseButton1Click:Connect(function()
+                    print("COPY OUTFIT clicked for: " .. currentPlayer.Name)
+                    copyOutfit(currentPlayer)
+                end)
+                
+                -- Add hover effects
+                selectButton.MouseEnter:Connect(function()
+                    if Player.selectedPlayer ~= currentPlayer then
+                        selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+                    end
+                end)
+                
+                selectButton.MouseLeave:Connect(function()
+                    if Player.selectedPlayer ~= currentPlayer then
+                        selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    else
+                        selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                    end
+                end)
+                
+                spectateButton.MouseEnter:Connect(function()
+                    spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+                end)
+                
+                spectateButton.MouseLeave:Connect(function()
+                    spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+                end)
+                
+                teleportButton.MouseEnter:Connect(function()
+                    teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+                end)
+                
+                teleportButton.MouseLeave:Connect(function()
+                    teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+                end)
+                
+                followButton.MouseEnter:Connect(function()
+                    if Player.followTarget ~= currentPlayer then
+                        followButton.BackgroundColor3 = Color3.fromRGB(70, 50, 90)
+                    end
+                end)
+                
+                followButton.MouseLeave:Connect(function()
+                    followButton.BackgroundColor3 = Player.followTarget == currentPlayer and Color3.fromRGB(80, 60, 40) or Color3.fromRGB(60, 40, 80)
+                end)
+                
+                bringButton.MouseEnter:Connect(function()
+                    bringButton.BackgroundColor3 = Color3.fromRGB(50, 70, 90)
+                end)
+                
+                bringButton.MouseLeave:Connect(function()
+                    bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
+                end)
+                
+                copyAvatarButton.MouseEnter:Connect(function()
+                    copyAvatarButton.BackgroundColor3 = Color3.fromRGB(70, 90, 50)
+                end)
+                
+                copyAvatarButton.MouseLeave:Connect(function()
+                    copyAvatarButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
+                end)
+                
+                copyOutfitButton.MouseEnter:Connect(function()
+                    copyOutfitButton.BackgroundColor3 = Color3.fromRGB(90, 70, 50)
+                end)
+                
+                copyOutfitButton.MouseLeave:Connect(function()
+                    copyOutfitButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
+                end)
+            end
             
-            bringButton.MouseButton1Click:Connect(function()
-                bringPlayer(currentPlayer)
-            end)
-            
-            copyAvatarButton.MouseButton1Click:Connect(function()
-                copyAvatar(currentPlayer)
-            end)
-            
-            copyOutfitButton.MouseButton1Click:Connect(function()
-                copyOutfit(currentPlayer)
-            end)
-            
-            -- Add hover effects for better UX
-            selectButton.MouseEnter:Connect(function()
-                if Player.selectedPlayer ~= currentPlayer then
-                    selectButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-                end
-            end)
-            
-            selectButton.MouseLeave:Connect(function()
-                if Player.selectedPlayer ~= currentPlayer then
-                    selectButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                else
-                    selectButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                end
-            end)
-            
-            spectateButton.MouseEnter:Connect(function()
-                spectateButton.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
-            end)
-            
-            spectateButton.MouseLeave:Connect(function()
-                spectateButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-            end)
-            
-            teleportButton.MouseEnter:Connect(function()
-                teleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
-            end)
-            
-            teleportButton.MouseLeave:Connect(function()
-                teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
-            end)
-            
-            copyAvatarButton.MouseEnter:Connect(function()
-                copyAvatarButton.BackgroundColor3 = Color3.fromRGB(70, 90, 50)
-            end)
-            
-            copyAvatarButton.MouseLeave:Connect(function()
-                copyAvatarButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
-            end)
-            
-            copyOutfitButton.MouseEnter:Connect(function()
-                copyOutfitButton.BackgroundColor3 = Color3.fromRGB(90, 70, 50)
-            end)
-            
-            copyOutfitButton.MouseLeave:Connect(function()
-                copyOutfitButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-            end)
+            -- Call the function to create connections with the current player
+            createButtonConnections(p)
         end
     end
     
