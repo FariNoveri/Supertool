@@ -1262,8 +1262,15 @@ local function copyOutfit(targetPlayer)
         return 
     end
     
-    local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-    local localHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    local targetChar = targetPlayer.Character
+    local localChar = player.Character
+    if not localChar then 
+        print("Copy outfit failed: No local character")
+        return 
+    end
+    
+    local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
+    local localHumanoid = localChar:FindFirstChildOfClass("Humanoid")
     
     if not targetHumanoid or not localHumanoid then 
         print("Copy outfit failed: Missing Humanoid on target or local player")
@@ -1276,57 +1283,85 @@ local function copyOutfit(targetPlayer)
         return
     end
     
-    local success, localDesc = pcall(localHumanoid.GetAppliedDescription, localHumanoid)
-    if not success or not localDesc then
-        print("Failed to get local description: " .. tostring(localDesc))
-        return
-    end
-    
     print("Target Shirt ID: " .. tostring(targetDesc.Shirt))
     print("Target Pants ID: " .. tostring(targetDesc.Pants))
     print("Target GraphicTShirt ID: " .. tostring(targetDesc.GraphicTShirt))
     
-    localDesc.Shirt = targetDesc.Shirt
-    localDesc.Pants = targetDesc.Pants
-    localDesc.GraphicTShirt = targetDesc.GraphicTShirt
-    
-    local applySuccess, err = pcall(localHumanoid.ApplyDescription, localHumanoid, localDesc)
-    if applySuccess then
-        print("Successfully applied updated description for outfit")
-    else
-        warn("Failed to apply description: " .. tostring(err))
-    end
-    
-    -- Fallback: Clean up and re-clone classic clothing instances if needed
+    -- Remove existing local classic clothing
     local clothingClasses = {"Shirt", "Pants", "ShirtGraphic"}
     for _, className in pairs(clothingClasses) do
-        local localClothing = player.Character:FindFirstChildOfClass(className)
+        local localClothing = localChar:FindFirstChildOfClass(className)
         if localClothing then 
             localClothing:Destroy() 
             print("Destroyed existing " .. className)
         end
     end
     
-    task.wait(0.1)  -- Small delay for refresh
+    -- Remove existing local layered clothing accessories
+    local clothingAccessoryTypes = {
+        Enum.AccessoryType.Shirt,
+        Enum.AccessoryType.Pants,
+        Enum.AccessoryType.Jacket,
+        Enum.AccessoryType.Sweater,
+        Enum.AccessoryType.Shorts,
+        Enum.AccessoryType.LeftSleeve,
+        Enum.AccessoryType.RightSleeve,
+        Enum.AccessoryType.DressSkirt,
+        Enum.AccessoryType.LeftShoe,
+        Enum.AccessoryType.RightShoe
+    }
+    for _, acc in pairs(localChar:GetChildren()) do
+        if acc:IsA("Accessory") then
+            for _, accType in pairs(clothingAccessoryTypes) do
+                if acc.AccessoryType == accType then
+                    acc:Destroy()
+                    print("Destroyed local clothing accessory: " .. acc.Name)
+                    break
+                end
+            end
+        end
+    end
     
+    -- Copy classic clothing using IDs
     if targetDesc.Shirt ~= 0 then
         local shirt = Instance.new("Shirt")
         shirt.ShirtTemplate = "rbxassetid://" .. targetDesc.Shirt
-        shirt.Parent = player.Character
+        shirt.Parent = localChar
         print("Created new Shirt with ID: " .. targetDesc.Shirt)
     end
     if targetDesc.Pants ~= 0 then
         local pants = Instance.new("Pants")
         pants.PantsTemplate = "rbxassetid://" .. targetDesc.Pants
-        pants.Parent = player.Character
+        pants.Parent = localChar
         print("Created new Pants with ID: " .. targetDesc.Pants)
     end
     if targetDesc.GraphicTShirt ~= 0 then
         local graphic = Instance.new("ShirtGraphic")
         graphic.Graphic = "rbxassetid://" .. targetDesc.GraphicTShirt
-        graphic.Parent = player.Character
+        graphic.Parent = localChar
         print("Created new ShirtGraphic with ID: " .. targetDesc.GraphicTShirt)
     end
+    
+    -- Copy layered clothing accessories by cloning
+    for _, acc in pairs(targetChar:GetChildren()) do
+        if acc:IsA("Accessory") then
+            for _, accType in pairs(clothingAccessoryTypes) do
+                if acc.AccessoryType == accType then
+                    local clone = acc:Clone()
+                    clone.Parent = localChar
+                    print("Cloned clothing accessory: " .. acc.Name)
+                    break
+                end
+            end
+        end
+    end
+    
+    task.wait(0.1)  -- Small delay for potential refresh
+    
+    -- Optional: Attempt to force visual update by toggling archivable (hacky, may not work)
+    localChar.Archivable = false
+    task.wait(0.05)
+    localChar.Archivable = true
     
     print("Copied outfit from: " .. targetPlayer.Name)
 end
