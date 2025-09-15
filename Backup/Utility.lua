@@ -17,6 +17,7 @@
 -- NEW FIXES: Persistent GUI position, fixed drag reset, added freeze, copy list with delete, HEX color, remove effects
 -- FIXED: Drag feature no longer resets on new object selection
 -- FIXED: Restored scale feature, holdable move buttons, double right-click for paste confirmation, paste after respawn
+-- FIXED: Scroll and close bugs, multi-select with limited options, reduced move sensitivity, simplified rotation, rename in copy list, confirmation toggle
 
 -- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
@@ -56,16 +57,17 @@ local DEBOUNCE_TIME = 0.5 -- seconds
 
 -- Object Editor Variables (enhanced from Deleter)
 local editorEnabled = false
-local selectedObject = nil
-local selectionBox = nil
+local selectedObjects = {}  -- List for multi-select
+local selectionBoxes = {}
 local editorGui = nil
 local deletedObjects = {}  -- Stack for undo: {object = clone, parent = originalParent, name = name}
-local copiedObjects = {}  -- List for copied objects: {object = clone, originalCFrame = cframe}
+local copiedObjects = {}  -- List for copied objects: {object = clone, originalCFrame = cframe, name = name}
 local editedObjects = {}  -- Stack for undo edits: {object = obj, property = prop, oldValue = value}
 local EditorScrollFrame, EditorLayout
 local editorListVisible = false
 local EditorListFrame
 local lastGuiPosition = UDim2.new(0.5, -150, 0.3, 0)  -- Default position
+local lastScrollPosition = 0  -- To preserve scroll position
 local copyListFrame = nil
 local copyListVisible = false
 local isDragging = false
@@ -73,6 +75,7 @@ local dragConnection = nil
 local rightClickConnection = nil
 local lastRightClickTime = 0
 local DOUBLE_CLICK_TIME = 0.5  -- seconds for double click
+local pasteConfirmationEnabled = true  -- Toggle for confirmation
 
 -- Gear Loader Variables
 local gearFrameVisible = false
@@ -981,28 +984,33 @@ end
 
 -- Enhanced Object Editor Functions with more features, fixes, details, and user-friendly elements
 local function clearSelection()
-    if selectionBox and selectionBox.Parent then
-        selectionBox:Destroy()
-        selectionBox = nil
+    for _, box in pairs(selectionBoxes) do
+        if box and box.Parent then
+            box:Destroy()
+        end
     end
-    selectedObject = nil
+    selectionBoxes = {}
+    selectedObjects = {}
     if editorGui and editorGui.Parent then
         lastGuiPosition = editorGui.Position  -- Save last position
+        lastScrollPosition = editorGui:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.Y  -- Save scroll position
         editorGui:Destroy()
         editorGui = nil
     end
 end
 
 local function duplicateObject()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for duplicate")
         return 
     end
     local success, err = pcall(function()
-        local clone = selectedObject:Clone()
-        clone.CFrame = selectedObject.CFrame * CFrame.new(5, 0, 0)  -- Improved offset to avoid overlap
-        clone.Parent = selectedObject.Parent
-        print("[SUPERTOOL] Duplicated: " .. selectedObject.Name)
+        for _, obj in pairs(selectedObjects) do
+            local clone = obj:Clone()
+            clone.CFrame = obj.CFrame * CFrame.new(5, 0, 0)  -- Improved offset to avoid overlap
+            clone.Parent = obj.Parent
+            print("[SUPERTOOL] Duplicated: " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Duplicate failed: " .. tostring(err))
@@ -1010,14 +1018,16 @@ local function duplicateObject()
 end
 
 local function copyObject()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for copy")
         return 
     end
     local success, err = pcall(function()
-        local clone = selectedObject:Clone()
-        table.insert(copiedObjects, {object = clone, originalCFrame = selectedObject.CFrame})
-        print("[SUPERTOOL] Copied: " .. selectedObject.Name .. " to list (#" .. #copiedObjects .. ")")
+        for _, obj in pairs(selectedObjects) do
+            local clone = obj:Clone()
+            table.insert(copiedObjects, {object = clone, originalCFrame = obj.CFrame, name = obj.Name})
+            print("[SUPERTOOL] Copied: " .. obj.Name .. " to list (#" .. #copiedObjects .. ")")
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Copy failed: " .. tostring(err))
@@ -1032,9 +1042,10 @@ local function pasteObject(index, position)
     local success, err = pcall(function()
         local copied = copiedObjects[index]
         local newPaste = copied.object:Clone()
+        newPaste.Name = copied.name  -- Preserve renamed name
         newPaste.CFrame = CFrame.new(position or copied.originalCFrame.Position)
         newPaste.Parent = workspace
-        print("[SUPERTOOL] Pasted from list #" .. index .. ": " .. copied.object.Name)
+        print("[SUPERTOOL] Pasted from list #" .. index .. ": " .. copied.name)
     end)
     if not success then
         warn("[SUPERTOOL] Paste failed: " .. tostring(err))
@@ -1048,16 +1059,25 @@ local function deleteCopy(index)
     end
 end
 
+local function renameCopy(index, newName)
+    if index and index >= 1 and index <= #copiedObjects then
+        copiedObjects[index].name = newName
+        print("[SUPERTOOL] Renamed copy #" .. index .. " to " .. newName)
+    end
+end
+
 local function resizeObject(scale)
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for resize")
         return 
     end
     local success, err = pcall(function()
-        local oldSize = selectedObject.Size
-        table.insert(editedObjects, {object = selectedObject, property = "Size", oldValue = oldSize})
-        selectedObject.Size = oldSize * Vector3.new(scale, scale, scale)  -- Uniform scale for simplicity
-        print("[SUPERTOOL] Resized by " .. scale)
+        for _, obj in pairs(selectedObjects) do
+            local oldSize = obj.Size
+            table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
+            obj.Size = oldSize * Vector3.new(scale, scale, scale)  -- Uniform scale for simplicity
+            print("[SUPERTOOL] Resized " .. obj.Name .. " by " .. scale)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Resize failed: " .. tostring(err))
@@ -1065,18 +1085,20 @@ local function resizeObject(scale)
 end
 
 local function deleteObject()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for delete")
         return 
     end
     local success, err = pcall(function()
-        local name = selectedObject.Name
-        local parent = selectedObject.Parent
-        local clone = selectedObject:Clone()
-        table.insert(deletedObjects, {object = clone, parent = parent, name = name})
-        selectedObject:Destroy()
+        for _, obj in pairs(selectedObjects) do
+            local name = obj.Name
+            local parent = obj.Parent
+            local clone = obj:Clone()
+            table.insert(deletedObjects, {object = clone, parent = parent, name = name})
+            obj:Destroy()
+            print("[SUPERTOOL] Deleted: " .. name)
+        end
         clearSelection()
-        print("[SUPERTOOL] Deleted: " .. name)
         updateEditorList()
     end)
     if not success then
@@ -1085,15 +1107,17 @@ local function deleteObject()
 end
 
 local function toggleAnchored()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for anchor toggle")
         return 
     end
     local success, err = pcall(function()
-        local oldValue = selectedObject.Anchored
-        table.insert(editedObjects, {object = selectedObject, property = "Anchored", oldValue = oldValue})
-        selectedObject.Anchored = not oldValue
-        print("[SUPERTOOL] Toggled Anchored to " .. tostring(not oldValue))
+        for _, obj in pairs(selectedObjects) do
+            local oldValue = obj.Anchored
+            table.insert(editedObjects, {object = obj, property = "Anchored", oldValue = oldValue})
+            obj.Anchored = not oldValue
+            print("[SUPERTOOL] Toggled Anchored to " .. tostring(not oldValue) .. " for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Anchor toggle failed: " .. tostring(err))
@@ -1101,15 +1125,17 @@ local function toggleAnchored()
 end
 
 local function toggleCanCollide()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for collide toggle")
         return 
     end
     local success, err = pcall(function()
-        local oldValue = selectedObject.CanCollide
-        table.insert(editedObjects, {object = selectedObject, property = "CanCollide", oldValue = oldValue})
-        selectedObject.CanCollide = not oldValue
-        print("[SUPERTOOL] Toggled CanCollide to " .. tostring(not oldValue))
+        for _, obj in pairs(selectedObjects) do
+            local oldValue = obj.CanCollide
+            table.insert(editedObjects, {object = obj, property = "CanCollide", oldValue = oldValue})
+            obj.CanCollide = not oldValue
+            print("[SUPERTOOL] Toggled CanCollide to " .. tostring(not oldValue) .. " for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Collide toggle failed: " .. tostring(err))
@@ -1117,7 +1143,7 @@ local function toggleCanCollide()
 end
 
 local function changeColor(hex)
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for color change")
         return 
     end
@@ -1126,10 +1152,12 @@ local function changeColor(hex)
         r = tonumber(r, 16)
         g = tonumber(g, 16)
         b = tonumber(b, 16)
-        local oldColor = selectedObject.Color
-        table.insert(editedObjects, {object = selectedObject, property = "Color", oldValue = oldColor})
-        selectedObject.Color = Color3.fromRGB(r, g, b)
-        print("[SUPERTOOL] Changed color to HEX #" .. hex)
+        for _, obj in pairs(selectedObjects) do
+            local oldColor = obj.Color
+            table.insert(editedObjects, {object = obj, property = "Color", oldValue = oldColor})
+            obj.Color = Color3.fromRGB(r, g, b)
+            print("[SUPERTOOL] Changed color to HEX #" .. hex .. " for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Color change failed: " .. tostring(err))
@@ -1137,15 +1165,17 @@ local function changeColor(hex)
 end
 
 local function changeTransparency(trans)
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for transparency change")
         return 
     end
     local success, err = pcall(function()
-        local oldTrans = selectedObject.Transparency
-        table.insert(editedObjects, {object = selectedObject, property = "Transparency", oldValue = oldTrans})
-        selectedObject.Transparency = math.clamp(trans, 0, 1)
-        print("[SUPERTOOL] Changed transparency to " .. trans)
+        for _, obj in pairs(selectedObjects) do
+            local oldTrans = obj.Transparency
+            table.insert(editedObjects, {object = obj, property = "Transparency", oldValue = oldTrans})
+            obj.Transparency = math.clamp(trans, 0, 1)
+            print("[SUPERTOOL] Changed transparency to " .. trans .. " for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Transparency change failed: " .. tostring(err))
@@ -1154,15 +1184,17 @@ end
 
 -- New Feature: Change Position
 local function changePosition(x, y, z)
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for position change")
         return 
     end
     local success, err = pcall(function()
-        local oldPosition = selectedObject.Position
-        table.insert(editedObjects, {object = selectedObject, property = "Position", oldValue = oldPosition})
-        selectedObject.Position = Vector3.new(x, y, z)
-        print("[SUPERTOOL] Changed position to (" .. x .. "," .. y .. "," .. z .. ")")
+        for _, obj in pairs(selectedObjects) do
+            local oldPosition = obj.Position
+            table.insert(editedObjects, {object = obj, property = "Position", oldValue = oldPosition})
+            obj.Position = Vector3.new(x, y, z)
+            print("[SUPERTOOL] Changed position to (" .. x .. "," .. y .. "," .. z .. ") for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Position change failed: " .. tostring(err))
@@ -1171,15 +1203,17 @@ end
 
 -- New Feature: Change Rotation
 local function changeRotation(x, y, z)
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for rotation change")
         return 
     end
     local success, err = pcall(function()
-        local oldCFrame = selectedObject.CFrame
-        table.insert(editedObjects, {object = selectedObject, property = "CFrame", oldValue = oldCFrame})
-        selectedObject.CFrame = CFrame.new(selectedObject.Position) * CFrame.Angles(math.rad(x), math.rad(y), math.rad(z))
-        print("[SUPERTOOL] Changed rotation to (" .. x .. "," .. y .. "," .. z .. ") degrees")
+        for _, obj in pairs(selectedObjects) do
+            local oldCFrame = obj.CFrame
+            table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
+            obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(x), math.rad(y), math.rad(z))
+            print("[SUPERTOOL] Changed rotation to (" .. x .. "," .. y .. "," .. z .. ") degrees for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Rotation change failed: " .. tostring(err))
@@ -1188,15 +1222,17 @@ end
 
 -- New Feature: Change Material
 local function changeMaterial(materialName)
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for material change")
         return 
     end
     local success, err = pcall(function()
-        local oldMaterial = selectedObject.Material
-        table.insert(editedObjects, {object = selectedObject, property = "Material", oldValue = oldMaterial})
-        selectedObject.Material = Enum.Material[materialName] or Enum.Material.SmoothPlastic
-        print("[SUPERTOOL] Changed material to " .. materialName)
+        for _, obj in pairs(selectedObjects) do
+            local oldMaterial = obj.Material
+            table.insert(editedObjects, {object = obj, property = "Material", oldValue = oldMaterial})
+            obj.Material = Enum.Material[materialName] or Enum.Material.SmoothPlastic
+            print("[SUPERTOOL] Changed material to " .. materialName .. " for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Material change failed: " .. tostring(err))
@@ -1205,15 +1241,17 @@ end
 
 -- New Feature: Change Shape
 local function changeShape(shapeName)
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for shape change")
         return 
     end
     local success, err = pcall(function()
-        local oldShape = selectedObject.Shape
-        table.insert(editedObjects, {object = selectedObject, property = "Shape", oldValue = oldShape})
-        selectedObject.Shape = Enum.PartType[shapeName] or Enum.PartType.Block
-        print("[SUPERTOOL] Changed shape to " .. shapeName)
+        for _, obj in pairs(selectedObjects) do
+            local oldShape = obj.Shape
+            table.insert(editedObjects, {object = obj, property = "Shape", oldValue = oldShape})
+            obj.Shape = Enum.PartType[shapeName] or Enum.PartType.Block
+            print("[SUPERTOOL] Changed shape to " .. shapeName .. " for " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Shape change failed: " .. tostring(err))
@@ -1222,17 +1260,19 @@ end
 
 -- New Feature: Add Surface Light
 local function addSurfaceLight()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for adding light")
         return 
     end
     local success, err = pcall(function()
-        local light = Instance.new("SurfaceLight")
-        light.Parent = selectedObject
-        light.Face = Enum.NormalId.Top
-        light.Color = Color3.fromRGB(255, 255, 255)
-        light.Brightness = 1
-        print("[SUPERTOOL] Added SurfaceLight to " .. selectedObject.Name)
+        for _, obj in pairs(selectedObjects) do
+            local light = Instance.new("SurfaceLight")
+            light.Parent = obj
+            light.Face = Enum.NormalId.Top
+            light.Color = Color3.fromRGB(255, 255, 255)
+            light.Brightness = 1
+            print("[SUPERTOOL] Added SurfaceLight to " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Add light failed: " .. tostring(err))
@@ -1241,18 +1281,20 @@ end
 
 -- New Feature: Freeze Object
 local function freezeObject()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for freeze")
         return 
     end
     local success, err = pcall(function()
-        local oldAnchored = selectedObject.Anchored
-        local oldVelocity = selectedObject.Velocity
-        table.insert(editedObjects, {object = selectedObject, property = "Anchored", oldValue = oldAnchored})
-        table.insert(editedObjects, {object = selectedObject, property = "Velocity", oldValue = oldVelocity})
-        selectedObject.Anchored = true
-        selectedObject.Velocity = Vector3.new(0, 0, 0)
-        print("[SUPERTOOL] Froze object: " .. selectedObject.Name)
+        for _, obj in pairs(selectedObjects) do
+            local oldAnchored = obj.Anchored
+            local oldVelocity = obj.Velocity
+            table.insert(editedObjects, {object = obj, property = "Anchored", oldValue = oldAnchored})
+            table.insert(editedObjects, {object = obj, property = "Velocity", oldValue = oldVelocity})
+            obj.Anchored = true
+            obj.Velocity = Vector3.new(0, 0, 0)
+            print("[SUPERTOOL] Froze object: " .. obj.Name)
+        end
     end)
     if not success then
         warn("[SUPERTOOL] Freeze failed: " .. tostring(err))
@@ -1261,25 +1303,27 @@ end
 
 -- New Feature: Remove Effects (e.g., slippery, custom physics)
 local function removeEffects()
-    if not selectedObject then 
+    if #selectedObjects == 0 then 
         warn("[SUPERTOOL] No object selected for removing effects")
         return 
     end
     local success, err = pcall(function()
-        local oldProperties = selectedObject.CustomPhysicalProperties
-        table.insert(editedObjects, {object = selectedObject, property = "CustomPhysicalProperties", oldValue = oldProperties})
-        selectedObject.CustomPhysicalProperties = nil  -- Remove custom physics
-        for _, surface in pairs(Enum.SurfaceType:GetEnumItems()) do
-            if selectedObject.TopSurface == surface or selectedObject.BottomSurface == surface or selectedObject.LeftSurface == surface or selectedObject.RightSurface == surface or selectedObject.FrontSurface == surface or selectedObject.BackSurface == surface then
-                selectedObject.TopSurface = Enum.SurfaceType.Smooth
-                selectedObject.BottomSurface = Enum.SurfaceType.Smooth
-                selectedObject.LeftSurface = Enum.SurfaceType.Smooth
-                selectedObject.RightSurface = Enum.SurfaceType.Smooth
-                selectedObject.FrontSurface = Enum.SurfaceType.Smooth
-                selectedObject.BackSurface = Enum.SurfaceType.Smooth
+        for _, obj in pairs(selectedObjects) do
+            local oldProperties = obj.CustomPhysicalProperties
+            table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
+            obj.CustomPhysicalProperties = nil  -- Remove custom physics
+            for _, surface in pairs(Enum.SurfaceType:GetEnumItems()) do
+                if obj.TopSurface == surface or obj.BottomSurface == surface or obj.LeftSurface == surface or obj.RightSurface == surface or obj.FrontSurface == surface or obj.BackSurface == surface then
+                    obj.TopSurface = Enum.SurfaceType.Smooth
+                    obj.BottomSurface = Enum.SurfaceType.Smooth
+                    obj.LeftSurface = Enum.SurfaceType.Smooth
+                    obj.RightSurface = Enum.SurfaceType.Smooth
+                    obj.FrontSurface = Enum.SurfaceType.Smooth
+                    obj.BackSurface = Enum.SurfaceType.Smooth
+                end
             end
+            print("[SUPERTOOL] Removed effects from: " .. obj.Name)
         end
-        print("[SUPERTOOL] Removed effects from: " .. selectedObject.Name)
     end)
     if not success then
         warn("[SUPERTOOL] Remove effects failed: " .. tostring(err))
@@ -1384,20 +1428,23 @@ local function updateCopyList()
         itemFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         itemFrame.Size = UDim2.new(1, 0, 0, 30)
         
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Parent = itemFrame
-        nameLabel.Position = UDim2.new(0, 5, 0, 5)
-        nameLabel.Size = UDim2.new(0.6, 0, 1, -10)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = "#" .. i .. ": " .. copied.object.Name
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextSize = 10
-        nameLabel.Font = Enum.Font.Gotham
+        local nameInput = Instance.new("TextBox")
+        nameInput.Parent = itemFrame
+        nameInput.Position = UDim2.new(0, 5, 0, 5)
+        nameInput.Size = UDim2.new(0.4, 0, 1, -10)
+        nameInput.BackgroundTransparency = 1
+        nameInput.Text = copied.name
+        nameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameInput.TextSize = 10
+        nameInput.Font = Enum.Font.Gotham
+        nameInput.FocusLost:Connect(function()
+            renameCopy(i, nameInput.Text)
+        end)
         
         local pasteBtn = Instance.new("TextButton")
         pasteBtn.Parent = itemFrame
-        pasteBtn.Position = UDim2.new(0.65, 0, 0, 5)
-        pasteBtn.Size = UDim2.new(0.15, 0, 1, -10)
+        pasteBtn.Position = UDim2.new(0.45, 0, 0, 5)
+        pasteBtn.Size = UDim2.new(0.25, 0, 1, -10)
         pasteBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
         pasteBtn.Text = "Paste"
         pasteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1409,8 +1456,8 @@ local function updateCopyList()
         
         local deleteBtn = Instance.new("TextButton")
         deleteBtn.Parent = itemFrame
-        deleteBtn.Position = UDim2.new(0.82, 0, 0, 5)
-        deleteBtn.Size = UDim2.new(0.15, 0, 1, -10)
+        deleteBtn.Position = UDim2.new(0.7, 0, 0, 5)
+        deleteBtn.Size = UDim2.new(0.25, 0, 1, -10)
         deleteBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
         deleteBtn.Text = "Delete"
         deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1437,24 +1484,19 @@ local function toggleCopyList()
     end
 end
 
-local function showEditorGUI(obj)
-    if not obj or not obj:IsA("BasePart") then
-        warn("[SUPERTOOL] Invalid object for editor. Must be a BasePart.")
-        return
-    end
-    clearSelection()
-    selectedObject = obj
+local function showEditorGUI()
+    if #selectedObjects == 0 then return end
     
-    selectionBox = Instance.new("SelectionBox")
-    selectionBox.Parent = selectedObject
-    selectionBox.Adornee = selectedObject
-    selectionBox.LineThickness = 0.1
-    selectionBox.Color3 = Color3.fromRGB(0, 255, 0)
+    if editorGui then
+        lastGuiPosition = editorGui.Position
+        lastScrollPosition = editorGui:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.Y
+        editorGui:Destroy()
+    end
     
     editorGui = Instance.new("Frame")
     editorGui.Parent = ScreenGui
-    editorGui.Position = lastGuiPosition  -- Use last position
-    editorGui.Size = UDim2.new(0, 300, 0, 500)  -- Larger GUI for more features
+    editorGui.Position = lastGuiPosition
+    editorGui.Size = UDim2.new(0, 300, 0, 500)
     editorGui.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     editorGui.BorderColor3 = Color3.fromRGB(45, 45, 45)
     editorGui.BorderSizePixel = 1
@@ -1462,7 +1504,6 @@ local function showEditorGUI(obj)
     editorGui.Draggable = true
     editorGui.ZIndex = 10
     
-    -- Add UI corners for better look
     local uiCorner = Instance.new("UICorner")
     uiCorner.CornerRadius = UDim.new(0, 5)
     uiCorner.Parent = editorGui
@@ -1471,7 +1512,7 @@ local function showEditorGUI(obj)
     title.Parent = editorGui
     title.Size = UDim2.new(1, 0, 0, 25)
     title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    title.Text = "Object Editor: " .. selectedObject.Name .. " (Click outside to close)"
+    title.Text = "Object Editor (" .. #selectedObjects .. " selected)"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 12
@@ -1494,6 +1535,7 @@ local function showEditorGUI(obj)
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 5
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.CanvasPosition = Vector2.new(0, lastScrollPosition)  -- Restore scroll position
     
     local layout = Instance.new("UIListLayout")
     layout.Parent = scrollFrame
@@ -1561,7 +1603,7 @@ local function showEditorGUI(obj)
     deleteBtn.TextSize = 10
     deleteBtn.MouseButton1Click:Connect(deleteObject)
     
-    -- Toggles Section
+    -- Toggles Section (multi)
     local togglesSection = createSectionLabel("Toggles (Anchored, CanCollide)")
     togglesSection.Parent = scrollFrame
     
@@ -1570,13 +1612,13 @@ local function showEditorGUI(obj)
     anchoredBtn.Parent = scrollFrame
     anchoredBtn.Size = UDim2.new(1, 0, 0, 25)
     anchoredBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    anchoredBtn.Text = selectedObject.Anchored and "Unanchor (Allow physics)" or "Anchor (Fix in place)"
+    anchoredBtn.Text = selectedObjects[1].Anchored and "Unanchor (Allow physics)" or "Anchor (Fix in place)"
     anchoredBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     anchoredBtn.Font = Enum.Font.Gotham
     anchoredBtn.TextSize = 10
     anchoredBtn.MouseButton1Click:Connect(function()
         toggleAnchored()
-        anchoredBtn.Text = selectedObject.Anchored and "Unanchor (Allow physics)" or "Anchor (Fix in place)"
+        anchoredBtn.Text = selectedObjects[1].Anchored and "Unanchor (Allow physics)" or "Anchor (Fix in place)"
     end)
     
     -- Toggle CanCollide
@@ -1584,13 +1626,13 @@ local function showEditorGUI(obj)
     collideBtn.Parent = scrollFrame
     collideBtn.Size = UDim2.new(1, 0, 0, 25)
     collideBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    collideBtn.Text = selectedObject.CanCollide and "Disable Collision (Pass through)" or "Enable Collision (Solid)"
+    collideBtn.Text = selectedObjects[1].CanCollide and "Disable Collision (Pass through)" or "Enable Collision (Solid)"
     collideBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     collideBtn.Font = Enum.Font.Gotham
     collideBtn.TextSize = 10
     collideBtn.MouseButton1Click:Connect(function()
         toggleCanCollide()
-        collideBtn.Text = selectedObject.CanCollide and "Disable Collision (Pass through)" or "Enable Collision (Solid)"
+        collideBtn.Text = selectedObjects[1].CanCollide and "Disable Collision (Pass through)" or "Enable Collision (Solid)"
     end)
     
     -- Transform Section
@@ -1617,7 +1659,7 @@ local function showEditorGUI(obj)
     posX.Position = UDim2.new(0, 0, 0.5, 0)
     posX.Size = UDim2.new(0.3, 0, 0.5, 0)
     posX.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    posX.Text = tostring(selectedObject.Position.X)
+    posX.Text = tostring(selectedObjects[1].Position.X)
     posX.TextColor3 = Color3.fromRGB(255, 255, 255)
     posX.Font = Enum.Font.Gotham
     posX.TextSize = 10
@@ -1627,7 +1669,7 @@ local function showEditorGUI(obj)
     posY.Position = UDim2.new(0.33, 0, 0.5, 0)
     posY.Size = UDim2.new(0.3, 0, 0.5, 0)
     posY.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    posY.Text = tostring(selectedObject.Position.Y)
+    posY.Text = tostring(selectedObjects[1].Position.Y)
     posY.TextColor3 = Color3.fromRGB(255, 255, 255)
     posY.Font = Enum.Font.Gotham
     posY.TextSize = 10
@@ -1637,7 +1679,7 @@ local function showEditorGUI(obj)
     posZ.Position = UDim2.new(0.66, 0, 0.5, 0)
     posZ.Size = UDim2.new(0.3, 0, 0.5, 0)
     posZ.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    posZ.Text = tostring(selectedObject.Position.Z)
+    posZ.Text = tostring(selectedObjects[1].Position.Z)
     posZ.TextColor3 = Color3.fromRGB(255, 255, 255)
     posZ.Font = Enum.Font.Gotham
     posZ.TextSize = 10
@@ -1657,7 +1699,7 @@ local function showEditorGUI(obj)
         end
     end)
     
-    -- Move Buttons
+    -- Move Buttons with reduced sensitivity (step = 0.5)
     local moveLabel = Instance.new("TextLabel")
     moveLabel.Parent = scrollFrame
     moveLabel.Size = UDim2.new(1, 0, 0, 15)
@@ -1686,7 +1728,9 @@ local function showEditorGUI(obj)
         local connection
         btn.MouseButton1Down:Connect(function()
             connection = RunService.Heartbeat:Connect(function()
-                changePosition(selectedObject.Position.X + direction.X, selectedObject.Position.Y + direction.Y, selectedObject.Position.Z + direction.Z)
+                for _, obj in pairs(selectedObjects) do
+                    obj.Position = obj.Position + direction * 0.5  -- Reduced sensitivity
+                end
             end)
         end)
         
@@ -1705,12 +1749,12 @@ local function showEditorGUI(obj)
         return btn
     end
     
-    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Up", Vector3.new(0, 1, 0))
-    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0.5, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Down", Vector3.new(0, -1, 0))
-    createHoldButton(moveFrame, UDim2.new(0, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Left", Vector3.new(-1, 0, 0))
-    createHoldButton(moveFrame, UDim2.new(0.8, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Right", Vector3.new(1, 0, 0))
-    createHoldButton(moveFrame, UDim2.new(0.2, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Forward", Vector3.new(0, 0, -1))
-    createHoldButton(moveFrame, UDim2.new(0.6, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Backward", Vector3.new(0, 0, 1))
+    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Up", Vector3.new(0, 0.5, 0))
+    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0.5, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Down", Vector3.new(0, -0.5, 0))
+    createHoldButton(moveFrame, UDim2.new(0, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Left", Vector3.new(-0.5, 0, 0))
+    createHoldButton(moveFrame, UDim2.new(0.8, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Right", Vector3.new(0.5, 0, 0))
+    createHoldButton(moveFrame, UDim2.new(0.2, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Forward", Vector3.new(0, 0, -0.5))
+    createHoldButton(moveFrame, UDim2.new(0.6, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Backward", Vector3.new(0, 0, 0.5))
     
     -- Rotation Inputs
     local rotFrame = Instance.new("Frame")
@@ -1777,7 +1821,7 @@ local function showEditorGUI(obj)
     rotButtonLabel.Parent = scrollFrame
     rotButtonLabel.Size = UDim2.new(1, 0, 0, 15)
     rotButtonLabel.BackgroundTransparency = 1
-    rotButtonLabel.Text = "Rotation Controls (Hold to continue):"
+    rotButtonLabel.Text = "Rotation Controls (Hold to continue, Yaw = horizontal, Pitch = vertical, Roll = tilt)"
     rotButtonLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     rotButtonLabel.Font = Enum.Font.Gotham
     rotButtonLabel.TextSize = 10
@@ -1801,11 +1845,13 @@ local function showEditorGUI(obj)
         local connection
         btn.MouseButton1Down:Connect(function()
             connection = RunService.Heartbeat:Connect(function()
-                local currentRot = selectedObject.CFrame:ToEulerAnglesXYZ()
-                local newX = math.deg(currentRot[1]) + (axis == 'X' and delta or 0)
-                local newY = math.deg(currentRot[2]) + (axis == 'Y' and delta or 0)
-                local newZ = math.deg(currentRot[3]) + (axis == 'Z' and delta or 0)
-                changeRotation(newX, newY, newZ)
+                for _, obj in pairs(selectedObjects) do
+                    local currentRot = obj.CFrame:ToEulerAnglesXYZ()
+                    local newX = math.deg(currentRot[1]) + (axis == 'X' and delta or 0)
+                    local newY = math.deg(currentRot[2]) + (axis == 'Y' and delta or 0)
+                    local newZ = math.deg(currentRot[3]) + (axis == 'Z' and delta or 0)
+                    obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(newX), math.rad(newY), math.rad(newZ))
+                end
             end)
         end)
         
@@ -1824,184 +1870,12 @@ local function showEditorGUI(obj)
         return btn
     end
     
-    createRotHoldButton(rotButtonFrame, UDim2.new(0, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Rot X +10", 'X', 10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Rot X -10", 'X', -10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.33, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Rot Y +10", 'Y', 10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.33, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Rot Y -10", 'Y', -10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Rot Z +10", 'Z', 10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Rot Z -10", 'Z', -10)
-    
-    -- Resize Section (Restored)
-    local resizeLabel = Instance.new("TextLabel")
-    resizeLabel.Parent = scrollFrame
-    resizeLabel.Size = UDim2.new(1, 0, 0, 15)
-    resizeLabel.BackgroundTransparency = 1
-    resizeLabel.Text = "Resize Scale (Uniform):"
-    resizeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    resizeLabel.Font = Enum.Font.Gotham
-    resizeLabel.TextSize = 10
-    
-    local scaleInput = Instance.new("TextBox")
-    scaleInput.Parent = scrollFrame
-    scaleInput.Size = UDim2.new(0.5, 0, 0, 25)
-    scaleInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    scaleInput.Text = "1.5"
-    scaleInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    scaleInput.Font = Enum.Font.Gotham
-    scaleInput.TextSize = 10
-    
-    local resizeBtn = Instance.new("TextButton")
-    resizeBtn.Parent = scrollFrame
-    resizeBtn.Size = UDim2.new(0.5, 0, 0, 25)
-    resizeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 60)
-    resizeBtn.Text = "Apply Scale (Multiplies size)"
-    resizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    resizeBtn.Font = Enum.Font.Gotham
-    resizeBtn.TextSize = 10
-    resizeBtn.MouseButton1Click:Connect(function()
-        local scale = tonumber(scaleInput.Text) or 1.5
-        resizeObject(scale)
-    end)
-    
-    -- Appearance Section
-    local appearanceSection = createSectionLabel("Appearance (Color, Transparency, Material, Shape)")
-    appearanceSection.Parent = scrollFrame
-    
-    -- Color Section
-    local colorLabel = Instance.new("TextLabel")
-    colorLabel.Parent = scrollFrame
-    colorLabel.Size = UDim2.new(1, 0, 0, 15)
-    colorLabel.BackgroundTransparency = 1
-    colorLabel.Text = "Color HEX (#RRGGBB):"
-    colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    colorLabel.Font = Enum.Font.Gotham
-    colorLabel.TextSize = 10
-    
-    local hexInput = Instance.new("TextBox")
-    hexInput.Parent = scrollFrame
-    hexInput.Size = UDim2.new(0.5, 0, 0, 25)
-    hexInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    hexInput.Text = string.format("#%02X%02X%02X", math.floor(selectedObject.Color.R * 255), math.floor(selectedObject.Color.G * 255), math.floor(selectedObject.Color.B * 255))
-    hexInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    hexInput.Font = Enum.Font.Gotham
-    hexInput.TextSize = 10
-    
-    local colorBtn = Instance.new("TextButton")
-    colorBtn.Parent = scrollFrame
-    colorBtn.Size = UDim2.new(0.5, 0, 0, 25)
-    colorBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 120)
-    colorBtn.Text = "Apply Color (Sets HEX color)"
-    colorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    colorBtn.Font = Enum.Font.Gotham
-    colorBtn.TextSize = 10
-    colorBtn.MouseButton1Click:Connect(function()
-        local hex = hexInput.Text:gsub("#", "")
-        if #hex == 6 then
-            changeColor(hex)
-        end
-    end)
-    
-    -- Transparency Section
-    local transLabel = Instance.new("TextLabel")
-    transLabel.Parent = scrollFrame
-    transLabel.Size = UDim2.new(1, 0, 0, 15)
-    transLabel.BackgroundTransparency = 1
-    transLabel.Text = "Transparency (0-1):"
-    transLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    transLabel.Font = Enum.Font.Gotham
-    transLabel.TextSize = 10
-    
-    local transInput = Instance.new("TextBox")
-    transInput.Parent = scrollFrame
-    transInput.Size = UDim2.new(0.5, 0, 0, 25)
-    transInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    transInput.Text = tostring(selectedObject.Transparency)
-    transInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    transInput.Font = Enum.Font.Gotham
-    transInput.TextSize = 10
-    
-    local transBtn = Instance.new("TextButton")
-    transBtn.Parent = scrollFrame
-    transBtn.Size = UDim2.new(0.5, 0, 0, 25)
-    transBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 80)
-    transBtn.Text = "Apply Transparency (0 = Opaque, 1 = Invisible)"
-    transBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    transBtn.Font = Enum.Font.Gotham
-    transBtn.TextSize = 10
-    transBtn.MouseButton1Click:Connect(function()
-        local trans = tonumber(transInput.Text)
-        if trans then
-            changeTransparency(trans)
-        end
-    end)
-    
-    -- Material Section
-    local materialLabel = Instance.new("TextLabel")
-    materialLabel.Parent = scrollFrame
-    materialLabel.Size = UDim2.new(1, 0, 0, 15)
-    materialLabel.BackgroundTransparency = 1
-    materialLabel.Text = "Material:"
-    materialLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    materialLabel.Font = Enum.Font.Gotham
-    materialLabel.TextSize = 10
-    
-    local materialInput = Instance.new("TextBox")
-    materialInput.Parent = scrollFrame
-    materialInput.Size = UDim2.new(0.5, 0, 0, 25)
-    materialInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    materialInput.Text = selectedObject.Material.Name
-    materialInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    materialInput.Font = Enum.Font.Gotham
-    materialInput.TextSize = 10
-    
-    local materialBtn = Instance.new("TextButton")
-    materialBtn.Parent = scrollFrame
-    materialBtn.Size = UDim2.new(0.5, 0, 0, 25)
-    materialBtn.BackgroundColor3 = Color3.fromRGB(120, 80, 60)
-    materialBtn.Text = "Apply Material (e.g. Plastic, Wood)"
-    materialBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    materialBtn.Font = Enum.Font.Gotham
-    materialBtn.TextSize = 10
-    materialBtn.MouseButton1Click:Connect(function()
-        local material = materialInput.Text
-        if material then
-            changeMaterial(material)
-        end
-    end)
-    
-    -- Shape Section
-    local shapeLabel = Instance.new("TextLabel")
-    shapeLabel.Parent = scrollFrame
-    shapeLabel.Size = UDim2.new(1, 0, 0, 15)
-    shapeLabel.BackgroundTransparency = 1
-    shapeLabel.Text = "Shape:"
-    shapeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    shapeLabel.Font = Enum.Font.Gotham
-    shapeLabel.TextSize = 10
-    
-    local shapeInput = Instance.new("TextBox")
-    shapeInput.Parent = scrollFrame
-    shapeInput.Size = UDim2.new(0.5, 0, 0, 25)
-    shapeInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    shapeInput.Text = selectedObject.Shape.Name
-    shapeInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    shapeInput.Font = Enum.Font.Gotham
-    shapeInput.TextSize = 10
-    
-    local shapeBtn = Instance.new("TextButton")
-    shapeBtn.Parent = scrollFrame
-    shapeBtn.Size = UDim2.new(0.5, 0, 0, 25)
-    shapeBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 80)
-    shapeBtn.Text = "Apply Shape (e.g. Block, Ball, Cylinder)"
-    shapeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    shapeBtn.Font = Enum.Font.Gotham
-    shapeBtn.TextSize = 10
-    shapeBtn.MouseButton1Click:Connect(function()
-        local shape = shapeInput.Text
-        if shape then
-            changeShape(shape)
-        end
-    end)
+    createRotHoldButton(rotButtonFrame, UDim2.new(0, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Pitch +10", 'X', 10)
+    createRotHoldButton(rotButtonFrame, UDim2.new(0, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Pitch -10", 'X', -10)
+    createRotHoldButton(rotButtonFrame, UDim2.new(0.33, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Yaw +10", 'Y', 10)
+    createRotHoldButton(rotButtonFrame, UDim2.new(0.33, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Yaw -10", 'Y', -10)
+    createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Roll +10", 'Z', 10)
+    createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Roll -10", 'Z', -10)
     
     -- Effects Section
     local effectsSection = createSectionLabel("Effects (Add Light, Freeze, Remove Effects)")
@@ -2059,16 +1933,18 @@ local function showEditorGUI(obj)
             end
             dragConnection = RunService.RenderStepped:Connect(function()
                 if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
-                if not selectedObject or not selectedObject.Parent then return end
+                if #selectedObjects == 0 then return end
                 local camera = workspace.CurrentCamera
                 local mousePos = Vector2.new(Mouse.X, Mouse.Y)
                 local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
                 local normal = camera.CFrame.LookVector
                 local denominator = ray.Direction:Dot(normal)
                 if math.abs(denominator) > 1e-6 then
-                    local t = (selectedObject.Position - ray.Origin):Dot(normal) / denominator
+                    local t = (selectedObjects[1].Position - ray.Origin):Dot(normal) / denominator
                     local hit = ray.Origin + ray.Direction * t
-                    selectedObject.CFrame = CFrame.new(hit) * (selectedObject.CFrame - selectedObject.CFrame.Position)
+                    for _, obj in pairs(selectedObjects) do
+                        obj.CFrame = CFrame.new(hit) * (obj.CFrame - obj.CFrame.Position)
+                    end
                 end
             end)
         else
@@ -2086,16 +1962,18 @@ local function showEditorGUI(obj)
         end
         dragConnection = RunService.RenderStepped:Connect(function()
             if not UserInputService:IsMouseButtonPressed(Enum.MouseButton.Left) then return end
-            if not selectedObject or not selectedObject.Parent then return end
+            if #selectedObjects == 0 then return end
             local camera = workspace.CurrentCamera
             local mousePos = Vector2.new(Mouse.X, Mouse.Y)
             local ray = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
             local normal = camera.CFrame.LookVector
             local denominator = ray.Direction:Dot(normal)
             if math.abs(denominator) > 1e-6 then
-                local t = (selectedObject.Position - ray.Origin):Dot(normal) / denominator
+                local t = (selectedObjects[1].Position - ray.Origin):Dot(normal) / denominator
                 local hit = ray.Origin + ray.Direction * t
-                selectedObject.CFrame = CFrame.new(hit) * (selectedObject.CFrame - selectedObject.CFrame.Position)
+                for _, obj in pairs(selectedObjects) do
+                    obj.CFrame = CFrame.new(hit) * (obj.CFrame - obj.CFrame.Position)
+                end
             end
         end)
     end
@@ -2116,15 +1994,33 @@ end
 
 local function setupEditorInput()
     local connection
+    local multiSelectConnection
+    local isSelecting = false
     if connection then connection:Disconnect() end
     connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
-        if editorEnabled and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
             local mouse = player:GetMouse()
             local target = mouse.Target
             if target and target:IsA("BasePart") and target ~= workspace.Terrain then
-                showEditorGUI(target)
+                table.insert(selectedObjects, target)
+                local box = Instance.new("SelectionBox")
+                box.Parent = target
+                box.Adornee = target
+                box.LineThickness = 0.1
+                box.Color3 = Color3.fromRGB(0, 255, 0)
+                table.insert(selectionBoxes, box)
+                isSelecting = true
+                showEditorGUI()
             end
+        end
+    end)
+    
+    multiSelectConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isSelecting = false
+            showEditorGUI()
         end
     end)
 end
