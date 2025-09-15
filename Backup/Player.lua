@@ -1173,6 +1173,22 @@ local function spectatePrevPlayer()
     stopSpectating()
 end
 
+-- Copy Avatar
+local function copyAvatar(targetPlayer)
+    if not targetPlayer or targetPlayer.Name == "farinoveri_2" then return end
+    local success, description = pcall(function()
+        return Players:GetHumanoidDescriptionFromUserId(targetPlayer.UserId)
+    end)
+    if success then
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid:ApplyDescription(description)
+            print("Copied avatar from: " .. targetPlayer.Name)
+        end
+    else
+        warn("Failed to get avatar description")
+    end
+end
+
 -- Update Player List - REMOVED INDIVIDUAL FREEZE, MAGNET, PHYSICS, FLING BUTTONS
 function Player.updatePlayerList()
     if not PlayerListScrollFrame then
@@ -1233,7 +1249,7 @@ function Player.updatePlayerList()
             playerItem.Parent = PlayerListScrollFrame
             playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             playerItem.BorderSizePixel = 0
-            playerItem.Size = UDim2.new(1, -5, 0, 150) -- Reduced height since we removed buttons
+            playerItem.Size = UDim2.new(1, -5, 0, 160) -- Reduced height since we removed buttons
             playerItem.LayoutOrder = playerCount
             playerItem.ZIndex = 1
             
@@ -1349,6 +1365,20 @@ function Player.updatePlayerList()
             bringButton.ZIndex = 2
             bringButton.Active = true
             
+            local copyAvatarButton = Instance.new("TextButton")
+            copyAvatarButton.Name = "CopyAvatarButton"
+            copyAvatarButton.Parent = playerItem
+            copyAvatarButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
+            copyAvatarButton.BorderSizePixel = 0
+            copyAvatarButton.Position = UDim2.new(0, 5, 0, 120)
+            copyAvatarButton.Size = UDim2.new(1, -10, 0, 25)
+            copyAvatarButton.Font = Enum.Font.Gotham
+            copyAvatarButton.Text = "COPY AVATAR"
+            copyAvatarButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            copyAvatarButton.TextSize = 9
+            copyAvatarButton.ZIndex = 2
+            copyAvatarButton.Active = true
+            
             -- FIXED Button Events with proper scope
             local currentPlayer = p  -- Capture the current player in the loop
             
@@ -1405,6 +1435,10 @@ function Player.updatePlayerList()
                 bringPlayer(currentPlayer)
             end)
             
+            copyAvatarButton.MouseButton1Click:Connect(function()
+                copyAvatar(currentPlayer)
+            end)
+            
             -- Add hover effects for better UX
             selectButton.MouseEnter:Connect(function()
                 if Player.selectedPlayer ~= currentPlayer then
@@ -1434,6 +1468,14 @@ function Player.updatePlayerList()
             
             teleportButton.MouseLeave:Connect(function()
                 teleportButton.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
+            end)
+            
+            copyAvatarButton.MouseEnter:Connect(function()
+                copyAvatarButton.BackgroundColor3 = Color3.fromRGB(70, 90, 50)
+            end)
+            
+            copyAvatarButton.MouseLeave:Connect(function()
+                copyAvatarButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
             end)
         end
     end
