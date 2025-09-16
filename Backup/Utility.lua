@@ -1103,8 +1103,8 @@ local function pasteObject(index, position)
         newPaste.Name = copied.name  -- Preserve renamed name
         newPaste.CFrame = CFrame.new(position or copied.originalCFrame.Position)
         newPaste.Parent = workspace
-        for _, script in newPaste:GetDescendants() do
-            if script:IsA("LocalScript") or script:IsA("Script") then
+        for _, script in pairs(newPaste:GetDescendants()) do
+            if script:IsA("Script") or script:IsA("LocalScript") then
                 script.Disabled = false
             end
         end
@@ -2666,7 +2666,7 @@ local function updateEditorList()
     
     pcall(function()
         for _, child in pairs(EditorScrollFrame:GetChildren()) do
-            if child:IsA("Frame") then
+            if child:IsA("TextLabel") then
                 child:Destroy()
             end
         end
@@ -3483,16 +3483,13 @@ function Utility.init(deps)
                     if pathRecording and pathPaused then
                         task.wait(5)
                         pathPaused = false
-                        path ... 
+                        updatePathStatus()
                     end
                     if pathPlaying and currentPathName then
                         task.wait(5)
                         pathPaused = false
                         playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
-                    task.wait(5)
-                    -- Re-apply object edits after respawn
-                    loadObjectEdits()
                 end
             end)
         end)
