@@ -1033,6 +1033,10 @@ local function loadObjectEdits()
         end
         objectEdits = data
         print("[SUPERTOOL] Loaded object edits for place " .. currentPlaceId)
+        return true
+    else
+        print("[SUPERTOOL] No object edits file found for place " .. currentPlaceId)
+        return false
     end
 end
 
@@ -1099,6 +1103,11 @@ local function pasteObject(index, position)
         newPaste.Name = copied.name  -- Preserve renamed name
         newPaste.CFrame = CFrame.new(position or copied.originalCFrame.Position)
         newPaste.Parent = workspace
+        for _, script in newPaste:GetDescendants() do
+            if script:IsA("LocalScript") or script:IsA("Script") then
+                script.Disabled = false
+            end
+        end
         print("[SUPERTOOL] Pasted from list #" .. index .. ": " .. copied.name)
     end)
     if not success then
@@ -2334,6 +2343,20 @@ local function showEditorGUI()
         end
     end)
     
+    -- Load Edits Button
+    local loadBtn = Instance.new("TextButton")
+    loadBtn.Parent = scrollFrame
+    loadBtn.Size = UDim2.new(1, 0, 0, 25)
+    loadBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 120)
+    loadBtn.Text = "Load Edits"
+    loadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    loadBtn.Font = Enum.Font.Gotham
+    loadBtn.TextSize = 10
+    loadBtn.MouseButton1Click:Connect(function()
+        local success = loadObjectEdits()
+        print("[SUPERTOOL] Load edits: " .. (success and "success" or "failed"))
+    end)
+    
     -- Save and Update Buttons
     local saveBtn = Instance.new("TextButton")
     saveBtn.Parent = scrollFrame
@@ -2643,7 +2666,7 @@ local function updateEditorList()
     
     pcall(function()
         for _, child in pairs(EditorScrollFrame:GetChildren()) do
-            if child:IsA("TextLabel") then
+            if child:IsA("Frame") then
                 child:Destroy()
             end
         end
@@ -3448,8 +3471,6 @@ function Utility.init(deps)
     local pathCount = loadAllSavedPaths()
     print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
     
-    loadObjectEdits()
-    
     setupKeyboardControls()
     setupEditorInput()
     
@@ -3462,16 +3483,17 @@ function Utility.init(deps)
                     if pathRecording and pathPaused then
                         task.wait(5)
                         pathPaused = false
-                        updatePathStatus()
+                        path ... 
                     end
                     if pathPlaying and currentPathName then
                         task.wait(5)
                         pathPaused = false
                         playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
+                    task.wait(5)
+                    -- Re-apply object edits after respawn
+                    loadObjectEdits()
                 end
-                -- Re-apply object edits after respawn
-                loadObjectEdits()
             end)
         end)
         
