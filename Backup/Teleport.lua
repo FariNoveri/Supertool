@@ -17,11 +17,14 @@ Teleport.autoTeleportMode = "once" -- "once" or "repeat"
 Teleport.autoTeleportDelay = 2 -- seconds between teleports
 Teleport.currentAutoIndex = 1
 Teleport.autoTeleportCoroutine = nil
+Teleport.smoothTeleportEnabled = false
+Teleport.smoothTeleportDuration = 0.5 -- seconds
 
 -- UI Elements (to be initialized in initUI function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
 local AutoStatusLabel -- New label for auto-teleport status
+local SmoothToggle, DurationInput
 
 -- File System Integration for KRNL (like utility.lua)
 local HttpService = game:GetService("HttpService")
@@ -367,8 +370,17 @@ local function safeTeleport(targetCFrame)
         root = getRootPart()
         if not root then return false end
     end
-    root.CFrame = targetCFrame
-    print("Teleported to CFrame: " .. tostring(targetCFrame))
+    if Teleport.smoothTeleportEnabled then
+        local TweenService = game:GetService("TweenService")
+        local tweenInfo = TweenInfo.new(Teleport.smoothTeleportDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(root, tweenInfo, {CFrame = targetCFrame})
+        tween:Play()
+        tween.Completed:Wait()
+        print("Smooth teleported to CFrame: " .. tostring(targetCFrame))
+    else
+        root.CFrame = targetCFrame
+        print("Teleported to CFrame: " .. tostring(targetCFrame))
+    end
     return true
 end
 
@@ -1245,7 +1257,7 @@ function Teleport.init(deps)
         PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
         PositionFrame.BorderSizePixel = 1
         PositionFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
-        PositionFrame.Size = UDim2.new(0, 300, 0, 320)
+        PositionFrame.Size = UDim2.new(0, 300, 0, 350)
         PositionFrame.Visible = false
         PositionFrame.Active = true
         PositionFrame.Draggable = true
@@ -1298,12 +1310,37 @@ function Teleport.init(deps)
         SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         SavePositionButton.TextSize = 9
 
+        SmoothToggle = Instance.new("TextButton")
+        SmoothToggle.Name = "SmoothToggle"
+        SmoothToggle.Parent = PositionFrame
+        SmoothToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        SmoothToggle.BorderSizePixel = 0
+        SmoothToggle.Position = UDim2.new(0, 8, 0, 65)
+        SmoothToggle.Size = UDim2.new(0.5, -10, 0, 25)
+        SmoothToggle.Font = Enum.Font.Gotham
+        SmoothToggle.Text = "Smooth TP: " .. (Teleport.smoothTeleportEnabled and "ON" or "OFF")
+        SmoothToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SmoothToggle.TextSize = 9
+
+        DurationInput = Instance.new("TextBox")
+        DurationInput.Name = "DurationInput"
+        DurationInput.Parent = PositionFrame
+        DurationInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        DurationInput.BorderSizePixel = 0
+        DurationInput.Position = UDim2.new(0.5, 2, 0, 65)
+        DurationInput.Size = UDim2.new(0.5, -10, 0, 25)
+        DurationInput.Font = Enum.Font.Gotham
+        DurationInput.Text = tostring(Teleport.smoothTeleportDuration)
+        DurationInput.PlaceholderText = "Duration (s)"
+        DurationInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        DurationInput.TextSize = 9
+
         PositionScrollFrame = Instance.new("ScrollingFrame")
         PositionScrollFrame.Name = "PositionScrollFrame"
         PositionScrollFrame.Parent = PositionFrame
         PositionScrollFrame.BackgroundTransparency = 1
-        PositionScrollFrame.Position = UDim2.new(0, 8, 0, 68)
-        PositionScrollFrame.Size = UDim2.new(1, -16, 1, -135)
+        PositionScrollFrame.Position = UDim2.new(0, 8, 0, 95)
+        PositionScrollFrame.Size = UDim2.new(1, -16, 1, -165)
         PositionScrollFrame.ScrollBarThickness = 3
         PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
         PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1427,6 +1464,23 @@ function Teleport.init(deps)
                 print("Auto teleport delay set to: " .. newDelay .. "s")
             else
                 DelayInput.Text = tostring(Teleport.autoTeleportDelay)
+            end
+        end)
+
+        SmoothToggle.MouseButton1Click:Connect(function()
+            Teleport.smoothTeleportEnabled = not Teleport.smoothTeleportEnabled
+            SmoothToggle.Text = "Smooth TP: " .. (Teleport.smoothTeleportEnabled and "ON" or "OFF")
+            SmoothToggle.BackgroundColor3 = Teleport.smoothTeleportEnabled and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
+            print("Smooth teleport " .. (Teleport.smoothTeleportEnabled and "enabled" or "disabled"))
+        end)
+
+        DurationInput.FocusLost:Connect(function(enterPressed)
+            local newDuration = tonumber(DurationInput.Text)
+            if newDuration and newDuration > 0 then
+                Teleport.smoothTeleportDuration = newDuration
+                print("Smooth teleport duration set to: " .. newDuration .. "s")
+            else
+                DurationInput.Text = tostring(Teleport.smoothTeleportDuration)
             end
         end)
 
