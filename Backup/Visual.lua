@@ -17,7 +17,10 @@ Visual.fullbrightEnabled = false
 Visual.flashlightEnabled = false
 Visual.lowDetailEnabled = false
 Visual.ultraLowDetailEnabled = false
-Visual.espEnabled = false
+Visual.espBoxEnabled = false
+Visual.espTracerEnabled = false
+Visual.espNameEnabled = false
+Visual.espHealthEnabled = false
 Visual.xrayEnabled = false
 Visual.voidEnabled = false
 Visual.hideAllNicknames = false
@@ -30,7 +33,7 @@ Visual.joystickDelta = Vector2.new(0, 0)
 Visual.character = nil
 local flashlight
 local pointLight
-local espHighlights = {}
+local espElements = {}
 local characterTransparencies = {}
 local xrayTransparencies = {}
 local voidStates = {}
@@ -47,6 +50,10 @@ Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
 local selfHighlight
 local colorPicker = nil
 local originalBubbleChatEnabled = true
+local originalAnchor = false
+local espUpdateConnection = nil
+local customName = nil
+local nameChangeInput = nil
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
@@ -69,7 +76,7 @@ local timeModeConfigs = {
         SunAngularSize = nil,
         FogColor = nil
     },
-    morning = {
+    pagi = {
         ClockTime = 6.5,
         Brightness = 1.5,
         Ambient = Color3.fromRGB(150, 120, 80),
@@ -89,7 +96,7 @@ local timeModeConfigs = {
         SunAngularSize = 21,
         FogColor = Color3.fromRGB(220, 220, 255)
     },
-    evening = {
+    sore = {
         ClockTime = 18,
         Brightness = 1,
         Ambient = Color3.fromRGB(120, 80, 60),
@@ -656,173 +663,215 @@ local function toggleNoClipCamera(enabled)
     end
 end
 
--- Enhanced ESP with health-based colors
-local function toggleESP(enabled)
-    Visual.espEnabled = enabled
-    print("ESP:", enabled)
+local function destroyESPForPlayer(targetPlayer)
+    if espElements[targetPlayer] then
+        if espElements[targetPlayer].highlight then
+            espElements[targetPlayer].highlight:Destroy()
+        end
+        if espElements[targetPlayer].nameGui then
+            espElements[targetPlayer].nameGui:Destroy()
+        end
+        if espElements[targetPlayer].healthGui then
+            espElements[targetPlayer].healthGui:Destroy()
+        end
+        if espElements[targetPlayer].tracer then
+            espElements[targetPlayer].tracer:Remove()
+        end
+        espElements[targetPlayer] = nil
+    end
+end
+
+local function createESPForPlayer(targetPlayer)
+    if not targetPlayer or targetPlayer == player or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Head") or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
     
-    if enabled then
-        for _, highlight in pairs(espHighlights) do
-            if highlight and highlight.Parent then
-                highlight:Destroy()
+    destroyESPForPlayer(targetPlayer)
+    
+    espElements[targetPlayer] = {}
+    
+    local character = targetPlayer.Character
+    local head = character.Head
+    local humanoid = character:FindFirstChild("Humanoid")
+    
+    if Visual.espBoxEnabled then
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "ESPHighlight"
+        highlight.FillColor = getHealthColor(targetPlayer)
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 0
+        highlight.Adornee = character
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Parent = character
+        espElements[targetPlayer].highlight = highlight
+    end
+    
+    if Visual.espNameEnabled then
+        local nameGui = Instance.new("BillboardGui")
+        nameGui.Name = "ESPName"
+        nameGui.Adornee = head
+        nameGui.Size = UDim2.new(0, 200, 0, 50)
+        nameGui.StudsOffset = Vector3.new(0, 3, 0)
+        nameGui.AlwaysOnTop = true
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, 0, 1, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = targetPlayer.DisplayName or targetPlayer.Name
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextStrokeTransparency = 0.5
+        nameLabel.TextSize = 14
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.Parent = nameGui
+        
+        nameGui.Parent = character
+        espElements[targetPlayer].nameGui = nameGui
+    end
+    
+    if Visual.espHealthEnabled and humanoid then
+        local healthGui = Instance.new("BillboardGui")
+        healthGui.Name = "ESPHealth"
+        healthGui.Adornee = head
+        healthGui.Size = UDim2.new(0, 200, 0, 50)
+        healthGui.StudsOffset = Vector3.new(0, 2, 0)
+        healthGui.AlwaysOnTop = true
+        
+        local healthText = Instance.new("TextLabel")
+        healthText.Size = UDim2.new(1, 0, 0.5, 0)
+        healthText.BackgroundTransparency = 1
+        healthText.Text = "Health: " .. math.floor(humanoid.Health) .. "/" .. humanoid.MaxHealth
+        healthText.TextColor3 = getHealthColor(targetPlayer)
+        healthText.TextStrokeTransparency = 0.5
+        healthText.TextSize = 12
+        healthText.Font = Enum.Font.SourceSans
+        healthText.Parent = healthGui
+        
+        local healthBarBg = Instance.new("Frame")
+        healthBarBg.Size = UDim2.new(1, 0, 0.5, 0)
+        healthBarBg.Position = UDim2.new(0, 0, 0.5, 0)
+        healthBarBg.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        healthBarBg.BorderSizePixel = 0
+        healthBarBg.Parent = healthGui
+        
+        local healthBarFg = Instance.new("Frame")
+        healthBarFg.Size = UDim2.new(humanoid.Health / humanoid.MaxHealth, 0, 1, 0)
+        healthBarFg.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        healthBarFg.BorderSizePixel = 0
+        healthBarFg.Parent = healthBarBg
+        
+        healthGui.Parent = character
+        espElements[targetPlayer].healthGui = healthGui
+        espElements[targetPlayer].healthText = healthText
+        espElements[targetPlayer].healthBarFg = healthBarFg
+    end
+    
+    if Visual.espTracerEnabled then
+        local tracer = Drawing.new("Line")
+        tracer.Visible = true
+        tracer.Color = Color3.fromRGB(255, 255, 255)
+        tracer.Thickness = 1
+        tracer.Transparency = 1
+        espElements[targetPlayer].tracer = tracer
+    end
+end
+
+local function refreshESP()
+    for targetPlayer, _ in pairs(espElements) do
+        destroyESPForPlayer(targetPlayer)
+    end
+    espElements = {}
+    
+    if espUpdateConnection then
+        espUpdateConnection:Disconnect()
+        espUpdateConnection = nil
+    end
+    
+    if Visual.espBoxEnabled or Visual.espNameEnabled or Visual.espHealthEnabled or Visual.espTracerEnabled then
+        for _, targetPlayer in pairs(Players:GetPlayers()) do
+            if targetPlayer ~= player and targetPlayer.Character then
+                createESPForPlayer(targetPlayer)
             end
         end
-        espHighlights = {}
         
-        local function createESPForCharacter(character, targetPlayer)
-            if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-            
-            local isInvisible = false
-            
-            pcall(function()
-                for _, part in pairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.Transparency >= 0.9 then
-                        isInvisible = true
-                        break
+        espUpdateConnection = RunService.Heartbeat:Connect(function()
+            for targetPlayer, elements in pairs(espElements) do
+                if targetPlayer and targetPlayer.Character then
+                    local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                    if humanoid then
+                        if elements.highlight then
+                            elements.highlight.FillColor = getHealthColor(targetPlayer)
+                        end
+                        if elements.healthText then
+                            elements.healthText.Text = "Health: " .. math.floor(humanoid.Health) .. "/" .. humanoid.MaxHealth
+                            elements.healthText.TextColor3 = getHealthColor(targetPlayer)
+                        end
+                        if elements.healthBarFg then
+                            elements.healthBarFg.Size = UDim2.new(humanoid.Health / humanoid.MaxHealth, 0, 1, 0)
+                        end
                     end
-                end
-                if character:GetAttribute("IsInvisible") or character:GetAttribute("AdminInvisible") then
-                    isInvisible = true
-                end
-            end)
-            
-            if espHighlights[targetPlayer] then
-                espHighlights[targetPlayer]:Destroy()
-                espHighlights[targetPlayer] = nil
-            end
-            
-            local highlight = Instance.new("Highlight")
-            highlight.Name = "ESPHighlight"
-            
-            local healthColor = getHealthColor(targetPlayer)
-            highlight.FillColor = healthColor
-            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-            highlight.FillTransparency = isInvisible and 0.3 or 0.5
-            highlight.OutlineTransparency = 0
-            highlight.Adornee = character
-            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            highlight.Parent = character
-            espHighlights[targetPlayer] = highlight
-        end
-        
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character then
-                createESPForCharacter(otherPlayer.Character, otherPlayer)
-            end
-        end
-        
-        if connections and type(connections) == "table" and connections.espHealthUpdate then
-            connections.espHealthUpdate:Disconnect()
-        end
-        connections.espHealthUpdate = RunService.Heartbeat:Connect(function()
-            if Visual.espEnabled then
-                for targetPlayer, highlight in pairs(espHighlights) do
-                    if targetPlayer and targetPlayer.Character and highlight and highlight.Parent then
-                        local newColor = getHealthColor(targetPlayer)
-                        highlight.FillColor = newColor
+                    if elements.tracer then
+                        local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if root then
+                            local camera = Workspace.CurrentCamera
+                            local screenBottom = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+                            local rootPos, onScreen = camera:WorldToViewportPoint(root.Position)
+                            if onScreen then
+                                elements.tracer.From = screenBottom
+                                elements.tracer.To = Vector2.new(rootPos.X, rootPos.Y)
+                                elements.tracer.Visible = true
+                            else
+                                elements.tracer.Visible = false
+                            end
+                        else
+                            elements.tracer.Visible = false
+                        end
                     end
+                else
+                    destroyESPForPlayer(targetPlayer)
                 end
             end
         end)
         
-        if connections and type(connections) == "table" and connections.espPlayerAdded then
+        if connections.espPlayerAdded then
             connections.espPlayerAdded:Disconnect()
         end
         connections.espPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
-            if Visual.espEnabled and newPlayer ~= player then
-                newPlayer.CharacterAdded:Connect(function(character)
+            if newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function()
                     task.wait(0.3)
-                    if Visual.espEnabled then
-                        createESPForCharacter(character, newPlayer)
-                    end
+                    createESPForPlayer(newPlayer)
                 end)
             end
         end)
         
-        if connections and type(connections) == "table" and connections.espPlayerLeaving then
-            connections.espPlayerLeaving:Disconnect()
+        if connections.espPlayerRemoving then
+            connections.espPlayerRemoving:Disconnect()
         end
-        connections.espPlayerLeaving = Players.PlayerRemoving:Connect(function(leavingPlayer)
-            if espHighlights[leavingPlayer] then
-                espHighlights[leavingPlayer]:Destroy()
-                espHighlights[leavingPlayer] = nil
-            end
+        connections.espPlayerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            destroyESPForPlayer(leavingPlayer)
         end)
-        
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player then
-                if connections and type(connections) == "table" and connections["espCharAdded" .. otherPlayer.UserId] then
-                    connections["espCharAdded" .. otherPlayer.UserId]:Disconnect()
-                end
-                if connections and type(connections) == "table" and connections["espCharRemoving" .. otherPlayer.UserId] then
-                    connections["espCharRemoving" .. otherPlayer.UserId]:Disconnect()
-                end
-                
-                connections["espCharAdded" .. otherPlayer.UserId] = otherPlayer.CharacterAdded:Connect(function(character)
-                    task.wait(0.3)
-                    if Visual.espEnabled then
-                        createESPForCharacter(character, otherPlayer)
-                    end
-                end)
-                
-                connections["espCharRemoving" .. otherPlayer.UserId] = otherPlayer.CharacterRemoving:Connect(function()
-                    if espHighlights[otherPlayer] then
-                        espHighlights[otherPlayer]:Destroy()
-                        espHighlights[otherPlayer] = nil
-                    end
-                end)
-            end
-        end
-        
-        if connections and type(connections) == "table" and connections.espBackupCheck then
-            connections.espBackupCheck:Disconnect()
-        end
-        connections.espBackupCheck = RunService.Heartbeat:Connect(function()
-            if Visual.espEnabled then
-                for _, otherPlayer in pairs(Players:GetPlayers()) do
-                    if otherPlayer ~= player and otherPlayer.Character and 
-                       otherPlayer.Character:FindFirstChild("HumanoidRootPart") and 
-                       not espHighlights[otherPlayer] then
-                        createESPForCharacter(otherPlayer.Character, otherPlayer)
-                    end
-                end
-            end
-        end)
-        
-    else
-        if connections and type(connections) == "table" then
-            if connections.espHealthUpdate then
-                connections.espHealthUpdate:Disconnect()
-                connections.espHealthUpdate = nil
-            end
-            if connections.espPlayerLeaving then
-                connections.espPlayerLeaving:Disconnect()
-                connections.espPlayerLeaving = nil
-            end
-            if connections.espPlayerAdded then
-                connections.espPlayerAdded:Disconnect()
-                connections.espPlayerAdded = nil
-            end
-            if connections.espBackupCheck then
-                connections.espBackupCheck:Disconnect()
-                connections.espBackupCheck = nil
-            end
-            
-            for key, connection in pairs(connections) do
-                if string.match(key, "espCharAdded") or string.match(key, "espCharRemoving") then
-                    connection:Disconnect()
-                    connections[key] = nil
-                end
-            end
-        end
-        
-        for _, highlight in pairs(espHighlights) do
-            if highlight and highlight.Parent then
-                highlight:Destroy()
-            end
-        end
-        espHighlights = {}
     end
+end
+
+local function toggleESPBox(enabled)
+    Visual.espBoxEnabled = enabled
+    refreshESP()
+end
+
+local function toggleESPTracer(enabled)
+    Visual.espTracerEnabled = enabled
+    refreshESP()
+end
+
+local function toggleESPName(enabled)
+    Visual.espNameEnabled = enabled
+    refreshESP()
+end
+
+local function toggleESPHealth(enabled)
+    Visual.espHealthEnabled = enabled
+    refreshESP()
 end
 
 -- XRay function similar to Infinite Yield
@@ -959,6 +1008,10 @@ local function toggleFreecam(enabled)
             joystickFrame.Visible = true
         end
         
+        -- Anchor character to keep it still
+        originalAnchor = currentRootPart.Anchored
+        currentRootPart.Anchored = true
+        
         if connections and type(connections) == "table" and connections.freecamConnection then
             connections.freecamConnection:Disconnect()
         end
@@ -1094,11 +1147,16 @@ local function toggleFreecam(enabled)
         
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
+        local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
         
         if Visual.originalCameraSubject then
             camera.CameraSubject = Visual.originalCameraSubject
         elseif currentHumanoid then
             camera.CameraSubject = currentHumanoid
+        end
+        
+        if currentRootPart then
+            currentRootPart.Anchored = originalAnchor
         end
         
         if UserInputService then
@@ -1115,6 +1173,8 @@ local function toggleFreecam(enabled)
 end
 
 -- Time Mode Functions
+local timeModeButtons = {"Pagi Mode", "Day Mode", "Sore Mode", "Night Mode"}
+
 local function setTimeMode(mode)
     storeOriginalLightingSettings()
     Visual.currentTimeMode = mode
@@ -1163,9 +1223,18 @@ local function setTimeMode(mode)
     end
 end
 
-local function toggleMorning(enabled)
+local function disableOtherTimeModes(currentButton)
+    for _, btn in ipairs(timeModeButtons) do
+        if btn ~= currentButton and buttonStates[btn] then
+            buttonStates[btn] = false
+        end
+    end
+end
+
+local function togglePagi(enabled)
     if enabled then
-        setTimeMode("morning")
+        setTimeMode("pagi")
+        disableOtherTimeModes("Pagi Mode")
     else
         setTimeMode("normal")
     end
@@ -1174,14 +1243,16 @@ end
 local function toggleDay(enabled)
     if enabled then
         setTimeMode("day")
+        disableOtherTimeModes("Day Mode")
     else
         setTimeMode("normal")
     end
 end
 
-local function toggleEvening(enabled)
+local function toggleSore(enabled)
     if enabled then
-        setTimeMode("evening")
+        setTimeMode("sore")
+        disableOtherTimeModes("Sore Mode")
     else
         setTimeMode("normal")
     end
@@ -1190,6 +1261,7 @@ end
 local function toggleNight(enabled)
     if enabled then
         setTimeMode("night")
+        disableOtherTimeModes("Night Mode")
     else
         setTimeMode("normal")
     end
@@ -1776,6 +1848,89 @@ local function toggleSelfHighlight(enabled)
     end
 end
 
+-- Change Name (visual/client only)
+local function applyCustomName()
+    local character = player.Character
+    if not character then return end
+    
+    local head = character:FindFirstChild("Head")
+    if not head then return end
+    
+    local billboard = head:FindFirstChildOfClass("BillboardGui")
+    if not billboard then return end
+    
+    for _, child in pairs(billboard:GetChildren()) do
+        if child:IsA("TextLabel") and (child.Text == player.Name or child.Text == player.DisplayName) then
+            child.Text = customName
+        end
+    end
+end
+
+local function setCustomName(newName)
+    customName = newName
+    applyCustomName()
+    
+    if connections.changeNameCharAdded then
+        connections.changeNameCharAdded:Disconnect()
+    end
+    connections.changeNameCharAdded = player.CharacterAdded:Connect(function()
+        task.wait(0.3)
+        applyCustomName()
+    end)
+end
+
+local function createNameInput()
+    if not ScreenGui then return end
+    
+    local inputFrame = Instance.new("Frame")
+    inputFrame.Size = UDim2.new(0, 300, 0, 100)
+    inputFrame.Position = UDim2.new(0.5, -150, 0.5, -50)
+    inputFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    inputFrame.Visible = false
+    inputFrame.Parent = ScreenGui
+    
+    local textBox = Instance.new("TextBox")
+    textBox.Size = UDim2.new(1, -20, 0, 40)
+    textBox.Position = UDim2.new(0, 10, 0, 10)
+    textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.PlaceholderText = "Enter new name"
+    textBox.Parent = inputFrame
+    
+    local confirmButton = Instance.new("TextButton")
+    confirmButton.Size = UDim2.new(0.5, -15, 0, 30)
+    confirmButton.Position = UDim2.new(0, 10, 0, 60)
+    confirmButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+    confirmButton.Text = "Confirm"
+    confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmButton.Parent = inputFrame
+    
+    local cancelButton = Instance.new("TextButton")
+    cancelButton.Size = UDim2.new(0.5, -15, 0, 30)
+    cancelButton.Position = UDim2.new(0.5, 5, 0, 60)
+    cancelButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    cancelButton.Text = "Cancel"
+    cancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cancelButton.Parent = inputFrame
+    
+    confirmButton.MouseButton1Click:Connect(function()
+        setCustomName(textBox.Text)
+        inputFrame.Visible = false
+    end)
+    
+    cancelButton.MouseButton1Click:Connect(function()
+        inputFrame.Visible = false
+    end)
+    
+    return inputFrame
+end
+
+local function showNameInput()
+    if nameChangeInput then
+        nameChangeInput.Visible = true
+    end
+end
+
 -- Initialize module
 function Visual.init(deps)
     print("Initializing Visual module")
@@ -2058,7 +2213,10 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Flashlight", toggleFlashlight)
     createToggleButton("Low Detail Mode", toggleLowDetail)
     createToggleButton("Ultra Low Detail Mode", toggleUltraLowDetail)
-    createToggleButton("ESP", toggleESP)
+    createToggleButton("ESP Box", toggleESPBox)
+    createToggleButton("ESP Tracer", toggleESPTracer)
+    createToggleButton("ESP Name", toggleESPName)
+    createToggleButton("ESP Health", toggleESPHealth)
     createToggleButton("XRay", toggleXRay)
     createToggleButton("Void", toggleVoid)
     createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
@@ -2066,9 +2224,9 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Hide All Characters Except Self", toggleHideAllCharactersExceptSelf)
     createToggleButton("Hide Self Character", toggleHideSelfCharacter)
     createToggleButton("Hide Bubble Chat", toggleHideBubbleChat)
-    createToggleButton("Morning Mode", toggleMorning)
+    createToggleButton("Pagi Mode", togglePagi)
     createToggleButton("Day Mode", toggleDay)
-    createToggleButton("Evening Mode", toggleEvening)
+    createToggleButton("Sore Mode", toggleSore)
     createToggleButton("Night Mode", toggleNight)
     createToggleButton("Self Highlight", toggleSelfHighlight)
 
@@ -2107,6 +2265,26 @@ function Visual.loadVisualButtons(createToggleButton)
             colorPicker.Visible = true
         end
     end)
+    
+    -- Create change name button
+    local changeNameButton = Instance.new("TextButton")
+    changeNameButton.Name = "ChangeNameButton"
+    changeNameButton.Size = UDim2.new(1, 0, 0, 30)
+    changeNameButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    changeNameButton.Text = "Change Name"
+    changeNameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    changeNameButton.TextSize = 14
+    changeNameButton.Font = Enum.Font.SourceSans
+    changeNameButton.BorderSizePixel = 0
+    changeNameButton.Parent = ScrollFrame
+    
+    local changeNameCorner = Instance.new("UICorner")
+    changeNameCorner.CornerRadius = UDim.new(0, 4)
+    changeNameCorner.Parent = changeNameButton
+    
+    nameChangeInput = createNameInput()
+    
+    changeNameButton.MouseButton1Click:Connect(showNameInput)
 end
 
 -- Export functions for external access
@@ -2116,7 +2294,10 @@ Visual.toggleFullbright = toggleFullbright
 Visual.toggleFlashlight = toggleFlashlight
 Visual.toggleLowDetail = toggleLowDetail
 Visual.toggleUltraLowDetail = toggleUltraLowDetail
-Visual.toggleESP = toggleESP
+Visual.toggleESPBox = toggleESPBox
+Visual.toggleESPTracer = toggleESPTracer
+Visual.toggleESPName = toggleESPName
+Visual.toggleESPHealth = toggleESPHealth
 Visual.toggleXRay = toggleXRay
 Visual.toggleVoid = toggleVoid
 Visual.toggleHideAllNicknames = toggleHideAllNicknames
@@ -2135,7 +2316,10 @@ function Visual.resetStates()
     Visual.flashlightEnabled = false
     Visual.lowDetailEnabled = false
     Visual.ultraLowDetailEnabled = false
-    Visual.espEnabled = false
+    Visual.espBoxEnabled = false
+    Visual.espTracerEnabled = false
+    Visual.espNameEnabled = false
+    Visual.espHealthEnabled = false
     Visual.xrayEnabled = false
     Visual.voidEnabled = false
     Visual.hideAllNicknames = false
@@ -2162,7 +2346,10 @@ function Visual.resetStates()
     toggleFlashlight(false)
     toggleLowDetail(false)
     toggleUltraLowDetail(false)
-    toggleESP(false)
+    toggleESPBox(false)
+    toggleESPTracer(false)
+    toggleESPName(false)
+    toggleESPHealth(false)
     toggleXRay(false)
     toggleVoid(false)
     toggleHideAllNicknames(false)
@@ -2200,7 +2387,10 @@ function Visual.updateReferences()
     local wasFlashlightEnabled = Visual.flashlightEnabled
     local wasLowDetailEnabled = Visual.lowDetailEnabled
     local wasUltraLowDetailEnabled = Visual.ultraLowDetailEnabled
-    local wasEspEnabled = Visual.espEnabled
+    local wasEspBoxEnabled = Visual.espBoxEnabled
+    local wasEspTracerEnabled = Visual.espTracerEnabled
+    local wasEspNameEnabled = Visual.espNameEnabled
+    local wasEspHealthEnabled = Visual.espHealthEnabled
     local wasXRayEnabled = Visual.xrayEnabled
     local wasVoidEnabled = Visual.voidEnabled
     local wasHideAllNicknames = Visual.hideAllNicknames
@@ -2239,9 +2429,21 @@ function Visual.updateReferences()
         print("Re-enabling Ultra Low Detail Mode after respawn")
         toggleUltraLowDetail(true)
     end
-    if wasEspEnabled then
-        print("Re-enabling ESP after respawn")
-        toggleESP(true)
+    if wasEspBoxEnabled then
+        print("Re-enabling ESP Box after respawn")
+        toggleESPBox(true)
+    end
+    if wasEspTracerEnabled then
+        print("Re-enabling ESP Tracer after respawn")
+        toggleESPTracer(true)
+    end
+    if wasEspNameEnabled then
+        print("Re-enabling ESP Name after respawn")
+        toggleESPName(true)
+    end
+    if wasEspHealthEnabled then
+        print("Re-enabling ESP Health after respawn")
+        toggleESPHealth(true)
     end
     if wasXRayEnabled then
         print("Re-enabling XRay after respawn")
@@ -2280,6 +2482,10 @@ function Visual.updateReferences()
         setTimeMode(currentTimeMode)
     end
     
+    if customName then
+        setCustomName(customName)
+    end
+    
     print("Visual module references updated")
 end
 
@@ -2313,13 +2519,11 @@ function Visual.cleanup()
         selfHighlight = nil
     end
     
-    -- Clean up ESP highlights
-    for _, highlight in pairs(espHighlights) do
-        if highlight and highlight.Parent then
-            highlight:Destroy()
-        end
+    -- Clean up ESP elements
+    for _, elements in pairs(espElements) do
+        destroyESPForPlayer(_)
     end
-    espHighlights = {}
+    espElements = {}
     
     -- Clean up character transparencies
     characterTransparencies = {}
@@ -2362,6 +2566,11 @@ function Visual.cleanup()
         colorPicker = nil
     end
     
+    if nameChangeInput then
+        nameChangeInput:Destroy()
+        nameChangeInput = nil
+    end
+    
     -- Disconnect any remaining connections
     if connections and type(connections) == "table" then
         for key, connection in pairs(connections) do
@@ -2402,7 +2611,10 @@ function Visual.getState()
         flashlightEnabled = Visual.flashlightEnabled,
         lowDetailEnabled = Visual.lowDetailEnabled,
         ultraLowDetailEnabled = Visual.ultraLowDetailEnabled,
-        espEnabled = Visual.espEnabled,
+        espBoxEnabled = Visual.espBoxEnabled,
+        espTracerEnabled = Visual.espTracerEnabled,
+        espNameEnabled = Visual.espNameEnabled,
+        espHealthEnabled = Visual.espHealthEnabled,
         xrayEnabled = Visual.xrayEnabled,
         voidEnabled = Visual.voidEnabled,
         hideAllNicknames = Visual.hideAllNicknames,
