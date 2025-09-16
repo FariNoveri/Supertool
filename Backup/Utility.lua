@@ -106,7 +106,7 @@ local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local PATH_FOLDER_PATH = "Supertool/Paths/"
-local OBJECT_EDITOR_FOLDER = "ObjectEditorMap/"
+local OBJECT_EDITOR_FOLDER = "Supertool/ObjectEditorMap/"
 local currentPlaceId = game.PlaceId
 local objectEdits = {}  -- To store edits {path = {prop = value}}
 
