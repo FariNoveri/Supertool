@@ -48,6 +48,12 @@ Player.spinSpeed = 50 -- Increased from 20
 Player.teleportHistory = {}
 Player.teleportFuture = {}
 
+-- Variables for body size
+Player.bodyScale = 1.0
+Player.minScale = 0.5
+Player.maxScale = 2.0
+Player.scaleStep = 0.1
+
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
@@ -1210,196 +1216,33 @@ local function toggleFollowPlayer(targetPlayer)
     end
 end
 
--- Copy Avatar (Full avatar copy including bundles via appearance ID and respawn)
-local function copyAvatar(targetPlayer)
-    if not targetPlayer or targetPlayer.Name == "farinoveri_2" or not targetPlayer.Character then 
-        print("Copy avatar failed: Invalid target or restricted player")
-        return 
+-- Set Body Scale
+local function setBodyScale(scale)
+    scale = math.clamp(scale, Player.minScale, Player.maxScale)
+    Player.bodyScale = scale
+    if player.Character and player.Character:FindFirstChild("Humanoid") then
+        local hum = player.Character.Humanoid
+        hum.BodyDepthScale.Value = scale
+        hum.BodyHeightScale.Value = scale
+        hum.BodyWidthScale.Value = scale
+        hum.HeadScale.Value = scale
+        print("Set body scale to: " .. scale)
     end
-    
-    local localChar = player.Character
-    if not localChar then 
-        print("Copy avatar failed: No local character")
-        return 
-    end
-    
-    local rootPart = localChar:FindFirstChild("HumanoidRootPart")
-    if not rootPart then
-        print("Copy avatar failed: No HumanoidRootPart")
-        return
-    end
-    
-    -- Save current position
-    local oldCFrame = rootPart.CFrame
-    print("Saved current position")
-    
-    -- Set appearance to match target
-    local oldAppearanceId = player.CharacterAppearanceId
-    player.CharacterAppearanceId = targetPlayer.UserId
-    print("Set CharacterAppearanceId to " .. targetPlayer.UserId)
-    
-    -- Force respawn
-    local humanoid = localChar:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid.Health = 0
-        print("Forced character respawn by setting health to 0")
-    else
-        pcall(function()
-            player:LoadCharacter()
-            print("Forced character respawn via LoadCharacter")
-        end)
-    end
-    
-    -- Wait for new character
-    player.CharacterAdded:Wait()
-    task.wait(0.5)
-    
-    -- Restore position
-    local newChar = player.Character
-    if newChar then
-        local newRoot = newChar:WaitForChild("HumanoidRootPart", 5)
-        if newRoot then
-            newRoot.CFrame = oldCFrame
-            print("Restored position on new character")
-        end
-    end
-    
-    -- Restore original AppearanceId if needed (optional)
-    player.CharacterAppearanceId = oldAppearanceId
-    
-    print("Copied full avatar from: " .. targetPlayer.Name)
 end
 
--- Copy Outfit (Clothing only, Client-side visual)
-local function copyOutfit(targetPlayer)
-    if not targetPlayer or targetPlayer.Name == "farinoveri_2" or not targetPlayer.Character then 
-        print("Copy outfit failed: Invalid target or restricted player")
-        return 
-    end
-    
-    local targetChar = targetPlayer.Character
-    local localChar = player.Character
-    if not localChar then 
-        print("Copy outfit failed: No local character")
-        return 
-    end
-    
-    local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-    local localHumanoid = localChar:FindFirstChildOfClass("Humanoid")
-    
-    if not targetHumanoid or not localHumanoid then 
-        print("Copy outfit failed: Missing Humanoid on target or local player")
-        return 
-    end
-    
-    local success, targetDesc = pcall(targetHumanoid.GetAppliedDescription, targetHumanoid)
-    if not success or not targetDesc then
-        print("Failed to get target description: " .. tostring(targetDesc))
-        return
-    end
-    
-    print("Target Shirt ID: " .. tostring(targetDesc.Shirt))
-    print("Target Pants ID: " .. tostring(targetDesc.Pants))
-    print("Target GraphicTShirt ID: " .. tostring(targetDesc.GraphicTShirt))
-    
-    -- Remove existing local classic clothing
-    local clothingClasses = {"Shirt", "Pants", "ShirtGraphic"}
-    for _, className in pairs(clothingClasses) do
-        local localClothing = localChar:FindFirstChildOfClass(className)
-        if localClothing then 
-            localClothing:Destroy() 
-            print("Destroyed existing " .. className)
-        end
-    end
-    
-    -- Build clothing accessory types dynamically to avoid enum errors
-    local clothingAccessoryTypes = {}
-    local enumChecks = {
-        {name = "Shirt", func = function() return Enum.AccessoryType.Shirt end},
-        {name = "Pants", func = function() return Enum.AccessoryType.Pants end},
-        {name = "Jacket", func = function() return Enum.AccessoryType.Jacket end},
-        {name = "Sweater", func = function() return Enum.AccessoryType.Sweater end},
-        {name = "Shorts", func = function() return Enum.AccessoryType.Shorts end},
-        {name = "LeftSleeve", func = function() return Enum.AccessoryType.LeftSleeve end},
-        {name = "RightSleeve", func = function() return Enum.AccessoryType.RightSleeve end},
-        {name = "DressSkirt", func = function() return Enum.AccessoryType.DressSkirt end},
-        {name = "LeftShoe", func = function() return Enum.AccessoryType.LeftShoe end},
-        {name = "RightShoe", func = function() return Enum.AccessoryType.RightShoe end}
-    }
-    
-    for _, check in pairs(enumChecks) do
-        local succ, val = pcall(check.func)
-        if succ then
-            table.insert(clothingAccessoryTypes, val)
-            print("Added accessory type: " .. check.name)
-        else
-            print("Skipped accessory type " .. check.name .. ": " .. tostring(val))
-        end
-    end
-    
-    -- Remove existing local layered clothing accessories
-    for _, acc in pairs(localChar:GetChildren()) do
-        if acc:IsA("Accessory") then
-            local isClothing = false
-            for _, accType in pairs(clothingAccessoryTypes) do
-                if acc.AccessoryType == accType then
-                    isClothing = true
-                    break
-                end
-            end
-            if isClothing then
-                acc:Destroy()
-                print("Destroyed local clothing accessory: " .. acc.Name)
-            end
-        end
-    end
-    
-    -- Copy classic clothing using IDs
-    if targetDesc.Shirt ~= 0 then
-        local shirt = Instance.new("Shirt")
-        shirt.ShirtTemplate = "rbxassetid://" .. targetDesc.Shirt
-        shirt.Parent = localChar
-        print("Created new Shirt with ID: " .. targetDesc.Shirt)
-    end
-    if targetDesc.Pants ~= 0 then
-        local pants = Instance.new("Pants")
-        pants.PantsTemplate = "rbxassetid://" .. targetDesc.Pants
-        pants.Parent = localChar
-        print("Created new Pants with ID: " .. targetDesc.Pants)
-    end
-    if targetDesc.GraphicTShirt ~= 0 then
-        local graphic = Instance.new("ShirtGraphic")
-        graphic.Graphic = "rbxassetid://" .. targetDesc.GraphicTShirt
-        graphic.Parent = localChar
-        print("Created new ShirtGraphic with ID: " .. targetDesc.GraphicTShirt)
-    end
-    
-    -- Copy layered clothing accessories by cloning
-    for _, acc in pairs(targetChar:GetChildren()) do
-        if acc:IsA("Accessory") then
-            local isClothing = false
-            for _, accType in pairs(clothingAccessoryTypes) do
-                if acc.AccessoryType == accType then
-                    isClothing = true
-                    break
-                end
-            end
-            if isClothing then
-                local clone = acc:Clone()
-                clone.Parent = localChar
-                print("Cloned clothing accessory: " .. acc.Name)
-            end
-        end
-    end
-    
-    task.wait(0.1)  -- Small delay for potential refresh
-    
-    -- Optional: Attempt to force visual update by toggling archivable (hacky, may not work)
-    localChar.Archivable = false
-    task.wait(0.05)
-    localChar.Archivable = true
-    
-    print("Copied outfit from: " .. targetPlayer.Name)
+-- Increase Body Scale
+local function increaseScale()
+    setBodyScale(Player.bodyScale + Player.scaleStep)
+end
+
+-- Decrease Body Scale
+local function decreaseScale()
+    setBodyScale(Player.bodyScale - Player.scaleStep)
+end
+
+-- Reset Body Scale
+local function resetScale()
+    setBodyScale(1.0)
 end
 
 -- Show Player Selection UI
@@ -1685,7 +1528,7 @@ function Player.updatePlayerList()
             playerItem.Parent = PlayerListScrollFrame
             playerItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             playerItem.BorderSizePixel = 0
-            playerItem.Size = UDim2.new(1, -5, 0, 190)
+            playerItem.Size = UDim2.new(1, -5, 0, 130)
             playerItem.LayoutOrder = playerCount
             playerItem.ZIndex = 1
             
@@ -1801,34 +1644,6 @@ function Player.updatePlayerList()
             bringButton.ZIndex = 2
             bringButton.Active = true
             
-            local copyAvatarButton = Instance.new("TextButton")
-            copyAvatarButton.Name = "CopyAvatarButton"
-            copyAvatarButton.Parent = playerItem
-            copyAvatarButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
-            copyAvatarButton.BorderSizePixel = 0
-            copyAvatarButton.Position = UDim2.new(0, 5, 0, 120)
-            copyAvatarButton.Size = UDim2.new(1, -10, 0, 25)
-            copyAvatarButton.Font = Enum.Font.Gotham
-            copyAvatarButton.Text = "COPY AVATAR"
-            copyAvatarButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            copyAvatarButton.TextSize = 9
-            copyAvatarButton.ZIndex = 2
-            copyAvatarButton.Active = true
-            
-            local copyOutfitButton = Instance.new("TextButton")
-            copyOutfitButton.Name = "CopyOutfitButton"
-            copyOutfitButton.Parent = playerItem
-            copyOutfitButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-            copyOutfitButton.BorderSizePixel = 0
-            copyOutfitButton.Position = UDim2.new(0, 5, 0, 150)
-            copyOutfitButton.Size = UDim2.new(1, -10, 0, 25)
-            copyOutfitButton.Font = Enum.Font.Gotham
-            copyOutfitButton.Text = "COPY OUTFIT"
-            copyOutfitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-            copyOutfitButton.TextSize = 9
-            copyOutfitButton.ZIndex = 2
-            copyOutfitButton.Active = true
-            
             -- FIXED Button Events - Use closure to capture the current player properly
             local function createButtonConnections(currentPlayer)
                 selectButton.MouseButton1Click:Connect(function()
@@ -1890,16 +1705,6 @@ function Player.updatePlayerList()
                     bringPlayer(currentPlayer)
                 end)
                 
-                copyAvatarButton.MouseButton1Click:Connect(function()
-                    print("COPY AVATAR clicked for: " .. currentPlayer.Name)
-                    copyAvatar(currentPlayer)
-                end)
-                
-                copyOutfitButton.MouseButton1Click:Connect(function()
-                    print("COPY OUTFIT clicked for: " .. currentPlayer.Name)
-                    copyOutfit(currentPlayer)
-                end)
-                
                 -- Add hover effects
                 selectButton.MouseEnter:Connect(function()
                     if Player.selectedPlayer ~= currentPlayer then
@@ -1949,21 +1754,6 @@ function Player.updatePlayerList()
                     bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
                 end)
                 
-                copyAvatarButton.MouseEnter:Connect(function()
-                    copyAvatarButton.BackgroundColor3 = Color3.fromRGB(70, 90, 50)
-                end)
-                
-                copyAvatarButton.MouseLeave:Connect(function()
-                    copyAvatarButton.BackgroundColor3 = Color3.fromRGB(60, 80, 40)
-                end)
-                
-                copyOutfitButton.MouseEnter:Connect(function()
-                    copyOutfitButton.BackgroundColor3 = Color3.fromRGB(90, 70, 50)
-                end)
-                
-                copyOutfitButton.MouseLeave:Connect(function()
-                    copyOutfitButton.BackgroundColor3 = Color3.fromRGB(80, 60, 40)
-                end)
             end
             
             -- Call the function to create connections with the current player
@@ -2018,6 +1808,9 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Physics Control", togglePhysicsControl, "Player")
     createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
     createToggleButton("Fling Mode", toggleFling, "Player")
+    createButton("Increase Size", increaseScale, "Player")
+    createButton("Decrease Size", decreaseScale, "Player")
+    createButton("Reset Size", resetScale, "Player")
     print("Player buttons loaded successfully")
 end
 
@@ -2389,6 +2182,7 @@ local function initConnections()
         if Player.fastRespawnEnabled then
             toggleFastRespawn(true)
         end
+        setBodyScale(Player.bodyScale)
         task.wait(1)
         Player.updatePlayerList()
     end)
