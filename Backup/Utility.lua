@@ -75,12 +75,13 @@ local dragConnection = nil
 local rightClickConnection = nil
 local lastRightClickTime = 0
 local DOUBLE_CLICK_TIME = 0.5  -- seconds for double click
-local pasteConfirmationEnabled = true  -- Toggle for confirmation
-local allowMultiMoreThan2 = true  -- Toggle for selecting more than 2 objects
+local pasteConfirmationEnabled = false  -- Toggle for confirmation, initial off
+local allowMultiMoreThan2 = false  -- Toggle for selecting more than 2 objects, initial off
 local dragStartPositions = {}
 local dragStartHit = nil
 local dragSteppedConn = nil
 local confirmFrame = nil
+local confirmVisual = nil  -- For showing paste location
 
 -- Gear Loader Variables
 local gearFrameVisible = false
@@ -1637,6 +1638,13 @@ local function undoObjectEdit()
     updateEditorList()
 end
 
+local function clearEditorHistory()
+    editedObjects = {}
+    deletedObjects = {}
+    updateEditorList()
+    print("[SUPERTOOL] Cleared editor history")
+end
+
 local function initCopyListUI()
     if copyListFrame then return end
     
@@ -1898,6 +1906,7 @@ local function showEditorGUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 5
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None  -- Prevent auto scroll
     
     local layout = Instance.new("UIListLayout")
     layout.Parent = scrollFrame
@@ -1970,7 +1979,7 @@ local function showEditorGUI()
     clearBtn.Parent = scrollFrame
     clearBtn.Size = UDim2.new(1, 0, 0, 25)
     clearBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
-    clearBtn.Text = "Clear Selection"
+    clearBtn.Text = "Clear All Selection"
     clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     clearBtn.Font = Enum.Font.Gotham
     clearBtn.TextSize = 10
@@ -2108,7 +2117,7 @@ local function showEditorGUI()
         end
     end)
     
-    -- Move Buttons with reduced sensitivity (step = 0.5)
+    -- Move Buttons with reduced sensitivity (step = 0.2)
     local moveLabel = Instance.new("TextLabel")
     moveLabel.Parent = scrollFrame
     moveLabel.Size = UDim2.new(1, 0, 0, 15)
@@ -2138,7 +2147,7 @@ local function showEditorGUI()
         btn.MouseButton1Down:Connect(function()
             connection = RunService.Heartbeat:Connect(function()
                 for _, obj in pairs(selectedObjects) do
-                    obj.Position = obj.Position + direction * 0.5  -- Reduced sensitivity
+                    obj.Position = obj.Position + direction * 0.2  -- Reduced sensitivity
                 end
             end)
         end)
@@ -2158,12 +2167,12 @@ local function showEditorGUI()
         return btn
     end
     
-    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Up", Vector3.new(0, 0.5, 0))
-    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0.5, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Down", Vector3.new(0, -0.5, 0))
-    createHoldButton(moveFrame, UDim2.new(0, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Left", Vector3.new(-0.5, 0, 0))
-    createHoldButton(moveFrame, UDim2.new(0.8, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Right", Vector3.new(0.5, 0, 0))
-    createHoldButton(moveFrame, UDim2.new(0.2, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Forward", Vector3.new(0, 0, -0.5))
-    createHoldButton(moveFrame, UDim2.new(0.6, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Backward", Vector3.new(0, 0, 0.5))
+    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Up", Vector3.new(0, 0.2, 0))
+    createHoldButton(moveFrame, UDim2.new(0.4, 0, 0.5, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Down", Vector3.new(0, -0.2, 0))
+    createHoldButton(moveFrame, UDim2.new(0, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Left", Vector3.new(-0.2, 0, 0))
+    createHoldButton(moveFrame, UDim2.new(0.8, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Right", Vector3.new(0.2, 0, 0))
+    createHoldButton(moveFrame, UDim2.new(0.2, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Forward", Vector3.new(0, 0, -0.2))
+    createHoldButton(moveFrame, UDim2.new(0.6, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Backward", Vector3.new(0, 0, 0.2))
     
     -- Rotation Sliders
     local rx, ry, rz = selectedObjects[1].CFrame:ToEulerAnglesXYZ()
@@ -2183,70 +2192,6 @@ local function showEditorGUI()
     resetRotBtn.MouseButton1Click:Connect(function()
         changeRotation(0, 0, 0)
     end)
-    
-    -- Rotation Buttons
-    local rotButtonLabel = Instance.new("TextLabel")
-    rotButtonLabel.Parent = scrollFrame
-    rotButtonLabel.Size = UDim2.new(1, 0, 0, 15)
-    rotButtonLabel.BackgroundTransparency = 1
-    rotButtonLabel.Text = "Rotation Controls (Hold to continue, Yaw = horizontal, Pitch = vertical, Roll = tilt)"
-    rotButtonLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    rotButtonLabel.Font = Enum.Font.Gotham
-    rotButtonLabel.TextSize = 10
-    
-    local rotButtonFrame = Instance.new("Frame")
-    rotButtonFrame.Parent = scrollFrame
-    rotButtonFrame.Size = UDim2.new(1, 0, 0, 60)
-    rotButtonFrame.BackgroundTransparency = 1
-    
-    local function createRotHoldButton(parent, pos, size, color, text, axis, delta)
-        local btn = Instance.new("TextButton")
-        btn.Parent = parent
-        btn.Position = pos
-        btn.Size = size
-        btn.BackgroundColor3 = color
-        btn.Text = text
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 10
-        
-        local connection
-        btn.MouseButton1Down:Connect(function()
-            connection = RunService.Heartbeat:Connect(function()
-                for _, obj in pairs(selectedObjects) do
-                    local currentRot = obj.CFrame:ToEulerAnglesXYZ()
-                    local newX = math.deg(currentRot[1]) + (axis == 'X' and delta or 0)
-                    local newY = math.deg(currentRot[2]) + (axis == 'Y' and delta or 0)
-                    local newZ = math.deg(currentRot[3]) + (axis == 'Z' and delta or 0)
-                    obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(newX), math.rad(newY), math.rad(newZ))
-                    local path = getFullPath(obj)
-                    objectEdits[path] = objectEdits[path] or {}
-                    objectEdits[path].Orientation = {newX, newY, newZ}
-                end
-            end)
-        end)
-        
-        btn.MouseButton1Up:Connect(function()
-            if connection then
-                connection:Disconnect()
-            end
-        end)
-        
-        btn.MouseLeave:Connect(function()
-            if connection then
-                connection:Disconnect()
-            end
-        end)
-        
-        return btn
-    end
-    
-    createRotHoldButton(rotButtonFrame, UDim2.new(0, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Pitch +10", 'X', 10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Pitch -10", 'X', -10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.33, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Yaw +10", 'Y', 10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.33, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Yaw -10", 'Y', -10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Roll +10", 'Z', 10)
-    createRotHoldButton(rotButtonFrame, UDim2.new(0.66, 0, 0.5, 0), UDim2.new(0.33, 0, 0.5, 0), Color3.fromRGB(80, 120, 80), "Roll -10", 'Z', -10)
     
     -- Size Sliders
     local sx, sy, sz = selectedObjects[1].Size.X, selectedObjects[1].Size.Y, selectedObjects[1].Size.Z
@@ -2415,6 +2360,17 @@ local function showEditorGUI()
         saveObjectEdits(true)
     end)
     
+    -- Clear History Button
+    local clearHistoryBtn = Instance.new("TextButton")
+    clearHistoryBtn.Parent = scrollFrame
+    clearHistoryBtn.Size = UDim2.new(1, 0, 0, 25)
+    clearHistoryBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    clearHistoryBtn.Text = "Clear Editor History"
+    clearHistoryBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    clearHistoryBtn.Font = Enum.Font.Gotham
+    clearHistoryBtn.TextSize = 10
+    clearHistoryBtn.MouseButton1Click:Connect(clearEditorHistory)
+    
     -- Update canvas size
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
@@ -2550,6 +2506,13 @@ local function toggleEditor()
                             if confirmFrame then
                                 confirmFrame:Destroy()
                             end
+                            if confirmVisual then
+                                confirmVisual:Destroy()
+                            end
+                            confirmVisual = copiedObjects[#copiedObjects].object:Clone()
+                            confirmVisual.Parent = workspace
+                            confirmVisual.CFrame = CFrame.new(pastePos)
+                            confirmVisual.Transparency = 0.5
                             confirmFrame = Instance.new("Frame")
                             confirmFrame.Parent = ScreenGui
                             confirmFrame.Position = UDim2.fromOffset(mouse.X, mouse.Y)
@@ -2582,6 +2545,8 @@ local function toggleEditor()
                                 end
                                 confirmFrame:Destroy()
                                 confirmFrame = nil
+                                confirmVisual:Destroy()
+                                confirmVisual = nil
                             end)
 
                             local noBtn = Instance.new("TextButton")
@@ -2596,6 +2561,8 @@ local function toggleEditor()
                             noBtn.MouseButton1Click:Connect(function()
                                 confirmFrame:Destroy()
                                 confirmFrame = nil
+                                confirmVisual:Destroy()
+                                confirmVisual = nil
                             end)
                         else
                             if pastePos then
