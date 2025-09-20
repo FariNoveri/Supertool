@@ -1082,15 +1082,15 @@ local function toggleFreecam(enabled)
                 if not Visual.freecamEnabled or processed then return end
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement and isRightMouseDown then
-                    local sensitivity = 0.001
+                    local sensitivity = 0.002
                     freecamYaw = freecamYaw - input.Delta.X * sensitivity
                     freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
                 end
                 
                 if input.UserInputType == Enum.UserInputType.MouseWheel then
                     local wheelDirection = input.Position.Z
-                    local wheelSpeed = 5 * freecamSpeed * (wheelDirection > 0 and 1 or -1)
-                    local movement = freecamLookVector * wheelSpeed * RunService.Heartbeat:Wait()
+                    local wheelSpeed = 10 * (wheelDirection > 0 and 1 or -1)
+                    local movement = freecamLookVector * wheelSpeed
                     freecamCFrame = freecamCFrame + movement
                 end
             end)
