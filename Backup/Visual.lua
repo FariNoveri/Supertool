@@ -63,6 +63,7 @@ local freecamUpVector = Vector3.new(0, 1, 0)
 local freecamYaw = 0
 local freecamPitch = 0
 local freecamInputConnection = nil
+local isRightMouseDown = false
 
 -- Time mode configurations
 local timeModeConfigs = {
@@ -1080,15 +1081,44 @@ local function toggleFreecam(enabled)
             freecamInputConnection = UserInputService.InputChanged:Connect(function(input, processed)
                 if not Visual.freecamEnabled or processed then return end
                 
-                if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    local sensitivity = 0.003
+                if input.UserInputType == Enum.UserInputType.MouseMovement and isRightMouseDown then
+                    local sensitivity = 0.001
                     freecamYaw = freecamYaw - input.Delta.X * sensitivity
                     freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
+                end
+                
+                if input.UserInputType == Enum.UserInputType.MouseWheel then
+                    local wheelDirection = input.Position.Z
+                    local wheelSpeed = 5 * freecamSpeed * (wheelDirection > 0 and 1 or -1)
+                    local movement = freecamLookVector * wheelSpeed * RunService.Heartbeat:Wait()
+                    freecamCFrame = freecamCFrame + movement
                 end
             end)
             if connections and type(connections) == "table" then
                 connections.freecamInputConnection = freecamInputConnection
             end
+        end
+        
+        if UserInputService then
+            if connections.rightMouseDown then
+                connections.rightMouseDown:Disconnect()
+            end
+            connections.rightMouseDown = UserInputService.InputBegan:Connect(function(input, processed)
+                if not Visual.freecamEnabled or processed then return end
+                if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    isRightMouseDown = true
+                end
+            end)
+            
+            if connections.rightMouseUp then
+                connections.rightMouseUp:Disconnect()
+            end
+            connections.rightMouseUp = UserInputService.InputEnded:Connect(function(input, processed)
+                if not Visual.freecamEnabled or processed then return end
+                if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    isRightMouseDown = false
+                end
+            end)
         end
         
         if UserInputService then
@@ -1117,7 +1147,7 @@ local function toggleFreecam(enabled)
             end
         end
         
-        print("Freecam enabled - Mouse locked, WASD/QE to move")
+        print("Freecam enabled - Hold right click to rotate, WASD/QE to move, mouse wheel to forward/backward")
         
     else
         if connections and type(connections) == "table" and connections.freecamConnection then
@@ -1132,6 +1162,16 @@ local function toggleFreecam(enabled)
         end
         if connections and type(connections) == "table" then
             connections.freecamInputConnection = nil
+        end
+        
+        if connections.rightMouseDown then
+            connections.rightMouseDown:Disconnect()
+            connections.rightMouseDown = nil
+        end
+        
+        if connections.rightMouseUp then
+            connections.rightMouseUp:Disconnect()
+            connections.rightMouseUp = nil
         end
         
         if joystickFrame then
@@ -1167,6 +1207,7 @@ local function toggleFreecam(enabled)
         freecamPitch = 0
         Visual.joystickDelta = Vector2.new(0, 0)
         mouseDelta = Vector2.new(0, 0)
+        isRightMouseDown = false
     end
 end
 
