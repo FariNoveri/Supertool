@@ -600,7 +600,7 @@ local function toggleNoClipCamera(enabled)
     
     if enabled then
         if Visual.freecamEnabled then
-            Visual.toggleFreecam(false)
+            toggleFreecam(false)
         end
         
         Visual.originalCameraType = camera.CameraType
@@ -998,8 +998,8 @@ local function toggleFreecam(enabled)
         camera.CameraSubject = nil
         
         if UserInputService then
-            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-            UserInputService.MouseIconEnabled = false
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
         end
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
@@ -1908,7 +1908,7 @@ local function createNameInput()
     cancelButton.Position = UDim2.new(0.5, 5, 0, 60)
     cancelButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
     cancelButton.Text = "Cancel"
-    confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     cancelButton.Parent = inputFrame
     
     confirmButton.MouseButton1Click:Connect(function()
