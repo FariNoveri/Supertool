@@ -26,6 +26,8 @@ Movement.fastFallEnabled = false
 Movement.sprintEnabled = false
 Movement.isSprinting = false
 Movement.isRewinding = false
+Movement.bunnyHopEnabled = false
+Movement.persistFeatures = false
 
 -- Default values
 Movement.defaultWalkSpeed = 16
@@ -66,6 +68,7 @@ local boostSpeedInput, boostDurationInput, rewindDurationInput
 local slowFallSpeedInput, fastFallSpeedInput, moonGravityMultiplierInput
 local maxExtraJumpsInput, wallClimbSpeedInput, infiniteJumpMultiplierInput
 local applyButton, closeButton
+local persistToggle
 
 -- Default settings
 local defaultSettings = {
@@ -242,6 +245,38 @@ local function createSettingsGUI()
         return input
     end
 
+    local function createToggleField(parent, name, toggleVar)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 0, 50)
+        frame.BackgroundTransparency = 1
+        frame.Parent = parent
+
+        local label = Instance.new("TextLabel")
+        label.Name = name .. "Label"
+        label.Size = UDim2.new(1, -10, 0, 20)
+        label.Position = UDim2.new(0, 5, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name .. ":"
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = frame
+
+        local toggle = Instance.new("TextButton")
+        toggle.Name = name .. "Toggle"
+        toggle.Size = UDim2.new(1, -10, 0, 30)
+        toggle.Position = UDim2.new(0, 5, 0, 20)
+        toggle.BackgroundColor3 = toggleVar and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(40, 40, 40)
+        toggle.TextColor3 = toggleVar and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
+        toggle.Text = toggleVar and "ON" or "OFF"
+        toggle.Font = Enum.Font.Gotham
+        toggle.TextSize = 14
+        toggle.Parent = frame
+
+        return toggle
+    end
+
     speedInput = createInputField(scrolling, "Speed", "WalkSpeed", defaultSettings.WalkSpeed)
     jumpInput = createInputField(scrolling, "Jump", "JumpHeight", defaultSettings.JumpHeight)
     sprintInput = createInputField(scrolling, "Sprint", "SprintSpeed", defaultSettings.SprintSpeed)
@@ -256,6 +291,7 @@ local function createSettingsGUI()
     maxExtraJumpsInput = createInputField(scrolling, "Max Extra Jumps", "MaxExtraJumps", defaultSettings.MaxExtraJumps)
     wallClimbSpeedInput = createInputField(scrolling, "Wall Climb Speed", "WallClimbSpeed", defaultSettings.WallClimbSpeed)
     infiniteJumpMultiplierInput = createInputField(scrolling, "Infinite Jump Multiplier", "InfiniteJumpMultiplier", defaultSettings.InfiniteJumpMultiplier)
+    persistToggle = createToggleField(scrolling, "Keep Features After Death", Movement.persistFeatures)
 
     applyButton = Instance.new("TextButton")
     applyButton.Name = "ApplyButton"
@@ -312,6 +348,13 @@ local function createSettingsGUI()
 
         Movement.applySettings()
         settingsFrame.Visible = false
+    end)
+
+    persistToggle.MouseButton1Click:Connect(function()
+        Movement.persistFeatures = not Movement.persistFeatures
+        persistToggle.Text = Movement.persistFeatures and "ON" or "OFF"
+        persistToggle.BackgroundColor3 = Movement.persistFeatures and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(40, 40, 40)
+        persistToggle.TextColor3 = Movement.persistFeatures and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
     end)
 
     closeButton.MouseButton1Click:Connect(function()
@@ -1204,7 +1247,7 @@ local function toggleWallClimb(enabled)
         end)
         
         connections.wallClimbInput = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
+            if gameProcessed or not Movement.wallClimbEnabled then return end
             if input.KeyCode == Enum.KeyCode.C then
                 Movement.wallClimbEnabled = not Movement.wallClimbEnabled
                 updateButtonState("Wall Climb", Movement.wallClimbEnabled)
@@ -1223,6 +1266,28 @@ local function toggleWallClimb(enabled)
             wallClimbButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             wallClimbButton.Text = "CLIMB"
         end
+    end
+end
+
+-- Bunny Hop
+local function toggleBunnyHop(enabled)
+    Movement.bunnyHopEnabled = enabled
+    updateButtonState("Bunny Hop", enabled)
+
+    if connections.bunnyHop then
+        connections.bunnyHop:Disconnect()
+        connections.bunnyHop = nil
+    end
+
+    if enabled then
+        connections.bunnyHop = RunService.Heartbeat:Connect(function()
+            if not Movement.bunnyHopEnabled then return end
+            if not refreshReferences() or not humanoid or not rootPart then return end
+            if humanoid:GetState() == Enum.HumanoidStateType.Freefall then return end
+            if humanoid.MoveDirection.Magnitude > 0 then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
     end
 end
 
@@ -1797,6 +1862,7 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     createToggleButton("Slow Fall", toggleSlowFall)
     createToggleButton("Fast Fall", toggleFastFall)
     createToggleButton("Sprint", toggleSprint)
+    createToggleButton("Bunny Hop", toggleBunnyHop)
     
     local settingsButton = createButton("Settings", function()
         settingsFrame.Visible = not settingsFrame.Visible
@@ -1826,6 +1892,8 @@ function Movement.resetStates()
     Movement.slowFallEnabled = false
     Movement.fastFallEnabled = false
     Movement.sprintEnabled = false
+    Movement.bunnyHopEnabled = false
+    Movement.isSprinting = false
     Movement.isRewinding = false
     
     updateButtonState("Speed Hack", false)
@@ -1845,6 +1913,7 @@ function Movement.resetStates()
     updateButtonState("Slow Fall", false)
     updateButtonState("Fast Fall", false)
     updateButtonState("Sprint", false)
+    updateButtonState("Bunny Hop", false)
     
     local allConnections = {
         "fly", "noclip", "playerNoclip", "infiniteJump", "walkOnWater", "doubleJump", 
@@ -1853,7 +1922,7 @@ function Movement.resetStates()
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
         "fastFall", "sprint", "sprintInput", "sprintToggle", "flyKeyBegan", 
         "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton",
-        "swim", "chat", "chatInput", "chatMonitor"
+        "swim", "chat", "chatInput", "chatMonitor", "bunnyHop"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -1983,7 +2052,8 @@ function Movement.updateReferences(newHumanoid, newRootPart)
             ["Boost (NOS)"] = Movement.boostEnabled,
             ["Slow Fall"] = Movement.slowFallEnabled,
             ["Fast Fall"] = Movement.fastFallEnabled,
-            ["Sprint"] = Movement.sprintEnabled
+            ["Sprint"] = Movement.sprintEnabled,
+            ["Bunny Hop"] = Movement.bunnyHopEnabled
         }) do
             updateButtonState(featureName, enabled)
         end
@@ -1991,246 +2061,6 @@ function Movement.updateReferences(newHumanoid, newRootPart)
         -- Setup chat commands again after respawn
         setupChatCommands()
     end)
-end
-
--- Enhanced chat command setup
-local function setupChatCommands()
-    -- Clean up existing chat connections
-    if connections.chat then
-        connections.chat:Disconnect()
-        connections.chat = nil
-    end
-    if connections.chatInput then
-        connections.chatInput:Disconnect()
-        connections.chatInput = nil
-    end
-    if connections.chatMonitor then
-        connections.chatMonitor:Disconnect()
-        connections.chatMonitor = nil
-    end
-    
-    -- Primary method: Direct chat connection
-    if player and player.Chatted then
-        connections.chat = player.Chatted:Connect(function(message)
-            local args = {}
-            for word in message:gmatch("%S+") do
-                table.insert(args, word)
-            end
-            local cmd = string.lower(args[1] or "")
-            
-            if cmd == "/fly" then
-                toggleFly(true)
-            elseif cmd == "/unfly" then
-                toggleFly(false)
-            elseif cmd == "/flyspeed" then
-                local val = tonumber(args[2])
-                if val then
-                    settings.FlySpeed = {value = val}
-                    sendServerMessage("Fly speed set to " .. val)
-                    if Movement.flyEnabled then
-                        toggleFly(false)
-                        toggleFly(true)
-                    end
-                end
-            elseif cmd == "/speed" then
-                local val = tonumber(args[2])
-                if val then
-                    settings.WalkSpeed = {value = val}
-                    sendServerMessage("Speed set to " .. val)
-                    if Movement.speedEnabled then
-                        toggleSpeed(true)
-                    end
-                end
-            elseif cmd == "/jump" then
-                local val = tonumber(args[2])
-                if val then
-                    settings.JumpHeight = {value = val}
-                    sendServerMessage("Jump height set to " .. val)
-                    if Movement.jumpEnabled then
-                        toggleJump(true)
-                    end
-                end
-            elseif cmd == "/sprint" then
-                local val = tonumber(args[2])
-                if val then
-                    settings.SprintSpeed = {value = val}
-                    sendServerMessage("Sprint speed set to " .. val)
-                    if Movement.sprintEnabled then
-                        toggleSprint(true)
-                    end
-                end
-            elseif cmd == "/swim" then
-                local val = tonumber(args[2])
-                if val then
-                    settings.SwimSpeed = {value = val}
-                    sendServerMessage("Swim speed set to " .. val)
-                    if Movement.swimEnabled then
-                        toggleSwim(true)
-                    end
-                end
-            end
-        end)
-    end
-    
-    -- Alternative method: Monitor chat service
-    local success, chatService = pcall(function()
-        return game:GetService("Chat")
-    end)
-    
-    if success and chatService then
-        connections.chatMonitor = chatService.Chatted:Connect(function(part, message, color)
-            if part and part.Parent == player.Character and part.Parent:FindFirstChild("Head") then
-                local args = {}
-                for word in message:gmatch("%S+") do
-                    table.insert(args, word)
-                end
-                local cmd = string.lower(args[1] or "")
-                
-                if cmd == "/fly" then
-                    toggleFly(true)
-                elseif cmd == "/unfly" then
-                    toggleFly(false)
-                elseif cmd == "/flyspeed" then
-                    local val = tonumber(args[2])
-                    if val then
-                        settings.FlySpeed = {value = val}
-                        sendServerMessage("Fly speed set to " .. val)
-                        if Movement.flyEnabled then
-                            toggleFly(false)
-                            toggleFly(true)
-                        end
-                    end
-                elseif cmd == "/speed" then
-                    local val = tonumber(args[2])
-                    if val then
-                        settings.WalkSpeed = {value = val}
-                        sendServerMessage("Speed set to " .. val)
-                        if Movement.speedEnabled then
-                            toggleSpeed(true)
-                        end
-                    end
-                elseif cmd == "/jump" then
-                    local val = tonumber(args[2])
-                    if val then
-                        settings.JumpHeight = {value = val}
-                        sendServerMessage("Jump height set to " .. val)
-                        if Movement.jumpEnabled then
-                            toggleJump(true)
-                        end
-                    end
-                elseif cmd == "/sprint" then
-                    local val = tonumber(args[2])
-                    if val then
-                        settings.SprintSpeed = {value = val}
-                        sendServerMessage("Sprint speed set to " .. val)
-                        if Movement.sprintEnabled then
-                            toggleSprint(true)
-                        end
-                    end
-                elseif cmd == "/swim" then
-                    local val = tonumber(args[2])
-                    if val then
-                        settings.SwimSpeed = {value = val}
-                        sendServerMessage("Swim speed set to " .. val)
-                        if Movement.swimEnabled then
-                            toggleSwim(true)
-                        end
-                    end
-                end
-            end
-        end)
-    end
-    
-    -- Backup method: Text service monitoring
-    local TextService = game:GetService("TextService")
-    if TextService then
-        connections.chatInput = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if input.KeyCode == Enum.KeyCode.Return and not gameProcessed then
-                task.wait(0.1)
-                task.spawn(function()
-                    task.wait(0.2)
-                    local gui = player.PlayerGui:FindFirstChild("Chat")
-                    if gui then
-                        local chatFrame = gui:FindFirstChild("Frame")
-                        if chatFrame then
-                            local chatChannelParentFrame = chatFrame:FindFirstChild("ChatChannelParentFrame")
-                            if chatChannelParentFrame then
-                                local frame = chatChannelParentFrame:FindFirstChild("Frame_MessageLogDisplay")
-                                if frame then
-                                    local scrollingFrame = frame:FindFirstChild("Scroller")
-                                    if scrollingFrame then
-                                        local lastChild = scrollingFrame:GetChildren()
-                                        if #lastChild > 0 then
-                                            local lastMsg = lastChild[#lastChild]
-                                            if lastMsg and lastMsg:FindFirstChild("TextLabel") then
-                                                local msgText = lastMsg.TextLabel.Text
-                                                local args = {}
-                                                for word in msgText:gmatch("%S+") do
-                                                    table.insert(args, word)
-                                                end
-                                                local cmd = string.lower(args[1] or "")
-                                                if cmd == "/fly" then
-                                                    toggleFly(true)
-                                                elseif cmd == "/unfly" then
-                                                    toggleFly(false)
-                                                elseif cmd == "/flyspeed" then
-                                                    local val = tonumber(args[2])
-                                                    if val then
-                                                        settings.FlySpeed = {value = val}
-                                                        sendServerMessage("Fly speed set to " .. val)
-                                                        if Movement.flyEnabled then
-                                                            toggleFly(false)
-                                                            toggleFly(true)
-                                                        end
-                                                    end
-                                                elseif cmd == "/speed" then
-                                                    local val = tonumber(args[2])
-                                                    if val then
-                                                        settings.WalkSpeed = {value = val}
-                                                        sendServerMessage("Speed set to " .. val)
-                                                        if Movement.speedEnabled then
-                                                            toggleSpeed(true)
-                                                        end
-                                                    end
-                                                elseif cmd == "/jump" then
-                                                    local val = tonumber(args[2])
-                                                    if val then
-                                                        settings.JumpHeight = {value = val}
-                                                        sendServerMessage("Jump height set to " .. val)
-                                                        if Movement.jumpEnabled then
-                                                            toggleJump(true)
-                                                        end
-                                                    end
-                                                elseif cmd == "/sprint" then
-                                                    local val = tonumber(args[2])
-                                                    if val then
-                                                        settings.SprintSpeed = {value = val}
-                                                        sendServerMessage("Sprint speed set to " .. val)
-                                                        if Movement.sprintEnabled then
-                                                            toggleSprint(true)
-                                                        end
-                                                    end
-                                                elseif cmd == "/swim" then
-                                                    local val = tonumber(args[2])
-                                                    if val then
-                                                        settings.SwimSpeed = {value = val}
-                                                        sendServerMessage("Swim speed set to " .. val)
-                                                        if Movement.swimEnabled then
-                                                            toggleSwim(true)
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end)
-            end
-        end)
-    end
 end
 
 -- Initialize module
@@ -2292,7 +2122,9 @@ function Movement.init(deps)
     Movement.slowFallEnabled = false
     Movement.fastFallEnabled = false
     Movement.sprintEnabled = false
+    Movement.bunnyHopEnabled = false
     Movement.isSprinting = false
+    Movement.isRewinding = false
     
     Movement.jumpCount = 0
     joystickDelta = Vector2.new(0, 0)
@@ -2306,6 +2138,39 @@ function Movement.init(deps)
     createSettingsGUI()
     setupScrollFrame()
     setupChatCommands()
+    
+    connections.characterRemoving = player.CharacterRemoving:Connect(function()
+        if not Movement.persistFeatures then
+            Movement.resetStates()
+        end
+    end)
+
+    connections.characterAdded = player.CharacterAdded:Connect(function(character)
+        local newHumanoid = character:WaitForChild("Humanoid", 5)
+        local newRootPart = character:WaitForChild("HumanoidRootPart", 5)
+        Movement.updateReferences(newHumanoid, newRootPart)
+
+        if Movement.persistFeatures then
+            if Movement.speedEnabled then toggleSpeed(true) end
+            if Movement.jumpEnabled then toggleJump(true) end
+            if Movement.flyEnabled then toggleFly(true) end
+            if Movement.noclipEnabled then toggleNoclip(true) end
+            if Movement.infiniteJumpEnabled then toggleInfiniteJump(true) end
+            if Movement.walkOnWaterEnabled then toggleWalkOnWater(true) end
+            if Movement.swimEnabled then toggleSwim(true) end
+            if Movement.moonGravityEnabled then toggleMoonGravity(true) end
+            if Movement.doubleJumpEnabled then toggleDoubleJump(true) end
+            if Movement.wallClimbEnabled then toggleWallClimb(true) end
+            if Movement.playerNoclipEnabled then togglePlayerNoclip(true) end
+            if Movement.floatEnabled then toggleFloat(true) end
+            if Movement.rewindEnabled then toggleRewind(true) end
+            if Movement.boostEnabled then toggleBoost(true) end
+            if Movement.slowFallEnabled then toggleSlowFall(true) end
+            if Movement.fastFallEnabled then toggleFastFall(true) end
+            if Movement.sprintEnabled then toggleSprint(true) end
+            if Movement.bunnyHopEnabled then toggleBunnyHop(true) end
+        end
+    end)
     
     return true
 end
@@ -2331,6 +2196,7 @@ function Movement.debug()
     print("  slowFallEnabled:", Movement.slowFallEnabled)
     print("  fastFallEnabled:", Movement.fastFallEnabled)
     print("  sprintEnabled:", Movement.sprintEnabled)
+    print("  bunnyHopEnabled:", Movement.bunnyHopEnabled)
     
     print("Settings GUI:")
     print("  settingsFrame:", settingsFrame ~= nil)
