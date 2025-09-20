@@ -1008,9 +1008,11 @@ local function toggleFreecam(enabled)
             joystickFrame.Visible = true
         end
         
-        -- Anchor character to keep it still
-        originalAnchor = currentRootPart.Anchored
-        currentRootPart.Anchored = true
+        -- Set WalkSpeed and JumpPower to 0 to keep character still
+        local originalWalkSpeed = currentHumanoid.WalkSpeed
+        local originalJumpPower = currentHumanoid.JumpPower
+        currentHumanoid.WalkSpeed = 0
+        currentHumanoid.JumpPower = 0
         
         if connections and type(connections) == "table" and connections.freecamConnection then
             connections.freecamConnection:Disconnect()
@@ -1139,24 +1141,20 @@ local function toggleFreecam(enabled)
         
         local camera = Workspace.CurrentCamera
         
-        if Visual.originalCameraType then
-            camera.CameraType = Visual.originalCameraType
-        else
-            camera.CameraType = Enum.CameraType.Custom
-        end
+        camera.CameraType = Enum.CameraType.Custom
         
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
         
-        if Visual.originalCameraSubject then
-            camera.CameraSubject = Visual.originalCameraSubject
-        elseif currentHumanoid then
+        if currentHumanoid then
             camera.CameraSubject = currentHumanoid
         end
         
-        if currentRootPart then
-            currentRootPart.Anchored = originalAnchor
+        -- Restore WalkSpeed and JumpPower
+        if currentHumanoid then
+            currentHumanoid.WalkSpeed = 16
+            currentHumanoid.JumpPower = 50
         end
         
         if UserInputService then
@@ -1910,7 +1908,7 @@ local function createNameInput()
     cancelButton.Position = UDim2.new(0.5, 5, 0, 60)
     cancelButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
     cancelButton.Text = "Cancel"
-    cancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     cancelButton.Parent = inputFrame
     
     confirmButton.MouseButton1Click:Connect(function()
