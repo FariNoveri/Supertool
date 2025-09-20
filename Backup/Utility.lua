@@ -12,7 +12,6 @@
 -- REMOVED: Adonis Bypass and Kohl's Admin
 
 -- NEW: Added Object Spawner Feature with input ID or predefined objects
--- REMOVED: Chat Feature entirely
 -- FIXED: Object Editor nil calls and GUI size issues
 -- NEW FIXES: Persistent GUI position, fixed drag reset, added freeze, copy list with delete, HEX color, remove effects
 -- FIXED: Drag feature no longer resets on new object selection
@@ -101,6 +100,16 @@ local predefinedObjects = {
     {name = "Car Model", id = 987654321},   -- Contoh placeholder
     -- Tambah objek lain jika perlu
 }
+
+-- Chat Customizer Variables
+local nameTag = ""
+local tagPosition = "front"  -- front, middle, back
+local rainbowChat = false
+local customChatColor = nil  -- Color3 or nil
+local customChatFont = nil  -- Enum.Font or nil
+local chatFrameVisible = false
+local ChatFrame, ChatInputTag, ChatPositionToggle, RainbowToggle, ColorInput, FontInput
+local sayMessageRequest
 
 -- File System Integration
 local HttpService = game:GetService("HttpService")
@@ -3400,6 +3409,261 @@ local function toggleObjectSpawner()
     ObjectFrame.Visible = objectFrameVisible
 end
 
+local function applyMessageMods(message)
+    if rainbowChat then
+        local rainbowStr = ""
+        local hue = 0
+        local step = 1 / #message
+        for i = 1, #message do
+            local char = message:sub(i, i)
+            local color = Color3.fromHSV(hue, 1, 1)
+            rainbowStr = rainbowStr .. string.format('<font color="rgb(%d,%d,%d)">%s</font>', math.floor(color.R*255), math.floor(color.G*255), math.floor(color.B*255), char)
+            hue = (hue + step) % 1
+        end
+        message = rainbowStr
+    elseif customChatColor then
+        message = string.format('<font color="rgb(%d,%d,%d)">%s</font>', math.floor(customChatColor.R*255), math.floor(customChatColor.G*255), math.floor(customChatColor.B*255), message)
+    end
+    if customChatFont then
+        message = string.format('<font face="%s">%s</font>', customChatFont.Name, message)
+    end
+    return message
+end
+
+local function setupChatCustom()
+    local success, err = pcall(function()
+        local chatGui = player.PlayerGui:WaitForChild("Chat", 10)
+        if not chatGui then return end
+        -- Disable default chat scripts
+        for _, desc in pairs(chatGui:GetDescendants()) do
+            if desc:IsA("LocalScript") and (desc.Name == "ChatMain" or desc.Name == "ChatScript" or desc.Name == "BubbleChat") then
+                desc.Disabled = true
+            end
+        end
+        -- Get chat bar
+        local chatBar = chatGui.Frame.ChatBarParentFrame.Frame.BoxFrame.BackgroundFrame.TextBox
+        -- Get say request
+        local rs = game:GetService("ReplicatedStorage")
+        local chatEventsFolder = rs:WaitForChild("DefaultChatSystemChatEvents")
+        sayMessageRequest = chatEventsFolder:WaitForChild("SayMessageRequest")
+        -- Hook focus lost
+        chatBar.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                local msg = chatBar.Text
+                if #msg > 0 then
+                    local modMsg = applyMessageMods(msg)
+                    sayMessageRequest:FireServer(modMsg, "All")
+                    chatBar.Text = ""
+                end
+            end
+        end)
+        -- For name tag
+        local messageLog = chatGui.Frame.ChatChannelParentFrame.Frame_MessageLogDisplay.Scroller
+        messageLog.ChildAdded:Connect(function(child)
+            task.wait()
+            for _, desc in pairs(child:GetChildren()) do
+                if desc:IsA("TextButton") and desc.Text == player.Name .. ": " then
+                    local baseName = player.Name
+                    local tagged
+                    if tagPosition == "front" then
+                        tagged = nameTag .. baseName
+                    elseif tagPosition == "back" then
+                        tagged = baseName .. nameTag
+                    else  -- middle
+                        local half = math.floor(#baseName / 2)
+                        tagged = baseName:sub(1, half) .. nameTag .. baseName:sub(half + 1)
+                    end
+                    desc.Text = tagged .. ": "
+                end
+            end
+        end)
+    end)
+    if not success then
+        warn("[SUPERTOOL] Chat setup failed: " .. err)
+    end
+end
+
+local function initChatUI()
+    if ChatFrame then return end
+    ChatFrame = Instance.new("Frame")
+    ChatFrame.Name = "ChatFrame"
+    ChatFrame.Parent = ScreenGui
+    ChatFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    ChatFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+    ChatFrame.BorderSizePixel = 1
+    ChatFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
+    ChatFrame.Size = UDim2.new(0, 250, 0, 300)
+    ChatFrame.Visible = false
+    ChatFrame.Active = true
+    ChatFrame.Draggable = true
+
+    local title = Instance.new("TextLabel")
+    title.Parent = ChatFrame
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.BorderSizePixel = 0
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.Font = Enum.Font.GothamBold
+    title.Text = "CHAT CUSTOMIZER"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 10
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Parent = ChatFrame
+    closeBtn.BackgroundTransparency = 1
+    closeBtn.Position = UDim2.new(1, -25, 0, 2)
+    closeBtn.Size = UDim2.new(0, 20, 0, 20)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.TextSize = 12
+    closeBtn.MouseButton1Click:Connect(function()
+        ChatFrame.Visible = false
+        chatFrameVisible = false
+    end)
+
+    -- Tag input
+    local tagLabel = Instance.new("TextLabel")
+    tagLabel.Parent = ChatFrame
+    tagLabel.Position = UDim2.new(0, 5, 0, 30)
+    tagLabel.Size = UDim2.new(0.4, 0, 0, 25)
+    tagLabel.BackgroundTransparency = 1
+    tagLabel.Text = "Name Tag:"
+    tagLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    tagLabel.TextSize = 10
+    tagLabel.Font = Enum.Font.Gotham
+
+    ChatInputTag = Instance.new("TextBox")
+    ChatInputTag.Parent = ChatFrame
+    ChatInputTag.Position = UDim2.new(0.4, 0, 0, 30)
+    ChatInputTag.Size = UDim2.new(0.6, -5, 0, 25)
+    ChatInputTag.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    ChatInputTag.Text = nameTag
+    ChatInputTag.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ChatInputTag.Font = Enum.Font.Gotham
+    ChatInputTag.TextSize = 10
+    ChatInputTag.FocusLost:Connect(function()
+        nameTag = ChatInputTag.Text
+    end)
+
+    -- Position toggle
+    local posLabel = Instance.new("TextLabel")
+    posLabel.Parent = ChatFrame
+    posLabel.Position = UDim2.new(0, 5, 0, 60)
+    posLabel.Size = UDim2.new(0.4, 0, 0, 25)
+    posLabel.BackgroundTransparency = 1
+    posLabel.Text = "Tag Position:"
+    posLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    posLabel.TextSize = 10
+    posLabel.Font = Enum.Font.Gotham
+
+    ChatPositionToggle = Instance.new("TextButton")
+    ChatPositionToggle.Parent = ChatFrame
+    ChatPositionToggle.Position = UDim2.new(0.4, 0, 0, 60)
+    ChatPositionToggle.Size = UDim2.new(0.6, -5, 0, 25)
+    ChatPositionToggle.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    ChatPositionToggle.Text = tagPosition:upper()
+    ChatPositionToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ChatPositionToggle.Font = Enum.Font.Gotham
+    ChatPositionToggle.TextSize = 10
+    ChatPositionToggle.MouseButton1Click:Connect(function()
+        if tagPosition == "front" then
+            tagPosition = "middle"
+        elseif tagPosition == "middle" then
+            tagPosition = "back"
+        else
+            tagPosition = "front"
+        end
+        ChatPositionToggle.Text = tagPosition:upper()
+    end)
+
+    -- Rainbow toggle
+    RainbowToggle = Instance.new("TextButton")
+    RainbowToggle.Parent = ChatFrame
+    RainbowToggle.Position = UDim2.new(0, 5, 0, 90)
+    RainbowToggle.Size = UDim2.new(1, -10, 0, 25)
+    RainbowToggle.BackgroundColor3 = rainbowChat and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(150, 50, 50)
+    RainbowToggle.Text = "Rainbow Chat: " .. (rainbowChat and "ON" or "OFF")
+    RainbowToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    RainbowToggle.Font = Enum.Font.Gotham
+    RainbowToggle.TextSize = 10
+    RainbowToggle.MouseButton1Click:Connect(function()
+        rainbowChat = not rainbowChat
+        RainbowToggle.Text = "Rainbow Chat: " .. (rainbowChat and "ON" or "OFF")
+        RainbowToggle.BackgroundColor3 = rainbowChat and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(150, 50, 50)
+    end)
+
+    -- Custom color
+    local colorLabel = Instance.new("TextLabel")
+    colorLabel.Parent = ChatFrame
+    colorLabel.Position = UDim2.new(0, 5, 0, 120)
+    colorLabel.Size = UDim2.new(0.4, 0, 0, 25)
+    colorLabel.BackgroundTransparency = 1
+    colorLabel.Text = "Custom Color (HEX):"
+    colorLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    colorLabel.TextSize = 10
+    colorLabel.Font = Enum.Font.Gotham
+
+    ColorInput = Instance.new("TextBox")
+    ColorInput.Parent = ChatFrame
+    ColorInput.Position = UDim2.new(0.4, 0, 0, 120)
+    ColorInput.Size = UDim2.new(0.6, -5, 0, 25)
+    ColorInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    ColorInput.PlaceholderText = "#RRGGBB or empty to disable"
+    ColorInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ColorInput.Font = Enum.Font.Gotham
+    ColorInput.TextSize = 10
+    ColorInput.FocusLost:Connect(function()
+        if ColorInput.Text == "" then
+            customChatColor = nil
+            return
+        end
+        local r, g, b = ColorInput.Text:match("#?(%x%x)(%x%x)(%x%x)")
+        if r and g and b then
+            customChatColor = Color3.fromRGB(tonumber(r,16), tonumber(g,16), tonumber(b,16))
+        else
+            customChatColor = nil
+        end
+    end)
+
+    -- Custom font
+    local fontLabel = Instance.new("TextLabel")
+    fontLabel.Parent = ChatFrame
+    fontLabel.Position = UDim2.new(0, 5, 0, 150)
+    fontLabel.Size = UDim2.new(0.4, 0, 0, 25)
+    fontLabel.BackgroundTransparency = 1
+    fontLabel.Text = "Custom Font:"
+    fontLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    fontLabel.TextSize = 10
+    fontLabel.Font = Enum.Font.Gotham
+
+    FontInput = Instance.new("TextBox")
+    FontInput.Parent = ChatFrame
+    FontInput.Position = UDim2.new(0.4, 0, 0, 150)
+    FontInput.Size = UDim2.new(0.6, -5, 0, 25)
+    FontInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    FontInput.PlaceholderText = "Gotham, Arial, etc or empty"
+    FontInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    FontInput.Font = Enum.Font.Gotham
+    FontInput.TextSize = 10
+    FontInput.FocusLost:Connect(function()
+        if FontInput.Text == "" then
+            customChatFont = nil
+        else
+            if Enum.Font[FontInput.Text] then
+                customChatFont = Enum.Font[FontInput.Text]
+            else
+                customChatFont = nil
+            end
+        end
+    end)
+end
+
+local function toggleChatCustomizer()
+    if not ChatFrame then initChatUI() end
+    chatFrameVisible = not chatFrameVisible
+    ChatFrame.Visible = chatFrameVisible
+end
+
 -- Load utility buttons
 function Utility.loadUtilityButtons(createButton)
     createButton("Record Path", startPathRecording)
@@ -3421,6 +3685,7 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Editor History", toggleEditorList)
     createButton("Gear Manager", toggleGearManager)
     createButton("Object Spawner", toggleObjectSpawner)
+    createButton("Chat Customizer", toggleChatCustomizer)
 end
 
 -- Initialize function
@@ -3473,6 +3738,7 @@ function Utility.init(deps)
     
     setupKeyboardControls()
     setupEditorInput()
+    setupChatCustom()
     
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
@@ -3525,6 +3791,7 @@ function Utility.init(deps)
         initCopyListUI()
         initGearUI()
         initObjectUI()
+        initChatUI()
         print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Enhanced Object Editor with fixes)")
     end)
 end
