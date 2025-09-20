@@ -31,6 +31,10 @@ Visual.hideBubbleChat = false
 Visual.currentTimeMode = "normal"
 Visual.joystickDelta = Vector2.new(0, 0)
 Visual.character = nil
+Visual.originalWalkSpeed = nil
+Visual.originalJumpPower = nil
+Visual.originalJumpHeight = nil
+Visual.originalAnchored = nil
 local flashlight
 local pointLight
 local espElements = {}
@@ -966,7 +970,7 @@ local function toggleVoid(enabled)
     end
 end
 
--- Freecam
+-- Perbaikan fungsi toggleFreecam
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
@@ -981,8 +985,8 @@ local function toggleFreecam(enabled)
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
         
-        if not currentRootPart then
-            print("Warning: No character found for freecam")
+        if not currentRootPart or not currentHumanoid then
+            print("Warning: No character or humanoid found for freecam")
             Visual.freecamEnabled = false
             return
         end
@@ -1009,11 +1013,29 @@ local function toggleFreecam(enabled)
             joystickFrame.Visible = true
         end
         
-        -- Set WalkSpeed and JumpPower to 0 to keep character still
-        local originalWalkSpeed = currentHumanoid.WalkSpeed
-        local originalJumpPower = currentHumanoid.JumpPower
+        -- SIMPAN nilai original sebelum mengubah
+        Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
+        Visual.originalJumpPower = currentHumanoid.JumpPower
+        
+        -- Untuk R15 characters, simpan juga JumpHeight
+        if currentHumanoid:FindFirstChild("JumpHeight") then
+            Visual.originalJumpHeight = currentHumanoid.JumpHeight
+        end
+        
+        -- SET ke 0 untuk membuat karakter diam
         currentHumanoid.WalkSpeed = 0
         currentHumanoid.JumpPower = 0
+        
+        -- Jika R15, set JumpHeight juga
+        if currentHumanoid:FindFirstChild("JumpHeight") then
+            currentHumanoid.JumpHeight = 0
+        end
+        
+        -- TAMBAHAN: Anchor RootPart untuk benar-benar membuat karakter tidak bergerak
+        currentRootPart.Anchored = true
+        
+        -- Simpan status anchor original
+        Visual.originalAnchored = false -- RootPart biasanya tidak di-anchor
         
         if connections and type(connections) == "table" and connections.freecamConnection then
             connections.freecamConnection:Disconnect()
@@ -1067,12 +1089,33 @@ local function toggleFreecam(enabled)
                 
                 freecamCFrame = CFrame.new(currentPos) * CFrame.Angles(-freecamPitch, freecamYaw, 0)
                 camera.CFrame = freecamCFrame
+                
+                -- PASTIKAN karakter tetap diam selama freecam aktif
+                local currentCharacter = player.Character
+                local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
+                local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+                
+                if currentHumanoid and currentRootPart then
+                    if currentHumanoid.WalkSpeed ~= 0 then
+                        currentHumanoid.WalkSpeed = 0
+                    end
+                    if currentHumanoid.JumpPower ~= 0 then
+                        currentHumanoid.JumpPower = 0
+                    end
+                    if currentHumanoid:FindFirstChild("JumpHeight") and currentHumanoid.JumpHeight ~= 0 then
+                        currentHumanoid.JumpHeight = 0
+                    end
+                    if not currentRootPart.Anchored then
+                        currentRootPart.Anchored = true
+                    end
+                end
             end
         end)
         if connections and type(connections) == "table" then
             connections.freecamConnection = Visual.freecamConnection
         end
         
+        -- Rest of the input connections code remains the same...
         if freecamInputConnection then
             freecamInputConnection:Disconnect()
         end
@@ -1121,6 +1164,7 @@ local function toggleFreecam(enabled)
             end)
         end
         
+        -- Touch input connections remain the same...
         if UserInputService then
             if connections and type(connections) == "table" and not connections.touchInput then
                 connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
@@ -1150,6 +1194,7 @@ local function toggleFreecam(enabled)
         print("Freecam enabled - Hold right click to rotate, WASD/QE to move, mouse wheel to forward/backward")
         
     else
+        -- DISABLE FREECAM - RESTORE SEMUA NILAI ORIGINAL
         if connections and type(connections) == "table" and connections.freecamConnection then
             connections.freecamConnection:Disconnect()
             connections.freecamConnection = nil
@@ -1189,12 +1234,29 @@ local function toggleFreecam(enabled)
         
         if currentHumanoid then
             camera.CameraSubject = currentHumanoid
+            
+            -- RESTORE nilai original, bukan hardcoded
+            if Visual.originalWalkSpeed then
+                currentHumanoid.WalkSpeed = Visual.originalWalkSpeed
+            else
+                currentHumanoid.WalkSpeed = 16 -- fallback default
+            end
+            
+            if Visual.originalJumpPower then
+                currentHumanoid.JumpPower = Visual.originalJumpPower
+            else
+                currentHumanoid.JumpPower = 50 -- fallback default
+            end
+            
+            -- Restore JumpHeight untuk R15
+            if Visual.originalJumpHeight and currentHumanoid:FindFirstChild("JumpHeight") then
+                currentHumanoid.JumpHeight = Visual.originalJumpHeight
+            end
         end
         
-        -- Restore WalkSpeed and JumpPower
-        if currentHumanoid then
-            currentHumanoid.WalkSpeed = 16
-            currentHumanoid.JumpPower = 50
+        -- RESTORE anchor status
+        if currentRootPart then
+            currentRootPart.Anchored = Visual.originalAnchored or false
         end
         
         if UserInputService then
@@ -1208,6 +1270,12 @@ local function toggleFreecam(enabled)
         Visual.joystickDelta = Vector2.new(0, 0)
         mouseDelta = Vector2.new(0, 0)
         isRightMouseDown = false
+        
+        -- Reset nilai original setelah restore
+        Visual.originalWalkSpeed = nil
+        Visual.originalJumpPower = nil
+        Visual.originalJumpHeight = nil
+        Visual.originalAnchored = nil
     end
 end
 
