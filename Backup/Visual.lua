@@ -1125,10 +1125,16 @@ local function toggleFreecam(enabled)
                 if not Visual.freecamEnabled or processed then return end
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement and isRightMouseDown then
-                    local sensitivity = 0.07
-                    freecamYaw = freecamYaw - input.Delta.X * sensitivity
-                    freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
-                end
+                local sensitivity = 0.12
+                local smoothFactor = 0.8 -- Smoothing factor
+                
+                local deltaX = input.Delta.X * sensitivity
+                local deltaY = input.Delta.Y * sensitivity
+                
+                -- Apply smoothing
+                freecamYaw = freecamYaw - (deltaX * smoothFactor)
+                freecamPitch = math.clamp(freecamPitch - (deltaY * smoothFactor), -math.pi/2 + 0.1, math.pi/2 - 0.1)
+            end
                 
                 if input.UserInputType == Enum.UserInputType.MouseWheel then
                     local wheelDirection = input.Position.Z
