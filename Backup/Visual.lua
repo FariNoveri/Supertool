@@ -1127,7 +1127,7 @@ local function toggleFreecam(enabled)
                 if input.UserInputType == Enum.UserInputType.MouseMovement and isRightMouseDown then
                     local sensitivity = 0.005
                     freecamYaw = freecamYaw - input.Delta.X * sensitivity
-                    freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
+                    freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.001, math.pi/2 - 0.001)
                 end
                 
                 if input.UserInputType == Enum.UserInputType.MouseWheel then
