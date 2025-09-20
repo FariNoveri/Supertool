@@ -19,12 +19,17 @@ Teleport.currentAutoIndex = 1
 Teleport.autoTeleportCoroutine = nil
 Teleport.smoothTeleportEnabled = false
 Teleport.smoothTeleportDuration = 0.5 -- seconds
+Teleport.doubleClickTeleportEnabled = false -- New: Toggle for double-click TP to mouse
+Teleport.lastClickTime = 0
+Teleport.doubleClickThreshold = 0.5 -- seconds for double click
 
 -- UI Elements (to be initialized in initUI function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
 local AutoStatusLabel -- New label for auto-teleport status
 local SmoothToggle, DurationInput
+local CoordInputX, CoordInputY, CoordInputZ, TeleportToCoordButton, SaveCoordButton
+local DoubleClickToggle
 
 -- File System Integration for KRNL (like utility.lua)
 local HttpService = game:GetService("HttpService")
@@ -1032,6 +1037,41 @@ function Teleport.saveFreecamPosition(freecamPosition)
     return true
 end
 
+-- Save custom coordinate position
+function Teleport.saveCoordPosition()
+    local x = tonumber(CoordInputX.Text) or 0
+    local y = tonumber(CoordInputY.Text) or 0
+    local z = tonumber(CoordInputZ.Text) or 0
+    local cframe = CFrame.new(x, y, z)
+    
+    local positionName = PositionInput and PositionInput.Text:gsub("^%s*(.-)%s*$", "%1") or ""
+    if positionName == "" then
+        positionName = "Coord_" .. (os.time() % 10000)
+    end
+    
+    positionName = generateUniqueName(positionName)
+    
+    Teleport.savedPositions[positionName] = cframe
+    Teleport.positionNumbers[positionName] = 0
+    saveToFileSystem(positionName, cframe, 0)
+    createPositionButton(positionName, cframe)
+    
+    updateScrollCanvasSize()
+    print("Saved coordinate position: " .. positionName)
+    return true
+end
+
+-- Teleport to custom coordinates
+function Teleport.teleportToCoords()
+    local x = tonumber(CoordInputX.Text) or 0
+    local y = tonumber(CoordInputY.Text) or 0
+    local z = tonumber(CoordInputZ.Text) or 0
+    local cframe = CFrame.new(x, y, z)
+    if safeTeleport(cframe) then
+        print("Teleported to coordinates: " .. x .. ", " .. y .. ", " .. z)
+    end
+end
+
 -- Load saved positions from filesystem
 function Teleport.loadSavedPositions()
     syncPositionsFromJSON()
@@ -1104,6 +1144,18 @@ function Teleport.teleportLeft(distance)
     print("Teleported left by " .. (distance or 10) .. " units")
 end
 
+function Teleport.teleportUp(distance)
+    local root = getRootPart()
+    if not root then
+        warn("Cannot teleport: Character not found")
+        return
+    end
+    local currentCFrame = root.CFrame
+    local upVector = currentCFrame.UpVector * (distance or 10)
+    safeTeleport(currentCFrame + upVector)
+    print("Teleported up by " .. (distance or 10) .. " units")
+end
+
 function Teleport.teleportDown(distance)
     local root = getRootPart()
     if not root then
@@ -1167,8 +1219,18 @@ function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabl
         Teleport.teleportLeft()
     end)
     
+    createButton("TP Up", function()
+        Teleport.teleportUp()
+    end)
+    
     createButton("TP Down", function()
         Teleport.teleportDown()
+    end)
+    
+    createButton("Double Click TP", function()
+        Teleport.doubleClickTeleportEnabled = not Teleport.doubleClickTeleportEnabled
+        DoubleClickToggle.Text = "Double Click TP: " .. (Teleport.doubleClickTeleportEnabled and "ON" or "OFF")
+        print("Double click teleport " .. (Teleport.doubleClickTeleportEnabled and "enabled" or "disabled"))
     end)
 end
 
@@ -1257,7 +1319,7 @@ function Teleport.init(deps)
         PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
         PositionFrame.BorderSizePixel = 1
         PositionFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
-        PositionFrame.Size = UDim2.new(0, 300, 0, 350)
+        PositionFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased size for new elements
         PositionFrame.Visible = false
         PositionFrame.Active = true
         PositionFrame.Draggable = true
@@ -1310,12 +1372,70 @@ function Teleport.init(deps)
         SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
         SavePositionButton.TextSize = 9
 
+        CoordInputX = Instance.new("TextBox")
+        CoordInputX.Parent = PositionFrame
+        CoordInputX.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        CoordInputX.BorderSizePixel = 0
+        CoordInputX.Position = UDim2.new(0, 8, 0, 65)
+        CoordInputX.Size = UDim2.new(0.3, -5, 0, 25)
+        CoordInputX.Font = Enum.Font.Gotham
+        CoordInputX.PlaceholderText = "X"
+        CoordInputX.Text = ""
+        CoordInputX.TextColor3 = Color3.fromRGB(255, 255, 255)
+        CoordInputX.TextSize = 10
+
+        CoordInputY = Instance.new("TextBox")
+        CoordInputY.Parent = PositionFrame
+        CoordInputY.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        CoordInputY.BorderSizePixel = 0
+        CoordInputY.Position = UDim2.new(0.3, 0, 0, 65)
+        CoordInputY.Size = UDim2.new(0.3, -5, 0, 25)
+        CoordInputY.Font = Enum.Font.Gotham
+        CoordInputY.PlaceholderText = "Y"
+        CoordInputY.Text = ""
+        CoordInputY.TextColor3 = Color3.fromRGB(255, 255, 255)
+        CoordInputY.TextSize = 10
+
+        CoordInputZ = Instance.new("TextBox")
+        CoordInputZ.Parent = PositionFrame
+        CoordInputZ.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        CoordInputZ.BorderSizePixel = 0
+        CoordInputZ.Position = UDim2.new(0.6, 0, 0, 65)
+        CoordInputZ.Size = UDim2.new(0.3, -5, 0, 25)
+        CoordInputZ.Font = Enum.Font.Gotham
+        CoordInputZ.PlaceholderText = "Z"
+        CoordInputZ.Text = ""
+        CoordInputZ.TextColor3 = Color3.fromRGB(255, 255, 255)
+        CoordInputZ.TextSize = 10
+
+        TeleportToCoordButton = Instance.new("TextButton")
+        TeleportToCoordButton.Parent = PositionFrame
+        TeleportToCoordButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        TeleportToCoordButton.BorderSizePixel = 0
+        TeleportToCoordButton.Position = UDim2.new(0, 8, 0, 95)
+        TeleportToCoordButton.Size = UDim2.new(0.5, -10, 0, 25)
+        TeleportToCoordButton.Font = Enum.Font.Gotham
+        TeleportToCoordButton.Text = "TP to Coord"
+        TeleportToCoordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TeleportToCoordButton.TextSize = 9
+
+        SaveCoordButton = Instance.new("TextButton")
+        SaveCoordButton.Parent = PositionFrame
+        SaveCoordButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        SaveCoordButton.BorderSizePixel = 0
+        SaveCoordButton.Position = UDim2.new(0.5, 2, 0, 95)
+        SaveCoordButton.Size = UDim2.new(0.5, -10, 0, 25)
+        SaveCoordButton.Font = Enum.Font.Gotham
+        SaveCoordButton.Text = "Save Coord"
+        SaveCoordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SaveCoordButton.TextSize = 9
+
         SmoothToggle = Instance.new("TextButton")
         SmoothToggle.Name = "SmoothToggle"
         SmoothToggle.Parent = PositionFrame
         SmoothToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         SmoothToggle.BorderSizePixel = 0
-        SmoothToggle.Position = UDim2.new(0, 8, 0, 65)
+        SmoothToggle.Position = UDim2.new(0, 8, 0, 125)
         SmoothToggle.Size = UDim2.new(0.5, -10, 0, 25)
         SmoothToggle.Font = Enum.Font.Gotham
         SmoothToggle.Text = "Smooth TP: " .. (Teleport.smoothTeleportEnabled and "ON" or "OFF")
@@ -1327,7 +1447,7 @@ function Teleport.init(deps)
         DurationInput.Parent = PositionFrame
         DurationInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         DurationInput.BorderSizePixel = 0
-        DurationInput.Position = UDim2.new(0.5, 2, 0, 65)
+        DurationInput.Position = UDim2.new(0.5, 2, 0, 125)
         DurationInput.Size = UDim2.new(0.5, -10, 0, 25)
         DurationInput.Font = Enum.Font.Gotham
         DurationInput.Text = tostring(Teleport.smoothTeleportDuration)
@@ -1339,8 +1459,8 @@ function Teleport.init(deps)
         PositionScrollFrame.Name = "PositionScrollFrame"
         PositionScrollFrame.Parent = PositionFrame
         PositionScrollFrame.BackgroundTransparency = 1
-        PositionScrollFrame.Position = UDim2.new(0, 8, 0, 95)
-        PositionScrollFrame.Size = UDim2.new(1, -16, 1, -165)
+        PositionScrollFrame.Position = UDim2.new(0, 8, 0, 155)
+        PositionScrollFrame.Size = UDim2.new(1, -16, 1, -225)
         PositionScrollFrame.ScrollBarThickness = 3
         PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
         PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1437,6 +1557,17 @@ function Teleport.init(deps)
         AutoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
         AutoStatusLabel.Visible = false
 
+        DoubleClickToggle = Instance.new("TextButton")
+        DoubleClickToggle.Parent = PositionFrame
+        DoubleClickToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        DoubleClickToggle.BorderSizePixel = 0
+        DoubleClickToggle.Position = UDim2.new(0, 8, 0, 155 - 30) -- Adjust if needed
+        DoubleClickToggle.Size = UDim2.new(1, -16, 0, 25)
+        DoubleClickToggle.Font = Enum.Font.Gotham
+        DoubleClickToggle.Text = "Double Click TP: OFF"
+        DoubleClickToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        DoubleClickToggle.TextSize = 9
+
         SavePositionButton.MouseButton1Click:Connect(function()
             Teleport.saveCurrentPosition()
         end)
@@ -1484,6 +1615,20 @@ function Teleport.init(deps)
             end
         end)
 
+        TeleportToCoordButton.MouseButton1Click:Connect(function()
+            Teleport.teleportToCoords()
+        end)
+
+        SaveCoordButton.MouseButton1Click:Connect(function()
+            Teleport.saveCoordPosition()
+        end)
+
+        DoubleClickToggle.MouseButton1Click:Connect(function()
+            Teleport.doubleClickTeleportEnabled = not Teleport.doubleClickTeleportEnabled
+            DoubleClickToggle.Text = "Double Click TP: " .. (Teleport.doubleClickTeleportEnabled and "ON" or "OFF")
+            print("Double click teleport " .. (Teleport.doubleClickTeleportEnabled and "enabled" or "disabled"))
+        end)
+
         PositionLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             updateScrollCanvasSize()
         end)
@@ -1495,6 +1640,25 @@ function Teleport.init(deps)
     
     Teleport.loadSavedPositions()
     print("[SUPERTOOL] Teleport module initialized with JSON sync to: " .. TELEPORT_FOLDER_PATH)
+
+    -- Setup double click teleport
+    local UserInputService = game:GetService("UserInputService")
+    local Mouse = player:GetMouse()
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or not Teleport.doubleClickTeleportEnabled then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local currentTime = tick()
+            if currentTime - Teleport.lastClickTime < Teleport.doubleClickThreshold then
+                local hit = Mouse.Hit
+                if hit then
+                    safeTeleport(hit)
+                    print("Double click teleported to mouse position")
+                end
+            end
+            Teleport.lastClickTime = currentTime
+        end
+    end)
+    
     return true
 end
 
