@@ -61,11 +61,6 @@ local nameChangeInput = nil
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
-local freecamLookVector = Vector3.new(0, 0, -1)
-local freecamRightVector = Vector3.new(1, 0, 0)
-local freecamUpVector = Vector3.new(0, 1, 0)
-local freecamYaw = 0
-local freecamPitch = 0
 local freecamInputConnection = nil
 local isRightMouseDown = false
 
@@ -995,9 +990,6 @@ local function toggleFreecam(enabled)
         Visual.originalCameraSubject = camera.CameraSubject
         
         freecamCFrame = camera.CFrame
-        local x, y, z = freecamCFrame:ToEulerAnglesXYZ()
-        freecamYaw = -y
-        freecamPitch = -x
         
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
@@ -1046,13 +1038,9 @@ local function toggleFreecam(enabled)
                 local camera = Workspace.CurrentCamera
                 local moveSpeed = freecamSpeed * deltaTime
                 
-                local yawCFrame = CFrame.Angles(0, freecamYaw, 0)
-                local pitchCFrame = CFrame.Angles(freecamPitch, 0, 0)
-                local rotationCFrame = yawCFrame * pitchCFrame
-                
-                freecamLookVector = rotationCFrame.LookVector
-                freecamRightVector = rotationCFrame.RightVector
-                freecamUpVector = rotationCFrame.UpVector
+                local freecamLookVector = freecamCFrame.LookVector
+                local freecamRightVector = freecamCFrame.RightVector
+                local freecamUpVector = freecamCFrame.UpVector
                 
                 local movement = Vector3.new(0, 0, 0)
                 local currentPos = freecamCFrame.Position
@@ -1087,7 +1075,8 @@ local function toggleFreecam(enabled)
                     currentPos = currentPos + movement
                 end
                 
-                freecamCFrame = CFrame.new(currentPos) * CFrame.Angles(-freecamPitch, freecamYaw, 0)
+                -- Update position while keeping rotation
+                freecamCFrame = CFrame.new(currentPos) * freecamCFrame.Rotation
                 camera.CFrame = freecamCFrame
                 
                 -- PASTIKAN karakter tetap diam selama freecam aktif
@@ -1126,14 +1115,33 @@ local function toggleFreecam(enabled)
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement and isRightMouseDown then
                     local sensitivity = 0.005
-                    freecamYaw = freecamYaw - input.Delta.X * sensitivity
-                    freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.001, math.pi/2 - 0.001)
+                    
+                    -- Apply global yaw rotation (around world Y axis)
+                    local yawRot = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), -input.Delta.X * sensitivity)
+                    freecamCFrame = freecamCFrame * yawRot
+                    
+                    -- Apply local pitch rotation (around camera's right axis)
+                    local pitchRot = CFrame.fromAxisAngle(freecamCFrame.RightVector, -input.Delta.Y * sensitivity)
+                    freecamCFrame = freecamCFrame * pitchRot
+                    
+                    -- Optional clamp to prevent flipping over (adjust epsilon if needed; 0.001 allows ~89.94 degrees)
+                    local lookY = freecamCFrame.LookVector.Y
+                    if math.abs(lookY) > 0.999 then
+                        local clampedY = math.sign(lookY) * 0.999
+                        local flatLook = freecamCFrame.LookVector * Vector3.new(1, 0, 1)
+                        if flatLook.Magnitude < 1e-6 then
+                            flatLook = freecamCFrame.RightVector * Vector3.new(1, 0, 1)  -- Fallback if exactly vertical
+                        end
+                        flatLook = flatLook.Unit
+                        local newLook = flatLook * math.sqrt(1 - clampedY * clampedY) + Vector3.new(0, clampedY, 0)
+                        freecamCFrame = CFrame.lookAt(freecamCFrame.Position, freecamCFrame.Position + newLook)
+                    end
                 end
                 
                 if input.UserInputType == Enum.UserInputType.MouseWheel then
                     local wheelDirection = input.Position.Z
                     local wheelSpeed = 10 * (wheelDirection > 0 and 1 or -1)
-                    local movement = freecamLookVector * wheelSpeed
+                    local movement = freecamCFrame.LookVector * wheelSpeed
                     freecamCFrame = freecamCFrame + movement
                 end
             end)
@@ -1265,8 +1273,6 @@ local function toggleFreecam(enabled)
         end
         
         freecamCFrame = nil
-        freecamYaw = 0
-        freecamPitch = 0
         Visual.joystickDelta = Vector2.new(0, 0)
         mouseDelta = Vector2.new(0, 0)
         isRightMouseDown = false
@@ -1279,7 +1285,7 @@ local function toggleFreecam(enabled)
     end
 end
 
--- Time Mode Functions
+-- Time mode Functions
 local timeModeButtons = {"Pagi Mode", "Day Mode", "Sore Mode", "Night Mode"}
 
 local function setTimeMode(mode)
