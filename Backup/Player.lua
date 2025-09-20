@@ -703,11 +703,6 @@ local function bringPlayer(targetPlayer)
         return
     end
     
-    if not Player.rootPart then
-        print("Cannot bring: Local player missing HumanoidRootPart")
-        return
-    end
-    
     local success, result = pcall(function()
         local targetCharacter = targetPlayer.Character
         if not targetCharacter or not targetCharacter:FindFirstChild("HumanoidRootPart") then
@@ -1245,6 +1240,61 @@ local function resetScale()
     setBodyScale(1.0)
 end
 
+-- Morph to Player (client-side)
+local function morphToPlayer(targetPlayer)
+    if not targetPlayer then
+        print("No player selected to morph")
+        return
+    end
+    local success, result = pcall(function()
+        local targetDescription = Players:GetHumanoidDescriptionFromUserId(targetPlayer.UserId)
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid:ApplyDescription(targetDescription)
+            print("Morphed to: " .. targetPlayer.Name)
+        else
+            print("Cannot morph: No local humanoid")
+        end
+    end)
+    if not success then
+        warn("Failed to morph: " .. tostring(result))
+    end
+end
+
+-- Clone Player (client-side visual)
+local function clonePlayer(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then
+        print("Cannot clone: Invalid player or no character")
+        return
+    end
+    local success, result = pcall(function()
+        local clone = targetPlayer.Character:Clone()
+        clone.Name = targetPlayer.Name .. "_Clone"
+        clone.Parent = Workspace
+        -- Position slightly offset
+        if clone:FindFirstChild("HumanoidRootPart") then
+            clone.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(3, 0, 0)
+        end
+        -- Disable scripts and humanoid to make it static visual
+        if clone:FindFirstChild("Humanoid") then
+            clone.Humanoid:Destroy()
+        end
+        for _, script in pairs(clone:GetDescendants()) do
+            if script:IsA("Script") or script:IsA("LocalScript") then
+                script:Destroy()
+            end
+        end
+        print("Cloned: " .. targetPlayer.Name)
+    end)
+    if not success then
+        warn("Failed to clone: " .. tostring(result))
+    end
+end
+
+-- Clone Me
+local function cloneMe()
+    clonePlayer(player)
+end
+
 -- Show Player Selection UI
 local function showPlayerSelection()
     Player.playerListVisible = true
@@ -1276,6 +1326,7 @@ local function stopSpectating()
     
     if player.Character and player.Character:FindFirstChild("Humanoid") then
         Workspace.CurrentCamera.CameraSubject = player.Character.Humanoid
+        Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
         Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
     elseif humanoid then
         Workspace.CurrentCamera.CameraSubject = humanoid
@@ -1811,6 +1862,9 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createButton("Increase Size", increaseScale, "Player")
     createButton("Decrease Size", decreaseScale, "Player")
     createButton("Reset Size", resetScale, "Player")
+    createButton("Morph to Selected", function() morphToPlayer(Player.getSelectedPlayer()) end, "Player")
+    createButton("Clone Selected", function() clonePlayer(Player.getSelectedPlayer()) end, "Player")
+    createButton("Clone Me", cloneMe, "Player")
     print("Player buttons loaded successfully")
 end
 
