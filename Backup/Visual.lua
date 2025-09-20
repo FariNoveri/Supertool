@@ -1125,7 +1125,7 @@ local function toggleFreecam(enabled)
                 if not Visual.freecamEnabled or processed then return end
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement and isRightMouseDown then
-                    local sensitivity = 0.1
+                    local sensitivity = 0.002
                     freecamYaw = freecamYaw - input.Delta.X * sensitivity
                     freecamPitch = math.clamp(freecamPitch - input.Delta.Y * sensitivity, -math.pi/2 + 0.1, math.pi/2 - 0.1)
                 end
@@ -2017,7 +2017,7 @@ local function createNameInput()
     cancelButton.Position = UDim2.new(0.5, 5, 0, 60)
     cancelButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
     cancelButton.Text = "Cancel"
-    cancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     cancelButton.Parent = inputFrame
     
     confirmButton.MouseButton1Click:Connect(function()
