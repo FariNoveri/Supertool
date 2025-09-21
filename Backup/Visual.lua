@@ -1114,7 +1114,7 @@ local function toggleFreecam(enabled)
                 if not Visual.freecamEnabled or processed then return end
                 
                 if input.UserInputType == Enum.UserInputType.MouseMovement and isRightMouseDown then
-                    local sensitivity = 0.005
+                    local sensitivity = 0.1
                     
                     -- Apply global yaw rotation (around world Y axis)
                     local yawRot = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), -input.Delta.X * sensitivity)
