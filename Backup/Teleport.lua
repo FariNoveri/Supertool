@@ -19,7 +19,7 @@ Teleport.autoTeleportMode = "once" -- "once" or "repeat"
 Teleport.autoTeleportDelay = 2 -- seconds between teleports
 Teleport.currentAutoIndex = 1
 Teleport.autoTeleportCoroutine = nil
-Teleport.smoothTeleportEnabled = false
+Teleport.smoothTeleportEnabled = true
 Teleport.smoothTeleportSpeed = 100 -- studs per second
 Teleport.doubleClickTeleportEnabled = false -- New: Toggle for double-click TP to mouse
 Teleport.lastClickTime = 0
@@ -31,7 +31,6 @@ local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAut
 local AutoStatusLabel -- New label for auto-teleport status
 local SmoothToggle, SpeedInput
 local CoordInputX, CoordInputY, CoordInputZ, TeleportToCoordButton, SaveCoordButton
-local DoubleClickToggle
 local LabelToggle -- New: Toggle for labels visibility
 
 -- File System Integration for KRNL (like utility.lua)
@@ -1262,7 +1261,6 @@ function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabl
     
     createButton("Double Click TP", function()
         Teleport.doubleClickTeleportEnabled = not Teleport.doubleClickTeleportEnabled
-        DoubleClickToggle.Text = "Double Click TP: " .. (Teleport.doubleClickTeleportEnabled and "ON" or "OFF")
         print("Double click teleport " .. (Teleport.doubleClickTeleportEnabled and "enabled" or "disabled"))
     end)
 end
@@ -1540,7 +1538,7 @@ function Teleport.init(deps)
         LabelToggle.Parent = PositionFrame
         LabelToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         LabelToggle.BorderSizePixel = 0
-        LabelToggle.Position = UDim2.new(0, 8, 0, 155 - 30 - 30) -- Adjust position
+        LabelToggle.Position = UDim2.new(0, 8, 0, 155)
         LabelToggle.Size = UDim2.new(1, -16, 0, 25)
         LabelToggle.Font = Enum.Font.Gotham
         LabelToggle.Text = "Position Labels: " .. (Teleport.labelsVisible and "ON" or "OFF")
@@ -1551,8 +1549,8 @@ function Teleport.init(deps)
         PositionScrollFrame.Name = "PositionScrollFrame"
         PositionScrollFrame.Parent = PositionFrame
         PositionScrollFrame.BackgroundTransparency = 1
-        PositionScrollFrame.Position = UDim2.new(0, 8, 0, 155)
-        PositionScrollFrame.Size = UDim2.new(1, -16, 1, -225)
+        PositionScrollFrame.Position = UDim2.new(0, 8, 0, 185)
+        PositionScrollFrame.Size = UDim2.new(1, -16, 1, -255)
         PositionScrollFrame.ScrollBarThickness = 3
         PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
         PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1649,17 +1647,6 @@ function Teleport.init(deps)
         AutoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
         AutoStatusLabel.Visible = false
 
-        DoubleClickToggle = Instance.new("TextButton")
-        DoubleClickToggle.Parent = PositionFrame
-        DoubleClickToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        DoubleClickToggle.BorderSizePixel = 0
-        DoubleClickToggle.Position = UDim2.new(0, 8, 0, 155 - 30) -- Adjust if needed
-        DoubleClickToggle.Size = UDim2.new(1, -16, 0, 25)
-        DoubleClickToggle.Font = Enum.Font.Gotham
-        DoubleClickToggle.Text = "Double Click TP: OFF"
-        DoubleClickToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-        DoubleClickToggle.TextSize = 9
-
         SavePositionButton.MouseButton1Click:Connect(function()
             Teleport.saveCurrentPosition()
         end)
@@ -1715,12 +1702,6 @@ function Teleport.init(deps)
             Teleport.saveCoordPosition()
         end)
 
-        DoubleClickToggle.MouseButton1Click:Connect(function()
-            Teleport.doubleClickTeleportEnabled = not Teleport.doubleClickTeleportEnabled
-            DoubleClickToggle.Text = "Double Click TP: " .. (Teleport.doubleClickTeleportEnabled and "ON" or "OFF")
-            print("Double click teleport " .. (Teleport.doubleClickTeleportEnabled and "enabled" or "disabled"))
-        end)
-
         LabelToggle.MouseButton1Click:Connect(function()
             Teleport.toggleLabels()
         end)
@@ -1743,6 +1724,8 @@ function Teleport.init(deps)
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed or not Teleport.doubleClickTeleportEnabled then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local root = getRootPart()
+            if not root then return end
             local currentTime = tick()
             if currentTime - Teleport.lastClickTime < Teleport.doubleClickThreshold then
                 local hit = Mouse.Hit
