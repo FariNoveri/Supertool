@@ -1318,6 +1318,9 @@ local function toggleFreecam(enabled)
                     freecamCFrame = CFrame.lookAt(freecamCFrame.Position, freecamCFrame.Position + newLook)
                 end
                 
+                -- Force upright orientation to prevent tilting
+                freecamCFrame = CFrame.lookAt(freecamCFrame.Position, freecamCFrame.Position + freecamCFrame.LookVector, Vector3.new(0, 1, 0))
+                
                 camera.CFrame = freecamCFrame
                 
                 -- PASTIKAN karakter tetap diam selama freecam aktif
@@ -2249,7 +2252,7 @@ function Visual.init(deps)
         return false
     end
     
-    -- Set dependencies with strict fallbacks and safe service access
+    -- Set dependencies with strict strict fallbacks and safe service access
     Players = deps.Players or safeGetService("Players")
     UserInputService = deps.UserInputService or safeGetService("UserInputService")
     RunService = deps.RunService or safeGetService("RunService")
