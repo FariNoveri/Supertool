@@ -10,6 +10,8 @@ local Teleport = {}
 -- Variables
 Teleport.savedPositions = Teleport.savedPositions or {} -- Preserve existing positions
 Teleport.positionNumbers = Teleport.positionNumbers or {} -- Preserve existing position numbers
+Teleport.positionLabels = Teleport.positionLabels or {} -- New: Table for position labels in the world
+Teleport.labelsVisible = true -- New: Toggle for showing/hiding labels
 Teleport.positionFrameVisible = false
 Teleport.autoTeleportActive = false
 Teleport.autoTeleportPaused = false -- New flag for pausing auto-teleport
@@ -18,7 +20,7 @@ Teleport.autoTeleportDelay = 2 -- seconds between teleports
 Teleport.currentAutoIndex = 1
 Teleport.autoTeleportCoroutine = nil
 Teleport.smoothTeleportEnabled = false
-Teleport.smoothTeleportDuration = 0.5 -- seconds
+Teleport.smoothTeleportSpeed = 100 -- studs per second
 Teleport.doubleClickTeleportEnabled = false -- New: Toggle for double-click TP to mouse
 Teleport.lastClickTime = 0
 Teleport.doubleClickThreshold = 0.5 -- seconds for double click
@@ -27,9 +29,10 @@ Teleport.doubleClickThreshold = 0.5 -- seconds for double click
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
 local AutoStatusLabel -- New label for auto-teleport status
-local SmoothToggle, DurationInput
+local SmoothToggle, SpeedInput
 local CoordInputX, CoordInputY, CoordInputZ, TeleportToCoordButton, SaveCoordButton
 local DoubleClickToggle
+local LabelToggle -- New: Toggle for labels visibility
 
 -- File System Integration for KRNL (like utility.lua)
 local HttpService = game:GetService("HttpService")
@@ -298,6 +301,7 @@ local function syncPositionsFromJSON()
             orientation = {cframe:ToEulerAnglesXYZ()},
             number = jsonNumbers[positionName] or 0
         }
+        Teleport.createPositionLabel(positionName, cframe.Position)
     end
     print("[SUPERTOOL] Synced " .. table.maxn(jsonPositions) .. " positions from JSON files")
 end
@@ -377,7 +381,11 @@ local function safeTeleport(targetCFrame)
     end
     if Teleport.smoothTeleportEnabled then
         local TweenService = game:GetService("TweenService")
-        local tweenInfo = TweenInfo.new(Teleport.smoothTeleportDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+        local startPos = root.CFrame.Position
+        local targetPos = targetCFrame.Position
+        local distance = (targetPos - startPos).Magnitude
+        local duration = distance / Teleport.smoothTeleportSpeed
+        local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
         local tween = TweenService:Create(root, tweenInfo, {CFrame = targetCFrame})
         tween:Play()
         tween.Completed:Wait()
@@ -584,6 +592,10 @@ local function deletePositionWithConfirmation(positionName, button)
     if button.Text == "Delete?" then
         Teleport.savedPositions[positionName] = nil
         Teleport.positionNumbers[positionName] = nil
+        if Teleport.positionLabels[positionName] then
+            Teleport.positionLabels[positionName]:Destroy()
+            Teleport.positionLabels[positionName] = nil
+        end
         deleteFromFileSystem(positionName)
         button.Parent:Destroy()
         print("Deleted position: " .. positionName)
@@ -793,6 +805,13 @@ createPositionButton = function(positionName, cframe)
         createNumberInputDialog(positionName, number, function(newNumber)
             Teleport.positionNumbers[positionName] = newNumber
             saveToFileSystem(positionName, cframe, newNumber)
+            if Teleport.positionLabels[positionName] then
+                local labelText = positionName
+                if newNumber > 0 then
+                    labelText = "[" .. newNumber .. "] " .. positionName
+                end
+                Teleport.positionLabels[positionName].TextLabel.Text = labelText
+            end
             print("Set number " .. newNumber .. " for position: " .. positionName)
             refreshPositionButtons()
         end)
@@ -810,6 +829,17 @@ createPositionButton = function(positionName, cframe)
             Teleport.savedPositions[positionName] = nil
             Teleport.positionNumbers[newName] = Teleport.positionNumbers[positionName]
             Teleport.positionNumbers[positionName] = nil
+            if Teleport.positionLabels[positionName] then
+                local label = Teleport.positionLabels[positionName]
+                Teleport.positionLabels[newName] = label
+                Teleport.positionLabels[positionName] = nil
+                local number = Teleport.positionNumbers[newName] or 0
+                local labelText = newName
+                if number > 0 then
+                    labelText = "[" .. number .. "] " .. newName
+                end
+                label.TextLabel.Text = labelText
+            end
             renameInFileSystem(positionName, newName)
             print("Renamed position to: " .. newName)
             refreshPositionButtons()
@@ -997,6 +1027,7 @@ function Teleport.saveCurrentPosition()
     Teleport.savedPositions[positionName] = currentCFrame
     Teleport.positionNumbers[positionName] = 0
     saveToFileSystem(positionName, currentCFrame, 0)
+    Teleport.createPositionLabel(positionName, currentCFrame.Position)
     createPositionButton(positionName, currentCFrame)
     
     if PositionInput then
@@ -1026,6 +1057,7 @@ function Teleport.saveFreecamPosition(freecamPosition)
     Teleport.savedPositions[positionName] = cframe
     Teleport.positionNumbers[positionName] = 0
     saveToFileSystem(positionName, cframe, 0)
+    Teleport.createPositionLabel(positionName, cframe.Position)
     createPositionButton(positionName, cframe)
     
     if PositionInput then
@@ -1054,6 +1086,7 @@ function Teleport.saveCoordPosition()
     Teleport.savedPositions[positionName] = cframe
     Teleport.positionNumbers[positionName] = 0
     saveToFileSystem(positionName, cframe, 0)
+    Teleport.createPositionLabel(positionName, cframe.Position)
     createPositionButton(positionName, cframe)
     
     updateScrollCanvasSize()
@@ -1261,6 +1294,53 @@ function Teleport.teleportToPosition(x, y, z)
     end
 end
 
+-- New: Create position label in the world
+function Teleport.createPositionLabel(positionName, positionVector)
+    local part = Instance.new("Part")
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Position = positionVector + Vector3.new(0, 5, 0) -- Slightly above the position
+    part.Parent = Workspace
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "PositionLabel"
+    billboard.Parent = part
+    billboard.Adornee = part
+    billboard.Size = UDim2.new(0, 200, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Enabled = Teleport.labelsVisible
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Parent = billboard
+    textLabel.BackgroundTransparency = 1
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    local number = Teleport.positionNumbers[positionName] or 0
+    local labelText = positionName
+    if number > 0 then
+        labelText = "[" .. number .. "] " .. positionName
+    end
+    textLabel.Text = labelText
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.TextSize = 14
+    textLabel.Font = Enum.Font.GothamBold
+
+    Teleport.positionLabels[positionName] = billboard
+end
+
+-- New: Toggle labels visibility
+function Teleport.toggleLabels()
+    Teleport.labelsVisible = not Teleport.labelsVisible
+    for _, label in pairs(Teleport.positionLabels) do
+        label.Enabled = Teleport.labelsVisible
+    end
+    if LabelToggle then
+        LabelToggle.Text = "Position Labels: " .. (Teleport.labelsVisible and "ON" or "OFF")
+    end
+    print("Position labels " .. (Teleport.labelsVisible and "shown" or "hidden"))
+end
+
 -- Function to set dependencies and initialize UI
 function Teleport.init(deps)
     ScreenGui = deps.ScreenGui
@@ -1278,6 +1358,7 @@ function Teleport.init(deps)
 
     Teleport.savedPositions = Teleport.savedPositions or {}
     Teleport.positionNumbers = Teleport.positionNumbers or {}
+    Teleport.positionLabels = Teleport.positionLabels or {}
     Teleport.positionFrameVisible = false
     
     if not isfolder(TELEPORT_FOLDER_PATH) then
@@ -1442,18 +1523,29 @@ function Teleport.init(deps)
         SmoothToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
         SmoothToggle.TextSize = 9
 
-        DurationInput = Instance.new("TextBox")
-        DurationInput.Name = "DurationInput"
-        DurationInput.Parent = PositionFrame
-        DurationInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        DurationInput.BorderSizePixel = 0
-        DurationInput.Position = UDim2.new(0.5, 2, 0, 125)
-        DurationInput.Size = UDim2.new(0.5, -10, 0, 25)
-        DurationInput.Font = Enum.Font.Gotham
-        DurationInput.Text = tostring(Teleport.smoothTeleportDuration)
-        DurationInput.PlaceholderText = "Duration (s)"
-        DurationInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        DurationInput.TextSize = 9
+        SpeedInput = Instance.new("TextBox")
+        SpeedInput.Name = "SpeedInput"
+        SpeedInput.Parent = PositionFrame
+        SpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        SpeedInput.BorderSizePixel = 0
+        SpeedInput.Position = UDim2.new(0.5, 2, 0, 125)
+        SpeedInput.Size = UDim2.new(0.5, -10, 0, 25)
+        SpeedInput.Font = Enum.Font.Gotham
+        SpeedInput.Text = tostring(Teleport.smoothTeleportSpeed)
+        SpeedInput.PlaceholderText = "Speed (studs/s)"
+        SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SpeedInput.TextSize = 9
+
+        LabelToggle = Instance.new("TextButton")
+        LabelToggle.Parent = PositionFrame
+        LabelToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        LabelToggle.BorderSizePixel = 0
+        LabelToggle.Position = UDim2.new(0, 8, 0, 155 - 30 - 30) -- Adjust position
+        LabelToggle.Size = UDim2.new(1, -16, 0, 25)
+        LabelToggle.Font = Enum.Font.Gotham
+        LabelToggle.Text = "Position Labels: " .. (Teleport.labelsVisible and "ON" or "OFF")
+        LabelToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        LabelToggle.TextSize = 9
 
         PositionScrollFrame = Instance.new("ScrollingFrame")
         PositionScrollFrame.Name = "PositionScrollFrame"
@@ -1605,13 +1697,13 @@ function Teleport.init(deps)
             print("Smooth teleport " .. (Teleport.smoothTeleportEnabled and "enabled" or "disabled"))
         end)
 
-        DurationInput.FocusLost:Connect(function(enterPressed)
-            local newDuration = tonumber(DurationInput.Text)
-            if newDuration and newDuration > 0 then
-                Teleport.smoothTeleportDuration = newDuration
-                print("Smooth teleport duration set to: " .. newDuration .. "s")
+        SpeedInput.FocusLost:Connect(function(enterPressed)
+            local newSpeed = tonumber(SpeedInput.Text)
+            if newSpeed and newSpeed > 0 then
+                Teleport.smoothTeleportSpeed = newSpeed
+                print("Smooth teleport speed set to: " .. newSpeed .. " studs/s")
             else
-                DurationInput.Text = tostring(Teleport.smoothTeleportDuration)
+                SpeedInput.Text = tostring(Teleport.smoothTeleportSpeed)
             end
         end)
 
@@ -1627,6 +1719,10 @@ function Teleport.init(deps)
             Teleport.doubleClickTeleportEnabled = not Teleport.doubleClickTeleportEnabled
             DoubleClickToggle.Text = "Double Click TP: " .. (Teleport.doubleClickTeleportEnabled and "ON" or "OFF")
             print("Double click teleport " .. (Teleport.doubleClickTeleportEnabled and "enabled" or "disabled"))
+        end)
+
+        LabelToggle.MouseButton1Click:Connect(function()
+            Teleport.toggleLabels()
         end)
 
         PositionLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
