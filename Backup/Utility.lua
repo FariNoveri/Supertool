@@ -62,6 +62,7 @@ local editorGui = nil
 local deletedObjects = {}  -- Stack for undo: {object = clone, parent = originalParent, name = name}
 local copiedObjects = {}  -- List for copied objects: {object = clone, originalCFrame = cframe, name = name}
 local editedObjects = {}  -- Stack for undo edits: {object = obj, property = prop, oldValue = value}
+local redoObjects = {} -- Stack for redo edits
 local EditorScrollFrame, EditorLayout
 local editorListVisible = false
 local EditorListFrame
@@ -81,6 +82,7 @@ local dragStartHit = nil
 local dragSteppedConn = nil
 local confirmFrame = nil
 local confirmVisual = nil  -- For showing paste location
+local selectedStatusLabel = nil -- For displaying selected object names
 
 -- Gear Loader Variables
 local gearFrameVisible = false
@@ -1034,6 +1036,8 @@ local function loadObjectEdits()
                         obj.CustomPhysicalProperties = PhysicalProperties.new(value.Density, value.Friction, value.Elasticity, value.FrictionWeight, value.ElasticityWeight)
                     elseif prop == "SurfaceLight" then
                         addSurfaceLight(obj)
+                    elseif prop == "Transparency" then
+                        obj.Transparency = value
                     else
                         obj[prop] = value
                     end
@@ -1058,11 +1062,16 @@ local function clearSelection()
     end
     selectionBoxes = {}
     selectedObjects = {}
+    isDragging = false -- Reset drag on clear
     if editorGui and editorGui.Parent then
         lastGuiPosition = editorGui.Position  -- Save last position
         lastScrollPosition = editorGui:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.Y  -- Save scroll position
         editorGui:Destroy()
         editorGui = nil
+    end
+    if selectedStatusLabel then
+        selectedStatusLabel.Text = ""
+        selectedStatusLabel.Visible = false
     end
 end
 
@@ -1634,7 +1643,10 @@ local function undoObjectEdit()
         local lastEdit = table.remove(editedObjects)
         local success, err = pcall(function()
             if lastEdit.object and lastEdit.object.Parent then
+                local current = lastEdit.object[lastEdit.property]
+                lastEdit.newValue = current -- Store the value before undo for redo
                 lastEdit.object[lastEdit.property] = lastEdit.oldValue
+                table.insert(redoObjects, lastEdit) -- Push to redo
                 print("[SUPERTOOL] Undid edit on " .. lastEdit.property)
             end
         end)
@@ -1646,6 +1658,7 @@ local function undoObjectEdit()
         local success, err = pcall(function()
             if lastDelete.object then
                 lastDelete.object.Parent = lastDelete.parent
+                table.insert(redoObjects, {action = "delete", data = lastDelete}) -- For redo delete
                 print("[SUPERTOOL] Undid deletion of: " .. lastDelete.name)
             end
         end)
@@ -1656,9 +1669,38 @@ local function undoObjectEdit()
     updateEditorList()
 end
 
+local function redoObjectEdit()
+    if #redoObjects > 0 then
+        local lastRedo = table.remove(redoObjects)
+        local success, err = pcall(function()
+            if lastRedo.action == "delete" then
+                local delData = lastRedo.data
+                if delData.object and delData.object.Parent then
+                    delData.object:Destroy()
+                    table.insert(deletedObjects, delData)
+                    print("[SUPERTOOL] Redid deletion of: " .. delData.name)
+                end
+            else
+                if lastRedo.object and lastRedo.object.Parent then
+                    local current = lastRedo.object[lastRedo.property]
+                    lastRedo.oldValue = current -- Update old for next undo
+                    lastRedo.object[lastRedo.property] = lastRedo.newValue
+                    table.insert(editedObjects, lastRedo) -- Push back to undo stack
+                    print("[SUPERTOOL] Redid edit on " .. lastRedo.property)
+                end
+            end
+        end)
+        if not success then
+            warn("[SUPERTOOL] Redo failed: " .. tostring(err))
+        end
+    end
+    updateEditorList()
+end
+
 local function clearEditorHistory()
     editedObjects = {}
     deletedObjects = {}
+    redoObjects = {}
     updateEditorList()
     print("[SUPERTOOL] Cleared editor history")
 end
@@ -1873,6 +1915,116 @@ local function createSlider(parent, labelText, min, max, initial, callback)
     return sliderFrame
 end
 
+local function selectAllSimilar()
+    if #selectedObjects == 0 then return end
+    local template = selectedObjects[1]
+    local name = template.Name
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name == name and obj ~= template then
+            table.insert(selectedObjects, obj)
+            local box = Instance.new("SelectionBox")
+            box.Parent = obj
+            box.Adornee = obj
+            box.LineThickness = 0.1
+            box.Color3 = Color3.fromRGB(0, 255, 0)
+            table.insert(selectionBoxes, box)
+        end
+    end
+    showEditorGUI()
+    print("[SUPERTOOL] Selected all similar objects to " .. name)
+end
+
+local function viewScripts()
+    if #selectedObjects == 0 then return end
+    local obj = selectedObjects[1]
+    local scripts = {}
+    for _, desc in pairs(obj:GetDescendants()) do
+        if desc:IsA("LocalScript") or desc:IsA("ModuleScript") or desc:IsA("Script") then
+            table.insert(scripts, desc)
+        end
+    end
+    if #scripts == 0 then
+        print("[SUPERTOOL] No scripts found in " .. obj.Name)
+        return
+    end
+    local scriptFrame = Instance.new("Frame")
+    scriptFrame.Parent = ScreenGui
+    scriptFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    scriptFrame.Size = UDim2.new(0, 400, 0, 300)
+    scriptFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    scriptFrame.Draggable = true
+    scriptFrame.Active = true
+
+    local title = Instance.new("TextLabel")
+    title.Parent = scriptFrame
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.Text = "Scripts in " .. obj.Name
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 12
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Parent = scriptFrame
+    closeBtn.Position = UDim2.new(1, -25, 0, 0)
+    closeBtn.Size = UDim2.new(0, 25, 0, 25)
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.BackgroundTransparency = 1
+    closeBtn.MouseButton1Click:Connect(function()
+        scriptFrame:Destroy()
+    end)
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Parent = scriptFrame
+    scroll.Position = UDim2.new(0, 0, 0, 25)
+    scroll.Size = UDim2.new(1, 0, 1, -25)
+    scroll.BackgroundTransparency = 1
+
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = scroll
+    layout.Padding = UDim.new(0, 5)
+
+    for _, script in pairs(scripts) do
+        local frame = Instance.new("Frame")
+        frame.Parent = scroll
+        frame.Size = UDim2.new(1, 0, 0, 50)
+        frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Parent = frame
+        nameLabel.Position = UDim2.new(0, 5, 0, 5)
+        nameLabel.Size = UDim2.new(1, -10, 0, 20)
+        nameLabel.Text = script.Name .. " (" .. script.ClassName .. ")"
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+        local sourceBtn = Instance.new("TextButton")
+        sourceBtn.Parent = frame
+        sourceBtn.Position = UDim2.new(0, 5, 0, 30)
+        sourceBtn.Size = UDim2.new(1, -10, 0, 20)
+        sourceBtn.Text = "View Source"
+        sourceBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+        sourceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        sourceBtn.MouseButton1Click:Connect(function()
+            if script:IsA("LocalScript") or script:IsA("ModuleScript") then
+                print("[SUPERTOOL] Script Source for " .. script.Name .. ":\n" .. script.Source)
+            else
+                print("[SUPERTOOL] Cannot view server Script source")
+            end
+        end)
+    end
+end
+
+local function injectScript(code)
+    if #selectedObjects == 0 then return end
+    local obj = selectedObjects[1]
+    local script = Instance.new("LocalScript")
+    script.Parent = obj
+    script.Source = code
+    script.Disabled = false
+    print("[SUPERTOOL] Injected LocalScript into " .. obj.Name)
+end
+
 local function showEditorGUI()
     if #selectedObjects == 0 then return end
     
@@ -2038,6 +2190,17 @@ local function showEditorGUI()
             showEditorGUI()
         end
     end)
+    
+    -- Select All Similar Button
+    local selectAllBtn = Instance.new("TextButton")
+    selectAllBtn.Parent = scrollFrame
+    selectAllBtn.Size = UDim2.new(1, 0, 0, 25)
+    selectAllBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 150)
+    selectAllBtn.Text = "Select All Similar"
+    selectAllBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    selectAllBtn.Font = Enum.Font.Gotham
+    selectAllBtn.TextSize = 10
+    selectAllBtn.MouseButton1Click:Connect(selectAllSimilar)
     
     -- Toggles Section (multi)
     local togglesSection = createSectionLabel("Toggles (Anchored, CanCollide)")
@@ -2334,6 +2497,31 @@ local function showEditorGUI()
         changeColor(colorInput.Text)
     end)
     
+    -- Transparency Change
+    local transLabel = Instance.new("TextLabel")
+    transLabel.Parent = scrollFrame
+    transLabel.Size = UDim2.new(1, 0, 0, 15)
+    transLabel.BackgroundTransparency = 1
+    transLabel.Text = "Transparency (0-1):"
+    transLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    transLabel.Font = Enum.Font.Gotham
+    transLabel.TextSize = 10
+    
+    local transInput = Instance.new("TextBox")
+    transInput.Parent = scrollFrame
+    transInput.Size = UDim2.new(1, 0, 0, 25)
+    transInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    transInput.Text = tostring(selectedObjects[1].Transparency)
+    transInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    transInput.Font = Enum.Font.Gotham
+    transInput.TextSize = 10
+    transInput.FocusLost:Connect(function()
+        local trans = tonumber(transInput.Text)
+        if trans then
+            changeTransparency(trans)
+        end
+    end)
+    
     -- Drag Move Button (existing, with better label)
     local dragBtn = Instance.new("TextButton")
     dragBtn.Parent = scrollFrame
@@ -2349,6 +2537,52 @@ local function showEditorGUI()
         if not isDragging and dragSteppedConn then
             dragSteppedConn:Disconnect()
             dragSteppedConn = nil
+        end
+    end)
+    
+    -- View Scripts Button
+    local viewScriptsBtn = Instance.new("TextButton")
+    viewScriptsBtn.Parent = scrollFrame
+    viewScriptsBtn.Size = UDim2.new(1, 0, 0, 25)
+    viewScriptsBtn.BackgroundColor3 = Color3.fromRGB(100, 150, 100)
+    viewScriptsBtn.Text = "View Scripts"
+    viewScriptsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    viewScriptsBtn.Font = Enum.Font.Gotham
+    viewScriptsBtn.TextSize = 10
+    viewScriptsBtn.MouseButton1Click:Connect(viewScripts)
+    
+    -- Inject Script
+    local injectLabel = Instance.new("TextLabel")
+    injectLabel.Parent = scrollFrame
+    injectLabel.Size = UDim2.new(1, 0, 0, 15)
+    injectLabel.BackgroundTransparency = 1
+    injectLabel.Text = "Inject LocalScript Code:"
+    injectLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    injectLabel.Font = Enum.Font.Gotham
+    injectLabel.TextSize = 10
+    
+    local injectInput = Instance.new("TextBox")
+    injectInput.Parent = scrollFrame
+    injectInput.Size = UDim2.new(1, 0, 0, 50)
+    injectInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    injectInput.PlaceholderText = "Enter Lua code..."
+    injectInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    injectInput.Font = Enum.Font.Gotham
+    injectInput.TextSize = 10
+    injectInput.MultiLine = true
+    
+    local injectBtn = Instance.new("TextButton")
+    injectBtn.Parent = scrollFrame
+    injectBtn.Size = UDim2.new(1, 0, 0, 25)
+    injectBtn.BackgroundColor3 = Color3.fromRGB(150, 100, 50)
+    injectBtn.Text = "Inject Script"
+    injectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    injectBtn.Font = Enum.Font.Gotham
+    injectBtn.TextSize = 10
+    injectBtn.MouseButton1Click:Connect(function()
+        if injectInput.Text ~= "" then
+            injectScript(injectInput.Text)
+            injectInput.Text = ""
         end
     end)
     
@@ -2418,6 +2652,23 @@ local function showEditorGUI()
         end
         clearSelection()
     end)
+    
+    -- Update selected status
+    if not selectedStatusLabel then
+        selectedStatusLabel = Instance.new("TextLabel")
+        selectedStatusLabel.Parent = ScreenGui
+        selectedStatusLabel.Position = UDim2.new(0.5, 0, 0, 5)
+        selectedStatusLabel.Size = UDim2.new(0, 200, 0, 30)
+        selectedStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        selectedStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        selectedStatusLabel.Visible = false
+    end
+    local names = {}
+    for _, obj in pairs(selectedObjects) do
+        table.insert(names, obj.Name)
+    end
+    selectedStatusLabel.Text = "Selected: " .. table.concat(names, ", ")
+    selectedStatusLabel.Visible = true
 end
 
 local function startDrag()
@@ -2675,7 +2926,7 @@ local function updateEditorList()
     
     pcall(function()
         for _, child in pairs(EditorScrollFrame:GetChildren()) do
-            if child:IsA("TextLabel") then
+            if child:IsA("Frame") then
                 child:Destroy()
             end
         end
@@ -3092,6 +3343,11 @@ local function setupKeyboardControls()
             elseif #editedObjects > 0 or #deletedObjects > 0 then
                 undoObjectEdit()
             end
+        end
+        
+        -- Ctrl+Y for redo
+        if input.KeyCode == Enum.KeyCode.Y and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+            redoObjectEdit()
         end
         
         -- Ctrl+P for pause/resume
