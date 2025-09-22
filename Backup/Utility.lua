@@ -2009,7 +2009,7 @@ local function viewScripts()
             if script:IsA("LocalScript") or script:IsA("ModuleScript") then
                 print("[SUPERTOOL] Script Source for " .. script.Name .. ":\n" .. script.Source)
             else
-                print("[SUPERTOOL] Cannot view server Script source")
+                print("[SUPERTOOL] Server Script source cannot be viewed from client")
             end
         end)
     end
@@ -4012,6 +4012,7 @@ function Utility.init(deps)
                         pathPaused = false
                         playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
+                    loadObjectEdits()
                 end
             end)
         end)
@@ -4049,6 +4050,13 @@ function Utility.init(deps)
         initObjectUI()
         initChatUI()
         print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Enhanced Object Editor with fixes)")
+    end)
+    
+    -- Reapply edits every 5 seconds to persist against server changes
+    RunService:BindToRenderStep("ReapplyEdits", Enum.RenderPriority.Last.Value, function()
+        if tick() % 5 == 0 then
+            loadObjectEdits()
+        end
     end)
 end
 
