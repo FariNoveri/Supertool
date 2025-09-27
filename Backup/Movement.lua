@@ -53,22 +53,27 @@ local joystickTouchId = nil
 
 -- Key states for PC controls
 local flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
-local floatKeys = {forward = false, back = false, left = false, right = false}
+local floatKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
 
 -- New features variables
 local positionHistory = {}
-local maxHistorySize = 180
+local maxHistorySize = 300 -- Increased to handle up to 5 seconds at ~60 fps
 local isBoostActive = false
 local isRespawning = false
+
+-- Rewind text display
+local rewindText
 
 -- New settings GUI
 local settingsFrame
 local speedInput, jumpInput, sprintInput, flyInput, swimInput
-local boostSpeedInput, boostDurationInput, rewindDurationInput
+local boostSpeedInput, boostDurationInput
 local slowFallSpeedInput, fastFallSpeedInput, moonGravityMultiplierInput
 local maxExtraJumpsInput, wallClimbSpeedInput, infiniteJumpMultiplierInput
 local applyButton, closeButton
 local persistToggle
+local rewindSlowButton, rewindMediumButton, rewindFastButton
+local currentRewindMode = "medium"
 
 -- Default settings
 local defaultSettings = {
@@ -79,7 +84,6 @@ local defaultSettings = {
     SwimSpeed = 100,
     BoostSpeed = 100,
     BoostDuration = 0.5,
-    RewindDuration = 2,
     SlowFallSpeed = -10,
     FastFallSpeed = -100,
     MoonGravityMultiplier = 1/6,
@@ -284,13 +288,82 @@ local function createSettingsGUI()
     swimInput = createInputField(scrolling, "Swim", "SwimSpeed", defaultSettings.SwimSpeed)
     boostSpeedInput = createInputField(scrolling, "Boost Speed", "BoostSpeed", defaultSettings.BoostSpeed)
     boostDurationInput = createInputField(scrolling, "Boost Duration", "BoostDuration", defaultSettings.BoostDuration)
-    rewindDurationInput = createInputField(scrolling, "Rewind Duration", "RewindDuration", defaultSettings.RewindDuration)
     slowFallSpeedInput = createInputField(scrolling, "Slow Fall Speed", "SlowFallSpeed", defaultSettings.SlowFallSpeed)
     fastFallSpeedInput = createInputField(scrolling, "Fast Fall Speed", "FastFallSpeed", defaultSettings.FastFallSpeed)
     moonGravityMultiplierInput = createInputField(scrolling, "Moon Gravity Multiplier", "MoonGravityMultiplier", defaultSettings.MoonGravityMultiplier)
     maxExtraJumpsInput = createInputField(scrolling, "Max Extra Jumps", "MaxExtraJumps", defaultSettings.MaxExtraJumps)
     wallClimbSpeedInput = createInputField(scrolling, "Wall Climb Speed", "WallClimbSpeed", defaultSettings.WallClimbSpeed)
     infiniteJumpMultiplierInput = createInputField(scrolling, "Infinite Jump Multiplier", "InfiniteJumpMultiplier", defaultSettings.InfiniteJumpMultiplier)
+
+    -- Rewind mode selection
+    local rewindModeFrame = Instance.new("Frame")
+    rewindModeFrame.Size = UDim2.new(1, 0, 0, 50)
+    rewindModeFrame.BackgroundTransparency = 1
+    rewindModeFrame.Parent = scrolling
+
+    local rewindLabel = Instance.new("TextLabel")
+    rewindLabel.Name = "RewindModeLabel"
+    rewindLabel.Size = UDim2.new(1, -10, 0, 20)
+    rewindLabel.Position = UDim2.new(0, 5, 0, 0)
+    rewindLabel.BackgroundTransparency = 1
+    rewindLabel.Text = "Rewind Speed:"
+    rewindLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rewindLabel.Font = Enum.Font.Gotham
+    rewindLabel.TextSize = 12
+    rewindLabel.TextXAlignment = Enum.TextXAlignment.Left
+    rewindLabel.Parent = rewindModeFrame
+
+    local buttonsFrame = Instance.new("Frame")
+    buttonsFrame.Size = UDim2.new(1, -10, 0, 30)
+    buttonsFrame.Position = UDim2.new(0, 5, 0, 20)
+    buttonsFrame.BackgroundTransparency = 1
+    buttonsFrame.Parent = rewindModeFrame
+
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize = UDim2.new(1/3, 0, 1, 0)
+    gridLayout.Parent = buttonsFrame
+
+    local function createModeButton(name, mode)
+        local button = Instance.new("TextButton")
+        button.Name = name .. "Button"
+        button.BackgroundColor3 = (currentRewindMode == mode) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(40, 40, 40)
+        button.TextColor3 = (currentRewindMode == mode) and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
+        button.Text = name
+        button.Font = Enum.Font.Gotham
+        button.TextSize = 14
+        button.Parent = buttonsFrame
+        return button
+    end
+
+    rewindSlowButton = createModeButton("Slow", "slow")
+    rewindMediumButton = createModeButton("Medium", "medium")
+    rewindFastButton = createModeButton("Fast", "fast")
+
+    local function updateRewindButtons()
+        rewindSlowButton.BackgroundColor3 = (currentRewindMode == "slow") and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(40, 40, 40)
+        rewindSlowButton.TextColor3 = (currentRewindMode == "slow") and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
+        rewindMediumButton.BackgroundColor3 = (currentRewindMode == "medium") and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(40, 40, 40)
+        rewindMediumButton.TextColor3 = (currentRewindMode == "medium") and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
+        rewindFastButton.BackgroundColor3 = (currentRewindMode == "fast") and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(40, 40, 40)
+        rewindFastButton.TextColor3 = (currentRewindMode == "fast") and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
+    end
+
+    rewindSlowButton.MouseButton1Click:Connect(function()
+        currentRewindMode = "slow"
+        settings.RewindMode = "slow"
+        updateRewindButtons()
+    end)
+    rewindMediumButton.MouseButton1Click:Connect(function()
+        currentRewindMode = "medium"
+        settings.RewindMode = "medium"
+        updateRewindButtons()
+    end)
+    rewindFastButton.MouseButton1Click:Connect(function()
+        currentRewindMode = "fast"
+        settings.RewindMode = "fast"
+        updateRewindButtons()
+    end)
+
     persistToggle = createToggleField(scrolling, "Keep Features After Death", Movement.persistFeatures)
 
     applyButton = Instance.new("TextButton")
@@ -323,7 +396,6 @@ local function createSettingsGUI()
         local swimVal = tonumber(swimInput.Text)
         local boostSpeedVal = tonumber(boostSpeedInput.Text)
         local boostDurationVal = tonumber(boostDurationInput.Text)
-        local rewindDurationVal = tonumber(rewindDurationInput.Text)
         local slowFallSpeedVal = tonumber(slowFallSpeedInput.Text)
         local fastFallSpeedVal = tonumber(fastFallSpeedInput.Text)
         local moonGravityMultiplierVal = tonumber(moonGravityMultiplierInput.Text)
@@ -331,14 +403,13 @@ local function createSettingsGUI()
         local wallClimbSpeedVal = tonumber(wallClimbSpeedInput.Text)
         local infiniteJumpMultiplierVal = tonumber(infiniteJumpMultiplierInput.Text)
 
-        if speedVal then settings.WalkSpeed = {value = speedVal} end
+        if speedVal then settings.WalkSpeed = {value = math.clamp(speedVal, 1, 50)} end
         if jumpVal then settings.JumpHeight = {value = jumpVal} end
-        if sprintVal then settings.SprintSpeed = {value = sprintVal} end
+        if sprintVal then settings.SprintSpeed = {value = math.max(sprintVal, 50)} end
         if flyVal then settings.FlySpeed = {value = flyVal} end
         if swimVal then settings.SwimSpeed = {value = swimVal} end
         if boostSpeedVal then settings.BoostSpeed = {value = boostSpeedVal} end
         if boostDurationVal then settings.BoostDuration = {value = boostDurationVal} end
-        if rewindDurationVal then settings.RewindDuration = {value = rewindDurationVal} end
         if slowFallSpeedVal then settings.SlowFallSpeed = {value = slowFallSpeedVal} end
         if fastFallSpeedVal then settings.FastFallSpeed = {value = fastFallSpeedVal} end
         if moonGravityMultiplierVal then settings.MoonGravityMultiplier = {value = moonGravityMultiplierVal} end
@@ -744,7 +815,7 @@ local function toggleFloat(enabled)
     Movement.floatEnabled = enabled
     updateButtonState("Float", enabled)
     
-    local floatConnections = {"float", "floatInput", "floatBegan", "floatEnded", "floatKeyBegan", "floatKeyEnded"}
+    local floatConnections = {"float", "floatInput", "floatBegan", "floatChanged", "floatEnded", "floatKeyBegan", "floatKeyEnded", "floatUp", "floatUpEnd", "floatDown", "floatDownEnd"}
     for _, connName in ipairs(floatConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
@@ -752,7 +823,7 @@ local function toggleFloat(enabled)
         end
     end
     
-    floatKeys = {forward = false, back = false, left = false, right = false}
+    floatKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
     
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
@@ -770,11 +841,13 @@ local function toggleFloat(enabled)
             
             humanoid.PlatformStand = true
             flyBodyVelocity = Instance.new("BodyVelocity")
-            flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
+            flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
             flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             flyBodyVelocity.Parent = rootPart
             
             if flyJoystickFrame then flyJoystickFrame.Visible = true end
+            if flyUpButton then flyUpButton.Visible = true end
+            if flyDownButton then flyDownButton.Visible = true end
             
             connections.float = RunService.Heartbeat:Connect(function()
                 if not Movement.floatEnabled then return end
@@ -783,7 +856,7 @@ local function toggleFloat(enabled)
                 if not flyBodyVelocity or flyBodyVelocity.Parent ~= rootPart then
                     if flyBodyVelocity then flyBodyVelocity:Destroy() end
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    flyBodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
+                    flyBodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
                     flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     flyBodyVelocity.Parent = rootPart
                 end
@@ -812,6 +885,8 @@ local function toggleFloat(enabled)
                 if floatKeys.back then keyDirection = keyDirection - flatLook end
                 if floatKeys.left then keyDirection = keyDirection - flatRight end
                 if floatKeys.right then keyDirection = keyDirection + flatRight end
+                if floatKeys.up then keyDirection = keyDirection + Vector3.new(0, 1, 0) end
+                if floatKeys.down then keyDirection = keyDirection - Vector3.new(0, 1, 0) end
                 
                 floatDirection = floatDirection + keyDirection
                 
@@ -833,6 +908,8 @@ local function toggleFloat(enabled)
                 elseif kc == Enum.KeyCode.S then floatKeys.back = true
                 elseif kc == Enum.KeyCode.A then floatKeys.left = true
                 elseif kc == Enum.KeyCode.D then floatKeys.right = true
+                elseif kc == Enum.KeyCode.Space then floatKeys.up = true
+                elseif kc == Enum.KeyCode.LeftShift then floatKeys.down = true
                 end
             end)
             
@@ -842,7 +919,22 @@ local function toggleFloat(enabled)
                 elseif kc == Enum.KeyCode.S then floatKeys.back = false
                 elseif kc == Enum.KeyCode.A then floatKeys.left = false
                 elseif kc == Enum.KeyCode.D then floatKeys.right = false
+                elseif kc == Enum.KeyCode.Space then floatKeys.up = false
+                elseif kc == Enum.KeyCode.LeftShift then floatKeys.down = false
                 end
+            end)
+            
+            connections.floatUp = flyUpButton.MouseButton1Down:Connect(function()
+                floatKeys.up = true
+            end)
+            connections.floatUpEnd = flyUpButton.MouseButton1Up:Connect(function()
+                floatKeys.up = false
+            end)
+            connections.floatDown = flyDownButton.MouseButton1Down:Connect(function()
+                floatKeys.down = true
+            end)
+            connections.floatDownEnd = flyDownButton.MouseButton1Up:Connect(function()
+                floatKeys.down = false
             end)
         end)
     else
@@ -853,6 +945,8 @@ local function toggleFloat(enabled)
             flyJoystickFrame.Visible = false
             flyJoystickKnob.Position = UDim2.new(0.5, -20, 0.5, -20)
         end
+        if flyUpButton then flyUpButton.Visible = false end
+        if flyDownButton then flyDownButton.Visible = false end
         
         joystickDelta = Vector2.new(0, 0)
         isTouchingJoystick = false
@@ -1001,6 +1095,23 @@ local function createRewindButton()
     corner.Parent = rewindButton
 end
 
+local function createRewindText()
+    if rewindText then rewindText:Destroy() end
+    
+    rewindText = Instance.new("TextLabel")
+    rewindText.Name = "RewindText"
+    rewindText.Size = UDim2.new(0, 200, 0, 50)
+    rewindText.Position = UDim2.new(1, -210, 0, 10)
+    rewindText.BackgroundTransparency = 1
+    rewindText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rewindText.Font = Enum.Font.GothamBold
+    rewindText.TextSize = 20
+    rewindText.TextXAlignment = Enum.TextXAlignment.Right
+    rewindText.Visible = false
+    rewindText.ZIndex = 10
+    pcall(function() rewindText.Parent = ScreenGui or player.PlayerGui end)
+end
+
 local function toggleRewind(enabled)
     Movement.rewindEnabled = enabled
     updateButtonState("Smooth Rewind", enabled)
@@ -1020,6 +1131,7 @@ local function toggleRewind(enabled)
     
     if enabled then
         createRewindButton()
+        createRewindText()
         if rewindButton then
             rewindButton.Visible = true
         end
@@ -1044,6 +1156,7 @@ local function toggleRewind(enabled)
             Movement.isRewinding = true
             rewindButton.BackgroundTransparency = 0.1
             rewindButton.Text = "STOP"
+            rewindText.Visible = true
             
             local reversedHistory = {}
             for i = #positionHistory, 1, -1 do
@@ -1051,7 +1164,7 @@ local function toggleRewind(enabled)
             end
             
             local startTime = tick()
-            local rewindDuration = getSettingValue("RewindDuration", defaultSettings.RewindDuration)
+            local rewindDuration = (currentRewindMode == "slow" and 4) or (currentRewindMode == "medium" and 2) or 1
             local historyLength = #reversedHistory
             
             local rewindConnection
@@ -1062,17 +1175,21 @@ local function toggleRewind(enabled)
                         rewindButton.BackgroundTransparency = 0.5
                         rewindButton.Text = "⏪"
                     end
+                    rewindText.Visible = false
                     positionHistory = {}
                     return
                 end
                 
                 if not refreshReferences() or not rootPart then
                     rewindConnection:Disconnect()
+                    rewindText.Visible = false
                     return
                 end
                 
                 local elapsed = tick() - startTime
                 local progress = math.min(elapsed / rewindDuration, 1)
+                local remaining = math.ceil(rewindDuration - elapsed)
+                rewindText.Text = "rewinding " .. remaining
                 
                 local index = progress * (historyLength - 1) + 1
                 local floorIndex = math.floor(index)
@@ -1097,6 +1214,7 @@ local function toggleRewind(enabled)
                         rewindButton.BackgroundTransparency = 0.5
                         rewindButton.Text = "⏪"
                     end
+                    rewindText.Visible = false
                     positionHistory = {}
                     Movement.isRewinding = false
                 end
@@ -1128,6 +1246,9 @@ local function toggleRewind(enabled)
     else
         if rewindButton then
             rewindButton.Visible = false
+        end
+        if rewindText then
+            rewindText.Visible = false
         end
         positionHistory = {}
     end
@@ -1269,7 +1390,7 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Bunny Hop
+-- Bunny Hop (CS:GO style with air acceleration)
 local function toggleBunnyHop(enabled)
     Movement.bunnyHopEnabled = enabled
     updateButtonState("Bunny Hop", enabled)
@@ -1280,12 +1401,25 @@ local function toggleBunnyHop(enabled)
     end
 
     if enabled then
-        connections.bunnyHop = RunService.Heartbeat:Connect(function()
+        local airAccel = 100  -- Adjust for more/less acceleration
+        connections.bunnyHop = RunService.Stepped:Connect(function(_, step)
             if not Movement.bunnyHopEnabled then return end
             if not refreshReferences() or not humanoid or not rootPart then return end
-            if humanoid:GetState() == Enum.HumanoidStateType.Freefall then return end
-            if humanoid.MoveDirection.Magnitude > 0 then
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            if humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then return end
+
+            local moveDir = humanoid.MoveDirection
+            if moveDir.Magnitude == 0 then return end
+
+            local wishSpeed = humanoid.WalkSpeed
+            local vel = rootPart.Velocity
+            local horizVel = Vector3.new(vel.X, 0, vel.Z)
+            local speed = horizVel:Dot(moveDir)
+
+            if speed < wishSpeed then
+                local addSpeed = wishSpeed - speed
+                local accel = airAccel * wishSpeed * step
+                if accel > addSpeed then accel = addSpeed end
+                rootPart.Velocity = vel + moveDir * accel
             end
         end)
     end
@@ -1567,8 +1701,8 @@ local function setupChatCommands()
             elseif cmd == "/speed" then
                 local val = tonumber(args[2])
                 if val then
-                    settings.WalkSpeed = {value = val}
-                    sendServerMessage("Speed set to " .. val)
+                    settings.WalkSpeed = {value = math.clamp(val, 1, 50)}
+                    sendServerMessage("Speed set to " .. settings.WalkSpeed.value)
                     if Movement.speedEnabled then
                         toggleSpeed(true)
                     end
@@ -1585,8 +1719,8 @@ local function setupChatCommands()
             elseif cmd == "/sprint" then
                 local val = tonumber(args[2])
                 if val then
-                    settings.SprintSpeed = {value = val}
-                    sendServerMessage("Sprint speed set to " .. val)
+                    settings.SprintSpeed = {value = math.max(val, 50)}
+                    sendServerMessage("Sprint speed set to " .. settings.SprintSpeed.value)
                     if Movement.sprintEnabled then
                         toggleSprint(true)
                     end
@@ -1922,7 +2056,7 @@ function Movement.resetStates()
         "rewindToggle", "boost", "boostInput", "boostToggle", "slowFall", 
         "fastFall", "sprint", "sprintInput", "sprintToggle", "flyKeyBegan", 
         "flyKeyEnded", "floatKeyBegan", "floatKeyEnded", "wallClimbButton",
-        "swim", "chat", "chatInput", "chatMonitor", "bunnyHop"
+        "swim", "chat", "chatInput", "chatMonitor", "bunnyHop", "floatUp", "floatUpEnd", "floatDown", "floatDownEnd"
     }
     for _, connName in ipairs(allConnections) do
         if connections[connName] then
@@ -2003,6 +2137,9 @@ function Movement.resetStates()
     if wallClimbButton then
         wallClimbButton.Visible = false
         wallClimbButton.Text = "CLIMB"
+    end
+    if rewindText then
+        rewindText.Visible = false
     end
     
     Movement.jumpCount = 0
@@ -2088,22 +2225,16 @@ function Movement.init(deps)
         return false
     end
     
-    if humanoid then
-        Movement.defaultWalkSpeed = humanoid.WalkSpeed or 16
-        if humanoid:FindFirstChild("JumpHeight") then
-            Movement.defaultJumpHeight = humanoid.JumpHeight or 7.2
-        else
-            Movement.defaultJumpPower = humanoid.JumpPower or 50
-        end
-    end
-    Movement.defaultGravity = Workspace.Gravity or 196.2
-    
     -- Initialize default settings if not present
     for k, v in pairs(defaultSettings) do
         if not settings[k] then
             settings[k] = {value = v}
         end
     end
+    if not settings.RewindMode then
+        settings.RewindMode = "medium"
+    end
+    currentRewindMode = settings.RewindMode
     
     Movement.speedEnabled = false
     Movement.jumpEnabled = false
@@ -2236,6 +2367,7 @@ function Movement.cleanup()
     if sprintButton then sprintButton:Destroy() end
     if wallClimbButton then wallClimbButton:Destroy() end
     if settingsFrame then settingsFrame:Destroy() end
+    if rewindText then rewindText:Destroy() end
     
     flyJoystickFrame = nil
     flyJoystickKnob = nil
@@ -2248,6 +2380,7 @@ function Movement.cleanup()
     sprintButton = nil
     wallClimbButton = nil
     settingsFrame = nil
+    rewindText = nil
     
     positionHistory = {}
     isBoostActive = false

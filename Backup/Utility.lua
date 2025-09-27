@@ -2009,7 +2009,7 @@ local function viewScripts()
             if script:IsA("LocalScript") or script:IsA("ModuleScript") then
                 print("[SUPERTOOL] Script Source for " .. script.Name .. ":\n" .. script.Source)
             else
-                print("[SUPERTOOL] Server Script source cannot be viewed from client")
+                print("[SUPERTOOL] server Script source cannot be viewed from client")
             end
         end)
     end
@@ -3690,12 +3690,6 @@ local function setupChatCustom()
     local success, err = pcall(function()
         local chatGui = player.PlayerGui:WaitForChild("Chat", 10)
         if not chatGui then return end
-        -- Disable default chat scripts
-        for _, desc in pairs(chatGui:GetDescendants()) do
-            if desc:IsA("LocalScript") and (desc.Name == "ChatMain" or desc.Name == "ChatScript" or desc.Name == "BubbleChat") then
-                desc.Disabled = true
-            end
-        end
         -- Get chat bar
         local chatBar = chatGui.Frame.ChatBarParentFrame.Frame.BoxFrame.BackgroundFrame.TextBox
         -- Get say request
@@ -3706,30 +3700,40 @@ local function setupChatCustom()
         chatBar.FocusLost:Connect(function(enterPressed)
             if enterPressed then
                 local msg = chatBar.Text
+                chatBar.Text = ""
                 if #msg > 0 then
                     local modMsg = applyMessageMods(msg)
                     sayMessageRequest:FireServer(modMsg, "All")
-                    chatBar.Text = ""
                 end
             end
         end)
         -- For name tag
         local messageLog = chatGui.Frame.ChatChannelParentFrame.Frame_MessageLogDisplay.Scroller
+        local ourDisplayName = player.DisplayName
+        local ourUsername = player.Name
         messageLog.ChildAdded:Connect(function(child)
-            task.wait()
-            for _, desc in pairs(child:GetChildren()) do
-                if desc:IsA("TextButton") and desc.Text == player.Name .. ": " then
-                    local baseName = player.Name
-                    local tagged
-                    if tagPosition == "front" then
-                        tagged = nameTag .. baseName
-                    elseif tagPosition == "back" then
-                        tagged = baseName .. nameTag
-                    else  -- middle
-                        local half = math.floor(#baseName / 2)
-                        tagged = baseName:sub(1, half) .. nameTag .. baseName:sub(half + 1)
+            task.wait(0.1)
+            for _, desc in pairs(child:GetDescendants()) do
+                if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                    local text = desc.Text
+                    local baseName
+                    if text:find(ourDisplayName .. ": ") then
+                        baseName = ourDisplayName
+                    elseif text:find(ourUsername .. ": ") then
+                        baseName = ourUsername
                     end
-                    desc.Text = tagged .. ": "
+                    if baseName then
+                        local tagged
+                        if tagPosition == "front" then
+                            tagged = nameTag .. baseName
+                        elseif tagPosition == "back" then
+                            tagged = baseName .. nameTag
+                        else  -- middle
+                            local half = math.floor(#baseName / 2)
+                            tagged = baseName:sub(1, half) .. nameTag .. baseName:sub(half + 1)
+                        end
+                        desc.Text = text:gsub(baseName, tagged, 1)
+                    end
                 end
             end
         end)

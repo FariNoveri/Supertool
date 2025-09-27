@@ -24,6 +24,7 @@ Teleport.smoothTeleportSpeed = 100 -- studs per second
 Teleport.doubleClickTeleportEnabled = false -- New: Toggle for double-click TP to mouse
 Teleport.lastClickTime = 0
 Teleport.doubleClickThreshold = 0.5 -- seconds for double click
+Teleport.undoStack = {} -- New: Undo stack for directional and double-click teleports
 
 -- UI Elements (to be initialized in initUI function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
@@ -1135,6 +1136,10 @@ function Teleport.teleportForward(distance)
         return
     end
     local currentCFrame = root.CFrame
+    if #Teleport.undoStack >= 50 then
+        table.remove(Teleport.undoStack, 1)
+    end
+    table.insert(Teleport.undoStack, currentCFrame)
     local forwardVector = currentCFrame.LookVector * (distance or 10)
     safeTeleport(currentCFrame + forwardVector)
     print("Teleported forward by " .. (distance or 10) .. " units")
@@ -1147,6 +1152,10 @@ function Teleport.teleportBackward(distance)
         return
     end
     local currentCFrame = root.CFrame
+    if #Teleport.undoStack >= 50 then
+        table.remove(Teleport.undoStack, 1)
+    end
+    table.insert(Teleport.undoStack, currentCFrame)
     local backwardVector = -currentCFrame.LookVector * (distance or 10)
     safeTeleport(currentCFrame + backwardVector)
     print("Teleported backward by " .. (distance or 10) .. " units")
@@ -1159,6 +1168,10 @@ function Teleport.teleportRight(distance)
         return
     end
     local currentCFrame = root.CFrame
+    if #Teleport.undoStack >= 50 then
+        table.remove(Teleport.undoStack, 1)
+    end
+    table.insert(Teleport.undoStack, currentCFrame)
     local rightVector = currentCFrame.RightVector * (distance or 10)
     safeTeleport(currentCFrame + rightVector)
     print("Teleported right by " .. (distance or 10) .. " units")
@@ -1171,6 +1184,10 @@ function Teleport.teleportLeft(distance)
         return
     end
     local currentCFrame = root.CFrame
+    if #Teleport.undoStack >= 50 then
+        table.remove(Teleport.undoStack, 1)
+    end
+    table.insert(Teleport.undoStack, currentCFrame)
     local leftVector = -currentCFrame.RightVector * (distance or 10)
     safeTeleport(currentCFrame + leftVector)
     print("Teleported left by " .. (distance or 10) .. " units")
@@ -1183,6 +1200,10 @@ function Teleport.teleportUp(distance)
         return
     end
     local currentCFrame = root.CFrame
+    if #Teleport.undoStack >= 50 then
+        table.remove(Teleport.undoStack, 1)
+    end
+    table.insert(Teleport.undoStack, currentCFrame)
     local upVector = currentCFrame.UpVector * (distance or 10)
     safeTeleport(currentCFrame + upVector)
     print("Teleported up by " .. (distance or 10) .. " units")
@@ -1195,6 +1216,10 @@ function Teleport.teleportDown(distance)
         return
     end
     local currentCFrame = root.CFrame
+    if #Teleport.undoStack >= 50 then
+        table.remove(Teleport.undoStack, 1)
+    end
+    table.insert(Teleport.undoStack, currentCFrame)
     local downVector = -currentCFrame.UpVector * (distance or 10)
     safeTeleport(currentCFrame + downVector)
     print("Teleported down by " .. (distance or 10) .. " units")
@@ -1353,6 +1378,8 @@ function Teleport.init(deps)
         warn("Critical dependencies missing for Teleport module!")
         return false
     end
+
+    ScreenGui.ResetOnSpawn = false  -- Prevent GUI reset on respawn
 
     Teleport.savedPositions = Teleport.savedPositions or {}
     Teleport.positionNumbers = Teleport.positionNumbers or {}
@@ -1718,23 +1745,37 @@ function Teleport.init(deps)
     Teleport.loadSavedPositions()
     print("[SUPERTOOL] Teleport module initialized with JSON sync to: " .. TELEPORT_FOLDER_PATH)
 
-    -- Setup double click teleport
+    -- Setup double click teleport and undo
     local UserInputService = game:GetService("UserInputService")
     local Mouse = player:GetMouse()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed or not Teleport.doubleClickTeleportEnabled then return end
+        if gameProcessed then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if not Teleport.doubleClickTeleportEnabled then return end
             local root = getRootPart()
             if not root then return end
             local currentTime = tick()
             if currentTime - Teleport.lastClickTime < Teleport.doubleClickThreshold then
                 local hit = Mouse.Hit
                 if hit then
+                    local currentCFrame = root.CFrame
+                    if #Teleport.undoStack >= 50 then
+                        table.remove(Teleport.undoStack, 1)
+                    end
+                    table.insert(Teleport.undoStack, currentCFrame)
                     safeTeleport(hit)
                     print("Double click teleported to mouse position")
                 end
             end
             Teleport.lastClickTime = currentTime
+        elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Z then
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then
+                if #Teleport.undoStack > 0 then
+                    local prevCFrame = table.remove(Teleport.undoStack)
+                    safeTeleport(prevCFrame)
+                    print("Undid last teleport")
+                end
+            end
         end
     end)
     
