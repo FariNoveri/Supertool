@@ -978,6 +978,7 @@ end
 
 -- On character respawn
 local function onCharacterAdded(character)
+    Teleport.lastClickTime = 0
     if Teleport.autoTeleportActive then
         Teleport.autoTeleportPaused = true
         print("Auto teleport paused due to character respawn")
