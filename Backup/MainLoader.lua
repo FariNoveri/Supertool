@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION WITH CREDIT + SLIDE NOTIFICATION-
+-- Main entry point for MinimalHackGUI by Fari Noveri - UPDATED VERSION WITH NEW SETTINGS
 
 -- Services
 local Players = game:GetService("Players")
@@ -20,14 +20,14 @@ local categoryStates = {} -- Store feature states per category
 local activeFeature = nil -- Track currently active exclusive feature
 local exclusiveFeatures = {} -- List of features that should be exclusive
 
--- Settings
+-- Settings - UPDATED: Removed WalkSpeed, Added GUI Controls
 local settings = {
     FlySpeed = {value = 50, min = 10, max = 200, default = 50},
     FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
     JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
-    WalkSpeed = {value = 16, min = 10, max = 200, default = 16},
     GuiWidth = {value = 500, min = 300, max = 800, default = 500},
-    GuiHeight = {value = 300, min = 200, max = 600, default = 300}
+    GuiHeight = {value = 300, min = 200, max = 600, default = 300},
+    GuiOpacity = {value = 1.0, min = 0.1, max = 1.0, default = 1.0}
 }
 
 -- ScreenGui
@@ -330,7 +330,7 @@ FeatureLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- Categories - ADDED CREDIT CATEGORY
+-- Categories
 local categories = {
     {name = "Movement", order = 1},
     {name = "Player", order = 2},
@@ -340,17 +340,16 @@ local categories = {
     {name = "AntiAdmin", order = 6},
     {name = "Settings", order = 7},
     {name = "Info", order = 8},
-    {name = "Credit", order = 9}  -- NEW CREDIT CATEGORY
+    {name = "Credit", order = 9}
 }
 
 local categoryFrames = {}
 local isMinimized = false
 
--- Load modules - FIXED VERSION WITH CREDIT MODULE
+-- Load modules
 local modules = {}
 local modulesLoaded = {}
 
--- ADDED CREDIT MODULE URL
 local moduleURLs = {
     Movement = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Movement.lua",
     Player = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Player.lua",
@@ -360,7 +359,7 @@ local moduleURLs = {
     AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/AntiAdmin.lua",
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Settings.lua",
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua",
-    Credit = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Credit.lua"  -- NEW CREDIT URL
+    Credit = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Credit.lua"
 }
 
 -- PROPER MODULE LOADING FUNCTION
@@ -431,7 +430,7 @@ for moduleName, _ in pairs(moduleURLs) do
     end)
 end
 
--- FIXED Dependencies for modules - THIS IS THE CRITICAL FIX
+-- Dependencies for modules - UPDATED with new settings
 local dependencies = {
     Players = Players,
     UserInputService = UserInputService,
@@ -439,14 +438,14 @@ local dependencies = {
     Workspace = Workspace,
     Lighting = Lighting,
     ScreenGui = ScreenGui,
-    ScrollFrame = FeatureContainer,  -- CRITICAL FIX: Visual and other modules need this!
+    ScrollFrame = FeatureContainer,
     settings = settings,
     connections = connections,
     buttonStates = buttonStates,
     player = player
 }
 
--- ROBUST Initialize modules function
+-- Initialize modules function
 local function initializeModules()
     print("Initializing loaded modules...")
     local initResults = {}
@@ -461,7 +460,7 @@ local function initializeModules()
                 dependencies.character = character
                 dependencies.humanoid = humanoid
                 dependencies.rootPart = rootPart
-                dependencies.ScrollFrame = FeatureContainer  -- Ensure this is always current
+                dependencies.ScrollFrame = FeatureContainer
                 
                 -- Validate critical dependencies before init
                 if not dependencies.ScrollFrame then
@@ -650,7 +649,7 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     return result
 end
 
--- COMPLETELY REWRITTEN LOAD BUTTONS FUNCTION WITH FULL ERROR ISOLATION AND CREDIT SUPPORT
+-- LOAD BUTTONS FUNCTION
 local function loadButtons()
     print("Loading buttons for category: " .. selectedCategory)
     
@@ -931,7 +930,7 @@ local function onCharacterAdded(newCharacter)
         dependencies.character = character
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
-        dependencies.ScrollFrame = FeatureContainer  -- Ensure this is always current
+        dependencies.ScrollFrame = FeatureContainer
         
         print("Character setup complete, updating module references...")
         
@@ -1006,6 +1005,7 @@ task.spawn(function()
     local startTime = tick()
     
     print("=== MinimalHackGUI Initialization Started ===")
+    print("Settings updated: Removed WalkSpeed, Added GuiOpacity")
     
     -- Wait for at least one critical module to load
     while tick() - startTime < timeout do
@@ -1099,6 +1099,8 @@ task.spawn(function()
     
     print("=== MinimalHackGUI Initialization Complete ===")
     print("Press HOME key to toggle GUI visibility")
+    print("New Settings: GUI Width, GUI Height, GUI Opacity controls added")
+    print("Removed: WalkSpeed setting (now handled in Movement module)")
     print("Loaded modules will continue loading in background")
     
     -- Continue trying to load failed modules in background
@@ -1146,4 +1148,11 @@ task.spawn(function()
     
     print(string.format("Health check: %d working modules, GUI %s", 
           workingModules, (ScreenGui and ScreenGui.Parent) and "OK" or "ERROR"))
+    
+    -- Display current settings info
+    print("Current Settings Configuration:")
+    for settingName, setting in pairs(settings) do
+        print(string.format("  %s: %s (range: %s-%s)", 
+              settingName, setting.value, setting.min, setting.max))
+    end
 end)
