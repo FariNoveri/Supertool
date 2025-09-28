@@ -1,4 +1,4 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION WITH CREDIT + SLIDE NOTIFICATION
+-- Main entry point for MinimalHackGUI by Fari Noveri - COMPLETELY FIXED VERSION WITH CREDIT + SLIDE NOTIFICATION-
 
 -- Services
 local Players = game:GetService("Players")
