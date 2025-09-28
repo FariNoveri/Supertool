@@ -1536,7 +1536,7 @@ local function setTimeMode(mode)
     end
 end
 
-local function disableOtherTimeModes(currentButton)
+local function disableOtherOtherTimeModes(currentButton)
     for _, btn in ipairs(timeModeButtons) do
         if btn ~= currentButton and buttonStates[btn] then
             buttonStates[btn] = false
@@ -2173,7 +2173,7 @@ local function applyCustomName()
     if not billboard then return end
     
     for _, child in pairs(billboard:GetChildren()) do
-        if child:IsA("TextLabel") and (child.Text == player.Name or child.Text == player.DisplayName) then
+        if child:IsA("TextLabel") then
             child.Text = customName
         end
     end
