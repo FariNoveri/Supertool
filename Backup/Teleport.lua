@@ -1,6 +1,10 @@
 -- Teleport-related features for MinimalHackGUI by Fari Noveri
 -- ENHANCED VERSION: Added JSON file persistence, directional teleport buttons, scrollable UI
 
+if _G.Teleport then
+    return _G.Teleport
+end
+
 -- Dependencies: These must be passed from mainloader.lua
 local Players, Workspace, ScreenGui, ScrollFrame, player, rootPart, settings
 
@@ -25,6 +29,7 @@ Teleport.doubleClickTeleportEnabled = false -- New: Toggle for double-click TP t
 Teleport.lastClickTime = 0
 Teleport.doubleClickThreshold = 0.5 -- seconds for double click
 Teleport.undoStack = {} -- New: Undo stack for directional and double-click teleports
+Teleport.initialized = false
 
 -- UI Elements (to be initialized in initUI function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
@@ -1367,6 +1372,11 @@ end
 
 -- Function to set dependencies and initialize UI
 function Teleport.init(deps)
+    if Teleport.initialized then
+        return true
+    end
+    Teleport.initialized = true
+
     ScreenGui = deps.ScreenGui
     ScrollFrame = deps.ScrollFrame
     Players = deps.Players
@@ -1419,262 +1429,336 @@ function Teleport.init(deps)
         end
         print("Creating Position Manager UI...")
 
-        PositionFrame = Instance.new("Frame")
-        PositionFrame.Name = "PositionFrame"
-        PositionFrame.Parent = ScreenGui
-        PositionFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-        PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-        PositionFrame.BorderSizePixel = 1
-        PositionFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
-        PositionFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased size for new elements
-        PositionFrame.Visible = false
-        PositionFrame.Active = true
-        PositionFrame.Draggable = true
+        PositionFrame = ScreenGui:FindFirstChild("PositionFrame")
+        if not PositionFrame then
+            PositionFrame = Instance.new("Frame")
+            PositionFrame.Name = "PositionFrame"
+            PositionFrame.Parent = ScreenGui
+            PositionFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+            PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
+            PositionFrame.BorderSizePixel = 1
+            PositionFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
+            PositionFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased size for new elements
+            PositionFrame.Visible = false
+            PositionFrame.Active = true
+            PositionFrame.Draggable = true
+        end
 
-        local PositionTitle = Instance.new("TextLabel")
-        PositionTitle.Name = "Title"
-        PositionTitle.Parent = PositionFrame
-        PositionTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        PositionTitle.BorderSizePixel = 0
-        PositionTitle.Position = UDim2.new(0, 0, 0, 0)
-        PositionTitle.Size = UDim2.new(1, 0, 0, 28)
-        PositionTitle.Font = Enum.Font.Gotham
-        PositionTitle.Text = "POSITION MANAGER - JSON SYNC"
-        PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-        PositionTitle.TextSize = 11
+        local PositionTitle = PositionFrame:FindFirstChild("Title")
+        if not PositionTitle then
+            PositionTitle = Instance.new("TextLabel")
+            PositionTitle.Name = "Title"
+            PositionTitle.Parent = PositionFrame
+            PositionTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            PositionTitle.BorderSizePixel = 0
+            PositionTitle.Position = UDim2.new(0, 0, 0, 0)
+            PositionTitle.Size = UDim2.new(1, 0, 0, 28)
+            PositionTitle.Font = Enum.Font.Gotham
+            PositionTitle.Text = "POSITION MANAGER - JSON SYNC"
+            PositionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            PositionTitle.TextSize = 11
+        end
 
-        local ClosePositionButton = Instance.new("TextButton")
-        ClosePositionButton.Name = "CloseButton"
-        ClosePositionButton.Parent = PositionFrame
-        ClosePositionButton.BackgroundTransparency = 1
-        ClosePositionButton.Position = UDim2.new(1, -25, 0, 3)
-        ClosePositionButton.Size = UDim2.new(0, 22, 0, 22)
-        ClosePositionButton.Font = Enum.Font.GothamBold
-        ClosePositionButton.Text = "X"
-        ClosePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        ClosePositionButton.TextSize = 11
+        local ClosePositionButton = PositionFrame:FindFirstChild("CloseButton")
+        if not ClosePositionButton then
+            ClosePositionButton = Instance.new("TextButton")
+            ClosePositionButton.Name = "CloseButton"
+            ClosePositionButton.Parent = PositionFrame
+            ClosePositionButton.BackgroundTransparency = 1
+            ClosePositionButton.Position = UDim2.new(1, -25, 0, 3)
+            ClosePositionButton.Size = UDim2.new(0, 22, 0, 22)
+            ClosePositionButton.Font = Enum.Font.GothamBold
+            ClosePositionButton.Text = "X"
+            ClosePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            ClosePositionButton.TextSize = 11
+        end
 
-        PositionInput = Instance.new("TextBox")
-        PositionInput.Name = "PositionInput"
-        PositionInput.Parent = PositionFrame
-        PositionInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        PositionInput.BorderSizePixel = 0
-        PositionInput.Position = UDim2.new(0, 8, 0, 35)
-        PositionInput.Size = UDim2.new(1, -70, 0, 25)
-        PositionInput.Font = Enum.Font.Gotham
-        PositionInput.PlaceholderText = "Position name..."
-        PositionInput.Text = ""
-        PositionInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        PositionInput.TextSize = 10
+        PositionInput = PositionFrame:FindFirstChild("PositionInput")
+        if not PositionInput then
+            PositionInput = Instance.new("TextBox")
+            PositionInput.Name = "PositionInput"
+            PositionInput.Parent = PositionFrame
+            PositionInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            PositionInput.BorderSizePixel = 0
+            PositionInput.Position = UDim2.new(0, 8, 0, 35)
+            PositionInput.Size = UDim2.new(1, -70, 0, 25)
+            PositionInput.Font = Enum.Font.Gotham
+            PositionInput.PlaceholderText = "Position name..."
+            PositionInput.Text = ""
+            PositionInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            PositionInput.TextSize = 10
+        end
 
-        SavePositionButton = Instance.new("TextButton")
-        SavePositionButton.Name = "SavePositionButton"
-        SavePositionButton.Parent = PositionFrame
-        SavePositionButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        SavePositionButton.BorderSizePixel = 0
-        SavePositionButton.Position = UDim2.new(1, -55, 0, 35)
-        SavePositionButton.Size = UDim2.new(0, 50, 0, 25)
-        SavePositionButton.Font = Enum.Font.Gotham
-        SavePositionButton.Text = "SAVE"
-        SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        SavePositionButton.TextSize = 9
+        SavePositionButton = PositionFrame:FindFirstChild("SavePositionButton")
+        if not SavePositionButton then
+            SavePositionButton = Instance.new("TextButton")
+            SavePositionButton.Name = "SavePositionButton"
+            SavePositionButton.Parent = PositionFrame
+            SavePositionButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            SavePositionButton.BorderSizePixel = 0
+            SavePositionButton.Position = UDim2.new(1, -55, 0, 35)
+            SavePositionButton.Size = UDim2.new(0, 50, 0, 25)
+            SavePositionButton.Font = Enum.Font.Gotham
+            SavePositionButton.Text = "SAVE"
+            SavePositionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SavePositionButton.TextSize = 9
+        end
 
-        CoordInputX = Instance.new("TextBox")
-        CoordInputX.Parent = PositionFrame
-        CoordInputX.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        CoordInputX.BorderSizePixel = 0
-        CoordInputX.Position = UDim2.new(0, 8, 0, 65)
-        CoordInputX.Size = UDim2.new(0.3, -5, 0, 25)
-        CoordInputX.Font = Enum.Font.Gotham
-        CoordInputX.PlaceholderText = "X"
-        CoordInputX.Text = ""
-        CoordInputX.TextColor3 = Color3.fromRGB(255, 255, 255)
-        CoordInputX.TextSize = 10
+        CoordInputX = PositionFrame:FindFirstChild("CoordInputX")
+        if not CoordInputX then
+            CoordInputX = Instance.new("TextBox")
+            CoordInputX.Name = "CoordInputX"
+            CoordInputX.Parent = PositionFrame
+            CoordInputX.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            CoordInputX.BorderSizePixel = 0
+            CoordInputX.Position = UDim2.new(0, 8, 0, 65)
+            CoordInputX.Size = UDim2.new(0.3, -5, 0, 25)
+            CoordInputX.Font = Enum.Font.Gotham
+            CoordInputX.PlaceholderText = "X"
+            CoordInputX.Text = ""
+            CoordInputX.TextColor3 = Color3.fromRGB(255, 255, 255)
+            CoordInputX.TextSize = 10
+        end
 
-        CoordInputY = Instance.new("TextBox")
-        CoordInputY.Parent = PositionFrame
-        CoordInputY.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        CoordInputY.BorderSizePixel = 0
-        CoordInputY.Position = UDim2.new(0.3, 0, 0, 65)
-        CoordInputY.Size = UDim2.new(0.3, -5, 0, 25)
-        CoordInputY.Font = Enum.Font.Gotham
-        CoordInputY.PlaceholderText = "Y"
-        CoordInputY.Text = ""
-        CoordInputY.TextColor3 = Color3.fromRGB(255, 255, 255)
-        CoordInputY.TextSize = 10
+        CoordInputY = PositionFrame:FindFirstChild("CoordInputY")
+        if not CoordInputY then
+            CoordInputY = Instance.new("TextBox")
+            CoordInputY.Name = "CoordInputY"
+            CoordInputY.Parent = PositionFrame
+            CoordInputY.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            CoordInputY.BorderSizePixel = 0
+            CoordInputY.Position = UDim2.new(0.3, 0, 0, 65)
+            CoordInputY.Size = UDim2.new(0.3, -5, 0, 25)
+            CoordInputY.Font = Enum.Font.Gotham
+            CoordInputY.PlaceholderText = "Y"
+            CoordInputY.Text = ""
+            CoordInputY.TextColor3 = Color3.fromRGB(255, 255, 255)
+            CoordInputY.TextSize = 10
+        end
 
-        CoordInputZ = Instance.new("TextBox")
-        CoordInputZ.Parent = PositionFrame
-        CoordInputZ.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        CoordInputZ.BorderSizePixel = 0
-        CoordInputZ.Position = UDim2.new(0.6, 0, 0, 65)
-        CoordInputZ.Size = UDim2.new(0.3, -5, 0, 25)
-        CoordInputZ.Font = Enum.Font.Gotham
-        CoordInputZ.PlaceholderText = "Z"
-        CoordInputZ.Text = ""
-        CoordInputZ.TextColor3 = Color3.fromRGB(255, 255, 255)
-        CoordInputZ.TextSize = 10
+        CoordInputZ = PositionFrame:FindFirstChild("CoordInputZ")
+        if not CoordInputZ then
+            CoordInputZ = Instance.new("TextBox")
+            CoordInputZ.Name = "CoordInputZ"
+            CoordInputZ.Parent = PositionFrame
+            CoordInputZ.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            CoordInputZ.BorderSizePixel = 0
+            CoordInputZ.Position = UDim2.new(0.6, 0, 0, 65)
+            CoordInputZ.Size = UDim2.new(0.3, -5, 0, 25)
+            CoordInputZ.Font = Enum.Font.Gotham
+            CoordInputZ.PlaceholderText = "Z"
+            CoordInputZ.Text = ""
+            CoordInputZ.TextColor3 = Color3.fromRGB(255, 255, 255)
+            CoordInputZ.TextSize = 10
+        end
 
-        TeleportToCoordButton = Instance.new("TextButton")
-        TeleportToCoordButton.Parent = PositionFrame
-        TeleportToCoordButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        TeleportToCoordButton.BorderSizePixel = 0
-        TeleportToCoordButton.Position = UDim2.new(0, 8, 0, 95)
-        TeleportToCoordButton.Size = UDim2.new(0.5, -10, 0, 25)
-        TeleportToCoordButton.Font = Enum.Font.Gotham
-        TeleportToCoordButton.Text = "TP to Coord"
-        TeleportToCoordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        TeleportToCoordButton.TextSize = 9
+        TeleportToCoordButton = PositionFrame:FindFirstChild("TeleportToCoordButton")
+        if not TeleportToCoordButton then
+            TeleportToCoordButton = Instance.new("TextButton")
+            TeleportToCoordButton.Name = "TeleportToCoordButton"
+            TeleportToCoordButton.Parent = PositionFrame
+            TeleportToCoordButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            TeleportToCoordButton.BorderSizePixel = 0
+            TeleportToCoordButton.Position = UDim2.new(0, 8, 0, 95)
+            TeleportToCoordButton.Size = UDim2.new(0.5, -10, 0, 25)
+            TeleportToCoordButton.Font = Enum.Font.Gotham
+            TeleportToCoordButton.Text = "TP to Coord"
+            TeleportToCoordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TeleportToCoordButton.TextSize = 9
+        end
 
-        SaveCoordButton = Instance.new("TextButton")
-        SaveCoordButton.Parent = PositionFrame
-        SaveCoordButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        SaveCoordButton.BorderSizePixel = 0
-        SaveCoordButton.Position = UDim2.new(0.5, 2, 0, 95)
-        SaveCoordButton.Size = UDim2.new(0.5, -10, 0, 25)
-        SaveCoordButton.Font = Enum.Font.Gotham
-        SaveCoordButton.Text = "Save Coord"
-        SaveCoordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        SaveCoordButton.TextSize = 9
+        SaveCoordButton = PositionFrame:FindFirstChild("SaveCoordButton")
+        if not SaveCoordButton then
+            SaveCoordButton = Instance.new("TextButton")
+            SaveCoordButton.Name = "SaveCoordButton"
+            SaveCoordButton.Parent = PositionFrame
+            SaveCoordButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            SaveCoordButton.BorderSizePixel = 0
+            SaveCoordButton.Position = UDim2.new(0.5, 2, 0, 95)
+            SaveCoordButton.Size = UDim2.new(0.5, -10, 0, 25)
+            SaveCoordButton.Font = Enum.Font.Gotham
+            SaveCoordButton.Text = "Save Coord"
+            SaveCoordButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SaveCoordButton.TextSize = 9
+        end
 
-        SmoothToggle = Instance.new("TextButton")
-        SmoothToggle.Name = "SmoothToggle"
-        SmoothToggle.Parent = PositionFrame
-        SmoothToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        SmoothToggle.BorderSizePixel = 0
-        SmoothToggle.Position = UDim2.new(0, 8, 0, 125)
-        SmoothToggle.Size = UDim2.new(0.5, -10, 0, 25)
-        SmoothToggle.Font = Enum.Font.Gotham
-        SmoothToggle.Text = "Smooth TP: " .. (Teleport.smoothTeleportEnabled and "ON" or "OFF")
-        SmoothToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-        SmoothToggle.TextSize = 9
+        SmoothToggle = PositionFrame:FindFirstChild("SmoothToggle")
+        if not SmoothToggle then
+            SmoothToggle = Instance.new("TextButton")
+            SmoothToggle.Name = "SmoothToggle"
+            SmoothToggle.Parent = PositionFrame
+            SmoothToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            SmoothToggle.BorderSizePixel = 0
+            SmoothToggle.Position = UDim2.new(0, 8, 0, 125)
+            SmoothToggle.Size = UDim2.new(0.5, -10, 0, 25)
+            SmoothToggle.Font = Enum.Font.Gotham
+            SmoothToggle.Text = "Smooth TP: " .. (Teleport.smoothTeleportEnabled and "ON" or "OFF")
+            SmoothToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SmoothToggle.TextSize = 9
+        end
 
-        SpeedInput = Instance.new("TextBox")
-        SpeedInput.Name = "SpeedInput"
-        SpeedInput.Parent = PositionFrame
-        SpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        SpeedInput.BorderSizePixel = 0
-        SpeedInput.Position = UDim2.new(0.5, 2, 0, 125)
-        SpeedInput.Size = UDim2.new(0.5, -10, 0, 25)
-        SpeedInput.Font = Enum.Font.Gotham
-        SpeedInput.Text = tostring(Teleport.smoothTeleportSpeed)
-        SpeedInput.PlaceholderText = "Speed (studs/s)"
-        SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        SpeedInput.TextSize = 9
+        SpeedInput = PositionFrame:FindFirstChild("SpeedInput")
+        if not SpeedInput then
+            SpeedInput = Instance.new("TextBox")
+            SpeedInput.Name = "SpeedInput"
+            SpeedInput.Parent = PositionFrame
+            SpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            SpeedInput.BorderSizePixel = 0
+            SpeedInput.Position = UDim2.new(0.5, 2, 0, 125)
+            SpeedInput.Size = UDim2.new(0.5, -10, 0, 25)
+            SpeedInput.Font = Enum.Font.Gotham
+            SpeedInput.Text = tostring(Teleport.smoothTeleportSpeed)
+            SpeedInput.PlaceholderText = "Speed (studs/s)"
+            SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SpeedInput.TextSize = 9
+        end
 
-        LabelToggle = Instance.new("TextButton")
-        LabelToggle.Parent = PositionFrame
-        LabelToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        LabelToggle.BorderSizePixel = 0
-        LabelToggle.Position = UDim2.new(0, 8, 0, 155)
-        LabelToggle.Size = UDim2.new(1, -16, 0, 25)
-        LabelToggle.Font = Enum.Font.Gotham
-        LabelToggle.Text = "Position Labels: " .. (Teleport.labelsVisible and "ON" or "OFF")
-        LabelToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-        LabelToggle.TextSize = 9
+        LabelToggle = PositionFrame:FindFirstChild("LabelToggle")
+        if not LabelToggle then
+            LabelToggle = Instance.new("TextButton")
+            LabelToggle.Name = "LabelToggle"
+            LabelToggle.Parent = PositionFrame
+            LabelToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            LabelToggle.BorderSizePixel = 0
+            LabelToggle.Position = UDim2.new(0, 8, 0, 155)
+            LabelToggle.Size = UDim2.new(1, -16, 0, 25)
+            LabelToggle.Font = Enum.Font.Gotham
+            LabelToggle.Text = "Position Labels: " .. (Teleport.labelsVisible and "ON" or "OFF")
+            LabelToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            LabelToggle.TextSize = 9
+        end
 
-        PositionScrollFrame = Instance.new("ScrollingFrame")
-        PositionScrollFrame.Name = "PositionScrollFrame"
-        PositionScrollFrame.Parent = PositionFrame
-        PositionScrollFrame.BackgroundTransparency = 1
-        PositionScrollFrame.Position = UDim2.new(0, 8, 0, 185)
-        PositionScrollFrame.Size = UDim2.new(1, -16, 1, -255)
-        PositionScrollFrame.ScrollBarThickness = 3
-        PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
-        PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
-        PositionScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-        PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-        PositionScrollFrame.BorderSizePixel = 0
+        PositionScrollFrame = PositionFrame:FindFirstChild("PositionScrollFrame")
+        if not PositionScrollFrame then
+            PositionScrollFrame = Instance.new("ScrollingFrame")
+            PositionScrollFrame.Name = "PositionScrollFrame"
+            PositionScrollFrame.Parent = PositionFrame
+            PositionScrollFrame.BackgroundTransparency = 1
+            PositionScrollFrame.Position = UDim2.new(0, 8, 0, 185)
+            PositionScrollFrame.Size = UDim2.new(1, -16, 1, -255)
+            PositionScrollFrame.ScrollBarThickness = 3
+            PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+            PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+            PositionScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+            PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            PositionScrollFrame.BorderSizePixel = 0
+        end
 
-        PositionLayout = Instance.new("UIListLayout")
-        PositionLayout.Parent = PositionScrollFrame
-        PositionLayout.Padding = UDim.new(0, 1)
-        PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        PositionLayout.FillDirection = Enum.FillDirection.Vertical
+        PositionLayout = PositionScrollFrame:FindFirstChild("PositionLayout")
+        if not PositionLayout then
+            PositionLayout = Instance.new("UIListLayout")
+            PositionLayout.Name = "PositionLayout"
+            PositionLayout.Parent = PositionScrollFrame
+            PositionLayout.Padding = UDim.new(0, 1)
+            PositionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            PositionLayout.FillDirection = Enum.FillDirection.Vertical
+        end
 
-        AutoTeleportFrame = Instance.new("Frame")
-        AutoTeleportFrame.Name = "AutoTeleportFrame"
-        AutoTeleportFrame.Parent = PositionFrame
-        AutoTeleportFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        AutoTeleportFrame.BorderSizePixel = 0
-        AutoTeleportFrame.Position = UDim2.new(0, 8, 1, -62)
-        AutoTeleportFrame.Size = UDim2.new(1, -16, 0, 58)
+        AutoTeleportFrame = PositionFrame:FindFirstChild("AutoTeleportFrame")
+        if not AutoTeleportFrame then
+            AutoTeleportFrame = Instance.new("Frame")
+            AutoTeleportFrame.Name = "AutoTeleportFrame"
+            AutoTeleportFrame.Parent = PositionFrame
+            AutoTeleportFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            AutoTeleportFrame.BorderSizePixel = 0
+            AutoTeleportFrame.Position = UDim2.new(0, 8, 1, -62)
+            AutoTeleportFrame.Size = UDim2.new(1, -16, 0, 58)
+        end
 
-        local AutoTeleportTitle = Instance.new("TextLabel")
-        AutoTeleportTitle.Name = "AutoTeleportTitle"
-        AutoTeleportTitle.Parent = AutoTeleportFrame
-        AutoTeleportTitle.BackgroundTransparency = 1
-        AutoTeleportTitle.Position = UDim2.new(0, 0, 0, 0)
-        AutoTeleportTitle.Size = UDim2.new(1, 0, 0, 15)
-        AutoTeleportTitle.Font = Enum.Font.Gotham
-        AutoTeleportTitle.Text = "AUTO TELEPORT"
-        AutoTeleportTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-        AutoTeleportTitle.TextSize = 9
+        local AutoTeleportTitle = AutoTeleportFrame:FindFirstChild("AutoTeleportTitle")
+        if not AutoTeleportTitle then
+            AutoTeleportTitle = Instance.new("TextLabel")
+            AutoTeleportTitle.Name = "AutoTeleportTitle"
+            AutoTeleportTitle.Parent = AutoTeleportFrame
+            AutoTeleportTitle.BackgroundTransparency = 1
+            AutoTeleportTitle.Position = UDim2.new(0, 0, 0, 0)
+            AutoTeleportTitle.Size = UDim2.new(1, 0, 0, 15)
+            AutoTeleportTitle.Font = Enum.Font.Gotham
+            AutoTeleportTitle.Text = "AUTO TELEPORT"
+            AutoTeleportTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            AutoTeleportTitle.TextSize = 9
+        end
 
-        AutoModeToggle = Instance.new("TextButton")
-        AutoModeToggle.Name = "AutoModeToggle"
-        AutoModeToggle.Parent = AutoTeleportFrame
-        AutoModeToggle.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
-        AutoModeToggle.BorderSizePixel = 0
-        AutoModeToggle.Position = UDim2.new(0, 3, 0, 18)
-        AutoModeToggle.Size = UDim2.new(0.5, -5, 0, 18)
-        AutoModeToggle.Font = Enum.Font.Gotham
-        AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
-        AutoModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-        AutoModeToggle.TextSize = 8
+        AutoModeToggle = AutoTeleportFrame:FindFirstChild("AutoModeToggle")
+        if not AutoModeToggle then
+            AutoModeToggle = Instance.new("TextButton")
+            AutoModeToggle.Name = "AutoModeToggle"
+            AutoModeToggle.Parent = AutoTeleportFrame
+            AutoModeToggle.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+            AutoModeToggle.BorderSizePixel = 0
+            AutoModeToggle.Position = UDim2.new(0, 3, 0, 18)
+            AutoModeToggle.Size = UDim2.new(0.5, -5, 0, 18)
+            AutoModeToggle.Font = Enum.Font.Gotham
+            AutoModeToggle.Text = "Mode: " .. Teleport.autoTeleportMode
+            AutoModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            AutoModeToggle.TextSize = 8
+        end
 
-        DelayInput = Instance.new("TextBox")
-        DelayInput.Name = "DelayInput"
-        DelayInput.Parent = AutoTeleportFrame
-        DelayInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        DelayInput.BorderSizePixel = 0
-        DelayInput.Position = UDim2.new(0.5, 2, 0, 18)
-        DelayInput.Size = UDim2.new(0.5, -5, 0, 18)
-        DelayInput.Font = Enum.Font.Gotham
-        DelayInput.Text = tostring(Teleport.autoTeleportDelay)
-        DelayInput.PlaceholderText = "Delay (s)"
-        DelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        DelayInput.TextSize = 8
+        DelayInput = AutoTeleportFrame:FindFirstChild("DelayInput")
+        if not DelayInput then
+            DelayInput = Instance.new("TextBox")
+            DelayInput.Name = "DelayInput"
+            DelayInput.Parent = AutoTeleportFrame
+            DelayInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            DelayInput.BorderSizePixel = 0
+            DelayInput.Position = UDim2.new(0.5, 2, 0, 18)
+            DelayInput.Size = UDim2.new(0.5, -5, 0, 18)
+            DelayInput.Font = Enum.Font.Gotham
+            DelayInput.Text = tostring(Teleport.autoTeleportDelay)
+            DelayInput.PlaceholderText = "Delay (s)"
+            DelayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            DelayInput.TextSize = 8
+        end
 
-        AutoTeleportButton = Instance.new("TextButton")
-        AutoTeleportButton.Name = "AutoTeleportButton"
-        AutoTeleportButton.Parent = AutoTeleportFrame
-        AutoTeleportButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        AutoTeleportButton.BorderSizePixel = 0
-        AutoTeleportButton.Position = UDim2.new(0, 3, 0, 40)
-        AutoTeleportButton.Size = UDim2.new(0.5, -5, 0, 15)
-        AutoTeleportButton.Font = Enum.Font.Gotham
-        AutoTeleportButton.Text = "Start Auto"
-        AutoTeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        AutoTeleportButton.TextSize = 8
+        AutoTeleportButton = AutoTeleportFrame:FindFirstChild("AutoTeleportButton")
+        if not AutoTeleportButton then
+            AutoTeleportButton = Instance.new("TextButton")
+            AutoTeleportButton.Name = "AutoTeleportButton"
+            AutoTeleportButton.Parent = AutoTeleportFrame
+            AutoTeleportButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            AutoTeleportButton.BorderSizePixel = 0
+            AutoTeleportButton.Position = UDim2.new(0, 3, 0, 40)
+            AutoTeleportButton.Size = UDim2.new(0.5, -5, 0, 15)
+            AutoTeleportButton.Font = Enum.Font.Gotham
+            AutoTeleportButton.Text = "Start Auto"
+            AutoTeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            AutoTeleportButton.TextSize = 8
+        end
 
-        StopAutoButton = Instance.new("TextButton")
-        StopAutoButton.Name = "StopAutoButton"
-        StopAutoButton.Parent = AutoTeleportFrame
-        StopAutoButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-        StopAutoButton.BorderSizePixel = 0
-        StopAutoButton.Position = UDim2.new(0.5, 2, 0, 40)
-        StopAutoButton.Size = UDim2.new(0.5, -5, 0, 15)
-        StopAutoButton.Font = Enum.Font.Gotham
-        StopAutoButton.Text = "Stop Auto"
-        StopAutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        StopAutoButton.TextSize = 8
+        StopAutoButton = AutoTeleportFrame:FindFirstChild("StopAutoButton")
+        if not StopAutoButton then
+            StopAutoButton = Instance.new("TextButton")
+            StopAutoButton.Name = "StopAutoButton"
+            StopAutoButton.Parent = AutoTeleportFrame
+            StopAutoButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+            StopAutoButton.BorderSizePixel = 0
+            StopAutoButton.Position = UDim2.new(0.5, 2, 0, 40)
+            StopAutoButton.Size = UDim2.new(0.5, -5, 0, 15)
+            StopAutoButton.Font = Enum.Font.Gotham
+            StopAutoButton.Text = "Stop Auto"
+            StopAutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            StopAutoButton.TextSize = 8
+        end
 
-        AutoStatusLabel = Instance.new("TextLabel")
-        AutoStatusLabel.Name = "AutoStatusLabel"
-        AutoStatusLabel.Parent = ScreenGui
-        AutoStatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        AutoStatusLabel.BorderColor3 = Color3.fromRGB(60, 60, 60)
-        AutoStatusLabel.BorderSizePixel = 1
-        AutoStatusLabel.Position = UDim2.new(1, -250, 0, 35)
-        AutoStatusLabel.Size = UDim2.new(0, 240, 0, 20)
-        AutoStatusLabel.Font = Enum.Font.Gotham
-        AutoStatusLabel.Text = ""
-        AutoStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        AutoStatusLabel.TextSize = 8
-        AutoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-        AutoStatusLabel.Visible = false
+        AutoStatusLabel = ScreenGui:FindFirstChild("AutoStatusLabel")
+        if not AutoStatusLabel then
+            AutoStatusLabel = Instance.new("TextLabel")
+            AutoStatusLabel.Name = "AutoStatusLabel"
+            AutoStatusLabel.Parent = ScreenGui
+            AutoStatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            AutoStatusLabel.BorderColor3 = Color3.fromRGB(60, 60, 60)
+            AutoStatusLabel.BorderSizePixel = 1
+            AutoStatusLabel.Position = UDim2.new(1, -250, 0, 35)
+            AutoStatusLabel.Size = UDim2.new(0, 240, 0, 20)
+            AutoStatusLabel.Font = Enum.Font.Gotham
+            AutoStatusLabel.Text = ""
+            AutoStatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            AutoStatusLabel.TextSize = 8
+            AutoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+            AutoStatusLabel.Visible = false
+        end
 
+        -- Connect events (these will be connected each time if re-init, but since guarded by initialized, only once)
         SavePositionButton.MouseButton1Click:Connect(function()
             Teleport.saveCurrentPosition()
         end)
@@ -1783,4 +1867,5 @@ function Teleport.init(deps)
     return true
 end
 
+_G.Teleport = Teleport
 return Teleport
