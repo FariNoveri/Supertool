@@ -62,8 +62,6 @@ local freecamInputConnection = nil
 -- Freecam GUI variables
 local freecamGui
 local rotationSensitivity = 2  -- Default sensitivity
-local rotateTouchID = nil
-local lastTouchPos = nil
 
 -- Time mode configurations
 local timeModeConfigs = {
@@ -1039,10 +1037,8 @@ local function toggleFreecam(enabled)
         camera.CameraSubject = nil
         
         if UserInputService then
-            if not UserInputService.TouchEnabled then
-                UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-                UserInputService.MouseIconEnabled = false
-            end
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
         end
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
@@ -1092,17 +1088,25 @@ local function toggleFreecam(enabled)
                 local movement = Vector3.new(0, 0, 0)
                 local currentPos = freecamCFrame.Position
                 
-                local moveVector = Vector3.new(0, 0, 0)
-                if controls then
-                    moveVector = controls:getMoveVector()
-                end
-                movement = freecamRightVector * moveVector.X - freecamLookVector * moveVector.Z
-                
-                if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-                    movement = movement - freecamUpVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-                    movement = movement + freecamUpVector
+                if UserInputService then
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                        movement = movement + freecamLookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                        movement = movement - freecamLookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                        movement = movement - freecamRightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                        movement = movement + freecamRightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+                        movement = movement - freecamUpVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+                        movement = movement + freecamUpVector
+                    end
                 end
                 
                 if movement.Magnitude > 0 then
@@ -1196,46 +1200,10 @@ local function toggleFreecam(enabled)
                 local movement = freecamCFrame.LookVector * wheelSpeed
                 freecamCFrame = freecamCFrame + movement
             end
-            
-            if input.UserInputType == Enum.UserInputType.Touch and rotateTouchID and input.UserInputState == Enum.UserInputState.Change then
-                local currentPos = input.Position
-                local delta = currentPos - lastTouchPos
-                local yawDelta = -delta.X * 0.15 * rotationSensitivity
-                local pitchDelta = -delta.Y * 0.15 * rotationSensitivity
-                lastTouchPos = currentPos
-                
-                if yawDelta ~= 0 then
-                    local yawRot = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), math.rad(yawDelta))
-                    freecamCFrame = freecamCFrame * yawRot
-                end
-                
-                if pitchDelta ~= 0 then
-                    local pitchRot = CFrame.fromAxisAngle(freecamCFrame.RightVector, math.rad(pitchDelta))
-                    freecamCFrame = freecamCFrame * pitchRot
-                end
-            end
         end)
         if connections and type(connections) == "table" then
             connections.freecamInputConnection = freecamInputConnection
         end
-        
-        local touchBeganConnection = UserInputService.InputBegan:Connect(function(input, processed)
-            if Visual.freecamEnabled and not processed and input.UserInputType == Enum.UserInputType.Touch then
-                if not rotateTouchID then
-                    rotateTouchID = input
-                    lastTouchPos = input.Position
-                end
-            end
-        end)
-        
-        local touchEndedConnection = UserInputService.InputEnded:Connect(function(input)
-            if Visual.freecamEnabled and input.UserInputType == Enum.UserInputType.Touch then
-                if input == rotateTouchID then
-                    rotateTouchID = nil
-                    lastTouchPos = nil
-                end
-            end
-        end)
         
     else
         -- DISABLE FREECAM - RESTORE SEMUA NILAI ORIGINAL
@@ -2147,11 +2115,6 @@ function Visual.init(deps)
         createFreecamGui()
     end
     
-    -- Get controls for mobile movement
-    local playerScripts = player:WaitForChild("PlayerScripts")
-    local playerModule = require(playerScripts:WaitForChild("PlayerModule"))
-    local controls = playerModule:GetControls()
-    
     print("Visual module initialized successfully")
     return true
 end
@@ -2412,350 +2375,6 @@ function Visual.loadVisualButtons(createToggleButton)
     nameChangeInput = createNameInput()
     
     changeNameButton.MouseButton1Click:Connect(showNameInput)
-end
-
--- Export functions for external access
-Visual.toggleFreecam = toggleFreecam
-Visual.toggleNoClipCamera = toggleNoClipCamera
-Visual.toggleFullbright = toggleFullbright
-Visual.toggleFlashlight = toggleFlashlight
-Visual.toggleLowDetail = toggleLowDetail
-Visual.toggleUltraLowDetail = toggleUltraLowDetail
-Visual.toggleESPBox = toggleESPBox
-Visual.toggleESPTracer = toggleESPTracer
-Visual.toggleESPName = toggleESPName
-Visual.toggleESPHealth = toggleESPHealth
-Visual.toggleXRay = toggleXRay
-Visual.toggleVoid = toggleVoid
-Visual.toggleHideAllNicknames = toggleHideAllNicknames
-Visual.toggleHideOwnNickname = toggleHideOwnNickname
-Visual.toggleHideAllCharactersExceptSelf = toggleHideAllCharactersExceptSelf
-Visual.toggleHideSelfCharacter = toggleHideSelfCharacter
-Visual.toggleHideBubbleChat = toggleHideBubbleChat
-Visual.toggleSelfHighlight = toggleSelfHighlight
-Visual.setTimeMode = setTimeMode
-
--- Function to reset Visual states
-function Visual.resetStates()
-    Visual.freecamEnabled = false
-    Visual.noClipCameraEnabled = false
-    Visual.fullbrightEnabled = false
-    Visual.flashlightEnabled = false
-    Visual.lowDetailEnabled = false
-    Visual.ultraLowDetailEnabled = false
-    Visual.espBoxEnabled = false
-    Visual.espTracerEnabled = false
-    Visual.espNameEnabled = false
-    Visual.espHealthEnabled = false
-    Visual.xrayEnabled = false
-    Visual.voidEnabled = false
-    Visual.hideAllNicknames = false
-    Visual.hideOwnNickname = false
-    Visual.hideAllCharactersExceptSelf = false
-    Visual.hideSelfCharacter = false
-    Visual.hideBubbleChat = false
-    Visual.currentTimeMode = "normal"
-    Visual.selfHighlightEnabled = false
-    
-    if connections and type(connections) == "table" then
-        for key, connection in pairs(connections) do
-            if connection then
-                pcall(function() connection:Disconnect() end)
-                connections[key] = nil
-            end
-        end
-    end
-    connections = {}
-    
-    toggleFreecam(false)
-    toggleNoClipCamera(false)
-    toggleFullbright(false)
-    toggleFlashlight(false)
-    toggleLowDetail(false)
-    toggleUltraLowDetail(false)
-    toggleESPBox(false)
-    toggleESPTracer(false)
-    toggleESPName(false)
-    toggleESPHealth(false)
-    toggleXRay(false)
-    toggleVoid(false)
-    toggleHideAllNicknames(false)
-    toggleHideOwnNickname(false)
-    toggleHideAllCharactersExceptSelf(false)
-    toggleHideSelfCharacter(false)
-    toggleHideBubbleChat(false)
-    toggleSelfHighlight(false)
-    setTimeMode("normal")
-    
-    if colorPicker then
-        colorPicker:Destroy()
-        colorPicker = nil
-    end
-end
-
--- Function to update references after character respawn
-function Visual.updateReferences()
-    print("Updating Visual module references")
-    
-    -- Update character, humanoid, and rootPart
-    Visual.character = player and player.Character
-    humanoid = Visual.character and Visual.character:FindFirstChild("Humanoid")
-    rootPart = Visual.character and Visual.character:FindFirstChild("HumanoidRootPart")
-    
-    -- Debug references
-    print("Updated character:", Visual.character and "OK" or "FAILED")
-    print("Updated humanoid:", humanoid and "OK" or "FAILED")
-    print("Updated rootPart:", rootPart and "OK" or "FAILED")
-    
-    -- Restore feature states
-    local wasFreecamEnabled = Visual.freecamEnabled
-    local wasNoClipCameraEnabled = Visual.noClipCameraEnabled
-    local wasFullbrightEnabled = Visual.fullbrightEnabled
-    local wasFlashlightEnabled = Visual.flashlightEnabled
-    local wasLowDetailEnabled = Visual.lowDetailEnabled
-    local wasUltraLowDetailEnabled = Visual.ultraLowDetailEnabled
-    local wasEspBoxEnabled = Visual.espBoxEnabled
-    local wasEspTracerEnabled = Visual.espTracerEnabled
-    local wasEspNameEnabled = Visual.espNameEnabled
-    local wasEspHealthEnabled = Visual.espHealthEnabled
-    local wasXRayEnabled = Visual.xrayEnabled
-    local wasVoidEnabled = Visual.voidEnabled
-    local wasHideAllNicknames = Visual.hideAllNicknames
-    local wasHideOwnNickname = Visual.hideOwnNickname
-    local wasHideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf
-    local wasHideSelfCharacter = Visual.hideSelfCharacter
-    local wasHideBubbleChat = Visual.hideBubbleChat
-    local wasSelfHighlightEnabled = Visual.selfHighlightEnabled
-    local currentTimeMode = Visual.currentTimeMode
-    
-    -- Reset states to ensure clean slate
-    Visual.resetStates()
-    
-    -- Re-enable features that were active
-    if wasFreecamEnabled then
-        print("Re-enabling Freecam after respawn")
-        toggleFreecam(true)
-    end
-    if wasNoClipCameraEnabled then
-        print("Re-enabling NoClipCamera after respawn")
-        toggleNoClipCamera(true)
-    end
-    if wasFullbrightEnabled then
-        print("Re-enabling Fullbright after respawn")
-        toggleFullbright(true)
-    end
-    if wasFlashlightEnabled then
-        print("Re-enabling Flashlight after respawn")
-        toggleFlashlight(true)
-    end
-    if wasLowDetailEnabled then
-        print("Re-enabling Low Detail Mode after respawn")
-        toggleLowDetail(true)
-    end
-    if wasUltraLowDetailEnabled then
-        print("Re-enabling Ultra Low Detail Mode after respawn")
-        toggleUltraLowDetail(true)
-    end
-    if wasEspBoxEnabled then
-        print("Re-enabling ESP Box after respawn")
-        toggleESPBox(true)
-    end
-    if wasEspTracerEnabled then
-        print("Re-enabling ESP Tracer after respawn")
-        toggleESPTracer(true)
-    end
-    if wasEspNameEnabled then
-        print("Re-enabling ESP Name after respawn")
-        toggleESPName(true)
-    end
-    if wasEspHealthEnabled then
-        print("Re-enabling ESP Health after respawn")
-        toggleESPHealth(true)
-    end
-    if wasXRayEnabled then
-        print("Re-enabling XRay after respawn")
-        toggleXRay(true)
-    end
-    if wasVoidEnabled then
-        print("Re-enabling Void after respawn")
-        toggleVoid(true)
-    end
-    if wasHideAllNicknames then
-        print("Re-enabling Hide All Nicknames after respawn")
-        toggleHideAllNicknames(true)
-    end
-    if wasHideOwnNickname then
-        print("Re-enabling Hide Own Nickname after respawn")
-        toggleHideOwnNickname(true)
-    end
-    if wasHideAllCharactersExceptSelf then
-        print("Re-enabling Hide All Characters Except Self after respawn")
-        toggleHideAllCharactersExceptSelf(true)
-    end
-    if wasHideSelfCharacter then
-        print("Re-enabling Hide Self Character after respawn")
-        toggleHideSelfCharacter(true)
-    end
-    if wasHideBubbleChat then
-        print("Re-enabling Hide Bubble Chat after respawn")
-        toggleHideBubbleChat(true)
-    end
-    if wasSelfHighlightEnabled then
-        print("Re-enabling Self Highlight after respawn")
-        toggleSelfHighlight(true)
-    end
-    if currentTimeMode ~= "normal" then
-        print("Restoring Time Mode after respawn:", currentTimeMode)
-        setTimeMode(currentTimeMode)
-    end
-    
-    print("Visual module references updated")
-end
-
--- Function to cleanup all resources
-function Visual.cleanup()
-    print("Cleaning up Visual module")
-    
-    -- Reset all states
-    Visual.resetStates()
-    
-    -- Clean up flashlight
-    if flashlight then
-        flashlight:Destroy()
-        flashlight = nil
-    end
-    if pointLight then
-        pointLight:Destroy()
-        pointLight = nil
-    end
-    
-    -- Clean up self highlight
-    if selfHighlight then
-        selfHighlight:Destroy()
-        selfHighlight = nil
-    end
-    
-    -- Clean up ESP elements
-    for _, elements in pairs(espElements) do
-        destroyESPForPlayer(_)
-    end
-    espElements = {}
-    
-    -- Clean up character transparencies
-    characterTransparencies = {}
-    
-    -- Clean up xray transparencies
-    xrayTransparencies = {}
-    
-    -- Clean up void states
-    voidStates = {}
-    
-    -- Clean up foliage states
-    foliageStates = {}
-    processedObjects = {}
-    
-    -- Restore default lighting settings
-    if defaultLightingSettings.stored then
-        for property, value in pairs(defaultLightingSettings) do
-            if property ~= "stored" then
-                pcall(function()
-                    Lighting[property] = value
-                end)
-            end
-        end
-        pcall(function()
-            Workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
-            Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
-            Workspace.StreamingTargetRadius = defaultLightingSettings.StreamingTargetRadius or 256
-            Workspace.Terrain.Decoration = defaultLightingSettings.TerrainDecoration or true
-        end)
-    end
-    
-    -- Restore bubble chat
-    if Chat then
-        Chat.BubbleChatEnabled = originalBubbleChatEnabled
-    end
-    
-    -- Clean up color pickers
-    if colorPicker then
-        colorPicker:Destroy()
-        colorPicker = nil
-    end
-    
-    -- Clean up freecam GUI
-    if freecamGui then
-        freecamGui:Destroy()
-        freecamGui = nil
-    end
-    
-    -- Disconnect any remaining connections
-    if connections and type(connections) == "table" then
-        for key, connection in pairs(connections) do
-            if connection then
-                pcall(function() connection:Disconnect() end)
-                connections[key] = nil
-            end
-        end
-    end
-    connections = {}
-    
-    print("Visual module cleanup completed")
-end
-
--- Function to check if module is initialized
-function Visual.isInitialized()
-    local isInitialized = Players and UserInputService and RunService and Workspace and Lighting and ScrollFrame and ScreenGui and player
-    if not isInitialized then
-        warn("Visual module not fully initialized. Missing dependencies:")
-        print("Players:", Players and "OK" or "FAILED")
-        print("UserInputService:", UserInputService and "OK" or "FAILED")
-        print("RunService:", RunService and "OK" or "FAILED")
-        print("Workspace:", Workspace and "OK" or "FAILED")
-        print("Lighting:", Lighting and "OK" or "FAILED")
-        print("ScrollFrame:", ScrollFrame and "OK" or "FAILED")
-        print("ScreenGui:", ScreenGui and "OK" or "FAILED")
-        print("player:", player and "OK" or "FAILED")
-    end
-    return isInitialized
-end
-
--- Function to get current state of all features
-function Visual.getState()
-    return {
-        freecamEnabled = Visual.freecamEnabled,
-        noClipCameraEnabled = Visual.noClipCameraEnabled,
-        fullbrightEnabled = Visual.fullbrightEnabled,
-        flashlightEnabled = Visual.flashlightEnabled,
-        lowDetailEnabled = Visual.lowDetailEnabled,
-        ultraLowDetailEnabled = Visual.ultraLowDetailEnabled,
-        espBoxEnabled = Visual.espBoxEnabled,
-        espTracerEnabled = Visual.espTracerEnabled,
-        espNameEnabled = Visual.espNameEnabled,
-        espHealthEnabled = Visual.espHealthEnabled,
-        xrayEnabled = Visual.xrayEnabled,
-        voidEnabled = Visual.voidEnabled,
-        hideAllNicknames = Visual.hideAllNicknames,
-        hideOwnNickname = Visual.hideOwnNickname,
-        hideAllCharactersExceptSelf = Visual.hideAllCharactersExceptSelf,
-        hideSelfCharacter = Visual.hideSelfCharacter,
-        hideBubbleChat = Visual.hideBubbleChat,
-        selfHighlightEnabled = Visual.selfHighlightEnabled,
-        currentTimeMode = Visual.currentTimeMode,
-        selfHighlightColor = Visual.selfHighlightColor
-    }
-end
-
--- Function to set self highlight color programmatically
-function Visual.setSelfHighlightColor(color)
-    if typeof(color) == "Color3" then
-        Visual.selfHighlightColor = color
-        if Visual.selfHighlightEnabled then
-            createSelfHighlight()
-        end
-        print("Self Highlight color set to:", toHex(color))
-    else
-        warn("Error: Invalid color provided for setSelfHighlightColor")
-    end
 end
 
 -- Export the module
