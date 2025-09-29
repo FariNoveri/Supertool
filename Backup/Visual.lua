@@ -42,9 +42,6 @@ local characterTransparencies = {}
 local xrayTransparencies = {}
 local voidStates = {}
 local defaultLightingSettings = {}
-local joystickFrame
-local joystickKnob
-local touchStartPos
 local foliageStates = {}
 local processedObjects = {}
 local freecamSpeed = 50
@@ -62,6 +59,10 @@ local nameChangeInput = nil
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
 local freecamInputConnection = nil
+
+-- Freecam GUI variables
+local freecamGui
+local rotationSensitivity = 2  -- Default sensitivity
 
 -- Time mode configurations
 local timeModeConfigs = {
@@ -209,305 +210,155 @@ local function storeOriginalLightingSettings()
     end
 end
 
--- Create virtual joystick for mobile control
-local function createJoystick()
+-- Create freecam GUI
+local function createFreecamGui()
     if not ScreenGui then
-        warn("Cannot create joystick: ScreenGui is nil")
+        warn("Cannot create freecam GUI: ScreenGui is nil")
         return
     end
     
-    joystickFrame = Instance.new("Frame")
-    joystickFrame.Name = "Joystick"
-    joystickFrame.Size = UDim2.new(0, 120, 0, 120)
-    joystickFrame.Position = UDim2.new(0.05, 0, 0.75, 0)
-    joystickFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    joystickFrame.BackgroundTransparency = 0.3
-    joystickFrame.BorderSizePixel = 0
-    joystickFrame.Visible = false
-    joystickFrame.ZIndex = 10
-    joystickFrame.Parent = ScreenGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0.5, 0)
-    corner.Parent = joystickFrame
-
-    local outerRing = Instance.new("Frame")
-    outerRing.Name = "OuterRing"
-    outerRing.Size = UDim2.new(1, -4, 1, -4)
-    outerRing.Position = UDim2.new(0, 2, 0, 2)
-    outerRing.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    outerRing.BackgroundTransparency = 0.5
-    outerRing.BorderSizePixel = 0
-    outerRing.ZIndex = 9
-    outerRing.Parent = joystickFrame
-    
-    local outerCorner = Instance.new("UICorner")
-    outerCorner.CornerRadius = UDim.new(0.5, 0)
-    outerCorner.Parent = outerRing
-
-    joystickKnob = Instance.new("Frame")
-    joystickKnob.Name = "Knob"
-    joystickKnob.Size = UDim2.new(0, 50, 0, 50)
-    joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
-    joystickKnob.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
-    joystickKnob.BackgroundTransparency = 0.1
-    joystickKnob.BorderSizePixel = 0
-    joystickKnob.ZIndex = 11
-    joystickKnob.Parent = joystickFrame
-
-    local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(0.5, 0)
-    knobCorner.Parent = joystickKnob
-    
-    local instructionText = Instance.new("TextLabel")
-    instructionText.Name = "Instruction"
-    instructionText.Size = UDim2.new(0, 200, 0, 30)
-    instructionText.Position = UDim2.new(0, 0, 0, -40)
-    instructionText.BackgroundTransparency = 1
-    instructionText.Text = "Use joystick to move camera"
-    instructionText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    instructionText.TextSize = 12
-    instructionText.Font = Enum.Font.SourceSansBold
-    instructionText.TextStrokeTransparency = 0.5
-    instructionText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    instructionText.ZIndex = 12
-    instructionText.Parent = joystickFrame
-end
-
--- Handle joystick input for camera movement
-local function handleJoystickInput(input, processed)
-    if not (Visual.freecamEnabled or Visual.noClipCameraEnabled) or processed then return Vector2.new(0, 0) end
-    
-    if input.UserInputType == Enum.UserInputType.Touch then
-        local touchPos = input.Position
-        local joystickCenter = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize * 0.5
-        local frameRect = {
-            X = joystickFrame.AbsolutePosition.X,
-            Y = joystickFrame.AbsolutePosition.Y,
-            Width = joystickFrame.AbsoluteSize.X,
-            Height = joystickFrame.AbsoluteSize.Y
-        }
-        
-        local isInJoystick = touchPos.X >= frameRect.X and touchPos.X <= frameRect.X + frameRect.Width and
-                            touchPos.Y >= frameRect.Y and touchPos.Y <= frameRect.Y + frameRect.Height
-        
-        if input.UserInputState == Enum.UserInputState.Begin and isInJoystick then
-            local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
-            local magnitude = delta.Magnitude
-            local maxRadius = 35
-            if magnitude > maxRadius then
-                delta = delta * (maxRadius / magnitude)
-            end
-            joystickKnob.Position = UDim2.new(0.5, delta.X - 25, 0.5, delta.Y - 25)
-            return delta / maxRadius
-            
-        elseif input.UserInputState == Enum.UserInputState.Change and isInJoystick then
-            local delta = Vector2.new(touchPos.X - joystickCenter.X, touchPos.Y - joystickCenter.Y)
-            local magnitude = delta.Magnitude
-            local maxRadius = 35
-            if magnitude > maxRadius then
-                delta = delta * (maxRadius / magnitude)
-            end
-            joystickKnob.Position = UDim2.new(0.5, delta.X - 25, 0.5, delta.Y - 25)
-            return delta / maxRadius
-            
-        elseif input.UserInputState == Enum.UserInputState.End then
-            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
-            return Vector2.new(0, 0)
-        end
-    end
-    return Vector2.new(0, 0)
-end
-
--- Additional variables for rotation controls
-local rotationFrame
-local upButton, downButton, leftButton, rightButton
-local isUpPressed = false
-local isDownPressed = false
-local isLeftPressed = false
-local isRightPressed = false
-local rotationSpeed = 2 -- radians per second
-local showControls = true
-local toggleControlsButton
-
--- Create rotation controls for mobile
-local function createRotationControls()
-    if not ScreenGui then
-        warn("Cannot create rotation controls: ScreenGui is nil")
-        return
-    end
-    
-    rotationFrame = Instance.new("Frame")
-    rotationFrame.Name = "RotationControls"
-    rotationFrame.Size = UDim2.new(0, 150, 0, 150)
-    rotationFrame.Position = UDim2.new(0.9, -75, 0.75, 0)
-    rotationFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    rotationFrame.BackgroundTransparency = 0.3
-    rotationFrame.BorderSizePixel = 0
-    rotationFrame.Visible = false
-    rotationFrame.ZIndex = 10
-    rotationFrame.Parent = ScreenGui
+    freecamGui = Instance.new("Frame")
+    freecamGui.Name = "FreecamGui"
+    freecamGui.Size = UDim2.new(0, 300, 0, 250)
+    freecamGui.Position = UDim2.new(0.5, -150, 0.5, -125)
+    freecamGui.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    freecamGui.BackgroundTransparency = 0.3
+    freecamGui.BorderSizePixel = 0
+    freecamGui.Visible = false
+    freecamGui.ZIndex = 10
+    freecamGui.Parent = ScreenGui
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = rotationFrame
+    corner.Parent = freecamGui
 
-    -- Up button
-    upButton = Instance.new("TextButton")
-    upButton.Name = "Up"
-    upButton.Size = UDim2.new(0, 50, 0, 50)
-    upButton.Position = UDim2.new(0.5, -25, 0, 0)
-    upButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    upButton.Text = "^"
-    upButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    upButton.TextSize = 24
-    upButton.ZIndex = 11
-    upButton.Parent = rotationFrame
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(1, -40, 0, 30)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Freecam Settings & Info"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 16
+    title.Font = Enum.Font.SourceSansBold
+    title.Parent = freecamGui
 
-    local upCorner = Instance.new("UICorner")
-    upCorner.CornerRadius = UDim.new(0, 4)
-    upCorner.Parent = upButton
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -30, 0, 0)
+    closeButton.BackgroundTransparency = 1
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 16
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.Parent = freecamGui
 
-    -- Down button
-    downButton = Instance.new("TextButton")
-    downButton.Name = "Down"
-    downButton.Size = UDim2.new(0, 50, 0, 50)
-    downButton.Position = UDim2.new(0.5, -25, 1, -50)
-    downButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    downButton.Text = "v"
-    downButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    downButton.TextSize = 24
-    downButton.ZIndex = 11
-    downButton.Parent = rotationFrame
-
-    local downCorner = Instance.new("UICorner")
-    downCorner.CornerRadius = UDim.new(0, 4)
-    downCorner.Parent = downButton
-
-    -- Left button
-    leftButton = Instance.new("TextButton")
-    leftButton.Name = "Left"
-    leftButton.Size = UDim2.new(0, 50, 0, 50)
-    leftButton.Position = UDim2.new(0, 0, 0.5, -25)
-    leftButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    leftButton.Text = "<"
-    leftButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    leftButton.TextSize = 24
-    leftButton.ZIndex = 11
-    leftButton.Parent = rotationFrame
-
-    local leftCorner = Instance.new("UICorner")
-    leftCorner.CornerRadius = UDim.new(0, 4)
-    leftCorner.Parent = leftButton
-
-    -- Right button
-    rightButton = Instance.new("TextButton")
-    rightButton.Name = "Right"
-    rightButton.Size = UDim2.new(0, 50, 0, 50)
-    rightButton.Position = UDim2.new(1, -50, 0.5, -25)
-    rightButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    rightButton.Text = ">"
-    rightButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    rightButton.TextSize = 24
-    rightButton.ZIndex = 11
-    rightButton.Parent = rotationFrame
-
-    local rightCorner = Instance.new("UICorner")
-    rightCorner.CornerRadius = UDim.new(0, 4)
-    rightCorner.Parent = rightButton
-
-    local instructionText = Instance.new("TextLabel")
-    instructionText.Name = "Instruction"
-    instructionText.Size = UDim2.new(0, 200, 0, 30)
-    instructionText.Position = UDim2.new(0.5, -100, 0, -40)
-    instructionText.BackgroundTransparency = 1
-    instructionText.Text = "Use arrows to rotate camera"
-    instructionText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    instructionText.TextSize = 12
-    instructionText.Font = Enum.Font.SourceSansBold
-    instructionText.TextStrokeTransparency = 0.5
-    instructionText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    instructionText.ZIndex = 12
-    instructionText.Parent = rotationFrame
-
-    -- Connect input events for buttons
-    upButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isUpPressed = true
-        end
-    end)
-    upButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isUpPressed = false
-        end
+    closeButton.MouseButton1Click:Connect(function()
+        freecamGui.Visible = false
     end)
 
-    downButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isDownPressed = true
-        end
+    local minimizeButton = Instance.new("TextButton")
+    minimizeButton.Name = "MinimizeButton"
+    minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+    minimizeButton.Position = UDim2.new(1, -60, 0, 0)
+    minimizeButton.BackgroundTransparency = 1
+    minimizeButton.Text = "-"
+    minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minimizeButton.TextSize = 16
+    minimizeButton.Font = Enum.Font.SourceSansBold
+    minimizeButton.Parent = freecamGui
+
+    minimizeButton.MouseButton1Click:Connect(function()
+        freecamGui.Visible = false
     end)
-    downButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isDownPressed = false
+
+    local infoText = Instance.new("TextLabel")
+    infoText.Name = "Info"
+    infoText.Size = UDim2.new(1, -20, 0, 100)
+    infoText.Position = UDim2.new(0, 10, 0, 40)
+    infoText.BackgroundTransparency = 1
+    infoText.Text = "Controls:\n- W/A/S/D: Move forward/left/back/right\n- Q/E: Move down/up\n- Mouse drag or touch drag: Rotate camera\n- Mouse wheel: Zoom in/out\n\nOn mobile, use standard Roblox controls for movement and camera."
+    infoText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    infoText.TextSize = 14
+    infoText.Font = Enum.Font.SourceSans
+    infoText.TextWrapped = true
+    infoText.TextYAlignment = Enum.TextYAlignment.Top
+    infoText.Parent = freecamGui
+
+    local speedLabel = Instance.new("TextLabel")
+    speedLabel.Name = "SpeedLabel"
+    speedLabel.Size = UDim2.new(0, 100, 0, 30)
+    speedLabel.Position = UDim2.new(0, 10, 0, 150)
+    speedLabel.BackgroundTransparency = 1
+    speedLabel.Text = "Speed:"
+    speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedLabel.TextSize = 14
+    speedLabel.Font = Enum.Font.SourceSans
+    speedLabel.Parent = freecamGui
+
+    local speedBox = Instance.new("TextBox")
+    speedBox.Name = "SpeedBox"
+    speedBox.Size = UDim2.new(0, 50, 0, 30)
+    speedBox.Position = UDim2.new(0, 120, 0, 150)
+    speedBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    speedBox.Text = tostring(freecamSpeed)
+    speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedBox.TextSize = 14
+    speedBox.Parent = freecamGui
+
+    local speedSetButton = Instance.new("TextButton")
+    speedSetButton.Name = "SpeedSetButton"
+    speedSetButton.Size = UDim2.new(0, 100, 0, 30)
+    speedSetButton.Position = UDim2.new(0, 180, 0, 150)
+    speedSetButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    speedSetButton.Text = "Set Speed"
+    speedSetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedSetButton.TextSize = 14
+    speedSetButton.Parent = freecamGui
+
+    speedSetButton.MouseButton1Click:Connect(function()
+        local newSpeed = tonumber(speedBox.Text)
+        if newSpeed then
+            freecamSpeed = newSpeed
         end
     end)
 
-    leftButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isLeftPressed = true
-        end
-    end)
-    leftButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isLeftPressed = false
-        end
-    end)
+    local sensLabel = Instance.new("TextLabel")
+    sensLabel.Name = "SensLabel"
+    sensLabel.Size = UDim2.new(0, 100, 0, 30)
+    sensLabel.Position = UDim2.new(0, 10, 0, 190)
+    sensLabel.BackgroundTransparency = 1
+    sensLabel.Text = "Sensitivity:"
+    sensLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sensLabel.TextSize = 14
+    sensLabel.Font = Enum.Font.SourceSans
+    sensLabel.Parent = freecamGui
 
-    rightButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isRightPressed = true
-        end
-    end)
-    rightButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            isRightPressed = false
-        end
-    end)
-end
+    local sensBox = Instance.new("TextBox")
+    sensBox.Name = "SensBox"
+    sensBox.Size = UDim2.new(0, 50, 0, 30)
+    sensBox.Position = UDim2.new(0, 120, 0, 190)
+    sensBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    sensBox.Text = tostring(rotationSensitivity)
+    sensBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sensBox.TextSize = 14
+    sensBox.Parent = freecamGui
 
--- Create toggle button for hiding/showing controls
-local function createToggleControlsButton()
-    if not ScreenGui then
-        warn("Cannot create toggle controls button: ScreenGui is nil")
-        return
-    end
-    
-    toggleControlsButton = Instance.new("TextButton")
-    toggleControlsButton.Name = "ToggleControls"
-    toggleControlsButton.Size = UDim2.new(0, 120, 0, 30)
-    toggleControlsButton.Position = UDim2.new(0.95, -60, 0.05, 0)
-    toggleControlsButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    toggleControlsButton.Text = showControls and "Hide Controls" or "Show Controls"
-    toggleControlsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleControlsButton.TextSize = 14
-    toggleControlsButton.Font = Enum.Font.SourceSansBold
-    toggleControlsButton.Visible = false
-    toggleControlsButton.ZIndex = 15
-    toggleControlsButton.Parent = ScreenGui
+    local sensSetButton = Instance.new("TextButton")
+    sensSetButton.Name = "SensSetButton"
+    sensSetButton.Size = UDim2.new(0, 100, 0, 30)
+    sensSetButton.Position = UDim2.new(0, 180, 0, 190)
+    sensSetButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    sensSetButton.Text = "Set Sensitivity"
+    sensSetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sensSetButton.TextSize = 14
+    sensSetButton.Parent = freecamGui
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 4)
-    corner.Parent = toggleControlsButton
-
-    toggleControlsButton.MouseButton1Click:Connect(function()
-        showControls = not showControls
-        toggleControlsButton.Text = showControls and "Hide Controls" or "Show Controls"
-        if joystickFrame then
-            joystickFrame.Visible = Visual.freecamEnabled and showControls
-        end
-        if rotationFrame then
-            rotationFrame.Visible = Visual.freecamEnabled and showControls
+    sensSetButton.MouseButton1Click:Connect(function()
+        local newSens = tonumber(sensBox.Text)
+        if newSens then
+            rotationSensitivity = newSens
         end
     end)
 end
@@ -910,7 +761,7 @@ local function createESPForPlayer(targetPlayer)
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Size = UDim2.new(1, 0, 1, 0)
         nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = targetPlayer.DisplayName or targetPlayer.Name
+        nameLabel.Text = targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")"
         nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         nameLabel.TextStrokeTransparency = 0.5
         nameLabel.TextSize = 14
@@ -1033,7 +884,7 @@ local function refreshESP()
                 newPlayer.CharacterAdded:Connect(function()
                     task.wait(0.3)
                     createESPForPlayer(newPlayer)
-                end)
+                end
             end
         end)
         
@@ -1193,16 +1044,9 @@ local function toggleFreecam(enabled)
         
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
         
-        if UserInputService.TouchEnabled then
-            if toggleControlsButton then
-                toggleControlsButton.Visible = true
-            end
-            if joystickFrame then
-                joystickFrame.Visible = showControls
-            end
-            if rotationFrame then
-                rotationFrame.Visible = showControls
-            end
+        -- Show GUI
+        if freecamGui then
+            freecamGui.Visible = true
         end
         
         -- SIMPAN nilai original sebelum mengubah
@@ -1266,10 +1110,6 @@ local function toggleFreecam(enabled)
                     end
                 end
                 
-                if Visual.joystickDelta.Magnitude > 0 then
-                    movement = movement + (freecamRightVector * Visual.joystickDelta.X + freecamLookVector * -Visual.joystickDelta.Y)
-                end
-                
                 if movement.Magnitude > 0 then
                     movement = movement.Unit * moveSpeed
                     currentPos = currentPos + movement
@@ -1282,17 +1122,17 @@ local function toggleFreecam(enabled)
                 local yawDelta = 0
                 local pitchDelta = 0
                 
-                if UserInputService:IsKeyDown(Enum.KeyCode.Left) or isLeftPressed then
-                    yawDelta = yawDelta + rotationSpeed * deltaTime
+                if UserInputService:IsKeyDown(Enum.KeyCode.Left) then
+                    yawDelta = yawDelta + rotationSensitivity * deltaTime
                 end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Right) or isRightPressed then
-                    yawDelta = yawDelta - rotationSpeed * deltaTime
+                if UserInputService:IsKeyDown(Enum.KeyCode.Right) then
+                    yawDelta = yawDelta - rotationSensitivity * deltaTime
                 end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Up) or isUpPressed then
-                    pitchDelta = pitchDelta + rotationSpeed * deltaTime
+                if UserInputService:IsKeyDown(Enum.KeyCode.Up) then
+                    pitchDelta = pitchDelta + rotationSensitivity * deltaTime
                 end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Down) or isDownPressed then
-                    pitchDelta = pitchDelta - rotationSpeed * deltaTime
+                if UserInputService:IsKeyDown(Enum.KeyCode.Down) then
+                    pitchDelta = pitchDelta - rotationSensitivity * deltaTime
                 end
                 
                 if yawDelta ~= 0 then
@@ -1356,6 +1196,10 @@ local function toggleFreecam(enabled)
             freecamInputConnection = UserInputService.InputChanged:Connect(function(input, processed)
                 if not Visual.freecamEnabled or processed then return end
                 
+                if input.UserInputType == Enum.UserInputType.MouseMovement then
+                    mouseDelta = Vector2.new(input.Delta.X, input.Delta.Y)
+                end
+                
                 if input.UserInputType == Enum.UserInputType.MouseWheel then
                     local wheelDirection = input.Position.Z
                     local wheelSpeed = 10 * (wheelDirection > 0 and 1 or -1)
@@ -1368,34 +1212,8 @@ local function toggleFreecam(enabled)
             end
         end
         
-        -- Touch input connections remain the same...
-        if UserInputService then
-            if connections and type(connections) == "table" and not connections.touchInput then
-                connections.touchInput = UserInputService.InputChanged:Connect(function(input, processed)
-                    if input.UserInputType == Enum.UserInputType.Touch then
-                        Visual.joystickDelta = handleJoystickInput(input, processed)
-                    end
-                end)
-            end
-            
-            if connections and type(connections) == "table" and not connections.touchBegan then
-                connections.touchBegan = UserInputService.InputBegan:Connect(function(input, processed)
-                    if input.UserInputType == Enum.UserInputType.Touch then
-                        Visual.joystickDelta = handleJoystickInput(input, processed)
-                    end
-                end)
-            end
-            
-            if connections and type(connections) == "table" and not connections.touchEnded then
-                connections.touchEnded = UserInputService.InputEnded:Connect(function(input, processed)
-                    if input.UserInputType == Enum.UserInputType.Touch then
-                        Visual.joystickDelta = handleJoystickInput(input, processed)
-                    end
-                end)
-            end
-        end
-        
-        print("Freecam enabled - WASD/QE to move, Arrow keys to rotate, mouse wheel to forward/backward")
+        -- Handle touch input for rotation and movement using Roblox default
+        -- No custom controls, rely on Roblox's built-in
         
     else
         -- DISABLE FREECAM - RESTORE SEMUA NILAI ORIGINAL
@@ -1413,20 +1231,8 @@ local function toggleFreecam(enabled)
             connections.freecamInputConnection = nil
         end
         
-        if UserInputService.TouchEnabled then
-            if toggleControlsButton then
-                toggleControlsButton.Visible = false
-            end
-            if joystickFrame then
-                joystickFrame.Visible = false
-            end
-            if rotationFrame then
-                rotationFrame.Visible = false
-            end
-        end
-        
-        if joystickFrame then
-            joystickKnob.Position = UDim2.new(0.5, -25, 0.5, -25)
+        if freecamGui then
+            freecamGui.Visible = false
         end
         
         local camera = Workspace.CurrentCamera
@@ -1472,10 +1278,6 @@ local function toggleFreecam(enabled)
         freecamCFrame = nil
         Visual.joystickDelta = Vector2.new(0, 0)
         mouseDelta = Vector2.new(0, 0)
-        isUpPressed = false
-        isDownPressed = false
-        isLeftPressed = false
-        isRightPressed = false
         
         -- Reset nilai original setelah restore
         Visual.originalWalkSpeed = nil
@@ -1536,7 +1338,7 @@ local function setTimeMode(mode)
     end
 end
 
-local function disableOtherOtherTimeModes(currentButton)
+local function disableOtherTimeModes(currentButton)
     for _, btn in ipairs(timeModeButtons) do
         if btn ~= currentButton and buttonStates[btn] then
             buttonStates[btn] = false
@@ -2252,7 +2054,7 @@ function Visual.init(deps)
         return false
     end
     
-    -- Set dependencies with strict strict fallbacks and safe service access
+    -- Set dependencies with strict fallbacks and safe service access
     Players = deps.Players or safeGetService("Players")
     UserInputService = deps.UserInputService or safeGetService("UserInputService")
     RunService = deps.RunService or safeGetService("RunService")
@@ -2319,26 +2121,10 @@ function Visual.init(deps)
         originalBubbleChatEnabled = Chat.BubbleChatEnabled
     end
     
-    -- Create joystick if ScreenGui is available
+    -- Create freecam GUI
     if ScreenGui then
-        createJoystick()
-        createRotationControls()
-        createToggleControlsButton()
-        print("Joystick and rotation controls created successfully")
-    else
-        warn("Warning: ScreenGui is nil, joystick cannot be created")
+        createFreecamGui()
     end
-    
-    -- Add freecam keybind
-    if connections.keybindFreecam then
-        connections.keybindFreecam:Disconnect()
-    end
-    connections.keybindFreecam = UserInputService.InputBegan:Connect(function(input, processed)
-        if processed then return end
-        if input.KeyCode == Enum.KeyCode.C and (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)) then
-            toggleFreecam(not Visual.freecamEnabled)
-        end
-    end)
     
     print("Visual module initialized successfully")
     return true
@@ -2811,25 +2597,6 @@ function Visual.cleanup()
     -- Reset all states
     Visual.resetStates()
     
-    -- Clean up joystick
-    if joystickFrame then
-        joystickFrame:Destroy()
-        joystickFrame = nil
-        joystickKnob = nil
-    end
-    
-    -- Clean up rotation controls
-    if rotationFrame then
-        rotationFrame:Destroy()
-        rotationFrame = nil
-    end
-    
-    -- Clean up toggle button
-    if toggleControlsButton then
-        toggleControlsButton:Destroy()
-        toggleControlsButton = nil
-    end
-    
     -- Clean up flashlight
     if flashlight then
         flashlight:Destroy()
@@ -2896,6 +2663,12 @@ function Visual.cleanup()
     if nameChangeInput then
         nameChangeInput:Destroy()
         nameChangeInput = nil
+    end
+    
+    -- Clean up freecam GUI
+    if freecamGui then
+        freecamGui:Destroy()
+        freecamGui = nil
     end
     
     -- Disconnect any remaining connections
