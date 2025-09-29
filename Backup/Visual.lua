@@ -52,6 +52,8 @@ local colorPicker = nil
 local originalBubbleChatEnabled = true
 local originalAnchor = false
 local espUpdateConnection = nil
+local customName = nil
+local nameChangeInput = nil
 
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
@@ -277,7 +279,7 @@ local function createFreecamGui()
     infoText.Size = UDim2.new(1, -20, 0, 100)
     infoText.Position = UDim2.new(0, 10, 0, 40)
     infoText.BackgroundTransparency = 1
-    infoText.Text = "Controls:\n- W/A/S/D or thumbstick: Move forward/left/back/right\n- Q/E: Move down/up\n- Mouse drag or touch drag: Rotate camera\n- Mouse wheel: Zoom in/out\n\nOn mobile, use standard Roblox controls for movement and camera."
+    infoText.Text = "Controls:\n- W/A/S/D or thumbstick: Move forward/left/back/right\n- Q/E: Move down/up\n- Arrow keys: Rotate camera left/right/up/down\n- Mouse wheel: Zoom in/out\n\nOn mobile, use standard Roblox controls for movement, touch drag for camera rotation."
     infoText.TextColor3 = Color3.fromRGB(255, 255, 255)
     infoText.TextSize = 14
     infoText.Font = Enum.Font.SourceSans
@@ -1128,10 +1130,6 @@ local function toggleFreecam(enabled)
                     pitchDelta = pitchDelta - rotationSensitivity * deltaTime
                 end
                 
-                yawDelta = yawDelta - mouseDelta.X * 0.002 * rotationSensitivity
-                pitchDelta = pitchDelta - mouseDelta.Y * 0.002 * rotationSensitivity
-                mouseDelta = Vector2.new(0, 0)
-                
                 if yawDelta ~= 0 then
                     local yawRot = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), yawDelta)
                     freecamCFrame = freecamCFrame * yawRot
@@ -1192,10 +1190,6 @@ local function toggleFreecam(enabled)
         freecamInputConnection = UserInputService.InputChanged:Connect(function(input, processed)
             if not Visual.freecamEnabled or processed then return end
             
-            if input.UserInputType == Enum.UserInputType.MouseMovement then
-                mouseDelta = Vector2.new(input.Delta.X, input.Delta.Y)
-            end
-            
             if input.UserInputType == Enum.UserInputType.MouseWheel then
                 local wheelDirection = input.Position.Z
                 local wheelSpeed = 10 * (wheelDirection > 0 and 1 or -1)
@@ -1203,12 +1197,22 @@ local function toggleFreecam(enabled)
                 freecamCFrame = freecamCFrame + movement
             end
             
-            if input.UserInputType == Enum.UserInputType.Touch and input == rotateTouchID then
+            if input.UserInputType == Enum.UserInputType.Touch and rotateTouchID and input.UserInputState == Enum.UserInputState.Change then
                 local currentPos = input.Position
                 local delta = currentPos - lastTouchPos
-                yawDelta = yawDelta - delta.X * 0.15 * rotationSensitivity
-                pitchDelta = pitchDelta - delta.Y * 0.15 * rotationSensitivity
+                local yawDelta = -delta.X * 0.15 * rotationSensitivity
+                local pitchDelta = -delta.Y * 0.15 * rotationSensitivity
                 lastTouchPos = currentPos
+                
+                if yawDelta ~= 0 then
+                    local yawRot = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), math.rad(yawDelta))
+                    freecamCFrame = freecamCFrame * yawRot
+                end
+                
+                if pitchDelta ~= 0 then
+                    local pitchRot = CFrame.fromAxisAngle(freecamCFrame.RightVector, math.rad(pitchDelta))
+                    freecamCFrame = freecamCFrame * pitchRot
+                end
             end
         end)
         if connections and type(connections) == "table" then
@@ -1980,6 +1984,89 @@ local function toggleSelfHighlight(enabled)
     end
 end
 
+-- Change Name (visual/client only)
+local function applyCustomName()
+    local character = player.Character
+    if not character then return end
+    
+    local head = character:FindFirstChild("Head")
+    if not head then return end
+    
+    local billboard = head:FindFirstChildOfClass("BillboardGui")
+    if not billboard then return end
+    
+    for _, child in pairs(billboard:GetChildren()) do
+        if child:IsA("TextLabel") then
+            child.Text = customName
+        end
+    end
+end
+
+local function setCustomName(newName)
+    customName = newName
+    applyCustomName()
+    
+    if connections.changeNameCharAdded then
+        connections.changeNameCharAdded:Disconnect()
+    end
+    connections.changeNameCharAdded = player.CharacterAdded:Connect(function()
+        task.wait(0.3)
+        applyCustomName()
+    end)
+end
+
+local function createNameInput()
+    if not ScreenGui then return end
+    
+    local inputFrame = Instance.new("Frame")
+    inputFrame.Size = UDim2.new(0, 300, 0, 100)
+    inputFrame.Position = UDim2.new(0.5, -150, 0.5, -50)
+    inputFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    inputFrame.Visible = false
+    inputFrame.Parent = ScreenGui
+    
+    local textBox = Instance.new("TextBox")
+    textBox.Size = UDim2.new(1, -20, 0, 40)
+    textBox.Position = UDim2.new(0, 10, 0, 10)
+    textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textBox.PlaceholderText = "Enter new name"
+    textBox.Parent = inputFrame
+    
+    local confirmButton = Instance.new("TextButton")
+    confirmButton.Size = UDim2.new(0.5, -15, 0, 30)
+    confirmButton.Position = UDim2.new(0, 10, 0, 60)
+    confirmButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+    confirmButton.Text = "Confirm"
+    confirmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmButton.Parent = inputFrame
+    
+    local cancelButton = Instance.new("TextButton")
+    cancelButton.Size = UDim2.new(0.5, -15, 0, 30)
+    cancelButton.Position = UDim2.new(0.5, 5, 0, 60)
+    cancelButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    cancelButton.Text = "Cancel"
+    cancelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cancelButton.Parent = inputFrame
+    
+    confirmButton.MouseButton1Click:Connect(function()
+        setCustomName(textBox.Text)
+        inputFrame.Visible = false
+    end)
+    
+    cancelButton.MouseButton1Click:Connect(function()
+        inputFrame.Visible = false
+    end)
+    
+    return inputFrame
+end
+
+local function showNameInput()
+    if nameChangeInput then
+        nameChangeInput.Visible = true
+    end
+end
+
 -- Initialize module
 function Visual.init(deps)
     print("Initializing Visual module")
@@ -2305,6 +2392,26 @@ function Visual.loadVisualButtons(createToggleButton)
             colorPicker.Visible = true
         end
     end)
+    
+    -- Create change name button
+    local changeNameButton = Instance.new("TextButton")
+    changeNameButton.Name = "ChangeNameButton"
+    changeNameButton.Size = UDim2.new(1, 0, 0, 30)
+    changeNameButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    changeNameButton.Text = "Change Name"
+    changeNameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    changeNameButton.TextSize = 14
+    changeNameButton.Font = Enum.Font.SourceSans
+    changeNameButton.BorderSizePixel = 0
+    changeNameButton.Parent = ScrollFrame
+    
+    local changeNameCorner = Instance.new("UICorner")
+    changeNameCorner.CornerRadius = UDim.new(0, 4)
+    changeNameCorner.Parent = changeNameButton
+    
+    nameChangeInput = createNameInput()
+    
+    changeNameButton.MouseButton1Click:Connect(showNameInput)
 end
 
 -- Export functions for external access
