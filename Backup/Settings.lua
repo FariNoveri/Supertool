@@ -142,10 +142,13 @@ local function createSlider(name, setting, min, max, default, parent)
         dragging = true
     end)
     
-    sliderBar.MouseButton1Down:Connect(function()
-        local mousePos = UserInputService:GetMouseLocation()
-        updateSlider(mousePos.X)
-        dragging = true
+    -- Fixed: Use InputBegan instead of MouseButton1Down for Frame (sliderBar)
+    sliderBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mousePos = UserInputService:GetMouseLocation()
+            updateSlider(mousePos.X)
+            dragging = true
+        end
     end)
     
     UserInputService.InputChanged:Connect(function(input)
