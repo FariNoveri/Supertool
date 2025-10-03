@@ -44,6 +44,7 @@ local flashlightNormal
 local pointLightNormal
 local groundFlashlight
 local groundPointLight
+local flashlightDummy
 local espElements = {}
 local characterTransparencies = {}
 local xrayTransparencies = {}
@@ -1318,6 +1319,11 @@ local function toggleFreecam(enabled)
                 
                 camera.CFrame = freecamCFrame
                 
+                -- Update flashlight dummy if active
+                if flashlightDummy and Visual.flashlightNormalEnabled then
+                    flashlightDummy.CFrame = freecamCFrame
+                end
+                
                 -- PASTIKAN karakter tetap diam selama freecam aktif
                 local currentCharacter = player.Character
                 local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
@@ -1341,6 +1347,28 @@ local function toggleFreecam(enabled)
         end)
         if connections and type(connections) == "table" then
             connections.freecamConnection = Visual.freecamConnection
+        end
+        
+        -- Handle flashlight normal attachment to dummy if enabled
+        if Visual.flashlightNormalEnabled then
+            if flashlightNormal then
+                flashlightNormal.Parent = nil
+            end
+            if pointLightNormal then
+                pointLightNormal.Parent = nil
+            end
+            if flashlightDummy then
+                flashlightDummy:Destroy()
+            end
+            flashlightDummy = Instance.new("Part")
+            flashlightDummy.Name = "FlashlightDummy"
+            flashlightDummy.Anchored = true
+            flashlightDummy.CanCollide = false
+            flashlightDummy.Transparency = 1
+            flashlightDummy.Size = Vector3.new(0.1, 0.1, 0.1)
+            flashlightDummy.Parent = Workspace
+            flashlightNormal.Parent = flashlightDummy
+            pointLightNormal.Parent = flashlightDummy
         end
         
         if freecamInputConnection then
@@ -1447,6 +1475,23 @@ local function toggleFreecam(enabled)
         -- RESTORE anchor status
         if currentRootPart then
             currentRootPart.Anchored = Visual.originalAnchored or false
+        end
+        
+        -- Handle flashlight normal reattachment to head if enabled
+        if Visual.flashlightNormalEnabled and flashlightDummy then
+            if flashlightNormal then
+                flashlightNormal.Parent = nil
+            end
+            if pointLightNormal then
+                pointLightNormal.Parent = nil
+            end
+            local head = currentCharacter and currentCharacter:FindFirstChild("Head")
+            if head then
+                flashlightNormal.Parent = head
+                pointLightNormal.Parent = head
+            end
+            flashlightDummy:Destroy()
+            flashlightDummy = nil
         end
         
         if UserInputService then
@@ -1598,28 +1643,43 @@ local function toggleFlashlightNormal(enabled)
                 pointLightNormal = nil
             end
             
-            local character = player.Character
-            local head = character and character:FindFirstChild("Head")
+            flashlightNormal = Instance.new("SpotLight")
+            flashlightNormal.Name = "FlashlightNormal"
+            flashlightNormal.Brightness = 15
+            flashlightNormal.Range = 100
+            flashlightNormal.Angle = 45
+            flashlightNormal.Color = Color3.fromRGB(255, 255, 200)
+            flashlightNormal.Enabled = true
             
-            if head then
-                flashlightNormal = Instance.new("SpotLight")
-                flashlightNormal.Name = "FlashlightNormal"
-                flashlightNormal.Brightness = 15
-                flashlightNormal.Range = 100
-                flashlightNormal.Angle = 45
-                flashlightNormal.Color = Color3.fromRGB(255, 255, 200)
-                flashlightNormal.Enabled = true
-                flashlightNormal.Parent = head
-                
-                pointLightNormal = Instance.new("PointLight")
-                pointLightNormal.Name = "FlashlightPointNormal"
-                pointLightNormal.Brightness = 5
-                pointLightNormal.Range = 60
-                pointLightNormal.Color = Color3.fromRGB(255, 255, 200)
-                pointLightNormal.Enabled = true
-                pointLightNormal.Parent = head
-                
-                print("Flashlight Normal attached to head")
+            pointLightNormal = Instance.new("PointLight")
+            pointLightNormal.Name = "FlashlightPointNormal"
+            pointLightNormal.Brightness = 5
+            pointLightNormal.Range = 60
+            pointLightNormal.Color = Color3.fromRGB(255, 255, 200)
+            pointLightNormal.Enabled = true
+            
+            if Visual.freecamEnabled then
+                if flashlightDummy then
+                    flashlightDummy:Destroy()
+                end
+                flashlightDummy = Instance.new("Part")
+                flashlightDummy.Name = "FlashlightDummy"
+                flashlightDummy.Anchored = true
+                flashlightDummy.CanCollide = false
+                flashlightDummy.Transparency = 1
+                flashlightDummy.Size = Vector3.new(0.1, 0.1, 0.1)
+                flashlightDummy.Parent = Workspace
+                flashlightNormal.Parent = flashlightDummy
+                pointLightNormal.Parent = flashlightDummy
+                print("Flashlight Normal attached to freecam dummy")
+            else
+                local character = player.Character
+                local head = character and character:FindFirstChild("Head")
+                if head then
+                    flashlightNormal.Parent = head
+                    pointLightNormal.Parent = head
+                    print("Flashlight Normal attached to head")
+                end
             end
         end
         
@@ -1632,19 +1692,28 @@ local function toggleFlashlightNormal(enabled)
         
         connections.flashlightNormal = RunService.Heartbeat:Connect(function()
             if Visual.flashlightNormalEnabled then
-                local character = player.Character
-                local head = character and character:FindFirstChild("Head")
-                
-                if head then
-                    if not flashlightNormal or flashlightNormal.Parent ~= head then
-                        setupFlashlightNormal()
-                    end
-                    
-                    if flashlightNormal then
+                if Visual.freecamEnabled then
+                    if flashlightDummy and flashlightDummy.Parent then
+                        local camera = Workspace.CurrentCamera
+                        flashlightDummy.CFrame = camera.CFrame
                         flashlightNormal.Enabled = true
-                    end
-                    if pointLightNormal then
                         pointLightNormal.Enabled = true
+                    end
+                else
+                    local character = player.Character
+                    local head = character and character:FindFirstChild("Head")
+                    
+                    if head then
+                        if not flashlightNormal or flashlightNormal.Parent ~= head then
+                            setupFlashlightNormal()
+                        end
+                        
+                        if flashlightNormal then
+                            flashlightNormal.Enabled = true
+                        end
+                        if pointLightNormal then
+                            pointLightNormal.Enabled = true
+                        end
                     end
                 end
             end
@@ -1655,7 +1724,7 @@ local function toggleFlashlightNormal(enabled)
         end
         if player then
             connections.flashlightNormalCharAdded = player.CharacterAdded:Connect(function()
-                if Visual.flashlightNormalEnabled then
+                if Visual.flashlightNormalEnabled and not Visual.freecamEnabled then
                     task.wait(1)
                     setupFlashlightNormal()
                 end
@@ -1672,6 +1741,11 @@ local function toggleFlashlightNormal(enabled)
                 connections.flashlightNormalCharAdded:Disconnect()
                 connections.flashlightNormalCharAdded = nil
             end
+        end
+        
+        if flashlightDummy then
+            flashlightDummy:Destroy()
+            flashlightDummy = nil
         end
         
         if flashlightNormal then
@@ -2939,6 +3013,11 @@ function Visual.cleanup()
     if groundPointLight then
         groundPointLight:Destroy()
         groundPointLight = nil
+    end
+    
+    if flashlightDummy then
+        flashlightDummy:Destroy()
+        flashlightDummy = nil
     end
     
     -- Clean up self highlight
