@@ -209,7 +209,7 @@ local function createSettingsGUI()
     scrolling.Position = UDim2.new(0, 0, 0, 30)
     scrolling.BackgroundTransparency = 1
     scrolling.ScrollBarThickness = 6
-    scrolling.CanvasSize = UDim2.new(0, 0, 0, 800)
+    scrolling.CanvasSize = UDim2.new(0, 0, 0, 1000)
     scrolling.Parent = settingsFrame
 
     local listLayout = Instance.new("UIListLayout")
