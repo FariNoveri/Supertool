@@ -12,7 +12,6 @@ local sliders = {}
 
 -- Store toggle states
 local toggleStates = {
-    HideLogo = false,
     EnableDrag = true,
     HideGUI = false
 }
@@ -254,27 +253,14 @@ function Settings.applySettings()
         end
     end
     
-    -- Apply Hide Logo
-    if minimizedLogo then
-        if toggleStates.HideLogo then
-            minimizedLogo.Visible = false
-        else
-            minimizedLogo.Visible = true
-            minimizedLogo.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        end
-    end
-    
     -- Apply Enable/Disable Drag
-    if mainFrame then
-        mainFrame.Draggable = toggleStates.EnableDrag
-    end
     if minimizedLogo then
         minimizedLogo.Draggable = toggleStates.EnableDrag
     end
     
     -- Apply Hide GUI
-    if mainFrame then
-        mainFrame.Visible = not toggleStates.HideGUI
+    if minimizedLogo then
+        minimizedLogo.Visible = not toggleStates.HideGUI
     end
     
     print("GUI Settings applied - Width:", settings.GuiWidth and settings.GuiWidth.value or "N/A", 
@@ -291,12 +277,6 @@ function Settings.loadSettingsButtons(createButton)
         warn("ScrollFrame not provided!")
         return
     end
-    
-    -- Create toggle for Hide Logo
-    createToggleButton("Hide Logo", function(state)
-        toggleStates.HideLogo = state
-        Settings.applySettings()
-    end, ScrollFrame)
     
     -- Create toggle for Enable Drag
     createToggleButton("Enable Drag", function(state)
@@ -321,17 +301,6 @@ function Settings.loadSettingsButtons(createButton)
         createSlider("GUI Opacity", settings.GuiOpacity, settings.GuiOpacity.min, settings.GuiOpacity.max, settings.GuiOpacity.default, ScrollFrame)
     end
     
-    -- Create sliders for other features (removed WalkSpeed)
-    if settings.JumpHeight then
-        createSlider("Jump Height", settings.JumpHeight, settings.JumpHeight.min, settings.JumpHeight.max, settings.JumpHeight.default, ScrollFrame)
-    end
-    if settings.FlySpeed then
-        createSlider("Fly Speed", settings.FlySpeed, settings.FlySpeed.min, settings.FlySpeed.max, settings.FlySpeed.default, ScrollFrame)
-    end
-    if settings.FreecamSpeed then
-        createSlider("Freecam Speed", settings.FreecamSpeed, settings.FreecamSpeed.min, settings.FreecamSpeed.max, settings.FreecamSpeed.default, ScrollFrame)
-    end
-    
     -- Update all slider UIs to reflect current values
     for name, slider in pairs(sliders) do
         updateSliderUI(name, slider.setting.value)
@@ -350,15 +319,11 @@ function Settings.resetStates()
     end
     
     -- Reset all settings to defaults (removed WalkSpeed)
-    if settings.JumpHeight then settings.JumpHeight.value = settings.JumpHeight.default end
-    if settings.FlySpeed then settings.FlySpeed.value = settings.FlySpeed.default end
-    if settings.FreecamSpeed then settings.FreecamSpeed.value = settings.FreecamSpeed.default end
     if settings.GuiWidth then settings.GuiWidth.value = settings.GuiWidth.default end
     if settings.GuiHeight then settings.GuiHeight.value = settings.GuiHeight.default end
     if settings.GuiOpacity then settings.GuiOpacity.value = settings.GuiOpacity.default end
     
     -- Reset toggles
-    toggleStates.HideLogo = false
     toggleStates.EnableDrag = true
     toggleStates.HideGUI = false
     
@@ -431,21 +396,6 @@ function Settings.init(deps)
     end
     
     -- Ensure all required settings exist with proper defaults (removed WalkSpeed)
-    if not settings.JumpHeight then
-        settings.JumpHeight = {value = 50, min = 20, max = 200, default = 50}
-        print("Created default JumpHeight setting")
-    end
-    
-    if not settings.FlySpeed then
-        settings.FlySpeed = {value = 50, min = 10, max = 200, default = 50}
-        print("Created default FlySpeed setting")
-    end
-    
-    if not settings.FreecamSpeed then
-        settings.FreecamSpeed = {value = 1, min = 0.1, max = 10, default = 1}
-        print("Created default FreecamSpeed setting")
-    end
-    
     if not settings.GuiWidth then
         settings.GuiWidth = {value = 500, min = 300, max = 800, default = 500}
         print("Created default GuiWidth setting")
@@ -474,7 +424,7 @@ function Settings.debug()
     
     if settings then
         print("Current Settings Values:")
-        local settingsList = {"JumpHeight", "FlySpeed", "FreecamSpeed", "GuiWidth", "GuiHeight", "GuiOpacity"}
+        local settingsList = {"GuiWidth", "GuiHeight", "GuiOpacity"}
         for _, name in ipairs(settingsList) do
             if settings[name] then
                 print("  " .. name .. ":", settings[name].value, 

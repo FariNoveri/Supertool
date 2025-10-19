@@ -22,9 +22,6 @@ local exclusiveFeatures = {} -- List of features that should be exclusive
 
 -- Settings - UPDATED: Removed WalkSpeed, Added GUI Controls
 local settings = {
-    FlySpeed = {value = 50, min = 10, max = 200, default = 50},
-    FreecamSpeed = {value = 50, min = 10, max = 200, default = 50},
-    JumpHeight = {value = 7.2, min = 0, max = 50, default = 7.2},
     GuiWidth = {value = 500, min = 300, max = 800, default = 500},
     GuiHeight = {value = 300, min = 200, max = 600, default = 300},
     GuiOpacity = {value = 1.0, min = 0.1, max = 1.0, default = 1.0}
@@ -243,13 +240,13 @@ local function createSlideNotification()
     )
     
     -- Slide in animation
-    local slideInTween = TweenService:CreateTween(NotificationFrame, slideInInfo, {Position = slideInPosition})
-    local shadowSlideInTween = TweenService:CreateTween(Shadow, slideInInfo, {Position = shadowSlideInPosition})
+    local slideInTween = TweenService:Create(NotificationFrame, slideInInfo, {Position = slideInPosition})
+    local shadowSlideInTween = TweenService:Create(Shadow, slideInInfo, {Position = shadowSlideInPosition})
     
     -- Slide out function
     local function slideOut()
-        local slideOutTween = TweenService:CreateTween(NotificationFrame, slideOutInfo, {Position = slideOutPosition})
-        local shadowSlideOutTween = TweenService:CreateTween(Shadow, slideOutInfo, {Position = shadowSlideOutPosition})
+        local slideOutTween = TweenService:Create(NotificationFrame, slideOutInfo, {Position = slideOutPosition})
+        local shadowSlideOutTween = TweenService:Create(Shadow, slideOutInfo, {Position = shadowSlideOutPosition})
         
         slideOutTween:Play()
         shadowSlideOutTween:Play()
