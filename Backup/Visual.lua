@@ -2939,48 +2939,115 @@ function Visual.loadVisualButtons(createToggleButton)
     -- Add to loadVisualButtons function
     local hitboxGui = Instance.new("Frame")
     hitboxGui.Name = "HitboxSettingsGui"
-    hitboxGui.Size = UDim2.new(0, 200, 0, 150)
-    hitboxGui.Position = UDim2.new(0.5, -100, 0.5, -75)
+    hitboxGui.Size = UDim2.new(0, 200, 0, 180)
+    hitboxGui.Position = UDim2.new(0.5, -100, 0.5, -90)
     hitboxGui.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     hitboxGui.Visible = false
     hitboxGui.Parent = ScreenGui
+    local hitboxCorner = Instance.new("UICorner")
+    hitboxCorner.CornerRadius = UDim.new(0, 8)
+    hitboxCorner.Parent = hitboxGui
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Text = "Hitbox Settings"
+    titleLabel.Size = UDim2.new(1, -40, 0, 30)
+    titleLabel.Position = UDim2.new(0, 0, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.TextSize = 16
+    titleLabel.Font = Enum.Font.SourceSansBold
+    titleLabel.Parent = hitboxGui
+
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -30, 0, 0)
+    closeButton.BackgroundTransparency = 1
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 16
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.Parent = hitboxGui
+    closeButton.MouseButton1Click:Connect(function()
+        hitboxGui.Visible = false
+    end)
 
     local shapeLabel = Instance.new("TextLabel")
     shapeLabel.Text = "Shape:"
     shapeLabel.Size = UDim2.new(1, 0, 0, 30)
+    shapeLabel.Position = UDim2.new(0, 0, 0, 30)
+    shapeLabel.BackgroundTransparency = 1
+    shapeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    shapeLabel.TextSize = 14
+    shapeLabel.Font = Enum.Font.SourceSans
     shapeLabel.Parent = hitboxGui
 
     local shapeBox = Instance.new("TextBox")
     shapeBox.Size = UDim2.new(1, 0, 0, 30)
-    shapeBox.Position = UDim2.new(0, 0, 0, 30)
+    shapeBox.Position = UDim2.new(0, 0, 0, 60)
+    shapeBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     shapeBox.Text = Visual.hitboxShape
+    shapeBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    shapeBox.TextSize = 14
     shapeBox.Parent = hitboxGui
+    local shapeBoxCorner = Instance.new("UICorner")
+    shapeBoxCorner.CornerRadius = UDim.new(0, 4)
+    shapeBoxCorner.Parent = shapeBox
     shapeBox.FocusLost:Connect(function()
-        Visual.hitboxShape = shapeBox.Text
+        local input = string.lower(shapeBox.Text)
+        if table.find(Visual.hitboxShapes, input) then
+            Visual.hitboxShape = input
+        else
+            shapeBox.Text = Visual.hitboxShape
+        end
         refreshESP()
     end)
 
     local distLabel = Instance.new("TextLabel")
     distLabel.Text = "Distance:"
     distLabel.Size = UDim2.new(1, 0, 0, 30)
-    distLabel.Position = UDim2.new(0, 0, 0, 60)
+    distLabel.Position = UDim2.new(0, 0, 0, 90)
+    distLabel.BackgroundTransparency = 1
+    distLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    distLabel.TextSize = 14
+    distLabel.Font = Enum.Font.SourceSans
     distLabel.Parent = hitboxGui
 
     local distBox = Instance.new("TextBox")
     distBox.Size = UDim2.new(1, 0, 0, 30)
-    distBox.Position = UDim2.new(0, 0, 0, 90)
+    distBox.Position = UDim2.new(0, 0, 0, 120)
+    distBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     distBox.Text = tostring(Visual.hitboxDistance)
+    distBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    distBox.TextSize = 14
     distBox.Parent = hitboxGui
+    local distBoxCorner = Instance.new("UICorner")
+    distBoxCorner.CornerRadius = UDim.new(0, 4)
+    distBoxCorner.Parent = distBox
     distBox.FocusLost:Connect(function()
-        Visual.hitboxDistance = tonumber(distBox.Text) or 1000
+        local num = tonumber(distBox.Text)
+        if num and num > 0 then
+            Visual.hitboxDistance = num
+        else
+            distBox.Text = tostring(Visual.hitboxDistance)
+        end
         refreshESP()
     end)
 
     -- Button to open GUI
     local hitboxSetButton = Instance.new("TextButton")
+    hitboxSetButton.Name = "HitboxSetButton"
     hitboxSetButton.Text = "Hitbox Settings"
     hitboxSetButton.Size = UDim2.new(1, 0, 0, 30)
+    hitboxSetButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    hitboxSetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hitboxSetButton.TextSize = 14
+    hitboxSetButton.Font = Enum.Font.SourceSans
+    hitboxSetButton.BorderSizePixel = 0
     hitboxSetButton.Parent = ScrollFrame
+    local hitboxSetCorner = Instance.new("UICorner")
+    hitboxSetCorner.CornerRadius = UDim.new(0, 4)
+    hitboxSetCorner.Parent = hitboxSetButton
     hitboxSetButton.MouseButton1Click:Connect(function()
         hitboxGui.Visible = true
     end)
