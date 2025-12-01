@@ -1,10 +1,8 @@
 -- Enhanced Visual-related features (Fixed NoClipCamera, Freecam, Flashlight, Low Detail Mode, Hide Nicknames + Added Ultra Low Detail)
 -- Dependencies: These must be passed from mainloader.lua
 local Players, UserInputService, RunService, Workspace, Lighting, RenderSettings, ContextActionService, connections, buttonStates, ScrollFrame, ScreenGui, settings, humanoid, rootPart, player, Chat
-
 -- Initialize module
 local Visual = {}
-
 -- Variables
 Visual.freecamEnabled = false
 Visual.freecamConnection = nil
@@ -25,6 +23,10 @@ Visual.espBox2DEnabled = false
 Visual.espTracerEnabled = false
 Visual.espNameEnabled = false
 Visual.espHealthEnabled = false
+Visual.espHitboxEnabled = false
+Visual.hitboxShapes = {"box", "sphere", "cylinder"}
+Visual.currentHitboxShapeIndex = 1
+Visual.hitboxShape = "box"
 Visual.xrayEnabled = false
 Visual.voidEnabled = false
 Visual.hideAllNicknames = false
@@ -73,17 +75,14 @@ local boneConnections = {
     {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LeftLowerLeg", "LeftFoot"},
     {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}, {"RightLowerLeg", "RightFoot"}
 }
-
 -- Freecam variables for native-like behavior
 local freecamCFrame = nil
 local freecamInputConnection = nil
-
 -- Freecam GUI variables
 local freecamGui
-local rotationSensitivity = 2  -- Default sensitivity
+local rotationSensitivity = 2 -- Default sensitivity
 local rotateTouchID = nil
 local lastTouchPos = nil
-
 -- Time mode configurations
 local timeModeConfigs = {
     normal = {
@@ -137,7 +136,6 @@ local timeModeConfigs = {
         FogColor = Color3.fromRGB(40, 40, 80)
     }
 }
-
 -- Safe service accessor
 local function safeGetService(serviceName)
     local success, service = pcall(function()
@@ -150,7 +148,6 @@ local function safeGetService(serviceName)
         return nil
     end
 end
-
 -- Safe rendering settings accessor
 local function safeGetRenderSettings()
     local success, renderSettings = pcall(function()
@@ -174,31 +171,29 @@ local function safeGetRenderSettings()
     warn("Could not access render settings")
     return nil
 end
-
 -- Health color function for ESP
 local function getHealthColor(targetPlayer)
     if not targetPlayer or not targetPlayer.Character then
         return Color3.fromRGB(255, 255, 255)
     end
-    
+   
     local humanoidTarget = targetPlayer.Character:FindFirstChild("Humanoid")
     if not humanoidTarget then
         return Color3.fromRGB(255, 255, 255)
     end
-    
+   
     local healthPercent = humanoidTarget.Health / humanoidTarget.MaxHealth
-    
+   
     if healthPercent > 0.75 then
-        return Color3.fromRGB(0, 255, 0)  -- Green (High health)
+        return Color3.fromRGB(0, 255, 0) -- Green (High health)
     elseif healthPercent > 0.5 then
-        return Color3.fromRGB(255, 255, 0)  -- Yellow (Medium health)
+        return Color3.fromRGB(255, 255, 0) -- Yellow (Medium health)
     elseif healthPercent > 0.25 then
-        return Color3.fromRGB(255, 165, 0)  -- Orange (Low health)
+        return Color3.fromRGB(255, 165, 0) -- Orange (Low health)
     else
-        return Color3.fromRGB(255, 0, 0)  -- Red (Very low health)
+        return Color3.fromRGB(255, 0, 0) -- Red (Very low health)
     end
 end
-
 -- Store original lighting settings
 local function storeOriginalLightingSettings()
     if not defaultLightingSettings.stored then
@@ -215,7 +210,7 @@ local function storeOriginalLightingSettings()
         defaultLightingSettings.ColorShift_Bottom = Lighting.ColorShift_Bottom
         defaultLightingSettings.SunAngularSize = Lighting.SunAngularSize
         defaultLightingSettings.TerrainDecoration = Workspace.Terrain.Decoration
-        
+       
         pcall(function()
             local renderSettings = safeGetRenderSettings()
             if renderSettings then
@@ -225,18 +220,17 @@ local function storeOriginalLightingSettings()
             defaultLightingSettings.StreamingMinRadius = Workspace.StreamingMinRadius
             defaultLightingSettings.StreamingTargetRadius = Workspace.StreamingTargetRadius
         end)
-        
+       
         print("Original lighting settings stored")
     end
 end
-
 -- Create freecam GUI
 local function createFreecamGui()
     if not ScreenGui then
         warn("Cannot create freecam GUI: ScreenGui is nil")
         return
     end
-    
+   
     freecamGui = Instance.new("Frame")
     freecamGui.Name = "FreecamGui"
     freecamGui.Size = UDim2.new(0, 300, 0, 280)
@@ -247,11 +241,9 @@ local function createFreecamGui()
     freecamGui.Visible = false
     freecamGui.ZIndex = 10
     freecamGui.Parent = ScreenGui
-
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = freecamGui
-
     local title = Instance.new("TextLabel")
     title.Name = "Title"
     title.Size = UDim2.new(1, -40, 0, 30)
@@ -262,7 +254,6 @@ local function createFreecamGui()
     title.TextSize = 16
     title.Font = Enum.Font.SourceSansBold
     title.Parent = freecamGui
-
     local closeButton = Instance.new("TextButton")
     closeButton.Name = "CloseButton"
     closeButton.Size = UDim2.new(0, 30, 0, 30)
@@ -273,11 +264,9 @@ local function createFreecamGui()
     closeButton.TextSize = 16
     closeButton.Font = Enum.Font.SourceSansBold
     closeButton.Parent = freecamGui
-
     closeButton.MouseButton1Click:Connect(function()
         freecamGui.Visible = false
     end)
-
     local minimizeButton = Instance.new("TextButton")
     minimizeButton.Name = "MinimizeButton"
     minimizeButton.Size = UDim2.new(0, 30, 0, 30)
@@ -288,11 +277,9 @@ local function createFreecamGui()
     minimizeButton.TextSize = 16
     minimizeButton.Font = Enum.Font.SourceSansBold
     minimizeButton.Parent = freecamGui
-
     minimizeButton.MouseButton1Click:Connect(function()
         freecamGui.Visible = false
     end)
-
     local infoText = Instance.new("TextLabel")
     infoText.Name = "Info"
     infoText.Size = UDim2.new(1, -20, 0, 100)
@@ -305,7 +292,6 @@ local function createFreecamGui()
     infoText.TextWrapped = true
     infoText.TextYAlignment = Enum.TextYAlignment.Top
     infoText.Parent = freecamGui
-
     local speedLabel = Instance.new("TextLabel")
     speedLabel.Name = "SpeedLabel"
     speedLabel.Size = UDim2.new(0, 100, 0, 30)
@@ -316,7 +302,6 @@ local function createFreecamGui()
     speedLabel.TextSize = 14
     speedLabel.Font = Enum.Font.SourceSans
     speedLabel.Parent = freecamGui
-
     local speedBox = Instance.new("TextBox")
     speedBox.Name = "SpeedBox"
     speedBox.Size = UDim2.new(0, 50, 0, 30)
@@ -326,7 +311,6 @@ local function createFreecamGui()
     speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
     speedBox.TextSize = 14
     speedBox.Parent = freecamGui
-
     local speedSetButton = Instance.new("TextButton")
     speedSetButton.Name = "SpeedSetButton"
     speedSetButton.Size = UDim2.new(0, 100, 0, 30)
@@ -336,14 +320,12 @@ local function createFreecamGui()
     speedSetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     speedSetButton.TextSize = 14
     speedSetButton.Parent = freecamGui
-
     speedSetButton.MouseButton1Click:Connect(function()
         local newSpeed = tonumber(speedBox.Text)
         if newSpeed then
             freecamSpeed = newSpeed
         end
     end)
-
     local sensLabel = Instance.new("TextLabel")
     sensLabel.Name = "SensLabel"
     sensLabel.Size = UDim2.new(0, 100, 0, 30)
@@ -354,7 +336,6 @@ local function createFreecamGui()
     sensLabel.TextSize = 14
     sensLabel.Font = Enum.Font.SourceSans
     sensLabel.Parent = freecamGui
-
     local sensBox = Instance.new("TextBox")
     sensBox.Name = "SensBox"
     sensBox.Size = UDim2.new(0, 50, 0, 30)
@@ -364,7 +345,6 @@ local function createFreecamGui()
     sensBox.TextColor3 = Color3.fromRGB(255, 255, 255)
     sensBox.TextSize = 14
     sensBox.Parent = freecamGui
-
     local sensSetButton = Instance.new("TextButton")
     sensSetButton.Name = "SensSetButton"
     sensSetButton.Size = UDim2.new(0, 100, 0, 30)
@@ -374,14 +354,12 @@ local function createFreecamGui()
     sensSetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     sensSetButton.TextSize = 14
     sensSetButton.Parent = freecamGui
-
     sensSetButton.MouseButton1Click:Connect(function()
         local newSens = tonumber(sensBox.Text)
         if newSens then
             rotationSensitivity = newSens
         end
     end)
-
     local modeLabel = Instance.new("TextLabel")
     modeLabel.Name = "ModeLabel"
     modeLabel.Size = UDim2.new(0, 100, 0, 30)
@@ -392,7 +370,6 @@ local function createFreecamGui()
     modeLabel.TextSize = 14
     modeLabel.Font = Enum.Font.SourceSans
     modeLabel.Parent = freecamGui
-
     local pcButton = Instance.new("TextButton")
     pcButton.Name = "PCButton"
     pcButton.Size = UDim2.new(0, 60, 0, 30)
@@ -402,13 +379,11 @@ local function createFreecamGui()
     pcButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     pcButton.TextSize = 14
     pcButton.Parent = freecamGui
-
     pcButton.MouseButton1Click:Connect(function()
         Visual.freecamMode = "PC"
         pcButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
         mobileButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     end)
-
     local mobileButton = Instance.new("TextButton")
     mobileButton.Name = "MobileButton"
     mobileButton.Size = UDim2.new(0, 60, 0, 30)
@@ -418,19 +393,17 @@ local function createFreecamGui()
     mobileButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     mobileButton.TextSize = 14
     mobileButton.Parent = freecamGui
-
     mobileButton.MouseButton1Click:Connect(function()
         Visual.freecamMode = "mobile"
         mobileButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
         pcButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     end)
 end
-
 -- Hide All Nicknames - Hides all nicknames except player's own
 local function toggleHideAllNicknames(enabled)
     Visual.hideAllNicknames = enabled
     print("Hide All Nicknames:", enabled)
-    
+   
     local function hideNickname(targetPlayer)
         if targetPlayer ~= player and targetPlayer.Character then
             local head = targetPlayer.Character:FindFirstChild("Head")
@@ -442,11 +415,11 @@ local function toggleHideAllNicknames(enabled)
             end
         end
     end
-    
+   
     for _, targetPlayer in pairs(Players:GetPlayers()) do
         hideNickname(targetPlayer)
     end
-    
+   
     if enabled then
         if connections.hideAllNickPlayerAdded then
             connections.hideAllNickPlayerAdded:Disconnect()
@@ -461,7 +434,7 @@ local function toggleHideAllNicknames(enabled)
                 end)
             end
         end)
-        
+       
         for _, targetPlayer in pairs(Players:GetPlayers()) do
             if targetPlayer ~= player then
                 if connections["hideAllNickCharAdded" .. targetPlayer.UserId] then
@@ -488,12 +461,11 @@ local function toggleHideAllNicknames(enabled)
         end
     end
 end
-
 -- Hide Own Nickname - Hides only the player's nickname
 local function toggleHideOwnNickname(enabled)
     Visual.hideOwnNickname = enabled
     print("Hide Own Nickname:", enabled)
-    
+   
     local function hideOwn()
         local character = player.Character
         if character then
@@ -506,9 +478,9 @@ local function toggleHideOwnNickname(enabled)
             end
         end
     end
-    
+   
     hideOwn()
-    
+   
     if enabled then
         if connections.hideOwnNickCharAdded then
             connections.hideOwnNickCharAdded:Disconnect()
@@ -526,7 +498,6 @@ local function toggleHideOwnNickname(enabled)
         end
     end
 end
-
 -- Hide Bubble Chat
 local function toggleHideBubbleChat(enabled)
     Visual.hideBubbleChat = enabled
@@ -537,12 +508,12 @@ local function toggleHideBubbleChat(enabled)
         else
             Chat.BubbleChatEnabled = originalBubbleChatEnabled
         end
-        
+       
         if connections.bubbleChatMonitor then
             connections.bubbleChatMonitor:Disconnect()
             connections.bubbleChatMonitor = nil
         end
-        
+       
         if enabled then
             connections.bubbleChatMonitor = RunService.Heartbeat:Connect(function()
                 if Chat.BubbleChatEnabled then
@@ -554,7 +525,6 @@ local function toggleHideBubbleChat(enabled)
         warn("Chat service not available")
     end
 end
-
 -- Hide Character function
 local function hideCharacter(targetPlayer, hide)
     local char = targetPlayer.Character
@@ -580,22 +550,21 @@ local function hideCharacter(targetPlayer, hide)
         end
     end
 end
-
 -- Toggle Hide All Characters Except Self
 local function toggleHideAllCharactersExceptSelf(enabled)
     Visual.hideAllCharactersExceptSelf = enabled
     print("Hide All Characters Except Self:", enabled)
-    
+   
     local function hideOther(targetPlayer)
         if targetPlayer ~= player then
             hideCharacter(targetPlayer, enabled)
         end
     end
-    
+   
     for _, targetPlayer in pairs(Players:GetPlayers()) do
         hideOther(targetPlayer)
     end
-    
+   
     if enabled then
         if connections.hideAllCharsPlayerAdded then
             connections.hideAllCharsPlayerAdded:Disconnect()
@@ -610,7 +579,7 @@ local function toggleHideAllCharactersExceptSelf(enabled)
                 end)
             end
         end)
-        
+       
         if connections.hideAllCharsPlayerRemoving then
             connections.hideAllCharsPlayerRemoving:Disconnect()
         end
@@ -619,7 +588,7 @@ local function toggleHideAllCharactersExceptSelf(enabled)
                 characterTransparencies[leavingPlayer] = nil
             end
         end)
-        
+       
         for _, targetPlayer in pairs(Players:GetPlayers()) do
             if targetPlayer ~= player then
                 if connections["hideAllCharsCharAdded" .. targetPlayer.UserId] then
@@ -658,14 +627,13 @@ local function toggleHideAllCharactersExceptSelf(enabled)
         end
     end
 end
-
 -- Toggle Hide Self Character
 local function toggleHideSelfCharacter(enabled)
     Visual.hideSelfCharacter = enabled
     print("Hide Self Character:", enabled)
-    
+   
     hideCharacter(player, enabled)
-    
+   
     if enabled then
         if connections.hideSelfCharAdded then
             connections.hideSelfCharAdded:Disconnect()
@@ -676,7 +644,7 @@ local function toggleHideSelfCharacter(enabled)
                 hideCharacter(player, true)
             end
         end)
-        
+       
         if connections.hideSelfCharRemoving then
             connections.hideSelfCharRemoving:Disconnect()
         end
@@ -696,45 +664,44 @@ local function toggleHideSelfCharacter(enabled)
         end
     end
 end
-
 -- NoClipCamera - Camera passes through objects while maintaining normal movement
 local function toggleNoClipCamera(enabled)
     Visual.noClipCameraEnabled = enabled
     print("NoClipCamera:", enabled)
-    
+   
     local camera = Workspace.CurrentCamera
-    
+   
     if enabled then
         if Visual.freecamEnabled then
             toggleFreecam(false)
         end
-        
+       
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
-        
+       
         if connections and type(connections) == "table" and connections.noClipCameraConnection then
             connections.noClipCameraConnection:Disconnect()
             connections.noClipCameraConnection = nil
         end
-        
+       
         Visual.noClipCameraConnection = RunService.RenderStepped:Connect(function()
             if Visual.noClipCameraEnabled then
                 local camera = Workspace.CurrentCamera
                 local rayOrigin = camera.CFrame.Position
                 local rayDirection = camera.CFrame.LookVector * 1000
-                
+               
                 local raycastParams = RaycastParams.new()
                 raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
                 raycastParams.FilterDescendantsInstances = {player.Character}
-                
+               
                 local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-                
+               
                 if raycastResult and raycastResult.Distance < 5 then
                     local hitPart = raycastResult.Instance
                     if hitPart and hitPart:IsA("BasePart") then
                         local originalCanCollide = hitPart.CanCollide
                         hitPart.CanCollide = false
-                        
+                       
                         task.wait(0.1)
                         pcall(function()
                             if hitPart and hitPart.Parent then
@@ -748,27 +715,26 @@ local function toggleNoClipCamera(enabled)
         if connections and type(connections) == "table" then
             connections.noClipCameraConnection = Visual.noClipCameraConnection
         end
-        
+       
     else
         if connections and type(connections) == "table" and connections.noClipCameraConnection then
             connections.noClipCameraConnection:Disconnect()
             connections.noClipCameraConnection = nil
         end
         Visual.noClipCameraConnection = nil
-        
+       
         local camera = Workspace.CurrentCamera
         if Visual.originalCameraType then
             camera.CameraType = Visual.originalCameraType
         end
-        
+       
         if Visual.originalCameraSubject then
             camera.CameraSubject = Visual.originalCameraSubject
         end
-        
+       
         Visual.noClipCameraCFrame = nil
     end
 end
-
 local function destroyESPForPlayer(targetPlayer)
     if espElements[targetPlayer] then
         if espElements[targetPlayer].highlight then
@@ -793,24 +759,26 @@ local function destroyESPForPlayer(targetPlayer)
                 line:Remove()
             end
         end
+        if espElements[targetPlayer].hitboxAdorn then
+            espElements[targetPlayer].hitboxAdorn:Destroy()
+        end
         espElements[targetPlayer] = nil
     end
 end
-
 local function createESPForPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Head") or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
         return
     end
-    
+   
     destroyESPForPlayer(targetPlayer)
-    
+   
     espElements[targetPlayer] = {}
-    
+   
     local character = targetPlayer.Character
     local head = character.Head
     local humanoid = character:FindFirstChild("Humanoid")
     local root = character.HumanoidRootPart
-    
+   
     if Visual.espChamsEnabled then
         local highlight = Instance.new("Highlight")
         highlight.Name = "ESPHighlight"
@@ -823,7 +791,7 @@ local function createESPForPlayer(targetPlayer)
         highlight.Parent = character
         espElements[targetPlayer].highlight = highlight
     end
-    
+   
     if Visual.espBoneEnabled then
         local lines = {}
         for _, pair in pairs(boneConnections) do
@@ -835,7 +803,7 @@ local function createESPForPlayer(targetPlayer)
         end
         espElements[targetPlayer].boneLines = lines
     end
-    
+   
     if Visual.espBox2DEnabled then
         local boxLines = {}
         for i = 1, 4 do
@@ -847,7 +815,7 @@ local function createESPForPlayer(targetPlayer)
         end
         espElements[targetPlayer].boxLines = boxLines
     end
-    
+   
     if Visual.espNameEnabled then
         local nameGui = Instance.new("BillboardGui")
         nameGui.Name = "ESPName"
@@ -855,7 +823,7 @@ local function createESPForPlayer(targetPlayer)
         nameGui.Size = UDim2.new(0, 200, 0, 50)
         nameGui.StudsOffset = Vector3.new(0, 3, 0)
         nameGui.AlwaysOnTop = true
-        
+       
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Size = UDim2.new(1, 0, 1, 0)
         nameLabel.BackgroundTransparency = 1
@@ -865,11 +833,11 @@ local function createESPForPlayer(targetPlayer)
         nameLabel.TextSize = 14
         nameLabel.Font = Enum.Font.SourceSansBold
         nameLabel.Parent = nameGui
-        
+       
         nameGui.Parent = character
         espElements[targetPlayer].nameGui = nameGui
     end
-    
+   
     if Visual.espHealthEnabled and humanoid then
         local healthGui = Instance.new("BillboardGui")
         healthGui.Name = "ESPHealth"
@@ -877,7 +845,7 @@ local function createESPForPlayer(targetPlayer)
         healthGui.Size = UDim2.new(0, 200, 0, 50)
         healthGui.StudsOffset = Vector3.new(0, 2, 0)
         healthGui.AlwaysOnTop = true
-        
+       
         local healthText = Instance.new("TextLabel")
         healthText.Size = UDim2.new(1, 0, 0.5, 0)
         healthText.BackgroundTransparency = 1
@@ -887,26 +855,26 @@ local function createESPForPlayer(targetPlayer)
         healthText.TextSize = 12
         healthText.Font = Enum.Font.SourceSans
         healthText.Parent = healthGui
-        
+       
         local healthBarBg = Instance.new("Frame")
         healthBarBg.Size = UDim2.new(1, 0, 0.5, 0)
         healthBarBg.Position = UDim2.new(0, 0, 0.5, 0)
         healthBarBg.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
         healthBarBg.BorderSizePixel = 0
         healthBarBg.Parent = healthGui
-        
+       
         local healthBarFg = Instance.new("Frame")
         healthBarFg.Size = UDim2.new(humanoid.Health / humanoid.MaxHealth, 0, 1, 0)
         healthBarFg.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
         healthBarFg.BorderSizePixel = 0
         healthBarFg.Parent = healthBarBg
-        
+       
         healthGui.Parent = character
         espElements[targetPlayer].healthGui = healthGui
         espElements[targetPlayer].healthText = healthText
         espElements[targetPlayer].healthBarFg = healthBarFg
     end
-    
+   
     if Visual.espTracerEnabled then
         local tracer = Drawing.new("Line")
         tracer.Visible = true
@@ -915,26 +883,49 @@ local function createESPForPlayer(targetPlayer)
         tracer.Transparency = 1
         espElements[targetPlayer].tracer = tracer
     end
+   
+    if Visual.espHitboxEnabled then
+        local adorn
+        if Visual.hitboxShape == "box" then
+            adorn = Instance.new("BoxHandleAdornment")
+            adorn.Size = Vector3.new(4, 6, 2)
+        elseif Visual.hitboxShape == "sphere" then
+            adorn = Instance.new("SphereHandleAdornment")
+            adorn.Radius = 3
+        elseif Visual.hitboxShape == "cylinder" then
+            adorn = Instance.new("CylinderHandleAdornment")
+            adorn.Height = 6
+            adorn.Radius = 2
+        end
+        if adorn then
+            adorn.Name = "ESPHitbox"
+            adorn.Adornee = root
+            adorn.AlwaysOnTop = true
+            adorn.Transparency = 0.5
+            adorn.Color3 = getHealthColor(targetPlayer)
+            adorn.Parent = character
+            espElements[targetPlayer].hitboxAdorn = adorn
+        end
+    end
 end
-
 local function refreshESP()
     for targetPlayer, _ in pairs(espElements) do
         destroyESPForPlayer(targetPlayer)
     end
     espElements = {}
-    
+   
     if espUpdateConnection then
         espUpdateConnection:Disconnect()
         espUpdateConnection = nil
     end
-    
-    if Visual.espChamsEnabled or Visual.espBoneEnabled or Visual.espBox2DEnabled or Visual.espNameEnabled or Visual.espHealthEnabled or Visual.espTracerEnabled then
+   
+    if Visual.espChamsEnabled or Visual.espBoneEnabled or Visual.espBox2DEnabled or Visual.espTracerEnabled or Visual.espNameEnabled or Visual.espHealthEnabled or Visual.espHitboxEnabled then
         for _, targetPlayer in pairs(Players:GetPlayers()) do
             if targetPlayer ~= player and targetPlayer.Character then
                 createESPForPlayer(targetPlayer)
             end
         end
-        
+       
         espUpdateConnection = RunService.Heartbeat:Connect(function()
             local camera = Workspace.CurrentCamera
             for targetPlayer, elements in pairs(espElements) do
@@ -951,6 +942,9 @@ local function refreshESP()
                         end
                         if elements.healthBarFg then
                             elements.healthBarFg.Size = UDim2.new(humanoid.Health / humanoid.MaxHealth, 0, 1, 0)
+                        end
+                        if elements.hitboxAdorn then
+                            elements.hitboxAdorn.Color3 = getHealthColor(targetPlayer)
                         end
                     end
                     if elements.tracer and root then
@@ -1030,7 +1024,7 @@ local function refreshESP()
                 end
             end
         end)
-        
+       
         if connections.espPlayerAdded then
             connections.espPlayerAdded:Disconnect()
         end
@@ -1042,7 +1036,7 @@ local function refreshESP()
                 end)
             end
         end)
-        
+       
         if connections.espPlayerRemoving then
             connections.espPlayerRemoving:Disconnect()
         end
@@ -1051,43 +1045,39 @@ local function refreshESP()
         end)
     end
 end
-
 local function toggleESPChams(enabled)
     Visual.espChamsEnabled = enabled
     refreshESP()
 end
-
 local function toggleESPBone(enabled)
     Visual.espBoneEnabled = enabled
     refreshESP()
 end
-
 local function toggleESPBox2D(enabled)
     Visual.espBox2DEnabled = enabled
     refreshESP()
 end
-
 local function toggleESPTracer(enabled)
     Visual.espTracerEnabled = enabled
     refreshESP()
 end
-
 local function toggleESPName(enabled)
     Visual.espNameEnabled = enabled
     refreshESP()
 end
-
 local function toggleESPHealth(enabled)
     Visual.espHealthEnabled = enabled
     refreshESP()
 end
-
+local function toggleESPHitbox(enabled)
+    Visual.espHitboxEnabled = enabled
+    refreshESP()
+end
 -- XRay function similar to Infinite Yield
 local function isCharacterPart(part)
     local model = part:FindFirstAncestorOfClass("Model")
     return model and Players:GetPlayerFromCharacter(model)
 end
-
 local function applyXRayToObject(obj)
     if (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation")) and not isCharacterPart(obj) then
         if not xrayTransparencies[obj] then
@@ -1096,17 +1086,16 @@ local function applyXRayToObject(obj)
         end
     end
 end
-
 local function toggleXRay(enabled)
     Visual.xrayEnabled = enabled
     print("XRay:", enabled)
-    
+   
     if enabled then
         xrayTransparencies = {}
         for _, obj in pairs(Workspace:GetDescendants()) do
             applyXRayToObject(obj)
         end
-        
+       
         if connections and type(connections) == "table" and connections.xrayDescendantAdded then
             connections.xrayDescendantAdded:Disconnect()
         end
@@ -1122,14 +1111,13 @@ local function toggleXRay(enabled)
             end
         end
         xrayTransparencies = {}
-        
+       
         if connections and type(connections) == "table" and connections.xrayDescendantAdded then
             connections.xrayDescendantAdded:Disconnect()
             connections.xrayDescendantAdded = nil
         end
     end
 end
-
 -- Void function (XRay but destroy instead of opacity)
 local function applyVoidToObject(obj)
     if (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation")) and not isCharacterPart(obj) then
@@ -1139,17 +1127,16 @@ local function applyVoidToObject(obj)
         end
     end
 end
-
 local function toggleVoid(enabled)
     Visual.voidEnabled = enabled
     print("Void:", enabled)
-    
+   
     if enabled then
         voidStates = {}
         for _, obj in pairs(Workspace:GetDescendants()) do
             applyVoidToObject(obj)
         end
-        
+       
         if connections and type(connections) == "table" and connections.voidDescendantAdded then
             connections.voidDescendantAdded:Disconnect()
         end
@@ -1165,115 +1152,114 @@ local function toggleVoid(enabled)
             end
         end
         voidStates = {}
-        
+       
         if connections and type(connections) == "table" and connections.voidDescendantAdded then
             connections.voidDescendantAdded:Disconnect()
             connections.voidDescendantAdded = nil
         end
     end
 end
-
 -- Perbaikan fungsi toggleFreecam
 local function toggleFreecam(enabled)
     Visual.freecamEnabled = enabled
     print("Freecam:", enabled)
-    
+   
     if enabled then
         if Visual.noClipCameraEnabled then
             toggleNoClipCamera(false)
         end
-        
+       
         local camera = Workspace.CurrentCamera
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
-        
+       
         if not currentRootPart or not currentHumanoid then
             print("Warning: No character or humanoid found for freecam")
             Visual.freecamEnabled = false
             return
         end
-        
+       
         Visual.originalCameraType = camera.CameraType
         Visual.originalCameraSubject = camera.CameraSubject
-        
+       
         freecamCFrame = camera.CFrame
-        
+       
         camera.CameraType = Enum.CameraType.Scriptable
         camera.CameraSubject = nil
-        
+       
         freecamSpeed = (settings.FreecamSpeed and settings.FreecamSpeed.value) or 50
-        
+       
         -- Show GUI
         if freecamGui then
             freecamGui.Visible = true
         end
-        
+       
         -- SIMPAN nilai original sebelum mengubah
         Visual.originalWalkSpeed = currentHumanoid.WalkSpeed
         Visual.originalJumpPower = currentHumanoid.JumpPower
-        
+       
         -- Untuk R15 characters, simpan juga JumpHeight
         if currentHumanoid:FindFirstChild("JumpHeight") then
             Visual.originalJumpHeight = currentHumanoid.JumpHeight
         end
-        
+       
         -- SET ke 0 untuk membuat karakter diam
         currentHumanoid.WalkSpeed = 0
         currentHumanoid.JumpPower = 0
-        
+       
         -- Jika R15, set JumpHeight juga
         if currentHumanoid:FindFirstChild("JumpHeight") then
             currentHumanoid.JumpHeight = 0
         end
-        
+       
         -- TAMBAHAN: Anchor RootPart untuk benar-benar membuat karakter tidak bergerak
         currentRootPart.Anchored = true
-        
+       
         -- Simpan status anchor original
         Visual.originalAnchored = false -- RootPart biasanya tidak di-anchor
-        
+       
         if connections and type(connections) == "table" and connections.freecamConnection then
             connections.freecamConnection:Disconnect()
         end
-        
+       
         Visual.freecamConnection = RunService.RenderStepped:Connect(function(deltaTime)
             if Visual.freecamEnabled then
                 local camera = Workspace.CurrentCamera
                 local moveSpeed = freecamSpeed * deltaTime
-                
+               
                 local freecamLookVector = freecamCFrame.LookVector
                 local freecamRightVector = freecamCFrame.RightVector
                 local freecamUpVector = freecamCFrame.UpVector
-                
+               
                 local movement = Vector3.new(0, 0, 0)
                 local currentPos = freecamCFrame.Position
-                
+               
                 local moveVector = Vector3.new(0, 0, 0)
                 if controls then
                     moveVector = controls:getMoveVector()
                 end
                 movement = freecamRightVector * moveVector.X - freecamLookVector * moveVector.Z
-                
+               
                 if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
                     movement = movement - freecamUpVector
                 end
                 if UserInputService:IsKeyDown(Enum.KeyCode.E) then
                     movement = movement + freecamUpVector
                 end
-                
+               
                 if movement.Magnitude > 0 then
                     movement = movement.Unit * moveSpeed
                     currentPos = currentPos + movement
                 end
-                
+               
                 -- Update position while keeping rotation
                 freecamCFrame = CFrame.new(currentPos) * freecamCFrame.Rotation
-                
+               
                 -- Rotation logic
                 local yawDelta = 0
                 local pitchDelta = 0
-                
+               
                 if UserInputService:IsKeyDown(Enum.KeyCode.Left) then
                     yawDelta = yawDelta + rotationSensitivity * deltaTime
                 end
@@ -1286,49 +1272,49 @@ local function toggleFreecam(enabled)
                 if UserInputService:IsKeyDown(Enum.KeyCode.Down) then
                     pitchDelta = pitchDelta - rotationSensitivity * deltaTime
                 end
-                
+               
                 yawDelta = yawDelta - mouseDelta.X * 0.002 * rotationSensitivity
                 pitchDelta = pitchDelta - mouseDelta.Y * 0.002 * rotationSensitivity
                 mouseDelta = Vector2.new(0, 0)
-                
+               
                 if yawDelta ~= 0 then
                     local yawRot = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), yawDelta)
                     freecamCFrame = freecamCFrame * yawRot
                 end
-                
+               
                 if pitchDelta ~= 0 then
                     local pitchRot = CFrame.fromAxisAngle(freecamCFrame.RightVector, pitchDelta)
                     freecamCFrame = freecamCFrame * pitchRot
                 end
-                
+               
                 -- Clamp pitch to prevent flipping
                 local lookY = freecamCFrame.LookVector.Y
                 if math.abs(lookY) > 0.999 then
                     local clampedY = math.sign(lookY) * 0.999
                     local flatLook = freecamCFrame.LookVector * Vector3.new(1, 0, 1)
                     if flatLook.Magnitude < 1e-6 then
-                        flatLook = freecamCFrame.RightVector * Vector3.new(1, 0, 1)  -- Fallback if exactly vertical
+                        flatLook = freecamCFrame.RightVector * Vector3.new(1, 0, 1) -- Fallback if exactly vertical
                     end
                     flatLook = flatLook.Unit
                     local newLook = flatLook * math.sqrt(1 - clampedY * clampedY) + Vector3.new(0, clampedY, 0)
                     freecamCFrame = CFrame.lookAt(freecamCFrame.Position, freecamCFrame.Position + newLook)
                 end
-                
+               
                 -- Force upright orientation to prevent tilting
                 freecamCFrame = CFrame.lookAt(freecamCFrame.Position, freecamCFrame.Position + freecamCFrame.LookVector, Vector3.new(0, 1, 0))
-                
+               
                 camera.CFrame = freecamCFrame
-                
+               
                 -- Update flashlight dummy if active
                 if flashlightDummy and Visual.flashlightNormalEnabled then
                     flashlightDummy.CFrame = freecamCFrame
                 end
-                
+               
                 -- PASTIKAN karakter tetap diam selama freecam aktif
                 local currentCharacter = player.Character
                 local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
                 local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
-                
+               
                 if currentHumanoid and currentRootPart then
                     if currentHumanoid.WalkSpeed ~= 0 then
                         currentHumanoid.WalkSpeed = 0
@@ -1348,7 +1334,7 @@ local function toggleFreecam(enabled)
         if connections and type(connections) == "table" then
             connections.freecamConnection = Visual.freecamConnection
         end
-        
+       
         -- Handle flashlight normal attachment to dummy if enabled
         if Visual.flashlightNormalEnabled then
             if flashlightNormal then
@@ -1370,25 +1356,25 @@ local function toggleFreecam(enabled)
             flashlightNormal.Parent = flashlightDummy
             pointLightNormal.Parent = flashlightDummy
         end
-        
+       
         if freecamInputConnection then
             freecamInputConnection:Disconnect()
         end
-        
+       
         freecamInputConnection = UserInputService.InputChanged:Connect(function(input, processed)
             if not Visual.freecamEnabled or processed then return end
-            
+           
             if input.UserInputType == Enum.UserInputType.MouseMovement and Visual.freecamMode == "PC" then
                 mouseDelta = Vector2.new(input.Delta.X, input.Delta.Y)
             end
-            
+           
             if input.UserInputType == Enum.UserInputType.MouseWheel then
                 local wheelDirection = input.Position.Z
                 local wheelSpeed = 10 * (wheelDirection > 0 and 1 or -1)
                 local movement = freecamCFrame.LookVector * wheelSpeed
                 freecamCFrame = freecamCFrame + movement
             end
-            
+           
             if input.UserInputType == Enum.UserInputType.Touch and input == rotateTouchID then
                 local currentPos = input.Position
                 local delta = currentPos - lastTouchPos
@@ -1403,7 +1389,7 @@ local function toggleFreecam(enabled)
         if connections and type(connections) == "table" then
             connections.freecamInputConnection = freecamInputConnection
         end
-        
+       
         local touchBeganConnection = UserInputService.InputBegan:Connect(function(input, processed)
             if Visual.freecamEnabled and not processed and input.UserInputType == Enum.UserInputType.Touch then
                 if not rotateTouchID then
@@ -1412,7 +1398,7 @@ local function toggleFreecam(enabled)
                 end
             end
         end)
-        
+       
         local touchEndedConnection = UserInputService.InputEnded:Connect(function(input)
             if Visual.freecamEnabled and input.UserInputType == Enum.UserInputType.Touch then
                 if input == rotateTouchID then
@@ -1421,7 +1407,7 @@ local function toggleFreecam(enabled)
                 end
             end
         end)
-        
+       
     else
         -- DISABLE FREECAM - RESTORE SEMUA NILAI ORIGINAL
         if connections and type(connections) == "table" and connections.freecamConnection then
@@ -1429,7 +1415,7 @@ local function toggleFreecam(enabled)
             connections.freecamConnection = nil
         end
         Visual.freecamConnection = nil
-        
+       
         if freecamInputConnection then
             freecamInputConnection:Disconnect()
             freecamInputConnection = nil
@@ -1437,46 +1423,46 @@ local function toggleFreecam(enabled)
         if connections and type(connections) == "table" then
             connections.freecamInputConnection = nil
         end
-        
+       
         if freecamGui then
             freecamGui.Visible = false
         end
-        
+       
         local camera = Workspace.CurrentCamera
-        
+       
         camera.CameraType = Enum.CameraType.Custom
-        
+       
         local currentCharacter = player.Character
         local currentHumanoid = currentCharacter and currentCharacter:FindFirstChild("Humanoid")
         local currentRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
-        
+       
         if currentHumanoid then
             camera.CameraSubject = currentHumanoid
-            
+           
             -- RESTORE nilai original, bukan hardcoded
             if Visual.originalWalkSpeed then
                 currentHumanoid.WalkSpeed = Visual.originalWalkSpeed
             else
                 currentHumanoid.WalkSpeed = 16 -- fallback default
             end
-            
+           
             if Visual.originalJumpPower then
                 currentHumanoid.JumpPower = Visual.originalJumpPower
             else
                 currentHumanoid.JumpPower = 50 -- fallback default
             end
-            
+           
             -- Restore JumpHeight untuk R15
             if Visual.originalJumpHeight and currentHumanoid:FindFirstChild("JumpHeight") then
                 currentHumanoid.JumpHeight = Visual.originalJumpHeight
             end
         end
-        
+       
         -- RESTORE anchor status
         if currentRootPart then
             currentRootPart.Anchored = Visual.originalAnchored or false
         end
-        
+       
         -- Handle flashlight normal reattachment to head if enabled
         if Visual.flashlightNormalEnabled and flashlightDummy then
             if flashlightNormal then
@@ -1493,15 +1479,15 @@ local function toggleFreecam(enabled)
             flashlightDummy:Destroy()
             flashlightDummy = nil
         end
-        
+       
         if UserInputService then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
             UserInputService.MouseIconEnabled = true
         end
-        
+       
         freecamCFrame = nil
         mouseDelta = Vector2.new(0, 0)
-        
+       
         -- Reset nilai original setelah restore
         Visual.originalWalkSpeed = nil
         Visual.originalJumpPower = nil
@@ -1509,21 +1495,19 @@ local function toggleFreecam(enabled)
         Visual.originalAnchored = nil
     end
 end
-
 -- Time mode Functions
 local timeModeButtons = {"Pagi Mode", "Day Mode", "Sore Mode", "Night Mode"}
-
 local function setTimeMode(mode)
     storeOriginalLightingSettings()
     Visual.currentTimeMode = mode
     print("Time Mode:", mode)
-    
+   
     local config = timeModeConfigs[mode]
     if not config then
         print("Invalid time mode:", mode)
         return
     end
-    
+   
     for property, value in pairs(config) do
         if value ~= nil then
             pcall(function()
@@ -1537,12 +1521,12 @@ local function setTimeMode(mode)
             end
         end
     end
-    
+   
     if connections and type(connections) == "table" and connections.timeModeMonitor then
         connections.timeModeMonitor:Disconnect()
         connections.timeModeMonitor = nil
     end
-    
+   
     if mode ~= "normal" then
         connections.timeModeMonitor = RunService.Heartbeat:Connect(function()
             if Visual.currentTimeMode == mode then
@@ -1560,7 +1544,6 @@ local function setTimeMode(mode)
         end)
     end
 end
-
 local function disableOtherTimeModes(currentButton)
     for _, btn in ipairs(timeModeButtons) do
         if btn ~= currentButton and buttonStates[btn] then
@@ -1568,7 +1551,6 @@ local function disableOtherTimeModes(currentButton)
         end
     end
 end
-
 local function togglePagi(enabled)
     if enabled then
         setTimeMode("pagi")
@@ -1577,7 +1559,6 @@ local function togglePagi(enabled)
         setTimeMode("normal")
     end
 end
-
 local function toggleDay(enabled)
     if enabled then
         setTimeMode("day")
@@ -1586,7 +1567,6 @@ local function toggleDay(enabled)
         setTimeMode("normal")
     end
 end
-
 local function toggleSore(enabled)
     if enabled then
         setTimeMode("sore")
@@ -1595,7 +1575,6 @@ local function toggleSore(enabled)
         setTimeMode("normal")
     end
 end
-
 local function toggleNight(enabled)
     if enabled then
         setTimeMode("night")
@@ -1604,14 +1583,13 @@ local function toggleNight(enabled)
         setTimeMode("normal")
     end
 end
-
 -- Fullbright
 local function toggleFullbright(enabled)
     Visual.fullbrightEnabled = enabled
     print("Fullbright:", enabled)
-    
+   
     storeOriginalLightingSettings()
-    
+   
     if enabled then
         Lighting.Brightness = 2
         Lighting.ClockTime = 14
@@ -1626,12 +1604,11 @@ local function toggleFullbright(enabled)
         Lighting.Ambient = defaultLightingSettings.Ambient or Color3.fromRGB(100, 100, 100)
     end
 end
-
 -- Flashlight Normal
 local function toggleFlashlightNormal(enabled)
     Visual.flashlightNormalEnabled = enabled
     print("Flashlight Normal:", enabled)
-    
+   
     if enabled then
         local function setupFlashlightNormal()
             if flashlightNormal then
@@ -1642,7 +1619,7 @@ local function toggleFlashlightNormal(enabled)
                 pointLightNormal:Destroy()
                 pointLightNormal = nil
             end
-            
+           
             flashlightNormal = Instance.new("SpotLight")
             flashlightNormal.Name = "FlashlightNormal"
             flashlightNormal.Brightness = 15
@@ -1650,14 +1627,14 @@ local function toggleFlashlightNormal(enabled)
             flashlightNormal.Angle = 45
             flashlightNormal.Color = Color3.fromRGB(255, 255, 200)
             flashlightNormal.Enabled = true
-            
+           
             pointLightNormal = Instance.new("PointLight")
             pointLightNormal.Name = "FlashlightPointNormal"
             pointLightNormal.Brightness = 5
             pointLightNormal.Range = 60
             pointLightNormal.Color = Color3.fromRGB(255, 255, 200)
             pointLightNormal.Enabled = true
-            
+           
             if Visual.freecamEnabled then
                 if flashlightDummy then
                     flashlightDummy:Destroy()
@@ -1682,14 +1659,14 @@ local function toggleFlashlightNormal(enabled)
                 end
             end
         end
-        
+       
         setupFlashlightNormal()
-        
+       
         if connections and type(connections) == "table" and connections.flashlightNormal then
             connections.flashlightNormal:Disconnect()
             connections.flashlightNormal = nil
         end
-        
+       
         connections.flashlightNormal = RunService.Heartbeat:Connect(function()
             if Visual.flashlightNormalEnabled then
                 if Visual.freecamEnabled then
@@ -1702,12 +1679,12 @@ local function toggleFlashlightNormal(enabled)
                 else
                     local character = player.Character
                     local head = character and character:FindFirstChild("Head")
-                    
+                   
                     if head then
                         if not flashlightNormal or flashlightNormal.Parent ~= head then
                             setupFlashlightNormal()
                         end
-                        
+                       
                         if flashlightNormal then
                             flashlightNormal.Enabled = true
                         end
@@ -1718,7 +1695,7 @@ local function toggleFlashlightNormal(enabled)
                 end
             end
         end)
-        
+       
         if connections and type(connections) == "table" and connections.flashlightNormalCharAdded then
             connections.flashlightNormalCharAdded:Disconnect()
         end
@@ -1730,7 +1707,7 @@ local function toggleFlashlightNormal(enabled)
                 end
             end)
         end
-        
+       
     else
         if connections and type(connections) == "table" then
             if connections.flashlightNormal then
@@ -1742,12 +1719,12 @@ local function toggleFlashlightNormal(enabled)
                 connections.flashlightNormalCharAdded = nil
             end
         end
-        
+       
         if flashlightDummy then
             flashlightDummy:Destroy()
             flashlightDummy = nil
         end
-        
+       
         if flashlightNormal then
             flashlightNormal:Destroy()
             flashlightNormal = nil
@@ -1758,12 +1735,11 @@ local function toggleFlashlightNormal(enabled)
         end
     end
 end
-
 -- Flashlight Ground
 local function toggleFlashlightGround(enabled)
     Visual.flashlightGroundEnabled = enabled
     print("Flashlight Ground:", enabled)
-    
+   
     if enabled then
         local function setupFlashlightGround()
             if groundFlashlight then
@@ -1774,10 +1750,10 @@ local function toggleFlashlightGround(enabled)
                 groundPointLight:Destroy()
                 groundPointLight = nil
             end
-            
+           
             local character = player.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
-            
+           
             if root then
                 groundFlashlight = Instance.new("SpotLight")
                 groundFlashlight.Name = "FlashlightGround"
@@ -1787,7 +1763,7 @@ local function toggleFlashlightGround(enabled)
                 groundFlashlight.Color = Color3.fromRGB(255, 255, 200)
                 groundFlashlight.Enabled = true
                 groundFlashlight.Parent = root
-                
+               
                 groundPointLight = Instance.new("PointLight")
                 groundPointLight.Name = "FlashlightPointGround"
                 groundPointLight.Brightness = 3
@@ -1795,28 +1771,28 @@ local function toggleFlashlightGround(enabled)
                 groundPointLight.Color = Color3.fromRGB(255, 255, 200)
                 groundPointLight.Enabled = true
                 groundPointLight.Parent = root
-                
+               
                 print("Flashlight Ground attached to root")
             end
         end
-        
+       
         setupFlashlightGround()
-        
+       
         if connections and type(connections) == "table" and connections.flashlightGround then
             connections.flashlightGround:Disconnect()
             connections.flashlightGround = nil
         end
-        
+       
         connections.flashlightGround = RunService.Heartbeat:Connect(function()
             if Visual.flashlightGroundEnabled then
                 local character = player.Character
                 local root = character and character:FindFirstChild("HumanoidRootPart")
-                
+               
                 if root then
                     if not groundFlashlight or groundFlashlight.Parent ~= root then
                         setupFlashlightGround()
                     end
-                    
+                   
                     if groundFlashlight then
                         groundFlashlight.Enabled = true
                     end
@@ -1826,7 +1802,7 @@ local function toggleFlashlightGround(enabled)
                 end
             end
         end)
-        
+       
         if connections and type(connections) == "table" and connections.flashlightGroundCharAdded then
             connections.flashlightGroundCharAdded:Disconnect()
         end
@@ -1838,7 +1814,7 @@ local function toggleFlashlightGround(enabled)
                 end
             end)
         end
-        
+       
     else
         if connections and type(connections) == "table" then
             if connections.flashlightGround then
@@ -1850,7 +1826,7 @@ local function toggleFlashlightGround(enabled)
                 connections.flashlightGroundCharAdded = nil
             end
         end
-        
+       
         if groundFlashlight then
             groundFlashlight:Destroy()
             groundFlashlight = nil
@@ -1861,12 +1837,11 @@ local function toggleFlashlightGround(enabled)
         end
     end
 end
-
 -- Coordinates
 local function toggleCoordinates(enabled)
     Visual.coordinatesEnabled = enabled
     print("Coordinates:", enabled)
-    
+   
     if enabled then
         if not coordGui then
             coordGui = Instance.new("ScreenGui")
@@ -1908,12 +1883,11 @@ local function toggleCoordinates(enabled)
         end
     end
 end
-
 -- Keyboard Navigation
 local function toggleKeyboardNavigation(enabled)
     Visual.keyboardNavigationEnabled = enabled
     print("Keyboard Navigation:", enabled)
-    
+   
     if enabled then
         visualButtons = {}
         for _, child in ipairs(ScrollFrame:GetChildren()) do
@@ -1954,21 +1928,20 @@ local function toggleKeyboardNavigation(enabled)
         end
     end
 end
-
 -- Low Detail Mode
 local function toggleLowDetail(enabled)
     Visual.lowDetailEnabled = enabled
     print("Low Detail Mode:", enabled)
-    
+   
     storeOriginalLightingSettings()
-    
+   
     if enabled then
         Lighting.GlobalShadows = false
         Lighting.Brightness = 2
         Lighting.FogEnd = 100000
         Lighting.FogStart = 100000
         Lighting.FogColor = Color3.fromRGB(255, 255, 255)
-        
+       
         pcall(function()
             local sky = Lighting:FindFirstChildOfClass("Sky")
             if sky then
@@ -1976,7 +1949,7 @@ local function toggleLowDetail(enabled)
                 sky:Destroy()
             end
         end)
-        
+       
         pcall(function()
             for _, effect in pairs(Lighting:GetChildren()) do
                 if effect:IsA("PostEffect") then
@@ -1985,14 +1958,14 @@ local function toggleLowDetail(enabled)
                 end
             end
         end)
-        
+       
         pcall(function()
             local renderSettings = safeGetRenderSettings()
             if renderSettings and renderSettings.QualityLevel then
                 renderSettings.QualityLevel = Enum.QualityLevel.Level01
             end
         end)
-        
+       
         pcall(function()
             local terrain = Workspace.Terrain
             if not foliageStates.terrainSettings then
@@ -2004,37 +1977,36 @@ local function toggleLowDetail(enabled)
                     WaterTransparency = terrain.WaterTransparency
                 }
             end
-
             terrain.Decoration = false
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
             terrain.WaterTransparency = 0.9
         end)
-        
+       
         spawn(function()
             local processCount = 0
             local pixelMaterial = Enum.Material.SmoothPlastic
-            
+           
             for _, obj in pairs(Workspace:GetDescendants()) do
                 if not processedObjects[obj] then
                     processedObjects[obj] = true
-                    
+                   
                     pcall(function()
                         local name = obj.Name:lower()
                         local parent = obj.Parent and obj.Parent.Name:lower() or ""
-                        local isFoliage = name:find("leaf") or name:find("leaves") or name:find("foliage") or 
-                                         name:find("grass") or name:find("tree") or name:find("plant") or 
+                        local isFoliage = name:find("leaf") or name:find("leaves") or name:find("leaves") or
+                                         name:find("grass") or name:find("tree") or name:find("plant") or
                                          name:find("flower") or name:find("bush") or name:find("shrub") or
                                          name:find("fern") or name:find("moss") or name:find("vine") or
                                          parent:find("grass") or parent:find("foliage") or parent:find("decoration") or
                                          obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature") or
                                          obj:GetAttribute("IsDecoration")
-                        
+                       
                         if isFoliage and (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Model")) then
                             foliageStates[obj] = { Parent = obj.Parent }
                             obj:Destroy()
-                        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or
                                obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                             foliageStates[obj] = { Enabled = obj.Enabled }
                             obj.Enabled = false
@@ -2046,9 +2018,9 @@ local function toggleLowDetail(enabled)
                             foliageStates[obj] = { Enabled = obj.Enabled }
                             obj.Enabled = false
                         elseif obj:IsA("BasePart") then
-                            foliageStates[obj] = { 
-                                Material = obj.Material, 
-                                Reflectance = obj.Reflectance, 
+                            foliageStates[obj] = {
+                                Material = obj.Material,
+                                Reflectance = obj.Reflectance,
                                 CastShadow = obj.CastShadow,
                                 Color = obj.Color
                             }
@@ -2060,8 +2032,8 @@ local function toggleLowDetail(enabled)
                             local b = math.floor(obj.Color.B * 4) / 4
                             obj.Color = Color3.new(r, g, b)
                         elseif obj:IsA("MeshPart") then
-                            foliageStates[obj] = { 
-                                TextureID = obj.TextureID, 
+                            foliageStates[obj] = {
+                                TextureID = obj.TextureID,
                                 Material = obj.Material,
                                 Color = obj.Color
                             }
@@ -2084,7 +2056,7 @@ local function toggleLowDetail(enabled)
                             obj.Volume = obj.Volume * 0.5
                         end
                     end)
-                    
+                   
                     processCount = processCount + 1
                     if processCount % 30 == 0 then
                         RunService.Heartbeat:Wait()
@@ -2092,13 +2064,13 @@ local function toggleLowDetail(enabled)
                 end
             end
         end)
-        
+       
         pcall(function()
             Workspace.StreamingEnabled = true
             Workspace.StreamingMinRadius = 8
             Workspace.StreamingTargetRadius = 16
         end)
-        
+       
         if connections and type(connections) == "table" and connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
         end
@@ -2121,13 +2093,13 @@ local function toggleLowDetail(enabled)
                 end)
             end
         end)
-        
+       
     else
         if connections and type(connections) == "table" and connections.lowDetailMonitor then
             connections.lowDetailMonitor:Disconnect()
             connections.lowDetailMonitor = nil
         end
-        
+       
         if defaultLightingSettings.stored then
             Lighting.GlobalShadows = defaultLightingSettings.GlobalShadows or true
             Lighting.Brightness = defaultLightingSettings.Brightness or 1
@@ -2135,14 +2107,14 @@ local function toggleLowDetail(enabled)
             Lighting.FogStart = defaultLightingSettings.FogStart or 0
             Lighting.FogColor = defaultLightingSettings.FogColor or Color3.fromRGB(192, 192, 192)
         end
-        
+       
         pcall(function()
             local renderSettings = safeGetRenderSettings()
             if renderSettings and renderSettings.QualityLevel then
                 renderSettings.QualityLevel = defaultLightingSettings.QualityLevel or Enum.QualityLevel.Automatic
             end
         end)
-        
+       
         if foliageStates.terrainSettings then
             pcall(function()
                 local terrain = Workspace.Terrain
@@ -2154,14 +2126,14 @@ local function toggleLowDetail(enabled)
             end)
             foliageStates.terrainSettings = nil
         end
-        
+       
         spawn(function()
             local restoreCount = 0
             for obj, state in pairs(foliageStates) do
                 if obj ~= "terrainSettings" and obj ~= "sky" then
                     pcall(function()
                         if obj and obj.Parent then
-                            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or 
+                            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or
                                obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
                                 obj.Enabled = state.Enabled ~= false
                             elseif obj:IsA("Decal") or obj:IsA("Texture") then
@@ -2188,7 +2160,7 @@ local function toggleLowDetail(enabled)
                             end
                         end
                     end)
-                    
+                   
                     restoreCount = restoreCount + 1
                     if restoreCount % 30 == 0 then
                         RunService.Heartbeat:Wait()
@@ -2198,7 +2170,7 @@ local function toggleLowDetail(enabled)
             foliageStates = {}
             processedObjects = {}
         end)
-        
+       
         pcall(function()
             Workspace.StreamingEnabled = defaultLightingSettings.StreamingEnabled or false
             Workspace.StreamingMinRadius = defaultLightingSettings.StreamingMinRadius or 128
@@ -2206,44 +2178,43 @@ local function toggleLowDetail(enabled)
         end)
     end
 end
-
 -- Ultra Low Detail Mode
 local function toggleUltraLowDetail(enabled)
     Visual.ultraLowDetailEnabled = enabled
     print("Ultra Low Detail Mode:", enabled)
-    
+   
     storeOriginalLightingSettings()
-    
+   
     if enabled then
         toggleLowDetail(true)
-        
+       
         pcall(function()
             local renderSettings = safeGetRenderSettings()
             if renderSettings and renderSettings.QualityLevel then
                 renderSettings.QualityLevel = Enum.QualityLevel.Level01
             end
         end)
-        
+       
         spawn(function()
             local processCount = 0
-            
+           
             for _, obj in pairs(Workspace:GetDescendants()) do
                 if not processedObjects[obj] then
                     processedObjects[obj] = true
-                    
+                   
                     pcall(function()
                         local name = obj.Name:lower()
                         local parent = obj.Parent and obj.Parent.Name:lower() or ""
                         local isEnvironment = name:find("terrain") or name:find("tree") or name:find("wood") or
-                                            name:find("leaf") or name:find("leaves") or name:find("foliage") or 
-                                            name:find("grass") or name:find("plant") or name:find("flower") or 
-                                            name:find("bush") or name:find("shrub") or name:find("fern") or 
+                                            name:find("leaf") or name:find("leaves") or name:find("foliage") or
+                                            name:find("grass") or name:find("plant") or name:find("flower") or
+                                            name:find("bush") or name:find("shrub") or name:find("fern") or
                                             name:find("moss") or name:find("vine") or
-                                            parent:find("terrain") or parent:find("grass") or parent:find("foliage") or 
+                                            parent:find("terrain") or parent:find("grass") or parent:find("foliage") or
                                             parent:find("decoration") or
                                             obj:GetAttribute("IsFoliage") or obj:GetAttribute("IsNature") or
                                             obj:GetAttribute("IsDecoration")
-                        
+                       
                         local isCharacterPart = false
                         local currentParent = obj.Parent
                         while currentParent do
@@ -2253,10 +2224,10 @@ local function toggleUltraLowDetail(enabled)
                             end
                             currentParent = currentParent.Parent
                         end
-                        
+                       
                         if isEnvironment and not isCharacterPart then
                             if obj:IsA("BasePart") or obj:IsA("MeshPart") then
-                                foliageStates[obj] = { 
+                                foliageStates[obj] = {
                                     Transparency = obj.Transparency,
                                     Material = obj.Material,
                                     Color = obj.Color,
@@ -2272,8 +2243,8 @@ local function toggleUltraLowDetail(enabled)
                                     obj.TextureID = ""
                                 end
                             elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                                foliageStates[obj] = { 
-                                    Transparency = obj.Transparency, 
+                                foliageStates[obj] = {
+                                    Transparency = obj.Transparency,
                                     Texture = obj.Texture,
                                     Color3 = obj.Color3
                                 }
@@ -2285,7 +2256,7 @@ local function toggleUltraLowDetail(enabled)
                             end
                         end
                     end)
-                    
+                   
                     processCount = processCount + 1
                     if processCount % 20 == 0 then
                         RunService.Heartbeat:Wait()
@@ -2294,7 +2265,7 @@ local function toggleUltraLowDetail(enabled)
             end
             print("Ultra Low Detail applied - Environment objects invisible but not destroyed")
         end)
-        
+       
         if connections and type(connections) == "table" and connections.ultraLowDetailMonitor then
             connections.ultraLowDetailMonitor:Disconnect()
         end
@@ -2317,13 +2288,13 @@ local function toggleUltraLowDetail(enabled)
                 end)
             end
         end)
-        
+       
     else
         if connections and type(connections) == "table" and connections.ultraLowDetailMonitor then
             connections.ultraLowDetailMonitor:Disconnect()
             connections.ultraLowDetailMonitor = nil
         end
-        
+       
         spawn(function()
             local restoreCount = 0
             for obj, state in pairs(foliageStates) do
@@ -2347,7 +2318,7 @@ local function toggleUltraLowDetail(enabled)
                             end
                         end
                     end)
-                    
+                   
                     restoreCount = restoreCount + 1
                     if restoreCount % 20 == 0 then
                         RunService.Heartbeat:Wait()
@@ -2355,18 +2326,17 @@ local function toggleUltraLowDetail(enabled)
                 end
             end
         end)
-        
+       
         toggleLowDetail(false)
     end
 end
-
 -- Self Highlight
 local function createSelfHighlight()
     if selfHighlight then
         selfHighlight:Destroy()
         selfHighlight = nil
     end
-    
+   
     local character = player.Character
     if character then
         selfHighlight = Instance.new("Highlight")
@@ -2380,14 +2350,13 @@ local function createSelfHighlight()
         print("Self Highlight created")
     end
 end
-
 local function toggleSelfHighlight(enabled)
     Visual.selfHighlightEnabled = enabled
     print("Self Highlight:", enabled)
-    
+   
     if enabled then
         createSelfHighlight()
-        
+       
         if connections and type(connections) == "table" and connections.selfHighlightCharAdded then
             connections.selfHighlightCharAdded:Disconnect()
         end
@@ -2397,7 +2366,7 @@ local function toggleSelfHighlight(enabled)
                 createSelfHighlight()
             end
         end)
-        
+       
     else
         if selfHighlight then
             selfHighlight:Destroy()
@@ -2409,7 +2378,6 @@ local function toggleSelfHighlight(enabled)
         end
     end
 end
-
 -- Initialize module
 function Visual.init(deps)
     print("Initializing Visual module")
@@ -2417,7 +2385,7 @@ function Visual.init(deps)
         warn("Error: No dependencies provided!")
         return false
     end
-    
+   
     -- Set dependencies with strict fallbacks and safe service access
     Players = deps.Players or safeGetService("Players")
     UserInputService = deps.UserInputService or safeGetService("UserInputService")
@@ -2440,7 +2408,7 @@ function Visual.init(deps)
     rootPart = deps.rootPart
     player = deps.player or (Players and Players.LocalPlayer)
     Visual.character = deps.character or (player and player.Character)
-    
+   
     -- Validate critical dependencies
     if not Players then
         warn("Error: Could not get Players service!")
@@ -2466,7 +2434,7 @@ function Visual.init(deps)
         warn("Error: Could not get Lighting!")
         return false
     end
-    
+   
     -- Debug dependency initialization
     print("Dependencies initialized:")
     print("Players:", Players and "OK" or "FAILED")
@@ -2478,28 +2446,28 @@ function Visual.init(deps)
     print("Chat:", Chat and "OK" or "FAILED")
     print("Connections:", connections and "OK" or "FAILED")
     print("Player:", player and "OK" or "FAILED")
-    
+   
     Visual.selfHighlightEnabled = false
     Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
     Visual.freecamMode = "PC"
+    Visual.hitboxShape = Visual.hitboxShapes[Visual.currentHitboxShapeIndex]
     if Chat then
         originalBubbleChatEnabled = Chat.BubbleChatEnabled
     end
-    
+   
     -- Create freecam GUI
     if ScreenGui then
         createFreecamGui()
     end
-    
+   
     -- Get controls for mobile movement
     local playerScripts = player:WaitForChild("PlayerScripts")
     local playerModule = require(playerScripts:WaitForChild("PlayerModule"))
     local controls = playerModule:GetControls()
-    
+   
     print("Visual module initialized successfully")
     return true
 end
-
 -- Utility function to convert Color3 to hex
 local function toHex(color)
     local r = math.floor(color.R * 255 + 0.5)
@@ -2507,14 +2475,12 @@ local function toHex(color)
     local b = math.floor(color.B * 255 + 0.5)
     return string.format("#%02X%02X%02X", r, g, b)
 end
-
 -- Utility function to create a color picker GUI
 local function createColorPicker(name, initialColor, onColorChanged)
     if not ScreenGui then
         warn("Error: ScreenGui is nil, cannot create " .. name .. " color picker")
         return nil, nil
     end
-
     local picker = Instance.new("Frame")
     picker.Name = name .. "ColorPicker"
     picker.Size = UDim2.new(0, 300, 0, 350)
@@ -2524,11 +2490,9 @@ local function createColorPicker(name, initialColor, onColorChanged)
     picker.Visible = false
     picker.ZIndex = 100
     picker.Parent = ScreenGui
-
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = picker
-
     local shadow = Instance.new("Frame")
     shadow.Name = "Shadow"
     shadow.Size = UDim2.new(1, 10, 1, 10)
@@ -2537,11 +2501,10 @@ local function createColorPicker(name, initialColor, onColorChanged)
     shadow.BackgroundTransparency = 0.6
     shadow.ZIndex = 99
     shadow.Parent = picker
-    
+   
     local shadowCorner = Instance.new("UICorner")
     shadowCorner.CornerRadius = UDim.new(0, 8)
     shadowCorner.Parent = shadow
-
     local title = Instance.new("TextLabel")
     title.Text = "Choose " .. name .. " Color"
     title.Size = UDim2.new(1, -30, 0, 40)
@@ -2551,7 +2514,6 @@ local function createColorPicker(name, initialColor, onColorChanged)
     title.Font = Enum.Font.SourceSansBold
     title.ZIndex = 101
     title.Parent = picker
-
     local closeButton = Instance.new("TextButton")
     closeButton.Name = "CloseButton"
     closeButton.Size = UDim2.new(0, 30, 0, 30)
@@ -2563,15 +2525,12 @@ local function createColorPicker(name, initialColor, onColorChanged)
     closeButton.Font = Enum.Font.SourceSansBold
     closeButton.ZIndex = 102
     closeButton.Parent = picker
-
     local closeCorner = Instance.new("UICorner")
     closeCorner.CornerRadius = UDim.new(0, 4)
     closeCorner.Parent = closeButton
-
     closeButton.MouseButton1Click:Connect(function()
         picker.Visible = false
     end)
-
     local presetFrame = Instance.new("ScrollingFrame")
     presetFrame.Name = "PresetFrame"
     presetFrame.Size = UDim2.new(0.8, 0, 0, 280)
@@ -2582,13 +2541,11 @@ local function createColorPicker(name, initialColor, onColorChanged)
     presetFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     presetFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     presetFrame.Parent = picker
-
     local gridLayout = Instance.new("UIGridLayout")
     gridLayout.CellSize = UDim2.new(0, 40, 0, 40)
     gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = presetFrame
-
     local presetColors = {
         Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 0, 0), Color3.fromRGB(128, 128, 128), Color3.fromRGB(192, 192, 192),
         Color3.fromRGB(255, 0, 0), Color3.fromRGB(139, 0, 0), Color3.fromRGB(128, 0, 0), Color3.fromRGB(200, 0, 0), Color3.fromRGB(150, 0, 0), Color3.fromRGB(100, 0, 0),
@@ -2611,7 +2568,6 @@ local function createColorPicker(name, initialColor, onColorChanged)
         Color3.fromRGB(90, 90, 90), Color3.fromRGB(80, 80, 80), Color3.fromRGB(70, 70, 70), Color3.fromRGB(60, 60, 60), Color3.fromRGB(40, 40, 40),
         Color3.fromRGB(30, 30, 30), Color3.fromRGB(20, 20, 20), Color3.fromRGB(10, 10, 10)
     }
-
     for _, color in ipairs(presetColors) do
         local presetButton = Instance.new("TextButton")
         presetButton.Size = UDim2.new(0, 40, 0, 40)
@@ -2620,19 +2576,15 @@ local function createColorPicker(name, initialColor, onColorChanged)
         presetButton.Text = ""
         presetButton.ZIndex = 102
         presetButton.Parent = presetFrame
-
         local presetCorner = Instance.new("UICorner")
         presetCorner.CornerRadius = UDim.new(0, 6)
         presetCorner.Parent = presetButton
-
         presetButton.MouseButton1Click:Connect(function()
             onColorChanged(color)
             picker.Visible = false
         end)
     end
-
     presetFrame.CanvasSize = UDim2.new(0, 0, 0, gridLayout.AbsoluteContentSize.Y)
-
     if connections and type(connections) == "table" and connections[name .. "Close"] then
         connections[name .. "Close"]:Disconnect()
         connections[name .. "Close"] = nil
@@ -2644,7 +2596,7 @@ local function createColorPicker(name, initialColor, onColorChanged)
                     local mousePos = input.Position
                     local pickerPos = picker.AbsolutePosition
                     local pickerSize = picker.AbsoluteSize
-                    
+                   
                     if mousePos.X < pickerPos.X or mousePos.X > pickerPos.X + pickerSize.X or
                        mousePos.Y < pickerPos.Y or mousePos.Y > pickerPos.Y + pickerSize.Y then
                         picker.Visible = false
@@ -2655,29 +2607,27 @@ local function createColorPicker(name, initialColor, onColorChanged)
     else
         warn("Error: UserInputService is nil, cannot connect InputBegan for color picker close")
     end
-
     return picker
 end
-
 -- Function to create buttons for Visual features
 function Visual.loadVisualButtons(createToggleButton)
     print("Loading visual buttons")
-    
+   
     if not createToggleButton then
         warn("Error: createToggleButton not provided! Buttons will not be created.")
         return
     end
-    
+   
     if not ScrollFrame then
         warn("Error: ScrollFrame is nil, cannot create buttons")
         return
     end
-    
+   
     if not connections or type(connections) ~= "table" then
         warn("Warning: connections is nil or not a table, initializing as empty table")
         connections = {}
     end
-    
+   
     createToggleButton("Freecam", toggleFreecam)
     createToggleButton("NoClipCamera", toggleNoClipCamera)
     createToggleButton("Fullbright", toggleFullbright)
@@ -2691,6 +2641,7 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("ESP Tracer", toggleESPTracer)
     createToggleButton("ESP Name", toggleESPName)
     createToggleButton("ESP Health", toggleESPHealth)
+    createToggleButton("ESP Hitbox", toggleESPHitbox)
     createToggleButton("XRay", toggleXRay)
     createToggleButton("Void", toggleVoid)
     createToggleButton("Hide All Nicknames", toggleHideAllNicknames)
@@ -2705,7 +2656,6 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Sore Mode", toggleSore)
     createToggleButton("Night Mode", toggleNight)
     createToggleButton("Self Highlight", toggleSelfHighlight)
-
     -- Create self highlight color picker button
     local colorButton = Instance.new("TextButton")
     colorButton.Name = "SelfHighlightColorButton"
@@ -2717,16 +2667,13 @@ function Visual.loadVisualButtons(createToggleButton)
     colorButton.Font = Enum.Font.SourceSans
     colorButton.BorderSizePixel = 0
     colorButton.Parent = ScrollFrame
-
     local colorCorner = Instance.new("UICorner")
     colorCorner.CornerRadius = UDim.new(0, 4)
     colorCorner.Parent = colorButton
-
     if not ScreenGui then
         warn("Error: ScreenGui is nil, cannot create color pickers")
         return
     end
-
     -- Create color pickers
     colorPicker = createColorPicker("Self Highlight", Visual.selfHighlightColor, function(newColor)
         Visual.selfHighlightColor = newColor
@@ -2735,13 +2682,31 @@ function Visual.loadVisualButtons(createToggleButton)
         end
         colorButton.Text = "Self Outline Color: " .. toHex(newColor)
     end)
-
     colorButton.MouseButton1Click:Connect(function()
         if colorPicker then
             colorPicker.Visible = true
         end
     end)
-
+    -- Create hitbox shape button
+    local shapeButton = Instance.new("TextButton")
+    shapeButton.Name = "HitboxShapeButton"
+    shapeButton.Size = UDim2.new(1, 0, 0, 30)
+    shapeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    shapeButton.Text = "Hitbox Shape: " .. Visual.hitboxShape
+    shapeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    shapeButton.TextSize = 14
+    shapeButton.Font = Enum.Font.SourceSans
+    shapeButton.BorderSizePixel = 0
+    shapeButton.Parent = ScrollFrame
+    local shapeCorner = Instance.new("UICorner")
+    shapeCorner.CornerRadius = UDim.new(0, 4)
+    shapeCorner.Parent = shapeButton
+    shapeButton.MouseButton1Click:Connect(function()
+        Visual.currentHitboxShapeIndex = (Visual.currentHitboxShapeIndex % #Visual.hitboxShapes) + 1
+        Visual.hitboxShape = Visual.hitboxShapes[Visual.currentHitboxShapeIndex]
+        shapeButton.Text = "Hitbox Shape: " .. Visual.hitboxShape
+        refreshESP()
+    end)
     -- Collect visual buttons for keyboard navigation
     visualButtons = {}
     for _, child in ipairs(ScrollFrame:GetChildren()) do
@@ -2750,7 +2715,6 @@ function Visual.loadVisualButtons(createToggleButton)
         end
     end
 end
-
 -- Export functions for external access
 Visual.toggleFreecam = toggleFreecam
 Visual.toggleNoClipCamera = toggleNoClipCamera
@@ -2765,6 +2729,7 @@ Visual.toggleESPBox2D = toggleESPBox2D
 Visual.toggleESPTracer = toggleESPTracer
 Visual.toggleESPName = toggleESPName
 Visual.toggleESPHealth = toggleESPHealth
+Visual.toggleESPHitbox = toggleESPHitbox
 Visual.toggleXRay = toggleXRay
 Visual.toggleVoid = toggleVoid
 Visual.toggleHideAllNicknames = toggleHideAllNicknames
@@ -2776,7 +2741,6 @@ Visual.toggleCoordinates = toggleCoordinates
 Visual.toggleKeyboardNavigation = toggleKeyboardNavigation
 Visual.toggleSelfHighlight = toggleSelfHighlight
 Visual.setTimeMode = setTimeMode
-
 -- Function to reset Visual states
 function Visual.resetStates()
     Visual.freecamEnabled = false
@@ -2792,6 +2756,7 @@ function Visual.resetStates()
     Visual.espTracerEnabled = false
     Visual.espNameEnabled = false
     Visual.espHealthEnabled = false
+    Visual.espHitboxEnabled = false
     Visual.xrayEnabled = false
     Visual.voidEnabled = false
     Visual.hideAllNicknames = false
@@ -2804,7 +2769,7 @@ function Visual.resetStates()
     Visual.currentTimeMode = "normal"
     Visual.selfHighlightEnabled = false
     Visual.freecamMode = "PC"
-    
+   
     if connections and type(connections) == "table" then
         for key, connection in pairs(connections) do
             if connection then
@@ -2814,7 +2779,7 @@ function Visual.resetStates()
         end
     end
     connections = {}
-    
+   
     toggleFreecam(false)
     toggleNoClipCamera(false)
     toggleFullbright(false)
@@ -2828,6 +2793,7 @@ function Visual.resetStates()
     toggleESPTracer(false)
     toggleESPName(false)
     toggleESPHealth(false)
+    toggleESPHitbox(false)
     toggleXRay(false)
     toggleVoid(false)
     toggleHideAllNicknames(false)
@@ -2839,27 +2805,26 @@ function Visual.resetStates()
     toggleKeyboardNavigation(false)
     toggleSelfHighlight(false)
     setTimeMode("normal")
-    
+   
     if colorPicker then
         colorPicker:Destroy()
         colorPicker = nil
     end
 end
-
 -- Function to update references after character respawn
 function Visual.updateReferences()
     print("Updating Visual module references")
-    
+   
     -- Update character, humanoid, and rootPart
     Visual.character = player and player.Character
     humanoid = Visual.character and Visual.character:FindFirstChild("Humanoid")
     rootPart = Visual.character and Visual.character:FindFirstChild("HumanoidRootPart")
-    
+   
     -- Debug references
     print("Updated character:", Visual.character and "OK" or "FAILED")
     print("Updated humanoid:", humanoid and "OK" or "FAILED")
     print("Updated rootPart:", rootPart and "OK" or "FAILED")
-    
+   
     -- Restore feature states
     local wasFreecamEnabled = Visual.freecamEnabled
     local wasNoClipCameraEnabled = Visual.noClipCameraEnabled
@@ -2874,6 +2839,7 @@ function Visual.updateReferences()
     local wasEspTracerEnabled = Visual.espTracerEnabled
     local wasEspNameEnabled = Visual.espNameEnabled
     local wasEspHealthEnabled = Visual.espHealthEnabled
+    local wasEspHitboxEnabled = Visual.espHitboxEnabled
     local wasXRayEnabled = Visual.xrayEnabled
     local wasVoidEnabled = Visual.voidEnabled
     local wasHideAllNicknames = Visual.hideAllNicknames
@@ -2885,10 +2851,10 @@ function Visual.updateReferences()
     local wasKeyboardNavigationEnabled = Visual.keyboardNavigationEnabled
     local wasSelfHighlightEnabled = Visual.selfHighlightEnabled
     local currentTimeMode = Visual.currentTimeMode
-    
+   
     -- Reset states to ensure clean slate
     Visual.resetStates()
-    
+   
     -- Re-enable features that were active
     if wasFreecamEnabled then
         print("Re-enabling Freecam after respawn")
@@ -2942,6 +2908,10 @@ function Visual.updateReferences()
         print("Re-enabling ESP Health after respawn")
         toggleESPHealth(true)
     end
+    if wasEspHitboxEnabled then
+        print("Re-enabling ESP Hitbox after respawn")
+        toggleESPHitbox(true)
+    end
     if wasXRayEnabled then
         print("Re-enabling XRay after respawn")
         toggleXRay(true)
@@ -2986,17 +2956,16 @@ function Visual.updateReferences()
         print("Restoring Time Mode after respawn:", currentTimeMode)
         setTimeMode(currentTimeMode)
     end
-    
+   
     print("Visual module references updated")
 end
-
 -- Function to cleanup all resources
 function Visual.cleanup()
     print("Cleaning up Visual module")
-    
+   
     -- Reset all states
     Visual.resetStates()
-    
+   
     -- Clean up flashlight
     if flashlightNormal then
         flashlightNormal:Destroy()
@@ -3014,37 +2983,37 @@ function Visual.cleanup()
         groundPointLight:Destroy()
         groundPointLight = nil
     end
-    
+   
     if flashlightDummy then
         flashlightDummy:Destroy()
         flashlightDummy = nil
     end
-    
+   
     -- Clean up self highlight
     if selfHighlight then
         selfHighlight:Destroy()
         selfHighlight = nil
     end
-    
+   
     -- Clean up ESP elements
     for targetPlayer, elements in pairs(espElements) do
         destroyESPForPlayer(targetPlayer)
     end
     espElements = {}
-    
+   
     -- Clean up character transparencies
     characterTransparencies = {}
-    
+   
     -- Clean up xray transparencies
     xrayTransparencies = {}
-    
+   
     -- Clean up void states
     voidStates = {}
-    
+   
     -- Clean up foliage states
     foliageStates = {}
     processedObjects = {}
-    
+   
     -- Restore default lighting settings
     if defaultLightingSettings.stored then
         for property, value in pairs(defaultLightingSettings) do
@@ -3061,30 +3030,29 @@ function Visual.cleanup()
             Workspace.Terrain.Decoration = defaultLightingSettings.TerrainDecoration or true
         end)
     end
-    
+   
     -- Restore bubble chat
     if Chat then
         Chat.BubbleChatEnabled = originalBubbleChatEnabled
     end
-    
+   
     -- Clean up color pickers
     if colorPicker then
         colorPicker:Destroy()
         colorPicker = nil
     end
-    
+   
     -- Clean up freecam GUI
     if freecamGui then
         freecamGui:Destroy()
         freecamGui = nil
     end
-
     -- Clean up coordinates
     if coordGui then
         coordGui:Destroy()
         coordGui = nil
     end
-    
+   
     -- Disconnect any remaining connections
     if connections and type(connections) == "table" then
         for key, connection in pairs(connections) do
@@ -3095,10 +3063,9 @@ function Visual.cleanup()
         end
     end
     connections = {}
-    
+   
     print("Visual module cleanup completed")
 end
-
 -- Function to check if module is initialized
 function Visual.isInitialized()
     local isInitialized = Players and UserInputService and RunService and Workspace and Lighting and ScrollFrame and ScreenGui and player
@@ -3115,7 +3082,6 @@ function Visual.isInitialized()
     end
     return isInitialized
 end
-
 -- Function to get current state of all features
 function Visual.getState()
     return {
@@ -3133,6 +3099,8 @@ function Visual.getState()
         espTracerEnabled = Visual.espTracerEnabled,
         espNameEnabled = Visual.espNameEnabled,
         espHealthEnabled = Visual.espHealthEnabled,
+        espHitboxEnabled = Visual.espHitboxEnabled,
+        hitboxShape = Visual.hitboxShape,
         xrayEnabled = Visual.xrayEnabled,
         voidEnabled = Visual.voidEnabled,
         hideAllNicknames = Visual.hideAllNicknames,
@@ -3147,7 +3115,6 @@ function Visual.getState()
         selfHighlightColor = Visual.selfHighlightColor
     }
 end
-
 -- Function to set self highlight color programmatically
 function Visual.setSelfHighlightColor(color)
     if typeof(color) == "Color3" then
@@ -3160,6 +3127,5 @@ function Visual.setSelfHighlightColor(color)
         warn("Error: Invalid color provided for setSelfHighlightColor")
     end
 end
-
 -- Export the module
 return Visual
