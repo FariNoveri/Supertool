@@ -2936,6 +2936,54 @@ function Visual.loadVisualButtons(createToggleButton)
         resetFOV()
         fovButton.Text = "FOV: " .. Visual.originalFOV
     end)
+    -- Add to loadVisualButtons function
+    local hitboxGui = Instance.new("Frame")
+    hitboxGui.Name = "HitboxSettingsGui"
+    hitboxGui.Size = UDim2.new(0, 200, 0, 150)
+    hitboxGui.Position = UDim2.new(0.5, -100, 0.5, -75)
+    hitboxGui.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    hitboxGui.Visible = false
+    hitboxGui.Parent = ScreenGui
+
+    local shapeLabel = Instance.new("TextLabel")
+    shapeLabel.Text = "Shape:"
+    shapeLabel.Size = UDim2.new(1, 0, 0, 30)
+    shapeLabel.Parent = hitboxGui
+
+    local shapeBox = Instance.new("TextBox")
+    shapeBox.Size = UDim2.new(1, 0, 0, 30)
+    shapeBox.Position = UDim2.new(0, 0, 0, 30)
+    shapeBox.Text = Visual.hitboxShape
+    shapeBox.Parent = hitboxGui
+    shapeBox.FocusLost:Connect(function()
+        Visual.hitboxShape = shapeBox.Text
+        refreshESP()
+    end)
+
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Text = "Distance:"
+    distLabel.Size = UDim2.new(1, 0, 0, 30)
+    distLabel.Position = UDim2.new(0, 0, 0, 60)
+    distLabel.Parent = hitboxGui
+
+    local distBox = Instance.new("TextBox")
+    distBox.Size = UDim2.new(1, 0, 0, 30)
+    distBox.Position = UDim2.new(0, 0, 0, 90)
+    distBox.Text = tostring(Visual.hitboxDistance)
+    distBox.Parent = hitboxGui
+    distBox.FocusLost:Connect(function()
+        Visual.hitboxDistance = tonumber(distBox.Text) or 1000
+        refreshESP()
+    end)
+
+    -- Button to open GUI
+    local hitboxSetButton = Instance.new("TextButton")
+    hitboxSetButton.Text = "Hitbox Settings"
+    hitboxSetButton.Size = UDim2.new(1, 0, 0, 30)
+    hitboxSetButton.Parent = ScrollFrame
+    hitboxSetButton.MouseButton1Click:Connect(function()
+        hitboxGui.Visible = true
+    end)
     -- Collect visual buttons for keyboard navigation
     visualButtons = {}
     for _, child in ipairs(ScrollFrame:GetChildren()) do
