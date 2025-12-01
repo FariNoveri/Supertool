@@ -27,6 +27,7 @@ Visual.espHitboxEnabled = false
 Visual.hitboxShapes = {"box", "sphere", "cylinder"}
 Visual.currentHitboxShapeIndex = 1
 Visual.hitboxShape = "box"
+Visual.hitboxDistance = 1000
 Visual.xrayEnabled = false
 Visual.voidEnabled = false
 Visual.hideAllNicknames = false
@@ -58,7 +59,9 @@ local freecamSpeed = 50
 local mouseDelta = Vector2.new(0, 0)
 Visual.selfHighlightEnabled = false
 Visual.selfHighlightColor = Color3.fromRGB(255, 255, 255)
+Visual.allHighlightEnabled = false
 local selfHighlight
+local allHighlights = {}
 local colorPicker = nil
 local originalBubbleChatEnabled = true
 local originalAnchor = false
@@ -136,6 +139,13 @@ local timeModeConfigs = {
         FogColor = Color3.fromRGB(40, 40, 80)
     }
 }
+-- Camera mode variables
+Visual.fppEnabled = false
+Visual.tppEnabled = false
+Visual.originalCameraMode = nil
+Visual.originalFOV = 70
+Visual.customFOV = 70
+Visual.unlimitedScroll = false
 -- Safe service accessor
 local function safeGetService(serviceName)
     local success, service = pcall(function()
@@ -779,6 +789,12 @@ local function createESPForPlayer(targetPlayer)
     local humanoid = character:FindFirstChild("Humanoid")
     local root = character.HumanoidRootPart
    
+    local camera = Workspace.CurrentCamera
+    local distance = (camera.CFrame.Position - root.Position).Magnitude
+    if distance > Visual.hitboxDistance then
+        return
+    end
+   
     if Visual.espChamsEnabled then
         local highlight = Instance.new("Highlight")
         highlight.Name = "ESPHighlight"
@@ -933,6 +949,11 @@ local function refreshESP()
                     local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
                     local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
                     if humanoid and root then
+                        local distance = (camera.CFrame.Position - root.Position).Magnitude
+                        if distance > Visual.hitboxDistance then
+                            destroyESPForPlayer(targetPlayer)
+                            return
+                        end
                         if elements.highlight then
                             elements.highlight.FillColor = getHealthColor(targetPlayer)
                         end
@@ -1003,8 +1024,8 @@ local function refreshESP()
                         local boxLines = elements.boxLines
                         if onScreen and minX < math.huge then
                             local points = {
-                                {Vector2.new(minX, minY)}, {Vector2.new(maxX, minY)},
-                                {Vector2.new(maxX, maxY)}, {Vector2.new(minX, maxY)}
+                                Vector2.new(minX, minY), Vector2.new(maxX, minY),
+                                Vector2.new(maxX, maxY), Vector2.new(minX, maxY)
                             }
                             boxLines[1].From = points[1]; boxLines[1].To = points[2]
                             boxLines[2].From = points[2]; boxLines[2].To = points[3]
@@ -1021,6 +1042,11 @@ local function refreshESP()
                     end
                 else
                     destroyESPForPlayer(targetPlayer)
+                end
+            end
+            for _, targetPlayer in pairs(Players:GetPlayers()) do
+                if targetPlayer ~= player and targetPlayer.Character and not espElements[targetPlayer] then
+                    createESPForPlayer(targetPlayer)
                 end
             end
         end)
@@ -1042,6 +1068,22 @@ local function refreshESP()
         end
         connections.espPlayerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
             destroyESPForPlayer(leavingPlayer)
+        end)
+        if connections.espHumanoidDied then
+            connections.espHumanoidDied:Disconnect()
+        end
+        for _, targetPlayer in pairs(Players:GetPlayers()) do
+            if targetPlayer ~= player and targetPlayer.Character then
+                local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                if humanoid then
+                    connections["espHumanoidDied" .. targetPlayer.UserId] = humanoid.Died:Connect(function()
+                        destroyESPForPlayer(targetPlayer)
+                    end)
+                end
+            end
+        end
+        connections.espHumanoidDied = player.CharacterAdded:Connect(function()
+            refreshESP()
         end)
     end
 end
@@ -1937,10 +1979,10 @@ local function toggleLowDetail(enabled)
    
     if enabled then
         Lighting.GlobalShadows = false
-        Lighting.Brightness = 2
-        Lighting.FogEnd = 100000
-        Lighting.FogStart = 100000
-        Lighting.FogColor = Color3.fromRGB(255, 255, 255)
+        Lighting.Brightness = 1
+        Lighting.FogEnd = 1000
+        Lighting.FogStart = 500
+        Lighting.FogColor = Color3.fromRGB(200, 200, 200)
        
         pcall(function()
             local sky = Lighting:FindFirstChildOfClass("Sky")
@@ -1962,7 +2004,7 @@ local function toggleLowDetail(enabled)
         pcall(function()
             local renderSettings = safeGetRenderSettings()
             if renderSettings and renderSettings.QualityLevel then
-                renderSettings.QualityLevel = Enum.QualityLevel.Level01
+                renderSettings.QualityLevel = Enum.QualityLevel.Level04
             end
         end)
        
@@ -1978,15 +2020,15 @@ local function toggleLowDetail(enabled)
                 }
             end
             terrain.Decoration = false
-            terrain.WaterWaveSize = 0
-            terrain.WaterWaveSpeed = 0
-            terrain.WaterReflectance = 0
-            terrain.WaterTransparency = 0.9
+            terrain.WaterWaveSize = 0.1
+            terrain.WaterWaveSpeed = 1
+            terrain.WaterReflectance = 0.1
+            terrain.WaterTransparency = 0.8
         end)
        
         spawn(function()
             local processCount = 0
-            local pixelMaterial = Enum.Material.SmoothPlastic
+            local pixelMaterial = Enum.Material.Plastic
            
             for _, obj in pairs(Workspace:GetDescendants()) do
                 if not processedObjects[obj] then
@@ -2012,7 +2054,7 @@ local function toggleLowDetail(enabled)
                             obj.Enabled = false
                         elseif obj:IsA("Decal") or obj:IsA("Texture") then
                             foliageStates[obj] = { Transparency = obj.Transparency, Texture = obj.Texture }
-                            obj.Transparency = 1
+                            obj.Transparency = 0.5
                             obj.Texture = ""
                         elseif obj:IsA("SurfaceGui") or obj:IsA("BillboardGui") then
                             foliageStates[obj] = { Enabled = obj.Enabled }
@@ -2027,9 +2069,9 @@ local function toggleLowDetail(enabled)
                             obj.Material = pixelMaterial
                             obj.Reflectance = 0
                             obj.CastShadow = false
-                            local r = math.floor(obj.Color.R * 4) / 4
-                            local g = math.floor(obj.Color.G * 4) / 4
-                            local b = math.floor(obj.Color.B * 4) / 4
+                            local r = math.floor(obj.Color.R * 8) / 8
+                            local g = math.floor(obj.Color.G * 8) / 8
+                            local b = math.floor(obj.Color.B * 8) / 8
                             obj.Color = Color3.new(r, g, b)
                         elseif obj:IsA("MeshPart") then
                             foliageStates[obj] = {
@@ -2039,9 +2081,9 @@ local function toggleLowDetail(enabled)
                             }
                             obj.TextureID = ""
                             obj.Material = pixelMaterial
-                            local r = math.floor(obj.Color.R * 4) / 4
-                            local g = math.floor(obj.Color.G * 4) / 4
-                            local b = math.floor(obj.Color.B * 4) / 4
+                            local r = math.floor(obj.Color.R * 8) / 8
+                            local g = math.floor(obj.Color.G * 8) / 8
+                            local b = math.floor(obj.Color.B * 8) / 8
                             obj.Color = Color3.new(r, g, b)
                         elseif obj:IsA("SpecialMesh") then
                             foliageStates[obj] = { TextureId = obj.TextureId }
@@ -2053,12 +2095,12 @@ local function toggleLowDetail(enabled)
                             end
                         elseif obj:IsA("Sound") then
                             foliageStates[obj] = { Volume = obj.Volume }
-                            obj.Volume = obj.Volume * 0.5
+                            obj.Volume = obj.Volume * 0.3
                         end
                     end)
                    
                     processCount = processCount + 1
-                    if processCount % 30 == 0 then
+                    if processCount % 50 == 0 then
                         RunService.Heartbeat:Wait()
                     end
                 end
@@ -2067,8 +2109,8 @@ local function toggleLowDetail(enabled)
        
         pcall(function()
             Workspace.StreamingEnabled = true
-            Workspace.StreamingMinRadius = 8
-            Workspace.StreamingTargetRadius = 16
+            Workspace.StreamingMinRadius = 16
+            Workspace.StreamingTargetRadius = 32
         end)
        
         if connections and type(connections) == "table" and connections.lowDetailMonitor then
@@ -2235,10 +2277,10 @@ local function toggleUltraLowDetail(enabled)
                                     Anchored = obj.Anchored,
                                     TextureID = obj:IsA("MeshPart") and obj.TextureID or nil
                                 }
-                                obj.Transparency = 1
+                                obj.Transparency = 0.9
                                 obj.CanCollide = false
                                 obj.Material = Enum.Material.SmoothPlastic
-                                obj.Color = Color3.fromRGB(128, 128, 128)
+                                obj.Color = Color3.fromRGB(200, 200, 200)
                                 if obj:IsA("MeshPart") then
                                     obj.TextureID = ""
                                 end
@@ -2248,7 +2290,7 @@ local function toggleUltraLowDetail(enabled)
                                     Texture = obj.Texture,
                                     Color3 = obj.Color3
                                 }
-                                obj.Transparency = 1
+                                obj.Transparency = 0.9
                                 obj.Texture = ""
                             elseif obj:IsA("SpecialMesh") then
                                 foliageStates[obj] = { TextureId = obj.TextureId }
@@ -2258,12 +2300,12 @@ local function toggleUltraLowDetail(enabled)
                     end)
                    
                     processCount = processCount + 1
-                    if processCount % 20 == 0 then
+                    if processCount % 100 == 0 then
                         RunService.Heartbeat:Wait()
                     end
                 end
             end
-            print("Ultra Low Detail applied - Environment objects invisible but not destroyed")
+            print("Ultra Low Detail applied - Environment objects almost invisible")
         end)
        
         if connections and type(connections) == "table" and connections.ultraLowDetailMonitor then
@@ -2378,6 +2420,130 @@ local function toggleSelfHighlight(enabled)
         end
     end
 end
+local function createAllHighlights()
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        if targetPlayer ~= player and targetPlayer.Character then
+            if allHighlights[targetPlayer] then
+                allHighlights[targetPlayer]:Destroy()
+            end
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "AllHighlight"
+            highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+            highlight.FillTransparency = 1
+            highlight.OutlineTransparency = 0
+            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            highlight.Adornee = targetPlayer.Character
+            highlight.Parent = targetPlayer.Character
+            allHighlights[targetPlayer] = highlight
+        end
+    end
+end
+local function toggleAllHighlight(enabled)
+    Visual.allHighlightEnabled = enabled
+    print("All Highlight:", enabled)
+   
+    if enabled then
+        createAllHighlights()
+       
+        if connections.allHighlightPlayerAdded then
+            connections.allHighlightPlayerAdded:Disconnect()
+        end
+        connections.allHighlightPlayerAdded = Players.PlayerAdded:Connect(function(newPlayer)
+            if newPlayer ~= player then
+                newPlayer.CharacterAdded:Connect(function()
+                    task.wait(0.3)
+                    if Visual.allHighlightEnabled then
+                        if allHighlights[newPlayer] then
+                            allHighlights[newPlayer]:Destroy()
+                        end
+                        local highlight = Instance.new("Highlight")
+                        highlight.Name = "AllHighlight"
+                        highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+                        highlight.FillTransparency = 1
+                        highlight.OutlineTransparency = 0
+                        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        highlight.Adornee = newPlayer.Character
+                        highlight.Parent = newPlayer.Character
+                        allHighlights[newPlayer] = highlight
+                    end
+                end)
+            end
+        end)
+       
+        if connections.allHighlightPlayerRemoving then
+            connections.allHighlightPlayerRemoving:Disconnect()
+        end
+        connections.allHighlightPlayerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+            if allHighlights[leavingPlayer] then
+                allHighlights[leavingPlayer]:Destroy()
+                allHighlights[leavingPlayer] = nil
+            end
+        end)
+       
+    else
+        for targetPlayer, highlight in pairs(allHighlights) do
+            if highlight then
+                highlight:Destroy()
+            end
+        end
+        allHighlights = {}
+        if connections.allHighlightPlayerAdded then
+            connections.allHighlightPlayerAdded:Disconnect()
+            connections.allHighlightPlayerAdded = nil
+        end
+        if connections.allHighlightPlayerRemoving then
+            connections.allHighlightPlayerRemoving:Disconnect()
+            connections.allHighlightPlayerRemoving = nil
+        end
+    end
+end
+local function toggleFPP(enabled)
+    Visual.fppEnabled = enabled
+    local camera = Workspace.CurrentCamera
+    if enabled then
+        Visual.originalCameraMode = camera.CameraType
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = player.Character.Head
+    else
+        camera.CameraType = Visual.originalCameraMode or Enum.CameraType.Custom
+    end
+end
+local function toggleTPP(enabled)
+    Visual.tppEnabled = enabled
+    local camera = Workspace.CurrentCamera
+    if enabled then
+        Visual.originalCameraMode = camera.CameraType
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = player.Character.HumanoidRootPart
+    else
+        camera.CameraType = Visual.originalCameraMode or Enum.CameraType.Custom
+    end
+end
+local function toggleUnlimitedScroll(enabled)
+    Visual.unlimitedScroll = enabled
+    if enabled then
+        if connections.scrollLimit then
+            connections.scrollLimit:Disconnect()
+        end
+        connections.scrollLimit = UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseWheel then
+                input.Position = Vector3.new(input.Position.X, input.Position.Y, 0)
+            end
+        end)
+    else
+        if connections.scrollLimit then
+            connections.scrollLimit:Disconnect()
+            connections.scrollLimit = nil
+        end
+    end
+end
+local function setFOV(value)
+    Visual.customFOV = value
+    Workspace.CurrentCamera.FieldOfView = value
+end
+local function resetFOV()
+    setFOV(Visual.originalFOV)
+end
 -- Initialize module
 function Visual.init(deps)
     print("Initializing Visual module")
@@ -2454,6 +2620,7 @@ function Visual.init(deps)
     if Chat then
         originalBubbleChatEnabled = Chat.BubbleChatEnabled
     end
+    Visual.originalFOV = Workspace.CurrentCamera.FieldOfView
    
     -- Create freecam GUI
     if ScreenGui then
@@ -2656,6 +2823,10 @@ function Visual.loadVisualButtons(createToggleButton)
     createToggleButton("Sore Mode", toggleSore)
     createToggleButton("Night Mode", toggleNight)
     createToggleButton("Self Highlight", toggleSelfHighlight)
+    createToggleButton("All Highlight", toggleAllHighlight)
+    createToggleButton("FPP", toggleFPP)
+    createToggleButton("TPP", toggleTPP)
+    createToggleButton("Unlimited Scroll", toggleUnlimitedScroll)
     -- Create self highlight color picker button
     local colorButton = Instance.new("TextButton")
     colorButton.Name = "SelfHighlightColorButton"
@@ -2707,6 +2878,64 @@ function Visual.loadVisualButtons(createToggleButton)
         shapeButton.Text = "Hitbox Shape: " .. Visual.hitboxShape
         refreshESP()
     end)
+    -- Create hitbox distance button
+    local distanceButton = Instance.new("TextButton")
+    distanceButton.Name = "HitboxDistanceButton"
+    distanceButton.Size = UDim2.new(1, 0, 0, 30)
+    distanceButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    distanceButton.Text = "Hitbox Distance: " .. Visual.hitboxDistance
+    distanceButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    distanceButton.TextSize = 14
+    distanceButton.Font = Enum.Font.SourceSans
+    distanceButton.BorderSizePixel = 0
+    distanceButton.Parent = ScrollFrame
+    local distanceCorner = Instance.new("UICorner")
+    distanceCorner.CornerRadius = UDim.new(0, 4)
+    distanceCorner.Parent = distanceButton
+    distanceButton.MouseButton1Click:Connect(function()
+        Visual.hitboxDistance = Visual.hitboxDistance + 100
+        if Visual.hitboxDistance > 5000 then Visual.hitboxDistance = 100 end
+        distanceButton.Text = "Hitbox Distance: " .. Visual.hitboxDistance
+        refreshESP()
+    end)
+    -- Create FOV setting button
+    local fovButton = Instance.new("TextButton")
+    fovButton.Name = "FOVButton"
+    fovButton.Size = UDim2.new(1, 0, 0, 30)
+    fovButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    fovButton.Text = "FOV: " .. Visual.customFOV
+    fovButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    fovButton.TextSize = 14
+    fovButton.Font = Enum.Font.SourceSans
+    fovButton.BorderSizePixel = 0
+    fovButton.Parent = ScrollFrame
+    local fovCorner = Instance.new("UICorner")
+    fovCorner.CornerRadius = UDim.new(0, 4)
+    fovCorner.Parent = fovButton
+    fovButton.MouseButton1Click:Connect(function()
+        Visual.customFOV = Visual.customFOV + 10
+        if Visual.customFOV > 120 then Visual.customFOV = 70 end
+        setFOV(Visual.customFOV)
+        fovButton.Text = "FOV: " .. Visual.customFOV
+    end)
+    -- Create FOV reset button
+    local resetFOVButton = Instance.new("TextButton")
+    resetFOVButton.Name = "ResetFOVButton"
+    resetFOVButton.Size = UDim2.new(1, 0, 0, 30)
+    resetFOVButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    resetFOVButton.Text = "Reset FOV"
+    resetFOVButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    resetFOVButton.TextSize = 14
+    resetFOVButton.Font = Enum.Font.SourceSans
+    resetFOVButton.BorderSizePixel = 0
+    resetFOVButton.Parent = ScrollFrame
+    local resetFOVCorner = Instance.new("UICorner")
+    resetFOVCorner.CornerRadius = UDim.new(0, 4)
+    resetFOVCorner.Parent = resetFOVButton
+    resetFOVButton.MouseButton1Click:Connect(function()
+        resetFOV()
+        fovButton.Text = "FOV: " .. Visual.originalFOV
+    end)
     -- Collect visual buttons for keyboard navigation
     visualButtons = {}
     for _, child in ipairs(ScrollFrame:GetChildren()) do
@@ -2740,6 +2969,10 @@ Visual.toggleHideBubbleChat = toggleHideBubbleChat
 Visual.toggleCoordinates = toggleCoordinates
 Visual.toggleKeyboardNavigation = toggleKeyboardNavigation
 Visual.toggleSelfHighlight = toggleSelfHighlight
+Visual.toggleAllHighlight = toggleAllHighlight
+Visual.toggleFPP = toggleFPP
+Visual.toggleTPP = toggleTPP
+Visual.toggleUnlimitedScroll = toggleUnlimitedScroll
 Visual.setTimeMode = setTimeMode
 -- Function to reset Visual states
 function Visual.resetStates()
@@ -2768,6 +3001,11 @@ function Visual.resetStates()
     Visual.keyboardNavigationEnabled = false
     Visual.currentTimeMode = "normal"
     Visual.selfHighlightEnabled = false
+    Visual.allHighlightEnabled = false
+    Visual.fppEnabled = false
+    Visual.tppEnabled = false
+    Visual.unlimitedScroll = false
+    Visual.customFOV = Visual.originalFOV
     Visual.freecamMode = "PC"
    
     if connections and type(connections) == "table" then
@@ -2804,7 +3042,12 @@ function Visual.resetStates()
     toggleCoordinates(false)
     toggleKeyboardNavigation(false)
     toggleSelfHighlight(false)
+    toggleAllHighlight(false)
+    toggleFPP(false)
+    toggleTPP(false)
+    toggleUnlimitedScroll(false)
     setTimeMode("normal")
+    resetFOV()
    
     if colorPicker then
         colorPicker:Destroy()
@@ -2850,6 +3093,10 @@ function Visual.updateReferences()
     local wasCoordinatesEnabled = Visual.coordinatesEnabled
     local wasKeyboardNavigationEnabled = Visual.keyboardNavigationEnabled
     local wasSelfHighlightEnabled = Visual.selfHighlightEnabled
+    local wasAllHighlightEnabled = Visual.allHighlightEnabled
+    local wasFppEnabled = Visual.fppEnabled
+    local wasTppEnabled = Visual.tppEnabled
+    local wasUnlimitedScroll = Visual.unlimitedScroll
     local currentTimeMode = Visual.currentTimeMode
    
     -- Reset states to ensure clean slate
@@ -2951,6 +3198,19 @@ function Visual.updateReferences()
     if wasSelfHighlightEnabled then
         print("Re-enabling Self Highlight after respawn")
         toggleSelfHighlight(true)
+    end
+    if wasAllHighlightEnabled then
+        print("Re-enabling All Highlight after respawn")
+        toggleAllHighlight(true)
+    end
+    if wasFppEnabled then
+        toggleFPP(true)
+    end
+    if wasTppEnabled then
+        toggleTPP(true)
+    end
+    if wasUnlimitedScroll then
+        toggleUnlimitedScroll(true)
     end
     if currentTimeMode ~= "normal" then
         print("Restoring Time Mode after respawn:", currentTimeMode)
@@ -3111,6 +3371,10 @@ function Visual.getState()
         coordinatesEnabled = Visual.coordinatesEnabled,
         keyboardNavigationEnabled = Visual.keyboardNavigationEnabled,
         selfHighlightEnabled = Visual.selfHighlightEnabled,
+        allHighlightEnabled = Visual.allHighlightEnabled,
+        fppEnabled = Visual.fppEnabled,
+        tppEnabled = Visual.tppEnabled,
+        unlimitedScroll = Visual.unlimitedScroll,
         currentTimeMode = Visual.currentTimeMode,
         selfHighlightColor = Visual.selfHighlightColor
     }
