@@ -342,6 +342,7 @@ local categories = {
 
 local categoryFrames = {}
 local isMinimized = false
+local previousMouseBehavior
 
 -- Load modules
 local modules = {}
@@ -871,6 +872,16 @@ local function toggleMinimize()
     Frame.Visible = not isMinimized
     MinimizedLogo.Visible = isMinimized
     MinimizeButton.Text = isMinimized and "+" or "-"
+    if isMinimized then
+        if previousMouseBehavior then
+            UserInputService.MouseBehavior = previousMouseBehavior
+        end
+    else
+        previousMouseBehavior = UserInputService.MouseBehavior
+        if previousMouseBehavior == Enum.MouseBehavior.LockCenter or previousMouseBehavior == Enum.MouseBehavior.LockCurrent then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end
+    end
 end
 
 -- Enhanced reset states with better error handling
@@ -1119,9 +1130,8 @@ task.spawn(function()
 end)
 
 -- Add cleanup on script termination
-game:GetService("RunService").Stepped:Connect(function()
-    -- Keep GUI alive and responsive
-    if ScreenGui and ScreenGui.Parent ~= player.PlayerGui then
+game:GetService("RunService").Heartbeat:Connect(function()
+    if ScreenGui.Parent ~= player.PlayerGui then
         ScreenGui.Parent = player.PlayerGui
     end
 end)

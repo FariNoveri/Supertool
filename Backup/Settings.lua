@@ -105,7 +105,6 @@ local function createSlider(name, setting, min, max, default, parent)
     }
     
     local dragging = false
-    local UserInputService = game:GetService("UserInputService")
     
     -- Mouse/Touch input handling
     local function updateSlider(inputPosition)
@@ -137,45 +136,44 @@ local function createSlider(name, setting, min, max, default, parent)
         Settings.applySettings()
     end
     
-    sliderButton.MouseButton1Down:Connect(function()
-        dragging = true
-    end)
-    
-    -- Fixed: Use InputBegan instead of MouseButton1Down for Frame (sliderBar)
+    -- Unified input handling for mouse and touch
     sliderBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local mousePos = UserInputService:GetMouseLocation()
-            updateSlider(mousePos.X)
+        if not dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
             dragging = true
+            updateSlider(input.Position.X)
         end
     end)
     
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement) then
-            local mousePos = UserInputService:GetMouseLocation()
-            updateSlider(mousePos.X)
+    sliderBar.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            updateSlider(input.Position.X)
         end
     end)
     
-    UserInputService.InputEnded:Connect(function(input)
+    sliderBar.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
     
-    -- Touch support for mobile
-    sliderButton.TouchTap:Connect(function()
-        dragging = true
-    end)
-    
-    UserInputService.TouchMoved:Connect(function(touch, gameProcessed)
-        if dragging and not gameProcessed then
-            updateSlider(touch.Position.X)
+    -- Also handle on slider button for better touch targeting
+    sliderButton.InputBegan:Connect(function(input)
+        if not dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = true
+            updateSlider(input.Position.X)
         end
     end)
     
-    UserInputService.TouchEnded:Connect(function(touch, gameProcessed)
-        dragging = false
+    sliderButton.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            updateSlider(input.Position.X)
+        end
+    end)
+    
+    sliderButton.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
     end)
 end
 
