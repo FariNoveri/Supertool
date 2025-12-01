@@ -54,6 +54,12 @@ Player.minScale = 0.5
 Player.maxScale = 2.0
 Player.scaleStep = 0.1
 
+-- Variables for bring formations
+Player.bringLineEnabled = false
+Player.bringLinePositions = {}
+Player.bringCircleEnabled = false
+Player.bringCirclePositions = {}
+
 -- UI Elements
 local PlayerListFrame, PlayerListScrollFrame, PlayerListLayout, SelectedPlayerLabel
 local ClosePlayerListButton, NextSpectateButton, PrevSpectateButton, StopSpectateButton, TeleportSpectateButton
@@ -853,6 +859,14 @@ local function setupPlayerMonitoring(targetPlayer)
                 toggleNoDeathAnimation(true)
             end
         end
+        
+        if Player.bringLineEnabled then
+            calculateLinePositions()
+        end
+        
+        if Player.bringCircleEnabled then
+            calculateCirclePositions()
+        end
     end)
     
     if Player.freezeEnabled and targetPlayer.Character then
@@ -959,6 +973,120 @@ local function toggleFreezePlayers(enabled)
         Player.frozenPlayerPositions = {}
         Player.playerConnections = {}
         print("Players unfrozen successfully")
+    end
+end
+
+-- Calculate line positions
+local function calculateLinePositions()
+    local otherPlayers = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p:FindFirstChild("HumanoidRootPart") then
+            table.insert(otherPlayers, p)
+        end
+    end
+    table.sort(otherPlayers, function(a, b) return a.Name < b.Name end)
+    local num = #otherPlayers
+    if num == 0 then return end
+    local center = Player.rootPart and Player.rootPart.Position or Vector3.zero
+    local spacing = 5
+    local startX = -((num - 1) * spacing) / 2
+    local rotation = Player.rootPart and Player.rootPart.CFrame.Rotation or CFrame.new()
+    Player.bringLinePositions = {}
+    for i, p in ipairs(otherPlayers) do
+        local pos = center + Vector3.new(startX + (i - 1) * spacing, 0, 0)
+        Player.bringLinePositions[p] = CFrame.new(pos) * rotation
+    end
+end
+
+-- Toggle Bring Line (client-side visual)
+local function toggleBringLine(enabled)
+    Player.bringLineEnabled = enabled
+    if enabled then
+        calculateLinePositions()
+        connections.bringLine = RunService.RenderStepped:Connect(function()
+            if Player.bringLineEnabled then
+                for p, cf in pairs(Player.bringLinePositions) do
+                    if p.Character and p:FindFirstChild("HumanoidRootPart") then
+                        p.Character.HumanoidRootPart.CFrame = cf
+                    end
+                end
+            end
+        end)
+        connections.bringLineNewPlayers = Players.PlayerAdded:Connect(function(newP)
+            if Player.bringLineEnabled and newP ~= player then
+                newP.CharacterAdded:Wait()
+                task.wait(0.5)
+                calculateLinePositions()
+            end
+        end)
+        connections.bringLinePlayerRemoving = Players.PlayerRemoving:Connect(function(leavingP)
+            if Player.bringLinePositions[leavingP] then
+                Player.bringLinePositions[leavingP] = nil
+                calculateLinePositions()
+            end
+        end)
+    else
+        if connections.bringLine then connections.bringLine:Disconnect() end
+        if connections.bringLineNewPlayers then connections.bringLineNewPlayers:Disconnect() end
+        if connections.bringLinePlayerRemoving then connections.bringLinePlayerRemoving:Disconnect() end
+        Player.bringLinePositions = {}
+    end
+end
+
+-- Calculate circle positions
+local function calculateCirclePositions()
+    local otherPlayers = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p:FindFirstChild("HumanoidRootPart") then
+            table.insert(otherPlayers, p)
+        end
+    end
+    table.sort(otherPlayers, function(a, b) return a.Name < b.Name end)
+    local num = #otherPlayers
+    if num == 0 then return end
+    local center = Player.rootPart and Player.rootPart.Position or Vector3.zero
+    local radius = math.max(5, num * 1.5)
+    local angleStep = 2 * math.pi / num
+    Player.bringCirclePositions = {}
+    for i, p in ipairs(otherPlayers) do
+        local angle = (i - 1) * angleStep
+        local pos = center + Vector3.new(radius * math.cos(angle), 0, radius * math.sin(angle))
+        Player.bringCirclePositions[p] = CFrame.lookAt(pos, center)
+    end
+end
+
+-- Toggle Bring Circle (client-side visual)
+local function toggleBringCircle(enabled)
+    Player.bringCircleEnabled = enabled
+    if enabled then
+        calculateCirclePositions()
+        connections.bringCircle = RunService.RenderStepped:Connect(function()
+            if Player.bringCircleEnabled then
+                for p, cf in pairs(Player.bringCirclePositions) do
+                    if p.Character and p:FindFirstChild("HumanoidRootPart") then
+                        p.Character.HumanoidRootPart.CFrame = cf
+                    end
+                end
+            end
+        end)
+        connections.bringCircleNewPlayers = Players.PlayerAdded:Connect(function(newP)
+            if Player.bringCircleEnabled and newP ~= player then
+                newP.CharacterAdded:Wait()
+                task.wait(0.5)
+                calculateCirclePositions()
+            end
+        end)
+        connections.bringCirclePlayerRemoving = Players.PlayerRemoving:Connect(function(leavingP)
+            if Player.bringCirclePositions[leavingP] then
+                Player.bringCirclePositions[leavingP] = nil
+                calculateCirclePositions()
+            end
+        end)
+    else
+        if connections.bringCircle then connections.bringCircle:Disconnect() end
+        if connections.bringCircleNewPlayers then connections.bringCircleNewPlayers:Disconnect() end
+        if connections.bringCirclePlayerRemoving then connections.bringCirclePlayerRemoving:Disconnect() end
+        Player.bringCirclePositions = {}
     end
 end
 
@@ -1859,6 +1987,8 @@ function Player.loadPlayerButtons(createButton, createToggleButton, selectedPlay
     createToggleButton("Physics Control", togglePhysicsControl, "Player")
     createToggleButton("Magnet Players", toggleMagnetPlayers, "Player")
     createToggleButton("Fling Mode", toggleFling, "Player")
+    createToggleButton("Bring Line", toggleBringLine, "Player")
+    createToggleButton("Bring Circle", toggleBringCircle, "Player")
     createButton("Increase Size", increaseScale, "Player")
     createButton("Decrease Size", decreaseScale, "Player")
     createButton("Reset Size", resetScale, "Player")
@@ -1880,6 +2010,8 @@ function Player.resetStates()
     Player.magnetEnabled = false
     Player.flingEnabled = false
     Player.physicsEnabled = false
+    Player.bringLineEnabled = false
+    Player.bringCircleEnabled = false
     Player.teleportHistory = {}
     Player.teleportFuture = {}
     
@@ -1891,6 +2023,8 @@ function Player.resetStates()
     toggleMagnetPlayers(false)
     toggleFling(false)
     togglePhysicsControl(false)
+    toggleBringLine(false)
+    toggleBringCircle(false)
     stopFollowing()
     stopSpectating()
     print("Player states reset successfully")
@@ -2427,6 +2561,8 @@ function Player.cleanup()
     Player.playerListVisible = false
     Player.frozenPlayerPositions = {}
     Player.magnetPlayerPositions = {}
+    Player.bringLinePositions = {}
+    Player.bringCirclePositions = {}
     
     print("Player module cleaned up successfully")
 end
