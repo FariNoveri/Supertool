@@ -12,8 +12,7 @@ local Players, Workspace, ScreenGui, ScrollFrame, player, rootPart, settings
 local Teleport = {}
 
 -- Variables
-Teleport.savedPositions = Teleport.savedPositions or {} -- Preserve existing positions
-Teleport.positionNumbers = Teleport.positionNumbers or {} -- Preserve existing position numbers
+Teleport.positions = Teleport.positions or {} -- {name: {cframe, number, created}}
 Teleport.positionLabels = Teleport.positionLabels or {} -- New: Table for position labels in the world
 Teleport.labelsVisible = true -- New: Toggle for showing/hiding labels
 Teleport.positionFrameVisible = false
@@ -30,6 +29,8 @@ Teleport.lastClickTime = 0
 Teleport.doubleClickThreshold = 0.5 -- seconds for double click
 Teleport.undoStack = {} -- New: Undo stack for directional and double-click teleports
 Teleport.initialized = false
+Teleport.sortMode = "order" -- "alpha", "order", "time"
+Teleport.newestPosition = nil
 
 -- UI Elements (to be initialized in initUI function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
@@ -38,6 +39,7 @@ local AutoStatusLabel -- New label for auto-teleport status
 local SmoothToggle, SpeedInput
 local CoordInputX, CoordInputY, CoordInputZ, TeleportToCoordButton, SaveCoordButton
 local LabelToggle -- New: Toggle for labels visibility
+local SortModeButton, DeleteAllButton, PrefixInput, AddPrefixButton
 
 -- File System Integration for KRNL (like utility.lua)
 local HttpService = game:GetService("HttpService")
@@ -54,7 +56,7 @@ local function sanitizeFileName(name)
 end
 
 -- Helper function untuk save position ke JSON file
-local function saveToJSONFile(positionName, cframe, number)
+local function saveToJSONFile(positionName, cframe, number, created)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(positionName)
         local fileName = sanitizedName .. ".json"
@@ -63,7 +65,7 @@ local function saveToJSONFile(positionName, cframe, number)
         local jsonData = {
             name = positionName,
             type = "teleport_position",
-            created = os.time(),
+            created = created or os.time(),
             modified = os.time(),
             version = "1.0",
             x = cframe.X,
@@ -105,7 +107,7 @@ local function loadFromJSONFile(positionName)
                 cframe = cframe,
                 number = jsonData.number or 0,
                 name = jsonData.name or positionName,
-                created = jsonData.created,
+                created = jsonData.created or os.time(),
                 modified = jsonData.modified,
                 version = jsonData.version or "1.0"
             }
@@ -157,7 +159,7 @@ local function renameInJSONFile(oldName, newName)
         oldData.name = newName
         oldData.modified = os.time()
         
-        if saveToJSONFile(newName, oldData.cframe, oldData.number) then
+        if saveToJSONFile(newName, oldData.cframe, oldData.number, oldData.created) then
             deleteFromJSONFile(oldName)
             print("[SUPERTOOL] Position renamed: " .. oldName .. " -> " .. newName)
             return true
@@ -183,7 +185,6 @@ local function loadAllPositionsFromFolder()
         end
         
         local loadedPositions = {}
-        local loadedNumbers = {}
         local files = listfiles(TELEPORT_FOLDER_PATH)
         
         for _, filePath in pairs(files) do
@@ -193,22 +194,21 @@ local function loadAllPositionsFromFolder()
                     local positionData = loadFromJSONFile(fileName)
                     if positionData then
                         local originalName = positionData.name or fileName
-                        loadedPositions[originalName] = positionData.cframe
-                        loadedNumbers[originalName] = positionData.number or 0
+                        loadedPositions[originalName] = positionData
                         print("[SUPERTOOL] Loaded position: " .. originalName)
                     end
                 end
             end
         end
         
-        return loadedPositions, loadedNumbers
+        return loadedPositions
     end)
     
     if success then
-        return error or {}, {}
+        return error or {}
     else
         warn("[SUPERTOOL] Failed to load positions from folder: " .. tostring(error))
-        return {}, {}
+        return {}
     end
 end
 
@@ -228,7 +228,7 @@ local function ensureFileSystem()
 end
 
 -- Helper function to save position to file system (now syncs with JSON)
-local function saveToFileSystem(positionName, cframe, number)
+local function saveToFileSystem(positionName, cframe, number, created)
     ensureFileSystem()
     fileSystem["Supertool/Teleport"][positionName] = {
         type = "teleport_position",
@@ -236,10 +236,11 @@ local function saveToFileSystem(positionName, cframe, number)
         y = cframe.Y,
         z = cframe.Z,
         orientation = {cframe:ToEulerAnglesXYZ()},
-        number = number or 0
+        number = number or 0,
+        created = created or os.time()
     }
     
-    saveToJSONFile(positionName, cframe, number)
+    saveToJSONFile(positionName, cframe, number, created)
     return true
 end
 
@@ -247,16 +248,14 @@ end
 local function loadFromFileSystem(positionName)
     local jsonData = loadFromJSONFile(positionName)
     if jsonData then
-        Teleport.positionNumbers[positionName] = jsonData.number
-        return jsonData.cframe
+        return jsonData.cframe, jsonData.number, jsonData.created
     end
     
     ensureFileSystem()
     local data = fileSystem["Supertool/Teleport"][positionName]
     if data and data.type == "teleport_position" then
         local rx, ry, rz = unpack(data.orientation)
-        Teleport.positionNumbers[positionName] = data.number or 0
-        return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
+        return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz), data.number or 0, data.created or os.time()
     end
     
     return nil
@@ -294,19 +293,19 @@ end
 
 -- Function untuk sync positions dari JSON ke memory pada startup
 local function syncPositionsFromJSON()
-    local jsonPositions, jsonNumbers = loadAllPositionsFromFolder()
-    for positionName, cframe in pairs(jsonPositions) do
-        Teleport.savedPositions[positionName] = cframe
-        Teleport.positionNumbers[positionName] = jsonNumbers[positionName] or 0
+    local jsonPositions = loadAllPositionsFromFolder()
+    for positionName, data in pairs(jsonPositions) do
+        Teleport.positions[positionName] = {cframe = data.cframe, number = data.number or 0, created = data.created}
         fileSystem["Supertool/Teleport"][positionName] = {
             type = "teleport_position",
-            x = cframe.X,
-            y = cframe.Y,
-            z = cframe.Z,
-            orientation = {cframe:ToEulerAnglesXYZ()},
-            number = jsonNumbers[positionName] or 0
+            x = data.cframe.X,
+            y = data.cframe.Y,
+            z = data.cframe.Z,
+            orientation = {data.cframe:ToEulerAnglesXYZ()},
+            number = data.number or 0,
+            created = data.created
         }
-        Teleport.createPositionLabel(positionName, cframe.Position)
+        Teleport.createPositionLabel(positionName, data.cframe.Position)
     end
     print("[SUPERTOOL] Synced " .. table.maxn(jsonPositions) .. " positions from JSON files")
 end
@@ -320,27 +319,32 @@ local function getRootPart()
     return nil
 end
 
--- Get ordered positions (now based on manual numbering)
+-- Get ordered positions based on sort mode
 local function getOrderedPositions()
     local orderedPositions = {}
-    for name, cframe in pairs(Teleport.savedPositions) do
-        local number = Teleport.positionNumbers[name] or 0
-        table.insert(orderedPositions, {name = name, cframe = cframe, number = number})
+    for name, data in pairs(Teleport.positions) do
+        table.insert(orderedPositions, {name = name, cframe = data.cframe, number = data.number, created = data.created})
     end
     
-    table.sort(orderedPositions, function(a, b)
-        if a.number == 0 and b.number == 0 then
-            return a.name < b.name
-        elseif a.number == 0 then
-            return false
-        elseif b.number == 0 then
-            return true
-        elseif a.number == b.number then
-            return a.name < b.name
-        else
-            return a.number < b.number
-        end
-    end)
+    if Teleport.sortMode == "alpha" then
+        table.sort(orderedPositions, function(a, b) return a.name < b.name end)
+    elseif Teleport.sortMode == "time" then
+        table.sort(orderedPositions, function(a, b) return a.created < b.created end)
+    else -- "order"
+        table.sort(orderedPositions, function(a, b)
+            if a.number == 0 and b.number == 0 then
+                return a.name < b.name
+            elseif a.number == 0 then
+                return false
+            elseif b.number == 0 then
+                return true
+            elseif a.number == b.number then
+                return a.name < b.name
+            else
+                return a.number < b.number
+            end
+        end)
+    end
     
     return orderedPositions
 end
@@ -350,7 +354,8 @@ local function getDuplicateNumbers()
     local numberCount = {}
     local duplicates = {}
     
-    for name, number in pairs(Teleport.positionNumbers) do
+    for name, data in pairs(Teleport.positions) do
+        local number = data.number
         if number > 0 then
             if numberCount[number] then
                 table.insert(numberCount[number], name)
@@ -404,7 +409,7 @@ end
 
 -- Check if position name already exists
 local function positionExists(positionName)
-    return Teleport.savedPositions[positionName] ~= nil
+    return Teleport.positions[positionName] ~= nil
 end
 
 -- Generate unique position name
@@ -595,8 +600,7 @@ local refreshPositionButtons
 -- Delete position with confirmation
 local function deletePositionWithConfirmation(positionName, button)
     if button.Text == "Delete?" then
-        Teleport.savedPositions[positionName] = nil
-        Teleport.positionNumbers[positionName] = nil
+        Teleport.positions[positionName] = nil
         if Teleport.positionLabels[positionName] then
             Teleport.positionLabels[positionName]:Destroy()
             Teleport.positionLabels[positionName] = nil
@@ -617,6 +621,47 @@ local function deletePositionWithConfirmation(positionName, button)
             end
         end)
     end
+end
+
+-- Delete all positions
+local function deleteAllPositions()
+    for name in pairs(Teleport.positions) do
+        if Teleport.positionLabels[name] then
+            Teleport.positionLabels[name]:Destroy()
+            Teleport.positionLabels[name] = nil
+        end
+        deleteFromFileSystem(name)
+    end
+    Teleport.positions = {}
+    Teleport.newestPosition = nil
+    print("Deleted all positions")
+    refreshPositionButtons()
+end
+
+-- Add prefix to all positions
+local function addPrefixToAll(prefix)
+    if prefix == "" then return end
+    local newPositions = {}
+    for oldName, data in pairs(Teleport.positions) do
+        local newName = prefix .. oldName
+        newName = generateUniqueName(newName)
+        newPositions[newName] = data
+        if Teleport.positionLabels[oldName] then
+            local label = Teleport.positionLabels[oldName]
+            Teleport.positionLabels[newName] = label
+            Teleport.positionLabels[oldName] = nil
+            local number = data.number
+            local labelText = newName
+            if number > 0 then
+                labelText = "[" .. number .. "] " .. newName
+            end
+            label.TextLabel.Text = labelText
+        end
+        renameInFileSystem(oldName, newName)
+        print("Renamed " .. oldName .. " to " .. newName)
+    end
+    Teleport.positions = newPositions
+    refreshPositionButtons()
 end
 
 -- Update scroll canvas size
@@ -648,7 +693,7 @@ local function doAutoTeleport()
                 if safeTeleport(position.cframe) then
                     print("Auto teleported to: " .. position.name .. " (" .. i .. "/" .. #positions .. ")")
                     if AutoStatusLabel then
-                        local number = Teleport.positionNumbers[position.name] or 0
+                        local number = position.number
                         local numberText = number > 0 and "#" .. number or ""
                         AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
                     end
@@ -690,7 +735,7 @@ function Teleport.startAutoTeleport()
     if AutoStatusLabel then
         local positions = getOrderedPositions()
         local position = positions[1]
-        local number = Teleport.positionNumbers[position.name] or 0
+        local number = position.number
         local numberText = number > 0 and "#" .. number or ""
         AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
         AutoStatusLabel.Visible = true
@@ -731,7 +776,7 @@ function Teleport.toggleAutoMode()
         local positions = getOrderedPositions()
         if positions[Teleport.currentAutoIndex] then
             local position = positions[Teleport.currentAutoIndex]
-            local number = Teleport.positionNumbers[position.name] or 0
+            local number = position.number
             local numberText = number > 0 and "#" .. number or ""
             AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
         end
@@ -741,7 +786,7 @@ function Teleport.toggleAutoMode()
 end
 
 -- Create position button with rename, delete, and numbering functionality
-createPositionButton = function(positionName, cframe)
+createPositionButton = function(positionName, cframe, number, created)
     if not PositionScrollFrame then
         warn("Cannot create position button: PositionScrollFrame not initialized")
         return
@@ -752,7 +797,6 @@ createPositionButton = function(positionName, cframe)
     ButtonFrame.BackgroundTransparency = 1
     ButtonFrame.Parent = PositionScrollFrame
 
-    local number = Teleport.positionNumbers[positionName] or 0
     local duplicates = getDuplicateNumbers()
     local isDuplicate = duplicates[positionName] or false
     local displayText = positionName
@@ -775,7 +819,7 @@ createPositionButton = function(positionName, cframe)
     local TeleportButton = Instance.new("TextButton")
     TeleportButton.Size = UDim2.new(1, -95, 1, 0)
     TeleportButton.Position = UDim2.new(0, 28, 0, 0)
-    TeleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    TeleportButton.BackgroundColor3 = positionName == Teleport.newestPosition and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(50, 50, 50)
     TeleportButton.BorderSizePixel = 0
     TeleportButton.Text = displayText
     TeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -808,8 +852,8 @@ createPositionButton = function(positionName, cframe)
 
     NumberButton.MouseButton1Click:Connect(function()
         createNumberInputDialog(positionName, number, function(newNumber)
-            Teleport.positionNumbers[positionName] = newNumber
-            saveToFileSystem(positionName, cframe, newNumber)
+            Teleport.positions[positionName].number = newNumber
+            saveToFileSystem(positionName, cframe, newNumber, created)
             if Teleport.positionLabels[positionName] then
                 local labelText = positionName
                 if newNumber > 0 then
@@ -830,22 +874,24 @@ createPositionButton = function(positionName, cframe)
 
     RenameButton.MouseButton1Click:Connect(function()
         createRenameDialog(positionName, function(newName)
-            Teleport.savedPositions[newName] = Teleport.savedPositions[positionName]
-            Teleport.savedPositions[positionName] = nil
-            Teleport.positionNumbers[newName] = Teleport.positionNumbers[positionName]
-            Teleport.positionNumbers[positionName] = nil
+            local data = Teleport.positions[positionName]
+            Teleport.positions[newName] = data
+            Teleport.positions[positionName] = nil
             if Teleport.positionLabels[positionName] then
                 local label = Teleport.positionLabels[positionName]
                 Teleport.positionLabels[newName] = label
                 Teleport.positionLabels[positionName] = nil
-                local number = Teleport.positionNumbers[newName] or 0
+                local num = data.number
                 local labelText = newName
-                if number > 0 then
-                    labelText = "[" .. number .. "] " .. newName
+                if num > 0 then
+                    labelText = "[" .. num .. "] " .. newName
                 end
                 label.TextLabel.Text = labelText
             end
             renameInFileSystem(positionName, newName)
+            if Teleport.newestPosition == positionName then
+                Teleport.newestPosition = newName
+            end
             print("Renamed position to: " .. newName)
             refreshPositionButtons()
         end)
@@ -866,11 +912,11 @@ createPositionButton = function(positionName, cframe)
     end)
 
     TeleportButton.MouseEnter:Connect(function()
-        TeleportButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        TeleportButton.BackgroundColor3 = positionName == Teleport.newestPosition and Color3.fromRGB(70, 120, 70) or Color3.fromRGB(70, 70, 70)
     end)
 
     TeleportButton.MouseLeave:Connect(function()
-        TeleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        TeleportButton.BackgroundColor3 = positionName == Teleport.newestPosition and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(50, 50, 50)
     end)
 
     RenameButton.MouseEnter:Connect(function()
@@ -921,13 +967,13 @@ refreshPositionButtons = function()
     infoLabel.BackgroundTransparency = 1
     infoLabel.Size = UDim2.new(1, 0, 1, 0)
     infoLabel.Font = Enum.Font.Gotham
-    infoLabel.Text = "JSON Sync: " .. TELEPORT_FOLDER_PATH .. " (" .. table.maxn(Teleport.savedPositions) .. " positions)"
+    infoLabel.Text = "JSON Sync: " .. TELEPORT_FOLDER_PATH .. " (" .. table.maxn(Teleport.positions) .. " positions)"
     infoLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
     infoLabel.TextSize = 7
     infoLabel.TextXAlignment = Enum.TextXAlignment.Left
     
-    for positionName, cframe in pairs(Teleport.savedPositions) do
-        createPositionButton(positionName, cframe)
+    for _, pos in ipairs(getOrderedPositions()) do
+        createPositionButton(pos.name, pos.cframe, pos.number, pos.created)
         itemCount = itemCount + 1
     end
     
@@ -969,9 +1015,8 @@ refreshPositionButtons = function()
         
         syncAllButton.MouseButton1Click:Connect(function()
             local count = 0
-            for name, cframe in pairs(Teleport.savedPositions) do
-                local number = Teleport.positionNumbers[name] or 0
-                saveToJSONFile(name, cframe, number)
+            for name, data in pairs(Teleport.positions) do
+                saveToJSONFile(name, data.cframe, data.number, data.created)
                 count = count + 1
             end
             print("[SUPERTOOL] Synced " .. count .. " positions to JSON files")
@@ -1002,7 +1047,7 @@ local function onCharacterAdded(character)
                 local positions = getOrderedPositions()
                 if positions[Teleport.currentAutoIndex] then
                     local position = positions[Teleport.currentAutoIndex]
-                    local number = Teleport.positionNumbers[position.name] or 0
+                    local number = position.number
                     local numberText = number > 0 and "#" .. number or ""
                     AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
                 end
@@ -1030,11 +1075,12 @@ function Teleport.saveCurrentPosition()
     positionName = generateUniqueName(positionName)
     
     local currentCFrame = root.CFrame
-    Teleport.savedPositions[positionName] = currentCFrame
-    Teleport.positionNumbers[positionName] = 0
-    saveToFileSystem(positionName, currentCFrame, 0)
+    local created = os.time()
+    Teleport.positions[positionName] = {cframe = currentCFrame, number = 0, created = created}
+    saveToFileSystem(positionName, currentCFrame, 0, created)
     Teleport.createPositionLabel(positionName, currentCFrame.Position)
-    createPositionButton(positionName, currentCFrame)
+    Teleport.newestPosition = positionName
+    createPositionButton(positionName, currentCFrame, 0, created)
     
     if PositionInput then
         PositionInput.Text = ""
@@ -1060,11 +1106,12 @@ function Teleport.saveFreecamPosition(freecamPosition)
     positionName = generateUniqueName(positionName)
     
     local cframe = CFrame.new(freecamPosition)
-    Teleport.savedPositions[positionName] = cframe
-    Teleport.positionNumbers[positionName] = 0
-    saveToFileSystem(positionName, cframe, 0)
+    local created = os.time()
+    Teleport.positions[positionName] = {cframe = cframe, number = 0, created = created}
+    saveToFileSystem(positionName, cframe, 0, created)
     Teleport.createPositionLabel(positionName, cframe.Position)
-    createPositionButton(positionName, cframe)
+    Teleport.newestPosition = positionName
+    createPositionButton(positionName, cframe, 0, created)
     
     if PositionInput then
         PositionInput.Text = ""
@@ -1089,11 +1136,12 @@ function Teleport.saveCoordPosition()
     
     positionName = generateUniqueName(positionName)
     
-    Teleport.savedPositions[positionName] = cframe
-    Teleport.positionNumbers[positionName] = 0
-    saveToFileSystem(positionName, cframe, 0)
+    local created = os.time()
+    Teleport.positions[positionName] = {cframe = cframe, number = 0, created = created}
+    saveToFileSystem(positionName, cframe, 0, created)
     Teleport.createPositionLabel(positionName, cframe.Position)
-    createPositionButton(positionName, cframe)
+    Teleport.newestPosition = positionName
+    createPositionButton(positionName, cframe, 0, created)
     
     updateScrollCanvasSize()
     print("Saved coordinate position: " .. positionName)
@@ -1345,7 +1393,7 @@ function Teleport.createPositionLabel(positionName, positionVector)
     textLabel.Parent = billboard
     textLabel.BackgroundTransparency = 1
     textLabel.Size = UDim2.new(1, 0, 1, 0)
-    local number = Teleport.positionNumbers[positionName] or 0
+    local number = Teleport.positions[positionName].number
     local labelText = positionName
     if number > 0 then
         labelText = "[" .. number .. "] " .. positionName
@@ -1370,6 +1418,15 @@ function Teleport.toggleLabels()
     print("Position labels " .. (Teleport.labelsVisible and "shown" or "hidden"))
 end
 
+-- Clean old labels
+local function cleanOldLabels()
+    for _, child in ipairs(Workspace:GetChildren()) do
+        if child:IsA("Part") and child:FindFirstChild("PositionLabel") then
+            child:Destroy()
+        end
+    end
+end
+
 -- Function to set dependencies and initialize UI
 function Teleport.init(deps)
     if Teleport.initialized then
@@ -1392,8 +1449,7 @@ function Teleport.init(deps)
 
     ScreenGui.ResetOnSpawn = false  -- Prevent GUI reset on respawn
 
-    Teleport.savedPositions = Teleport.savedPositions or {}
-    Teleport.positionNumbers = Teleport.positionNumbers or {}
+    Teleport.positions = Teleport.positions or {}
     Teleport.positionLabels = Teleport.positionLabels or {}
     Teleport.positionFrameVisible = false
     
@@ -1404,14 +1460,15 @@ function Teleport.init(deps)
     
     ensureFileSystem()
     
+    cleanOldLabels()
     syncPositionsFromJSON()
     
     for positionName, data in pairs(fileSystem["Supertool/Teleport"]) do
-        if data.type == "teleport_position" and not Teleport.savedPositions[positionName] then
-            local cframe = loadFromFileSystem(positionName)
+        if data.type == "teleport_position" and not Teleport.positions[positionName] then
+            local cframe, number, created = loadFromFileSystem(positionName)
             if cframe then
-                Teleport.savedPositions[positionName] = cframe
-                saveToJSONFile(positionName, cframe, Teleport.positionNumbers[positionName] or 0)
+                Teleport.positions[positionName] = {cframe = cframe, number = number, created = created}
+                saveToJSONFile(positionName, cframe, number, created)
             end
         end
     end
@@ -1438,7 +1495,7 @@ function Teleport.init(deps)
             PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
             PositionFrame.BorderSizePixel = 1
             PositionFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
-            PositionFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased size for new elements
+            PositionFrame.Size = UDim2.new(0, 300, 0, 420) -- Increased size for new elements
             PositionFrame.Visible = false
             PositionFrame.Active = true
             PositionFrame.Draggable = true
@@ -1628,14 +1685,75 @@ function Teleport.init(deps)
             LabelToggle.TextSize = 9
         end
 
+        SortModeButton = PositionFrame:FindFirstChild("SortModeButton")
+        if not SortModeButton then
+            SortModeButton = Instance.new("TextButton")
+            SortModeButton.Name = "SortModeButton"
+            SortModeButton.Parent = PositionFrame
+            SortModeButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            SortModeButton.BorderSizePixel = 0
+            SortModeButton.Position = UDim2.new(0, 8, 0, 185)
+            SortModeButton.Size = UDim2.new(0.5, -10, 0, 25)
+            SortModeButton.Font = Enum.Font.Gotham
+            SortModeButton.Text = "Sort: Order"
+            SortModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SortModeButton.TextSize = 9
+        end
+
+        DeleteAllButton = PositionFrame:FindFirstChild("DeleteAllButton")
+        if not DeleteAllButton then
+            DeleteAllButton = Instance.new("TextButton")
+            DeleteAllButton.Name = "DeleteAllButton"
+            DeleteAllButton.Parent = PositionFrame
+            DeleteAllButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+            DeleteAllButton.BorderSizePixel = 0
+            DeleteAllButton.Position = UDim2.new(0.5, 2, 0, 185)
+            DeleteAllButton.Size = UDim2.new(0.5, -10, 0, 25)
+            DeleteAllButton.Font = Enum.Font.Gotham
+            DeleteAllButton.Text = "Delete All"
+            DeleteAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            DeleteAllButton.TextSize = 9
+        end
+
+        PrefixInput = PositionFrame:FindFirstChild("PrefixInput")
+        if not PrefixInput then
+            PrefixInput = Instance.new("TextBox")
+            PrefixInput.Name = "PrefixInput"
+            PrefixInput.Parent = PositionFrame
+            PrefixInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            PrefixInput.BorderSizePixel = 0
+            PrefixInput.Position = UDim2.new(0, 8, 0, 215)
+            PrefixInput.Size = UDim2.new(0.5, -10, 0, 25)
+            PrefixInput.Font = Enum.Font.Gotham
+            PrefixInput.PlaceholderText = "Prefix for all"
+            PrefixInput.Text = ""
+            PrefixInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+            PrefixInput.TextSize = 9
+        end
+
+        AddPrefixButton = PositionFrame:FindFirstChild("AddPrefixButton")
+        if not AddPrefixButton then
+            AddPrefixButton = Instance.new("TextButton")
+            AddPrefixButton.Name = "AddPrefixButton"
+            AddPrefixButton.Parent = PositionFrame
+            AddPrefixButton.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
+            AddPrefixButton.BorderSizePixel = 0
+            AddPrefixButton.Position = UDim2.new(0.5, 2, 0, 215)
+            AddPrefixButton.Size = UDim2.new(0.5, -10, 0, 25)
+            AddPrefixButton.Font = Enum.Font.Gotham
+            AddPrefixButton.Text = "Add Prefix"
+            AddPrefixButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            AddPrefixButton.TextSize = 9
+        end
+
         PositionScrollFrame = PositionFrame:FindFirstChild("PositionScrollFrame")
         if not PositionScrollFrame then
             PositionScrollFrame = Instance.new("ScrollingFrame")
             PositionScrollFrame.Name = "PositionScrollFrame"
             PositionScrollFrame.Parent = PositionFrame
             PositionScrollFrame.BackgroundTransparency = 1
-            PositionScrollFrame.Position = UDim2.new(0, 8, 0, 185)
-            PositionScrollFrame.Size = UDim2.new(1, -16, 1, -255)
+            PositionScrollFrame.Position = UDim2.new(0, 8, 0, 245)
+            PositionScrollFrame.Size = UDim2.new(1, -16, 1, -315)
             PositionScrollFrame.ScrollBarThickness = 3
             PositionScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
             PositionScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1816,6 +1934,41 @@ function Teleport.init(deps)
 
         LabelToggle.MouseButton1Click:Connect(function()
             Teleport.toggleLabels()
+        end)
+
+        SortModeButton.MouseButton1Click:Connect(function()
+            if Teleport.sortMode == "order" then
+                Teleport.sortMode = "alpha"
+                SortModeButton.Text = "Sort: Alpha"
+            elseif Teleport.sortMode == "alpha" then
+                Teleport.sortMode = "time"
+                SortModeButton.Text = "Sort: Time"
+            else
+                Teleport.sortMode = "order"
+                SortModeButton.Text = "Sort: Order"
+            end
+            refreshPositionButtons()
+        end)
+
+        DeleteAllButton.MouseButton1Click:Connect(function()
+            if DeleteAllButton.Text == "Confirm Delete All?" then
+                deleteAllPositions()
+                DeleteAllButton.Text = "Delete All"
+            else
+                DeleteAllButton.Text = "Confirm Delete All?"
+                spawn(function()
+                    wait(3)
+                    if DeleteAllButton then
+                        DeleteAllButton.Text = "Delete All"
+                    end
+                end)
+            end
+        end)
+
+        AddPrefixButton.MouseButton1Click:Connect(function()
+            local prefix = PrefixInput.Text:gsub("^%s*(.-)%s*$", "%1")
+            addPrefixToAll(prefix)
+            PrefixInput.Text = ""
         end)
 
         PositionLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()

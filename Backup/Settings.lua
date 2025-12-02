@@ -1,8 +1,9 @@
--- settings.lua - Updated version with GUI controls and removed WalkSpeed
+-- settings.lua - Fixed version with Logo controls and Custom Keybind
 -- Settings-related features for MinimalHackGUI by Fari Noveri
 
 -- Dependencies: These must be passed from mainloader.lua
 local ScreenGui, ScrollFrame, settings, Movement
+local UserInputService = game:GetService("UserInputService")
 
 -- Initialize module
 local Settings = {}
@@ -15,6 +16,11 @@ local toggleStates = {
     EnableDrag = true,
     HideGUI = false
 }
+
+-- Current keybind (default: Home)
+local currentKeybind = Enum.KeyCode.Home
+local keybindButton = nil
+local isWaitingForKey = false
 
 -- Helper function to create a slider UI
 local function createSlider(name, setting, min, max, default, parent)
@@ -114,7 +120,7 @@ local function createSlider(name, setting, min, max, default, parent)
         
         -- Calculate new value and round it based on slider type
         local newValue
-        if name == "GUI Opacity" then
+        if name == "Logo Opacity" then
             -- For opacity, use decimal precision
             newValue = min + (max - min) * relativeX
             newValue = math.floor(newValue * 100 + 0.5) / 100
@@ -208,6 +214,118 @@ local function createToggleButton(name, callback, parent)
     end)
 end
 
+-- Helper function to get key name
+local function getKeyName(keyCode)
+    local keyName = tostring(keyCode):gsub("Enum.KeyCode.", "")
+    return keyName
+end
+
+-- Helper function to create keybind button
+local function createKeybindButton(parent)
+    local keybindFrame = Instance.new("Frame")
+    keybindFrame.Name = "KeybindFrame"
+    keybindFrame.Parent = parent
+    keybindFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    keybindFrame.BorderSizePixel = 0
+    keybindFrame.Size = UDim2.new(1, -5, 0, 45)
+    
+    -- Add rounded corners
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = keybindFrame
+    
+    local keybindLabel = Instance.new("TextLabel")
+    keybindLabel.Name = "Label"
+    keybindLabel.Parent = keybindFrame
+    keybindLabel.BackgroundTransparency = 1
+    keybindLabel.Position = UDim2.new(0, 8, 0, 5)
+    keybindLabel.Size = UDim2.new(1, -16, 0, 15)
+    keybindLabel.Font = Enum.Font.GothamBold
+    keybindLabel.Text = "TOGGLE GUI KEYBIND"
+    keybindLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    keybindLabel.TextSize = 11
+    keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    keybindButton = Instance.new("TextButton")
+    keybindButton.Name = "KeybindButton"
+    keybindButton.Parent = keybindFrame
+    keybindButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    keybindButton.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    keybindButton.BorderSizePixel = 1
+    keybindButton.Position = UDim2.new(0, 8, 0, 22)
+    keybindButton.Size = UDim2.new(1, -16, 0, 18)
+    keybindButton.Font = Enum.Font.GothamBold
+    keybindButton.Text = "Current: " .. getKeyName(currentKeybind)
+    keybindButton.TextColor3 = Color3.fromRGB(100, 200, 255)
+    keybindButton.TextSize = 9
+    
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 4)
+    buttonCorner.Parent = keybindButton
+    
+    -- Keybind button click handler
+    keybindButton.MouseButton1Click:Connect(function()
+        if isWaitingForKey then return end
+        
+        isWaitingForKey = true
+        keybindButton.Text = "Press any key..."
+        keybindButton.BackgroundColor3 = Color3.fromRGB(80, 80, 30)
+        
+        local connection
+        connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                local keyCode = input.KeyCode
+                
+                -- Ignore certain keys
+                if keyCode == Enum.KeyCode.Unknown or 
+                   keyCode == Enum.KeyCode.LeftShift or 
+                   keyCode == Enum.KeyCode.RightShift or
+                   keyCode == Enum.KeyCode.LeftControl or
+                   keyCode == Enum.KeyCode.RightControl or
+                   keyCode == Enum.KeyCode.LeftAlt or
+                   keyCode == Enum.KeyCode.RightAlt then
+                    return
+                end
+                
+                -- Update keybind
+                currentKeybind = keyCode
+                keybindButton.Text = "Current: " .. getKeyName(keyCode)
+                keybindButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                isWaitingForKey = false
+                
+                -- Update the keybind connection
+                Settings.updateKeybind(keyCode)
+                
+                connection:Disconnect()
+                
+                print("Keybind changed to: " .. getKeyName(keyCode))
+            end
+        end)
+        
+        -- Timeout after 5 seconds
+        task.delay(5, function()
+            if isWaitingForKey then
+                isWaitingForKey = false
+                keybindButton.Text = "Current: " .. getKeyName(currentKeybind)
+                keybindButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                connection:Disconnect()
+            end
+        end)
+    end)
+    
+    keybindButton.MouseEnter:Connect(function()
+        if not isWaitingForKey then
+            keybindButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        end
+    end)
+    
+    keybindButton.MouseLeave:Connect(function()
+        if not isWaitingForKey then
+            keybindButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        end
+    end)
+end
+
 -- Function to update slider UI when settings change externally
 local function updateSliderUI(name, newValue)
     local slider = sliders[name]
@@ -224,7 +342,7 @@ function Settings.applySettings()
     local mainFrame = ScreenGui and ScreenGui:FindFirstChild("MainFrame")
     local minimizedLogo = ScreenGui and ScreenGui:FindFirstChild("MinimizedLogo")
     
-    -- Apply GUI resize
+    -- Apply GUI resize (Main Frame only)
     if mainFrame then
         if settings.GuiWidth then
             mainFrame.Size = UDim2.new(0, settings.GuiWidth.value, 0, mainFrame.Size.Y.Offset)
@@ -232,40 +350,41 @@ function Settings.applySettings()
         if settings.GuiHeight then
             mainFrame.Size = UDim2.new(0, mainFrame.Size.X.Offset, 0, settings.GuiHeight.value)
         end
+    end
+    
+    -- Apply Logo Opacity (MinimizedLogo only)
+    if minimizedLogo and settings.LogoOpacity then
+        local opacity = settings.LogoOpacity.value
+        minimizedLogo.BackgroundTransparency = 1 - opacity
         
-        -- Apply GUI opacity
-        if settings.GuiOpacity then
-            local opacity = settings.GuiOpacity.value
-            mainFrame.BackgroundTransparency = 1 - opacity
-            
-            -- Apply opacity to child elements
-            for _, child in pairs(mainFrame:GetDescendants()) do
-                if child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton") then
-                    if child:GetAttribute("OriginalTransparency") == nil then
-                        child:SetAttribute("OriginalTransparency", child.BackgroundTransparency)
-                    end
-                    local originalTransparency = child:GetAttribute("OriginalTransparency")
-                    child.BackgroundTransparency = originalTransparency + (1 - opacity) * (1 - originalTransparency)
+        -- Apply opacity to logo's child elements
+        for _, child in pairs(minimizedLogo:GetDescendants()) do
+            if child:IsA("TextLabel") then
+                if child:GetAttribute("OriginalTransparency") == nil then
+                    child:SetAttribute("OriginalTransparency", child.TextTransparency or 0)
                 end
+                local originalTransparency = child:GetAttribute("OriginalTransparency")
+                child.TextTransparency = originalTransparency + (1 - opacity) * (1 - originalTransparency)
             end
         end
     end
     
-    -- Apply Enable/Disable Drag
+    -- Apply Enable/Disable Drag (Logo only, NOT MainFrame)
     if minimizedLogo then
         minimizedLogo.Draggable = toggleStates.EnableDrag
     end
     
-    -- Apply Hide GUI
+    -- Apply Hide GUI (Logo only, NOT MainFrame)
     if minimizedLogo then
         minimizedLogo.Visible = not toggleStates.HideGUI
     end
     
     print("GUI Settings applied - Width:", settings.GuiWidth and settings.GuiWidth.value or "N/A", 
           "Height:", settings.GuiHeight and settings.GuiHeight.value or "N/A",
-          "Opacity:", settings.GuiOpacity and settings.GuiOpacity.value or "N/A",
-          "Drag:", toggleStates.EnableDrag,
-          "Hidden:", toggleStates.HideGUI)
+          "Logo Opacity:", settings.LogoOpacity and settings.LogoOpacity.value or "N/A",
+          "Logo Drag:", toggleStates.EnableDrag,
+          "Logo Hidden:", toggleStates.HideGUI,
+          "Keybind:", getKeyName(currentKeybind))
 end
 
 -- Function to create buttons for Settings features
@@ -276,13 +395,16 @@ function Settings.loadSettingsButtons(createButton)
         return
     end
     
-    -- Create toggle for Enable Drag
+    -- Create keybind button first
+    createKeybindButton(ScrollFrame)
+    
+    -- Create toggle for Enable Drag (Logo)
     createToggleButton("Enable Drag", function(state)
         toggleStates.EnableDrag = state
         Settings.applySettings()
     end, ScrollFrame)
     
-    -- Create toggle for Hide GUI
+    -- Create toggle for Hide GUI (Logo)
     createToggleButton("Hide GUI", function(state)
         toggleStates.HideGUI = state
         Settings.applySettings()
@@ -295,8 +417,8 @@ function Settings.loadSettingsButtons(createButton)
     if settings.GuiHeight then
         createSlider("GUI Height", settings.GuiHeight, settings.GuiHeight.min, settings.GuiHeight.max, settings.GuiHeight.default, ScrollFrame)
     end
-    if settings.GuiOpacity then
-        createSlider("GUI Opacity", settings.GuiOpacity, settings.GuiOpacity.min, settings.GuiOpacity.max, settings.GuiOpacity.default, ScrollFrame)
+    if settings.LogoOpacity then
+        createSlider("Logo Opacity", settings.LogoOpacity, settings.LogoOpacity.min, settings.LogoOpacity.max, settings.LogoOpacity.default, ScrollFrame)
     end
     
     -- Update all slider UIs to reflect current values
@@ -304,7 +426,28 @@ function Settings.loadSettingsButtons(createButton)
         updateSliderUI(name, slider.setting.value)
     end
     
-    print("Settings UI elements loaded directly (WalkSpeed removed, GUI controls added)")
+    print("Settings UI elements loaded (Logo controls + Custom Keybind)")
+end
+
+-- Function to update keybind connection
+function Settings.updateKeybind(newKeyCode)
+    currentKeybind = newKeyCode
+    -- The mainloader will handle reconnecting with the new keybind
+    return currentKeybind
+end
+
+-- Function to get current keybind
+function Settings.getCurrentKeybind()
+    return currentKeybind
+end
+
+-- Function to set keybind (for external use)
+function Settings.setKeybind(keyCode)
+    currentKeybind = keyCode
+    if keybindButton then
+        keybindButton.Text = "Current: " .. getKeyName(keyCode)
+    end
+    print("Keybind set to: " .. getKeyName(keyCode))
 end
 
 -- Function to reset Settings states
@@ -316,14 +459,20 @@ function Settings.resetStates()
         return
     end
     
-    -- Reset all settings to defaults (removed WalkSpeed)
+    -- Reset all settings to defaults
     if settings.GuiWidth then settings.GuiWidth.value = settings.GuiWidth.default end
     if settings.GuiHeight then settings.GuiHeight.value = settings.GuiHeight.default end
-    if settings.GuiOpacity then settings.GuiOpacity.value = settings.GuiOpacity.default end
+    if settings.LogoOpacity then settings.LogoOpacity.value = settings.LogoOpacity.default end
     
     -- Reset toggles
     toggleStates.EnableDrag = true
     toggleStates.HideGUI = false
+    
+    -- Reset keybind to default (Home)
+    currentKeybind = Enum.KeyCode.Home
+    if keybindButton then
+        keybindButton.Text = "Current: " .. getKeyName(currentKeybind)
+    end
     
     -- Update slider UIs
     for name, slider in pairs(sliders) do
@@ -393,7 +542,7 @@ function Settings.init(deps)
         return false
     end
     
-    -- Ensure all required settings exist with proper defaults (removed WalkSpeed)
+    -- Ensure all required settings exist with proper defaults
     if not settings.GuiWidth then
         settings.GuiWidth = {value = 500, min = 300, max = 800, default = 500}
         print("Created default GuiWidth setting")
@@ -404,12 +553,12 @@ function Settings.init(deps)
         print("Created default GuiHeight setting")
     end
     
-    if not settings.GuiOpacity then
-        settings.GuiOpacity = {value = 1.0, min = 0.1, max = 1.0, default = 1.0}
-        print("Created default GuiOpacity setting")
+    if not settings.LogoOpacity then
+        settings.LogoOpacity = {value = 1.0, min = 0.1, max = 1.0, default = 1.0}
+        print("Created default LogoOpacity setting")
     end
     
-    print("Settings module initialized successfully")
+    print("Settings module initialized successfully (with Custom Keybind)")
     return true
 end
 
@@ -419,10 +568,11 @@ function Settings.debug()
     print("ScreenGui:", ScreenGui ~= nil)
     print("Settings object:", settings ~= nil)
     print("Movement reference:", Movement ~= nil)
+    print("Current Keybind:", getKeyName(currentKeybind))
     
     if settings then
         print("Current Settings Values:")
-        local settingsList = {"GuiWidth", "GuiHeight", "GuiOpacity"}
+        local settingsList = {"GuiWidth", "GuiHeight", "LogoOpacity"}
         for _, name in ipairs(settingsList) do
             if settings[name] then
                 print("  " .. name .. ":", settings[name].value, 
@@ -457,6 +607,8 @@ function Settings.cleanup()
     print("Cleaning up Settings module")
     
     sliders = {}
+    isWaitingForKey = false
+    keybindButton = nil
     
     print("Settings module cleaned up")
 end
@@ -479,6 +631,7 @@ function Settings.getAllSettings()
             currentSettings[name] = setting.value
         end
     end
+    currentSettings.Keybind = getKeyName(currentKeybind)
     return currentSettings
 end
 
@@ -486,6 +639,11 @@ end
 function Settings.refreshUI()
     -- Refresh all sliders
     Settings.refreshSliders()
+    
+    -- Refresh keybind button
+    if keybindButton then
+        keybindButton.Text = "Current: " .. getKeyName(currentKeybind)
+    end
     
     print("Settings UI refreshed")
 end
