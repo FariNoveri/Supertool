@@ -13,14 +13,14 @@ local sliders = {}
 
 -- Store toggle states
 local toggleStates = {
-    EnableDrag = true,
-    HideGUI = false
+    EnableDrag = true
 }
 
 -- Current keybind (default: Home)
 local currentKeybind = Enum.KeyCode.Home
 local keybindButton = nil
 local isWaitingForKey = false
+local keybindConnection = nil
 
 -- Helper function to create a slider UI
 local function createSlider(name, setting, min, max, default, parent)
@@ -220,6 +220,33 @@ local function getKeyName(keyCode)
     return keyName
 end
 
+-- Function to update keybind connection
+local function updateKeybindConnection()
+    -- Disconnect old connection
+    if keybindConnection then
+        keybindConnection:Disconnect()
+        keybindConnection = nil
+    end
+    
+    -- Create new connection with current keybind
+    keybindConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == currentKeybind then
+            -- Toggle GUI visibility
+            local mainFrame = ScreenGui and ScreenGui:FindFirstChild("MainFrame")
+            local minimizedLogo = ScreenGui and ScreenGui:FindFirstChild("MinimizedLogo")
+            
+            if mainFrame and minimizedLogo then
+                local isMinimized = not mainFrame.Visible
+                mainFrame.Visible = isMinimized
+                minimizedLogo.Visible = not isMinimized
+                print("GUI toggled with keybind: " .. getKeyName(currentKeybind))
+            end
+        end
+    end)
+    
+    print("Keybind connection updated: " .. getKeyName(currentKeybind))
+end
+
 -- Helper function to create keybind button
 local function createKeybindButton(parent)
     local keybindFrame = Instance.new("Frame")
@@ -294,7 +321,7 @@ local function createKeybindButton(parent)
                 isWaitingForKey = false
                 
                 -- Update the keybind connection
-                Settings.updateKeybind(keyCode)
+                updateKeybindConnection()
                 
                 connection:Disconnect()
                 
@@ -352,7 +379,7 @@ function Settings.applySettings()
         end
     end
     
-    -- Apply Logo Opacity (MinimizedLogo only)
+    -- Apply Logo Opacity (MinimizedLogo only) - NOW CAN BE 0
     if minimizedLogo and settings.LogoOpacity then
         local opacity = settings.LogoOpacity.value
         minimizedLogo.BackgroundTransparency = 1 - opacity
@@ -360,11 +387,9 @@ function Settings.applySettings()
         -- Apply opacity to logo's child elements
         for _, child in pairs(minimizedLogo:GetDescendants()) do
             if child:IsA("TextLabel") then
-                if child:GetAttribute("OriginalTransparency") == nil then
-                    child:SetAttribute("OriginalTransparency", child.TextTransparency or 0)
-                end
-                local originalTransparency = child:GetAttribute("OriginalTransparency")
-                child.TextTransparency = originalTransparency + (1 - opacity) * (1 - originalTransparency)
+                child.TextTransparency = 1 - opacity
+            elseif child:IsA("ImageLabel") then
+                child.ImageTransparency = 1 - opacity
             end
         end
     end
@@ -372,18 +397,13 @@ function Settings.applySettings()
     -- Apply Enable/Disable Drag (Logo only, NOT MainFrame)
     if minimizedLogo then
         minimizedLogo.Draggable = toggleStates.EnableDrag
-    end
-    
-    -- Apply Hide GUI (Logo only, NOT MainFrame)
-    if minimizedLogo then
-        minimizedLogo.Visible = not toggleStates.HideGUI
+        print("Logo Draggable set to:", toggleStates.EnableDrag)
     end
     
     print("GUI Settings applied - Width:", settings.GuiWidth and settings.GuiWidth.value or "N/A", 
           "Height:", settings.GuiHeight and settings.GuiHeight.value or "N/A",
           "Logo Opacity:", settings.LogoOpacity and settings.LogoOpacity.value or "N/A",
           "Logo Drag:", toggleStates.EnableDrag,
-          "Logo Hidden:", toggleStates.HideGUI,
           "Keybind:", getKeyName(currentKeybind))
 end
 
@@ -401,12 +421,6 @@ function Settings.loadSettingsButtons(createButton)
     -- Create toggle for Enable Drag (Logo)
     createToggleButton("Enable Drag", function(state)
         toggleStates.EnableDrag = state
-        Settings.applySettings()
-    end, ScrollFrame)
-    
-    -- Create toggle for Hide GUI (Logo)
-    createToggleButton("Hide GUI", function(state)
-        toggleStates.HideGUI = state
         Settings.applySettings()
     end, ScrollFrame)
     
@@ -429,10 +443,10 @@ function Settings.loadSettingsButtons(createButton)
     print("Settings UI elements loaded (Logo controls + Custom Keybind)")
 end
 
--- Function to update keybind connection
+-- Function to update keybind (exposed for external use)
 function Settings.updateKeybind(newKeyCode)
     currentKeybind = newKeyCode
-    -- The mainloader will handle reconnecting with the new keybind
+    updateKeybindConnection()
     return currentKeybind
 end
 
@@ -444,6 +458,7 @@ end
 -- Function to set keybind (for external use)
 function Settings.setKeybind(keyCode)
     currentKeybind = keyCode
+    updateKeybindConnection()
     if keybindButton then
         keybindButton.Text = "Current: " .. getKeyName(keyCode)
     end
@@ -466,10 +481,10 @@ function Settings.resetStates()
     
     -- Reset toggles
     toggleStates.EnableDrag = true
-    toggleStates.HideGUI = false
     
     -- Reset keybind to default (Home)
     currentKeybind = Enum.KeyCode.Home
+    updateKeybindConnection()
     if keybindButton then
         keybindButton.Text = "Current: " .. getKeyName(currentKeybind)
     end
@@ -554,9 +569,12 @@ function Settings.init(deps)
     end
     
     if not settings.LogoOpacity then
-        settings.LogoOpacity = {value = 1.0, min = 0.1, max = 1.0, default = 1.0}
+        settings.LogoOpacity = {value = 1.0, min = 0.0, max = 1.0, default = 1.0} -- MIN NOW 0.0
         print("Created default LogoOpacity setting")
     end
+    
+    -- Initialize keybind connection
+    updateKeybindConnection()
     
     print("Settings module initialized successfully (with Custom Keybind)")
     return true
@@ -569,6 +587,7 @@ function Settings.debug()
     print("Settings object:", settings ~= nil)
     print("Movement reference:", Movement ~= nil)
     print("Current Keybind:", getKeyName(currentKeybind))
+    print("Keybind Connection Active:", keybindConnection ~= nil)
     
     if settings then
         print("Current Settings Values:")
@@ -590,6 +609,11 @@ function Settings.debug()
         print("  " .. name .. ":", state)
     end
     
+    local minimizedLogo = ScreenGui and ScreenGui:FindFirstChild("MinimizedLogo")
+    if minimizedLogo then
+        print("MinimizedLogo.Draggable:", minimizedLogo.Draggable)
+    end
+    
     print("Active Sliders:")
     local sliderCount = 0
     for name, slider in pairs(sliders) do
@@ -609,6 +633,12 @@ function Settings.cleanup()
     sliders = {}
     isWaitingForKey = false
     keybindButton = nil
+    
+    -- Disconnect keybind connection
+    if keybindConnection then
+        keybindConnection:Disconnect()
+        keybindConnection = nil
+    end
     
     print("Settings module cleaned up")
 end
