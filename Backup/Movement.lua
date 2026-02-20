@@ -92,9 +92,6 @@ local function sendServerMessage(message)
             })
         end)
     end
-    
-    
-    
 
     local Chat = game:GetService("Chat")
     if Chat then
@@ -276,7 +273,6 @@ local function createSettingsGUI()
     wallClimbSpeedInput = createInputField(scrolling, "Wall Climb Speed", "WallClimbSpeed", defaultSettings.WallClimbSpeed)
     infiniteJumpMultiplierInput = createInputField(scrolling, "Infinite Jump Multiplier", "InfiniteJumpMultiplier", defaultSettings.InfiniteJumpMultiplier)
 
-    
     local rewindModeFrame = Instance.new("Frame")
     rewindModeFrame.Size = UDim2.new(1, 0, 0, 50)
     rewindModeFrame.BackgroundTransparency = 1
@@ -721,6 +717,7 @@ local function toggleFastFall(enabled)
     end
 end
 
+local function toggleSprint(enabled)
     Movement.sprintEnabled = enabled
     updateButtonState("Sprint", enabled)
     
@@ -1387,7 +1384,6 @@ local function toggleBunnyHop(enabled)
         end)
     end
 end
-
 
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled

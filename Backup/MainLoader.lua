@@ -296,6 +296,7 @@ local categories = {
     {name = "Teleport", order = 3},
     {name = "Visual", order = 4},
     {name = "Utility", order = 5},
+    {name = "AntiAdmin", order = 6},
     {name = "Settings", order = 7},
     {name = "Info", order = 8},
     {name = "Credit", order = 9}
@@ -314,6 +315,7 @@ local moduleURLs = {
     Teleport = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Teleport.lua",
     Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Visual.lua",
     Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Utility.lua",
+    AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/AntiAdmin.lua",
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Settings.lua",
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua",
     Credit = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Credit.lua"
@@ -684,6 +686,14 @@ local function loadButtons()
             module.loadUtilityButtons(function(name, callback)
                 return createButton(name, callback, "Utility")
             end)
+        end)
+        
+    elseif selectedCategory == "AntiAdmin" and module.loadAntiAdminButtons then
+        success, errorMessage = pcall(function()
+            
+            module.loadAntiAdminButtons(function(name, callback, disableCallback)
+                return createToggleButton(name, callback, "AntiAdmin", disableCallback)
+            end, FeatureContainer)
         end)
         
     elseif selectedCategory == "Settings" and module.loadSettingsButtons then
