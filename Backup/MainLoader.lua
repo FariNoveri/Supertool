@@ -322,41 +322,45 @@ local moduleURLs = {
 }
 
 local function loadModule(moduleName)
-    
+
     if not moduleURLs[moduleName] then
         warn("No URL defined for module: " .. moduleName)
         return false
     end
-    
+
     local success, result = pcall(function()
         local response = game:HttpGet(moduleURLs[moduleName])
-        
+
         if not response or response == "" or response:find("404") then
             error("Failed to fetch module or got 404")
         end
-        
+
         local moduleFunc, loadError = loadstring(response)
         if not moduleFunc then
             error("Failed to compile module: " .. tostring(loadError))
         end
-        
-        local moduleTable = moduleFunc()
-        
+
+        -- FIXED: wrapped moduleFunc() in pcall to catch "attempt to call a nil value" and other runtime errors
+        local callSuccess, moduleTable = pcall(moduleFunc)
+        if not callSuccess then
+            error("Error executing module: " .. tostring(moduleTable))
+        end
+
         if not moduleTable then
             error("Module function returned nil")
         end
-        
+
         if type(moduleTable) ~= "table" then
             error("Module must return a table, got: " .. type(moduleTable))
         end
-        
+
         return moduleTable
     end)
-    
+
     if success and result then
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
-        
+
         if selectedCategory == moduleName then
             task.wait(0.1)
             loadButtons()
@@ -391,31 +395,31 @@ local dependencies = {
 }
 
 local function initializeModules()
-    
+
     local initResults = {}
-    
+
     for moduleName, module in pairs(modules) do
         local success = false
         local errorMsg = nil
-        
+
         if module and type(module.init) == "function" then
             success, errorMsg = pcall(function()
                 dependencies.character = character
                 dependencies.humanoid = humanoid
                 dependencies.rootPart = rootPart
                 dependencies.ScrollFrame = FeatureContainer
-                
+
                 if not dependencies.ScrollFrame then
                     error("ScrollFrame (FeatureContainer) is nil - cannot initialize " .. moduleName)
                 end
-                
+
                 local result = module.init(dependencies)
                 if result == false then
                     error("Module init returned false")
                 end
                 return result
             end)
-            
+
             if success then
                 initResults[moduleName] = "SUCCESS"
             else
@@ -427,10 +431,10 @@ local function initializeModules()
             initResults[moduleName] = "NO_INIT_FUNCTION"
         end
     end
-    
+
     local successCount = 0
     local failCount = 0
-    
+
     for moduleName, result in pairs(initResults) do
         if result == "SUCCESS" then
             successCount = successCount + 1
@@ -438,7 +442,7 @@ local function initializeModules()
             failCount = failCount + 1
         end
     end
-    
+
     if successCount == 0 then
         warn("WARNING: No modules initialized successfully!")
     end
@@ -477,7 +481,7 @@ local function createButton(name, callback, categoryName)
         button.TextColor3 = Color3.fromRGB(255, 255, 255)
         button.TextSize = 8
         button.LayoutOrder = #FeatureContainer:GetChildren()
-        
+
         if type(callback) == "function" then
             button.MouseButton1Click:Connect(function()
                 local callbackSuccess, errorMsg = pcall(callback)
@@ -486,23 +490,23 @@ local function createButton(name, callback, categoryName)
                 end
             end)
         end
-        
+
         button.MouseEnter:Connect(function()
             button.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
         end)
-        
+
         button.MouseLeave:Connect(function()
             button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         end)
-        
+
         return button
     end)
-    
+
     if not success then
         warn("Failed to create button " .. name .. ": " .. tostring(result))
         return nil
     end
-    
+
     return result
 end
 
@@ -519,20 +523,20 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
         button.TextColor3 = Color3.fromRGB(255, 255, 255)
         button.TextSize = 8
         button.LayoutOrder = #FeatureContainer:GetChildren()
-        
+
         if not categoryStates[categoryName] then
             categoryStates[categoryName] = {}
         end
-        
+
         if categoryStates[categoryName][name] == nil then
             categoryStates[categoryName][name] = false
         end
-        
+
         button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
-        
+
         button.MouseButton1Click:Connect(function()
             local newState = not categoryStates[categoryName][name]
-            
+
             if newState and isExclusiveFeature(name) then
                 disableActiveFeature()
                 activeFeature = {
@@ -543,10 +547,10 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
             elseif not newState and activeFeature and activeFeature.name == name then
                 activeFeature = nil
             end
-            
+
             categoryStates[categoryName][name] = newState
             button.BackgroundColor3 = newState and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
-            
+
             if type(callback) == "function" then
                 local callbackSuccess, errorMsg = pcall(callback, newState)
                 if not callbackSuccess then
@@ -554,23 +558,23 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
                 end
             end
         end)
-        
+
         button.MouseEnter:Connect(function()
             button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(80, 80, 80)
         end)
-        
+
         button.MouseLeave:Connect(function()
             button.BackgroundColor3 = categoryStates[categoryName][name] and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
         end)
-        
+
         return button
     end)
-    
+
     if not success then
         warn("Failed to create toggle button " .. name .. ": " .. tostring(result))
         return nil
     end
-    
+
     return result
 end
 
@@ -587,7 +591,7 @@ local function getModuleFunctions(module)
 end
 
 local function loadButtons()
-    
+
     pcall(function()
         for _, child in pairs(FeatureContainer:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
@@ -595,7 +599,7 @@ local function loadButtons()
             end
         end
     end)
-    
+
     pcall(function()
         for categoryName, categoryData in pairs(categoryFrames) do
             if categoryData and categoryData.button then
@@ -608,7 +612,7 @@ local function loadButtons()
         warn("No category selected!")
         return
     end
-    
+
     if not modules[selectedCategory] then
         local loadingLabel = Instance.new("TextLabel")
         loadingLabel.Parent = FeatureContainer
@@ -619,7 +623,7 @@ local function loadButtons()
         loadingLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         loadingLabel.TextSize = 8
         loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
+
         if not modulesLoaded[selectedCategory] then
             task.spawn(function()
                 loadModule(selectedCategory)
@@ -627,7 +631,7 @@ local function loadButtons()
         end
         return
     end
-    
+
     local module = modules[selectedCategory]
     local success = false
     local errorMessage = nil
@@ -636,18 +640,18 @@ local function loadButtons()
         success, errorMessage = pcall(function()
             module.createCreditDisplay(FeatureContainer)
         end)
-        
+
     elseif selectedCategory == "Visual" and module.loadVisualButtons then
         success, errorMessage = pcall(function()
             if not module.isInitialized or not module.isInitialized() then
                 error("Visual module is not properly initialized")
             end
-            
+
             module.loadVisualButtons(function(name, callback, disableCallback)
                 return createToggleButton(name, callback, "Visual", disableCallback)
             end)
         end)
-        
+
     elseif selectedCategory == "Movement" and module.loadMovementButtons then
         success, errorMessage = pcall(function()
             module.loadMovementButtons(
@@ -655,57 +659,57 @@ local function loadButtons()
                 function(name, callback, disableCallback) return createToggleButton(name, callback, "Movement", disableCallback) end
             )
         end)
-        
+
     elseif selectedCategory == "Player" and module.loadPlayerButtons then
         success, errorMessage = pcall(function()
             local selectedPlayer = module.getSelectedPlayer and module.getSelectedPlayer() or nil
-            
+
             module.loadPlayerButtons(
                 function(name, callback) return createButton(name, callback, "Player") end,
                 function(name, callback, disableCallback) return createToggleButton(name, callback, "Player", disableCallback) end,
                 selectedPlayer
             )
         end)
-        
+
     elseif selectedCategory == "Teleport" and module.loadTeleportButtons then
         success, errorMessage = pcall(function()
             local selectedPlayer = modules.Player and modules.Player.getSelectedPlayer and modules.Player.getSelectedPlayer() or nil
             local freecamEnabled = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false
             local freecamPosition = freecamEnabled and select(2, modules.Visual.getFreecamState()) or nil
             local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
-            
+
             module.loadTeleportButtons(
                 function(name, callback) return createButton(name, callback, "Teleport") end,
                 selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
             )
         end)
-        
+
     elseif selectedCategory == "Utility" and module.loadUtilityButtons then
         success, errorMessage = pcall(function()
             module.loadUtilityButtons(function(name, callback)
                 return createButton(name, callback, "Utility")
             end)
         end)
-        
+
     elseif selectedCategory == "AntiAdmin" and module.loadAntiAdminButtons then
         success, errorMessage = pcall(function()
             module.loadAntiAdminButtons(function(name, callback, disableCallback)
                 return createToggleButton(name, callback, "AntiAdmin", disableCallback)
             end, FeatureContainer)
         end)
-        
+
     elseif selectedCategory == "Settings" and module.loadSettingsButtons then
         success, errorMessage = pcall(function()
             module.loadSettingsButtons(function(name, callback)
                 return createButton(name, callback, "Settings")
             end)
         end)
-        
+
     elseif selectedCategory == "Info" and module.createInfoDisplay then
         success, errorMessage = pcall(function()
             module.createInfoDisplay(FeatureContainer)
         end)
-        
+
     else
         local fallbackLabel = Instance.new("TextLabel")
         fallbackLabel.Parent = FeatureContainer
@@ -796,18 +800,18 @@ local function resetStates()
         end)
         connections[key] = nil
     end
-    
+
     for moduleName, module in pairs(modules) do
         if module and type(module.resetStates) == "function" then
-            local success, error = pcall(function() 
-                module.resetStates() 
+            local success, error = pcall(function()
+                module.resetStates()
             end)
             if not success then
                 warn("Failed to reset states for " .. moduleName .. ": " .. tostring(error))
             end
         end
     end
-    
+
     if selectedCategory then
         task.spawn(function()
             task.wait(0.5)
@@ -818,21 +822,21 @@ end
 
 local function onCharacterAdded(newCharacter)
     if not newCharacter then return end
-    
+
     local success, result = pcall(function()
         character = newCharacter
         humanoid = character:WaitForChild("Humanoid", 30)
         rootPart = character:WaitForChild("HumanoidRootPart", 30)
-        
+
         if not humanoid or not rootPart then
             error("Failed to find Humanoid or HumanoidRootPart")
         end
-        
+
         dependencies.character = character
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
         dependencies.ScrollFrame = FeatureContainer
-        
+
         for moduleName, module in pairs(modules) do
             if module and type(module.updateReferences) == "function" then
                 local updateSuccess, updateError = pcall(function()
@@ -843,15 +847,15 @@ local function onCharacterAdded(newCharacter)
                 end
             end
         end
-        
+
         initializeModules()
-        
+
         if humanoid and humanoid.Died then
             connections.humanoidDied = humanoid.Died:Connect(function()
                 pcall(resetStates)
             end)
         end
-        
+
         if selectedCategory and modules[selectedCategory] then
             task.spawn(function()
                 task.wait(1)
@@ -859,7 +863,7 @@ local function onCharacterAdded(newCharacter)
             end)
         end
     end)
-    
+
     if not success then
         warn("Failed to set up character: " .. tostring(result))
         character = newCharacter
@@ -890,12 +894,12 @@ end)
 task.spawn(function()
     local timeout = 45
     local startTime = tick()
-    
+
     while tick() - startTime < timeout do
         local loadedCount = 0
         local criticalModulesLoaded = 0
         local criticalModules = {"Movement", "Visual", "Player"}
-        
+
         for moduleName, _ in pairs(moduleURLs) do
             if modulesLoaded[moduleName] then
                 loadedCount = loadedCount + 1
@@ -907,17 +911,17 @@ task.spawn(function()
                 end
             end
         end
-        
+
         if criticalModulesLoaded >= 2 or loadedCount >= 4 then
             break
         end
-        
+
         task.wait(1)
     end
 
     local loadedModules = {}
     local failedModules = {}
-    
+
     for moduleName, _ in pairs(moduleURLs) do
         if modulesLoaded[moduleName] then
             table.insert(loadedModules, moduleName)
@@ -931,9 +935,9 @@ task.spawn(function()
     else
         warn("WARNING: No modules loaded successfully! GUI will have limited functionality.")
     end
-    
+
     task.wait(0.5)
-    
+
     local buttonLoadSuccess, buttonLoadError = pcall(loadButtons)
     if not buttonLoadSuccess then
         warn("Failed to load initial buttons: " .. tostring(buttonLoadError))
@@ -949,12 +953,12 @@ task.spawn(function()
         fallbackLabel.TextYAlignment = Enum.TextYAlignment.Top
         fallbackLabel.TextWrapped = true
     end
-    
+
     task.wait(1)
     pcall(function()
         createSlideNotification()
     end)
-    
+
     if #failedModules > 0 then
         task.spawn(function()
             task.wait(5)
@@ -989,11 +993,11 @@ task.spawn(function()
             end
         end)
     end
-    
+
     local workingModules = 0
     for _, module in pairs(modules) do
         if module and type(module) == "table" then
             workingModules = workingModules + 1
         end
     end
-end)`
+end)
