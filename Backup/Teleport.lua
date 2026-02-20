@@ -1,49 +1,40 @@
--- Teleport-related features for MinimalHackGUI by Fari Noveri
--- ENHANCED VERSION: Added JSON file persistence, directional teleport buttons, scrollable UI
-
 if _G.Teleport then
     return _G.Teleport
 end
 
--- Dependencies: These must be passed from mainloader.lua
 local Players, Workspace, ScreenGui, ScrollFrame, player, rootPart, settings
 
--- Initialize module
 local Teleport = {}
 
--- Variables
-Teleport.savedPositions = Teleport.savedPositions or {} -- Preserve existing positions
-Teleport.positionNumbers = Teleport.positionNumbers or {} -- Preserve existing position numbers
-Teleport.positionLabels = Teleport.positionLabels or {} -- New: Table for position labels in the world
-Teleport.labelsVisible = true -- New: Toggle for showing/hiding labels
+Teleport.savedPositions = Teleport.savedPositions or {}
+Teleport.positionNumbers = Teleport.positionNumbers or {}
+Teleport.positionLabels = Teleport.positionLabels or {}
+Teleport.labelsVisible = true
 Teleport.positionFrameVisible = false
 Teleport.autoTeleportActive = false
-Teleport.autoTeleportPaused = false -- New flag for pausing auto-teleport
-Teleport.autoTeleportMode = "once" -- "once" or "repeat"
-Teleport.autoTeleportDelay = 2 -- seconds between teleports
+Teleport.autoTeleportPaused = false
+Teleport.autoTeleportMode = "once"
+Teleport.autoTeleportDelay = 2
 Teleport.currentAutoIndex = 1
 Teleport.autoTeleportCoroutine = nil
 Teleport.smoothTeleportEnabled = true
-Teleport.smoothTeleportSpeed = 100 -- studs per second
-Teleport.doubleClickTeleportEnabled = false -- New: Toggle for double-click TP to mouse
+Teleport.smoothTeleportSpeed = 100
+Teleport.doubleClickTeleportEnabled = false
 Teleport.lastClickTime = 0
-Teleport.doubleClickThreshold = 0.5 -- seconds for double click
-Teleport.undoStack = {} -- New: Undo stack for directional and double-click teleports
+Teleport.doubleClickThreshold = 0.5
+Teleport.undoStack = {}
 Teleport.initialized = false
 
--- UI Elements (to be initialized in initUI function)
 local PositionFrame, PositionScrollFrame, PositionLayout, PositionInput, SavePositionButton
 local AutoTeleportFrame, AutoTeleportButton, AutoModeToggle, DelayInput, StopAutoButton
-local AutoStatusLabel -- New label for auto-teleport status
+local AutoStatusLabel
 local SmoothToggle, SpeedInput
 local CoordInputX, CoordInputY, CoordInputZ, TeleportToCoordButton, SaveCoordButton
-local LabelToggle -- New: Toggle for labels visibility
+local LabelToggle
 
--- File System Integration for KRNL (like utility.lua)
 local HttpService = game:GetService("HttpService")
 local TELEPORT_FOLDER_PATH = "Supertool/Teleport/"
 
--- Helper function untuk sanitize filename
 local function sanitizeFileName(name)
     local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
     sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
@@ -53,7 +44,6 @@ local function sanitizeFileName(name)
     return sanitized
 end
 
--- Helper function untuk save position ke JSON file
 local function saveToJSONFile(positionName, cframe, number)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(positionName)
@@ -75,8 +65,6 @@ local function saveToJSONFile(positionName, cframe, number)
         
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
-        
-        print("[SUPERTOOL] Position saved: " .. filePath)
         return true
     end)
     
@@ -87,7 +75,6 @@ local function saveToJSONFile(positionName, cframe, number)
     return true
 end
 
--- Helper function untuk load position dari JSON file
 local function loadFromJSONFile(positionName)
     local success, result = pcall(function()
         local sanitizedName = sanitizeFileName(positionName)
@@ -122,7 +109,6 @@ local function loadFromJSONFile(positionName)
     end
 end
 
--- Helper function untuk delete position dari JSON file
 local function deleteFromJSONFile(positionName)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(positionName)
@@ -131,7 +117,6 @@ local function deleteFromJSONFile(positionName)
         
         if isfile(filePath) then
             delfile(filePath)
-            print("[SUPERTOOL] Position deleted: " .. filePath)
             return true
         else
             return false
@@ -146,7 +131,6 @@ local function deleteFromJSONFile(positionName)
     end
 end
 
--- Helper function untuk rename position di JSON file
 local function renameInJSONFile(oldName, newName)
     local success, error = pcall(function()
         local oldData = loadFromJSONFile(oldName)
@@ -159,7 +143,6 @@ local function renameInJSONFile(oldName, newName)
         
         if saveToJSONFile(newName, oldData.cframe, oldData.number) then
             deleteFromJSONFile(oldName)
-            print("[SUPERTOOL] Position renamed: " .. oldName .. " -> " .. newName)
             return true
         else
             return false
@@ -174,12 +157,10 @@ local function renameInJSONFile(oldName, newName)
     end
 end
 
--- Helper function untuk load semua positions dari folder
 local function loadAllPositionsFromFolder()
     local success, error = pcall(function()
         if not isfolder(TELEPORT_FOLDER_PATH) then
             makefolder(TELEPORT_FOLDER_PATH)
-            print("[SUPERTOOL] Created teleport folder: " .. TELEPORT_FOLDER_PATH)
         end
         
         local loadedPositions = {}
@@ -195,7 +176,6 @@ local function loadAllPositionsFromFolder()
                         local originalName = positionData.name or fileName
                         loadedPositions[originalName] = positionData.cframe
                         loadedNumbers[originalName] = positionData.number or 0
-                        print("[SUPERTOOL] Loaded position: " .. originalName)
                     end
                 end
             end
@@ -212,12 +192,10 @@ local function loadAllPositionsFromFolder()
     end
 end
 
--- Mock file system for backward compatibility (now syncs with JSON)
 local fileSystem = {
     ["Supertool/Teleport"] = {}
 }
 
--- Helper function to ensure Supertool/Teleport exists (backward compatibility)
 local function ensureFileSystem()
     if not fileSystem["Supertool"] then
         fileSystem["Supertool"] = {}
@@ -227,7 +205,6 @@ local function ensureFileSystem()
     end
 end
 
--- Helper function to save position to file system (now syncs with JSON)
 local function saveToFileSystem(positionName, cframe, number)
     ensureFileSystem()
     fileSystem["Supertool/Teleport"][positionName] = {
@@ -243,7 +220,6 @@ local function saveToFileSystem(positionName, cframe, number)
     return true
 end
 
--- Helper function to load position from file system (prioritizes JSON)
 local function loadFromFileSystem(positionName)
     local jsonData = loadFromJSONFile(positionName)
     if jsonData then
@@ -262,7 +238,6 @@ local function loadFromFileSystem(positionName)
     return nil
 end
 
--- Helper function to delete position from file system (syncs with JSON)
 local function deleteFromFileSystem(positionName)
     ensureFileSystem()
     local memoryDeleted = false
@@ -276,7 +251,6 @@ local function deleteFromFileSystem(positionName)
     return memoryDeleted or jsonDeleted
 end
 
--- Helper function to rename position in file system (syncs with JSON)
 local function renameInFileSystem(oldName, newName)
     ensureFileSystem()
     local memoryRenamed = false
@@ -292,7 +266,6 @@ local function renameInFileSystem(oldName, newName)
     return memoryRenamed or jsonRenamed
 end
 
--- Function untuk sync positions dari JSON ke memory pada startup
 local function syncPositionsFromJSON()
     local jsonPositions, jsonNumbers = loadAllPositionsFromFolder()
     for positionName, cframe in pairs(jsonPositions) do
@@ -308,10 +281,8 @@ local function syncPositionsFromJSON()
         }
         Teleport.createPositionLabel(positionName, cframe.Position)
     end
-    print("[SUPERTOOL] Synced " .. table.maxn(jsonPositions) .. " positions from JSON files")
 end
 
--- Get root part
 local function getRootPart()
     if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
         return player.Character.HumanoidRootPart
@@ -320,7 +291,6 @@ local function getRootPart()
     return nil
 end
 
--- Get ordered positions (now based on manual numbering)
 local function getOrderedPositions()
     local orderedPositions = {}
     for name, cframe in pairs(Teleport.savedPositions) do
@@ -345,7 +315,6 @@ local function getOrderedPositions()
     return orderedPositions
 end
 
--- Check for duplicate numbers
 local function getDuplicateNumbers()
     local numberCount = {}
     local duplicates = {}
@@ -373,7 +342,6 @@ local function getDuplicateNumbers()
     return duplicateList
 end
 
--- Safe teleport
 local function safeTeleport(targetCFrame)
     local root = getRootPart()
     if not root then
@@ -394,20 +362,16 @@ local function safeTeleport(targetCFrame)
         local tween = TweenService:Create(root, tweenInfo, {CFrame = targetCFrame})
         tween:Play()
         tween.Completed:Wait()
-        print("Smooth teleported to CFrame: " .. tostring(targetCFrame))
     else
         root.CFrame = targetCFrame
-        print("Teleported to CFrame: " .. tostring(targetCFrame))
     end
     return true
 end
 
--- Check if position name already exists
 local function positionExists(positionName)
     return Teleport.savedPositions[positionName] ~= nil
 end
 
--- Generate unique position name
 local function generateUniqueName(baseName)
     if not positionExists(baseName) then
         return baseName
@@ -422,7 +386,6 @@ local function generateUniqueName(baseName)
     return newName
 end
 
--- Create number input dialog
 local function createNumberInputDialog(positionName, currentNumber, onNumberSet)
     local NumberFrame = Instance.new("Frame")
     NumberFrame.Name = "NumberInputDialog"
@@ -505,7 +468,6 @@ local function createNumberInputDialog(positionName, currentNumber, onNumberSet)
     NumberInput:CaptureFocus()
 end
 
--- Create rename dialog
 local function createRenameDialog(positionName, onRename)
     local RenameFrame = Instance.new("Frame")
     RenameFrame.Name = "RenameDialog"
@@ -589,10 +551,8 @@ local function createRenameDialog(positionName, onRename)
     RenameInput:CaptureFocus()
 end
 
--- Forward declarations for functions that reference each other
 local refreshPositionButtons
 
--- Delete position with confirmation
 local function deletePositionWithConfirmation(positionName, button)
     if button.Text == "Delete?" then
         Teleport.savedPositions[positionName] = nil
@@ -603,7 +563,6 @@ local function deletePositionWithConfirmation(positionName, button)
         end
         deleteFromFileSystem(positionName)
         button.Parent:Destroy()
-        print("Deleted position: " .. positionName)
         updateScrollCanvasSize()
         refreshPositionButtons()
     else
@@ -619,14 +578,12 @@ local function deletePositionWithConfirmation(positionName, button)
     end
 end
 
--- Update scroll canvas size
 local function updateScrollCanvasSize()
     if PositionScrollFrame and PositionLayout then
         PositionScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PositionLayout.AbsoluteContentSize.Y + 10)
     end
 end
 
--- Auto teleport loop
 local function doAutoTeleport()
     return coroutine.create(function()
         local positions = getOrderedPositions()
@@ -646,7 +603,6 @@ local function doAutoTeleport()
                 end
                 local position = positions[i]
                 if safeTeleport(position.cframe) then
-                    print("Auto teleported to: " .. position.name .. " (" .. i .. "/" .. #positions .. ")")
                     if AutoStatusLabel then
                         local number = Teleport.positionNumbers[position.name] or 0
                         local numberText = number > 0 and "#" .. number or ""
@@ -662,7 +618,6 @@ local function doAutoTeleport()
             end
             if Teleport.autoTeleportMode == "repeat" and Teleport.autoTeleportActive then
                 Teleport.currentAutoIndex = 1
-                print("Auto teleport cycle completed, restarting...")
             end
         until Teleport.autoTeleportMode ~= "repeat" or not Teleport.autoTeleportActive
         Teleport.autoTeleportActive = false
@@ -670,11 +625,9 @@ local function doAutoTeleport()
         if AutoStatusLabel then
             AutoStatusLabel.Visible = false
         end
-        print("Auto teleport finished")
     end)
 end
 
--- Start auto teleport
 function Teleport.startAutoTeleport()
     if Teleport.autoTeleportActive then
         warn("Auto teleport already active")
@@ -705,10 +658,8 @@ function Teleport.startAutoTeleport()
             end
         end
     end)
-    print("Auto teleport started in " .. Teleport.autoTeleportMode .. " mode")
 end
 
--- Stop auto teleport
 function Teleport.stopAutoTeleport()
     if not Teleport.autoTeleportActive then return end
     Teleport.autoTeleportActive = false
@@ -718,10 +669,8 @@ function Teleport.stopAutoTeleport()
     if AutoStatusLabel then
         AutoStatusLabel.Visible = false
     end
-    print("Auto teleport stopped")
 end
 
--- Toggle auto mode
 function Teleport.toggleAutoMode()
     Teleport.autoTeleportMode = Teleport.autoTeleportMode == "once" and "repeat" or "once"
     if AutoModeToggle then
@@ -736,11 +685,9 @@ function Teleport.toggleAutoMode()
             AutoStatusLabel.Text = "Auto teleport: " .. position.name .. numberText .. " (" .. Teleport.autoTeleportMode .. ")"
         end
     end
-    print("Auto teleport mode set to: " .. Teleport.autoTeleportMode)
     return Teleport.autoTeleportMode
 end
 
--- Create position button with rename, delete, and numbering functionality
 createPositionButton = function(positionName, cframe)
     if not PositionScrollFrame then
         warn("Cannot create position button: PositionScrollFrame not initialized")
@@ -817,15 +764,12 @@ createPositionButton = function(positionName, cframe)
                 end
                 Teleport.positionLabels[positionName].TextLabel.Text = labelText
             end
-            print("Set number " .. newNumber .. " for position: " .. positionName)
             refreshPositionButtons()
         end)
     end)
 
     TeleportButton.MouseButton1Click:Connect(function()
-        if safeTeleport(cframe) then
-            print("Teleported to: " .. positionName)
-        end
+        safeTeleport(cframe)
     end)
 
     RenameButton.MouseButton1Click:Connect(function()
@@ -846,7 +790,6 @@ createPositionButton = function(positionName, cframe)
                 label.TextLabel.Text = labelText
             end
             renameInFileSystem(positionName, newName)
-            print("Renamed position to: " .. newName)
             refreshPositionButtons()
         end)
     end)
@@ -894,7 +837,6 @@ createPositionButton = function(positionName, cframe)
     end)
 end
 
--- Refresh position buttons
 refreshPositionButtons = function()
     if not PositionScrollFrame then
         warn("Cannot refresh position buttons: PositionScrollFrame not initialized")
@@ -974,19 +916,16 @@ refreshPositionButtons = function()
                 saveToJSONFile(name, cframe, number)
                 count = count + 1
             end
-            print("[SUPERTOOL] Synced " .. count .. " positions to JSON files")
         end)
     end
     
     updateScrollCanvasSize()
 end
 
--- On character respawn
 local function onCharacterAdded(character)
     Teleport.lastClickTime = 0
     if Teleport.autoTeleportActive then
         Teleport.autoTeleportPaused = true
-        print("Auto teleport paused due to character respawn")
         if AutoStatusLabel then
             AutoStatusLabel.Text = "Auto teleport paused"
         end
@@ -997,7 +936,6 @@ local function onCharacterAdded(character)
         refreshPositionButtons()
         if Teleport.autoTeleportActive and Teleport.autoTeleportPaused then
             Teleport.autoTeleportPaused = false
-            print("Auto teleport resumed after respawn")
             if AutoStatusLabel then
                 local positions = getOrderedPositions()
                 if positions[Teleport.currentAutoIndex] then
@@ -1008,13 +946,11 @@ local function onCharacterAdded(character)
                 end
             end
         end
-        print("Character respawned, teleport UI updated")
     else
         warn("HumanoidRootPart not found after respawn")
     end
 end
 
--- Save current position
 function Teleport.saveCurrentPosition()
     local root = getRootPart()
     if not root then
@@ -1041,11 +977,9 @@ function Teleport.saveCurrentPosition()
     end
     
     updateScrollCanvasSize()
-    print("Position saved: " .. positionName)
     return true
 end
 
--- Save freecam position
 function Teleport.saveFreecamPosition(freecamPosition)
     if not freecamPosition then
         warn("Cannot save: No freecam position available")
@@ -1071,11 +1005,9 @@ function Teleport.saveFreecamPosition(freecamPosition)
     end
     
     updateScrollCanvasSize()
-    print("Saved freecam position: " .. positionName)
     return true
 end
 
--- Save custom coordinate position
 function Teleport.saveCoordPosition()
     local x = tonumber(CoordInputX.Text) or 0
     local y = tonumber(CoordInputY.Text) or 0
@@ -1096,29 +1028,22 @@ function Teleport.saveCoordPosition()
     createPositionButton(positionName, cframe)
     
     updateScrollCanvasSize()
-    print("Saved coordinate position: " .. positionName)
     return true
 end
 
--- Teleport to custom coordinates
 function Teleport.teleportToCoords()
     local x = tonumber(CoordInputX.Text) or 0
     local y = tonumber(CoordInputY.Text) or 0
     local z = tonumber(CoordInputZ.Text) or 0
     local cframe = CFrame.new(x, y, z)
-    if safeTeleport(cframe) then
-        print("Teleported to coordinates: " .. x .. ", " .. y .. ", " .. z)
-    end
+    safeTeleport(cframe)
 end
 
--- Load saved positions from filesystem
 function Teleport.loadSavedPositions()
     syncPositionsFromJSON()
     refreshPositionButtons()
-    print("Loaded " .. #getOrderedPositions() .. " saved positions")
 end
 
--- Toggle position manager UI
 function Teleport.togglePositionManager()
     if not PositionFrame then
         warn("Position Manager UI not initialized")
@@ -1128,13 +1053,9 @@ function Teleport.togglePositionManager()
     PositionFrame.Visible = Teleport.positionFrameVisible
     if Teleport.positionFrameVisible then
         refreshPositionButtons()
-        print("Position Manager opened")
-    else
-        print("Position Manager closed")
     end
 end
 
--- Directional teleport functions
 function Teleport.teleportForward(distance)
     local root = getRootPart()
     if not root then
@@ -1148,7 +1069,6 @@ function Teleport.teleportForward(distance)
     table.insert(Teleport.undoStack, currentCFrame)
     local forwardVector = currentCFrame.LookVector * (distance or 10)
     safeTeleport(currentCFrame + forwardVector)
-    print("Teleported forward by " .. (distance or 10) .. " units")
 end
 
 function Teleport.teleportBackward(distance)
@@ -1164,7 +1084,6 @@ function Teleport.teleportBackward(distance)
     table.insert(Teleport.undoStack, currentCFrame)
     local backwardVector = -currentCFrame.LookVector * (distance or 10)
     safeTeleport(currentCFrame + backwardVector)
-    print("Teleported backward by " .. (distance or 10) .. " units")
 end
 
 function Teleport.teleportRight(distance)
@@ -1180,7 +1099,6 @@ function Teleport.teleportRight(distance)
     table.insert(Teleport.undoStack, currentCFrame)
     local rightVector = currentCFrame.RightVector * (distance or 10)
     safeTeleport(currentCFrame + rightVector)
-    print("Teleported right by " .. (distance or 10) .. " units")
 end
 
 function Teleport.teleportLeft(distance)
@@ -1196,7 +1114,6 @@ function Teleport.teleportLeft(distance)
     table.insert(Teleport.undoStack, currentCFrame)
     local leftVector = -currentCFrame.RightVector * (distance or 10)
     safeTeleport(currentCFrame + leftVector)
-    print("Teleported left by " .. (distance or 10) .. " units")
 end
 
 function Teleport.teleportUp(distance)
@@ -1212,7 +1129,6 @@ function Teleport.teleportUp(distance)
     table.insert(Teleport.undoStack, currentCFrame)
     local upVector = currentCFrame.UpVector * (distance or 10)
     safeTeleport(currentCFrame + upVector)
-    print("Teleported up by " .. (distance or 10) .. " units")
 end
 
 function Teleport.teleportDown(distance)
@@ -1228,10 +1144,8 @@ function Teleport.teleportDown(distance)
     table.insert(Teleport.undoStack, currentCFrame)
     local downVector = -currentCFrame.UpVector * (distance or 10)
     safeTeleport(currentCFrame + downVector)
-    print("Teleported down by " .. (distance or 10) .. " units")
 end
 
--- Function to create buttons for Teleport features
 function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam)
     createButton("Position Manager", function()
         Teleport.togglePositionManager()
@@ -1241,10 +1155,8 @@ function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabl
         if freecamEnabled and freecamPosition and toggleFreecam then
             toggleFreecam(false)
             safeTeleport(CFrame.new(freecamPosition))
-            print("Teleported to freecam position")
         elseif freecamPosition then
             safeTeleport(CFrame.new(freecamPosition))
-            print("Teleported to last freecam position")
         else
             warn("Use freecam first to set a position")
         end
@@ -1292,11 +1204,9 @@ function Teleport.loadTeleportButtons(createButton, selectedPlayer, freecamEnabl
     
     createButton("Double Click TP", function()
         Teleport.doubleClickTeleportEnabled = not Teleport.doubleClickTeleportEnabled
-        print("Double click teleport " .. (Teleport.doubleClickTeleportEnabled and "enabled" or "disabled"))
     end)
 end
 
--- Function to reset Teleport states
 function Teleport.resetStates()
     Teleport.positionFrameVisible = false
     if PositionFrame then
@@ -1305,31 +1215,25 @@ function Teleport.resetStates()
     Teleport.stopAutoTeleport()
 end
 
--- Quick teleport functions
 function Teleport.teleportToSpawn()
     local spawnLocation = Workspace:FindFirstChild("SpawnLocation")
     if spawnLocation then
-        if safeTeleport(spawnLocation.CFrame + Vector3.new(0, 5, 0)) then
-            print("Teleported to spawn")
-        end
+        safeTeleport(spawnLocation.CFrame + Vector3.new(0, 5, 0))
     else
         warn("Spawn location not found")
     end
 end
 
 function Teleport.teleportToPosition(x, y, z)
-    if safeTeleport(CFrame.new(x, y, z)) then
-        print("Teleported to coordinates: " .. x .. ", " .. y .. ", " .. z)
-    end
+    safeTeleport(CFrame.new(x, y, z))
 end
 
--- New: Create position label in the world
 function Teleport.createPositionLabel(positionName, positionVector)
     local part = Instance.new("Part")
     part.Anchored = true
     part.CanCollide = false
     part.Transparency = 1
-    part.Position = positionVector + Vector3.new(0, 5, 0) -- Slightly above the position
+    part.Position = positionVector + Vector3.new(0, 5, 0)
     part.Parent = Workspace
 
     local billboard = Instance.new("BillboardGui")
@@ -1358,7 +1262,6 @@ function Teleport.createPositionLabel(positionName, positionVector)
     Teleport.positionLabels[positionName] = billboard
 end
 
--- New: Toggle labels visibility
 function Teleport.toggleLabels()
     Teleport.labelsVisible = not Teleport.labelsVisible
     for _, label in pairs(Teleport.positionLabels) do
@@ -1367,10 +1270,8 @@ function Teleport.toggleLabels()
     if LabelToggle then
         LabelToggle.Text = "Position Labels: " .. (Teleport.labelsVisible and "ON" or "OFF")
     end
-    print("Position labels " .. (Teleport.labelsVisible and "shown" or "hidden"))
 end
 
--- Function to set dependencies and initialize UI
 function Teleport.init(deps)
     if Teleport.initialized then
         return true
@@ -1390,7 +1291,7 @@ function Teleport.init(deps)
         return false
     end
 
-    ScreenGui.ResetOnSpawn = false  -- Prevent GUI reset on respawn
+    ScreenGui.ResetOnSpawn = false
 
     Teleport.savedPositions = Teleport.savedPositions or {}
     Teleport.positionNumbers = Teleport.positionNumbers or {}
@@ -1399,7 +1300,6 @@ function Teleport.init(deps)
     
     if not isfolder(TELEPORT_FOLDER_PATH) then
         makefolder(TELEPORT_FOLDER_PATH)
-        print("[SUPERTOOL] Created teleport folder: " .. TELEPORT_FOLDER_PATH)
     end
     
     ensureFileSystem()
@@ -1421,13 +1321,11 @@ function Teleport.init(deps)
         onCharacterAdded(player.Character)
     end
 
-    -- Initialize UI elements
     local function initUI()
         if not ScreenGui then
             warn("Cannot create Position Manager UI: ScreenGui not available")
             return
         end
-        print("Creating Position Manager UI...")
 
         PositionFrame = ScreenGui:FindFirstChild("PositionFrame")
         if not PositionFrame then
@@ -1438,7 +1336,7 @@ function Teleport.init(deps)
             PositionFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
             PositionFrame.BorderSizePixel = 1
             PositionFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
-            PositionFrame.Size = UDim2.new(0, 300, 0, 400) -- Increased size for new elements
+            PositionFrame.Size = UDim2.new(0, 300, 0, 400)
             PositionFrame.Visible = false
             PositionFrame.Active = true
             PositionFrame.Draggable = true
@@ -1758,7 +1656,6 @@ function Teleport.init(deps)
             AutoStatusLabel.Visible = false
         end
 
-        -- Connect events (these will be connected each time if re-init, but since guarded by initialized, only once)
         SavePositionButton.MouseButton1Click:Connect(function()
             Teleport.saveCurrentPosition()
         end)
@@ -1783,7 +1680,6 @@ function Teleport.init(deps)
             local newDelay = tonumber(DelayInput.Text)
             if newDelay and newDelay > 0 then
                 Teleport.autoTeleportDelay = newDelay
-                print("Auto teleport delay set to: " .. newDelay .. "s")
             else
                 DelayInput.Text = tostring(Teleport.autoTeleportDelay)
             end
@@ -1793,14 +1689,12 @@ function Teleport.init(deps)
             Teleport.smoothTeleportEnabled = not Teleport.smoothTeleportEnabled
             SmoothToggle.Text = "Smooth TP: " .. (Teleport.smoothTeleportEnabled and "ON" or "OFF")
             SmoothToggle.BackgroundColor3 = Teleport.smoothTeleportEnabled and Color3.fromRGB(40, 80, 40) or Color3.fromRGB(60, 60, 60)
-            print("Smooth teleport " .. (Teleport.smoothTeleportEnabled and "enabled" or "disabled"))
         end)
 
         SpeedInput.FocusLost:Connect(function(enterPressed)
             local newSpeed = tonumber(SpeedInput.Text)
             if newSpeed and newSpeed > 0 then
                 Teleport.smoothTeleportSpeed = newSpeed
-                print("Smooth teleport speed set to: " .. newSpeed .. " studs/s")
             else
                 SpeedInput.Text = tostring(Teleport.smoothTeleportSpeed)
             end
@@ -1821,16 +1715,12 @@ function Teleport.init(deps)
         PositionLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             updateScrollCanvasSize()
         end)
-
-        print("Position Manager UI created successfully")
     end
     
     initUI()
     
     Teleport.loadSavedPositions()
-    print("[SUPERTOOL] Teleport module initialized with JSON sync to: " .. TELEPORT_FOLDER_PATH)
 
-    -- Setup double click teleport and undo
     local UserInputService = game:GetService("UserInputService")
     local Mouse = player:GetMouse()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -1849,7 +1739,6 @@ function Teleport.init(deps)
                     end
                     table.insert(Teleport.undoStack, currentCFrame)
                     safeTeleport(hit)
-                    print("Double click teleported to mouse position")
                 end
             end
             Teleport.lastClickTime = currentTime
@@ -1858,7 +1747,6 @@ function Teleport.init(deps)
                 if #Teleport.undoStack > 0 then
                     local prevCFrame = table.remove(Teleport.undoStack)
                     safeTeleport(prevCFrame)
-                    print("Undid last teleport")
                 end
             end
         end

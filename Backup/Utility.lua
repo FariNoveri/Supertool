@@ -1,30 +1,7 @@
---disable-run
--- Enhanced Path-only Utility for MinimalHackGUI by Fari Noveri
--- Updated version with fixed Ctrl+Z, JSON loading, status display, and enhanced path features
--- REMOVED: All macro functionality
--- ADDED: Top-right status display, pause/resume with markers, clickable path points
--- farinoveri30@gmail.com (claude ai)
--- Fixed bugs: UI textbox, outfit apply, reset character
--- MODIFIED: Removed Outfit Manager, Added Object Editor Feature (replaces Deleter with full manipulation)
--- NEW: Added Gear Loader Feature with input ID or predefined gears (exploit-safe)
--- FIXED: Gear loading HTTP 409 error by removing local scripts
--- REMOVED: Drawing Tool Feature (as per request)
--- REMOVED: Adonis Bypass and Kohl's Admin
-
--- NEW: Added Object Spawner Feature with input ID or predefined objects
--- FIXED: Object Editor nil calls and GUI size issues
--- NEW FIXES: Persistent GUI position, fixed drag reset, added freeze, copy list with delete, HEX color, remove effects
--- FIXED: Drag feature no longer resets on new object selection
--- FIXED: Restored scale feature, holdable move buttons, double right-click for paste confirmation, paste after respawn
--- FIXED: Scroll and close bugs, multi-select with limited options, reduced move sensitivity, simplified rotation, rename in copy list, confirmation toggle
-
--- Dependencies: These must be passed from mainloader.lua
 local Players, humanoid, rootPart, ScrollFrame, buttonStates, RunService, player, ScreenGui, settings
 
--- Initialize module
 local Utility = {}
 
--- Path Recording System Variables
 local pathRecording = false
 local pathPlaying = false
 local pathShowOnly = false
@@ -52,77 +29,85 @@ local playbackOffsetTime = 0
 local pathVisualsVisible = true
 local lastPauseToggleTime = 0
 local lastVisibilityToggleTime = 0
-local DEBOUNCE_TIME = 0.5 -- seconds
+local DEBOUNCE_TIME = 0.5
 
--- Object Editor Variables (enhanced from Deleter)
+local WALK_THRESHOLD = 2
+local JUMP_THRESHOLD = 10
+local FALL_THRESHOLD = -5
+local MARKER_DISTANCE = 3
+local CLICKABLE_RADIUS = 5
+
+local movementColors = {
+    walking = Color3.fromRGB(0, 255, 0),
+    jumping = Color3.fromRGB(0, 0, 255),
+    falling = Color3.fromRGB(255, 0, 0),
+    idle = Color3.fromRGB(255, 255, 0),
+    swimming = Color3.fromRGB(0, 255, 255),
+    paused = Color3.fromRGB(255, 255, 255),
+    marker = Color3.fromRGB(150, 150, 150)
+}
+
 local editorEnabled = false
-local selectedObjects = {}  -- List for multi-select
+local selectedObjects = {}
 local selectionBoxes = {}
 local editorGui = nil
-local deletedObjects = {}  -- Stack for undo: {object = clone, parent = originalParent, name = name}
-local copiedObjects = {}  -- List for copied objects: {object = clone, originalCFrame = cframe, name = name}
-local editedObjects = {}  -- Stack for undo edits: {object = obj, property = prop, oldValue = value}
-local redoObjects = {} -- Stack for redo edits
+local deletedObjects = {}
+local copiedObjects = {}
+local editedObjects = {}
+local redoObjects = {}
 local EditorScrollFrame, EditorLayout
 local editorListVisible = false
 local EditorListFrame
-local lastGuiPosition = UDim2.new(0.5, -150, 0.3, 0)  -- Default position
-local lastScrollPosition = 0  -- To preserve scroll position
+local lastGuiPosition = UDim2.new(0.5, -150, 0.3, 0)
+local lastScrollPosition = 0
 local copyListFrame = nil
 local copyListVisible = false
 local isDragging = false
 local dragConnection = nil
 local rightClickConnection = nil
 local lastRightClickTime = 0
-local DOUBLE_CLICK_TIME = 0.5  -- seconds for double click
-local pasteConfirmationEnabled = false  -- Toggle for confirmation, initial off
-local allowMultiMoreThan2 = false  -- Toggle for selecting more than 2 objects, initial off
+local DOUBLE_CLICK_TIME = 0.5
+local pasteConfirmationEnabled = false
+local allowMultiMoreThan2 = false
 local dragStartPositions = {}
 local dragStartHit = nil
 local dragSteppedConn = nil
 local confirmFrame = nil
-local confirmVisual = nil  -- For showing paste location
-local selectedStatusLabel = nil -- For displaying selected object names
+local confirmVisual = nil
+local selectedStatusLabel = nil
 
--- Gear Loader Variables
 local gearFrameVisible = false
 local GearFrame, GearInput, GearScrollFrame, GearLayout
 local predefinedGears = {
     {name = "Hyperlaser Gun", id = 130113146},
     {name = "Darkheart", id = 1689527},
-    {name = "Vampire Vanquisher", id = 108149175},
-    -- Tambah gear lain jika perlu
+    {name = "Vampire Vanquisher", id = 108149175}
 }
 
--- Object Spawner Variables
 local objectFrameVisible = false
 local ObjectFrame, ObjectInput, ObjectScrollFrame, ObjectLayout
 local predefinedObjects = {
-    {name = "Basic Part", id = 123456789},  -- Ganti dengan ID asset nyata
-    {name = "Car Model", id = 987654321},   -- Contoh placeholder
-    -- Tambah objek lain jika perlu
+    {name = "Basic Part", id = 123456789},
+    {name = "Car Model", id = 987654321}
 }
 
--- Chat Customizer Variables
 local nameTag = ""
-local tagPosition = "front"  -- front, middle, back
+local tagPosition = "front"
 local rainbowChat = false
-local customChatColor = nil  -- Color3 or nil
-local customChatFont = nil  -- Enum.Font or nil
+local customChatColor = nil
+local customChatFont = nil
 local chatFrameVisible = false
 local ChatFrame, ChatInputTag, ChatPositionToggle, RainbowToggle, ColorInput, FontInput
 local sayMessageRequest
 
--- File System Integration
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local PATH_FOLDER_PATH = "Supertool/Paths/"
 local OBJECT_EDITOR_FOLDER = "Supertool/ObjectEditorMap/"
 local currentPlaceId = game.PlaceId
-local objectEdits = {}  -- To store edits {path = {prop = value}}
+local objectEdits = {}
 
--- Helper function for sanitize filename
 local function sanitizeFileName(name)
     local sanitized = string.gsub(name, "[<>:\"/\\|?*]", "_")
     sanitized = string.gsub(sanitized, "^%s*(.-)%s*$", "%1")
@@ -132,16 +117,13 @@ local function sanitizeFileName(name)
     return sanitized
 end
 
--- Helper functions for CFrame and Vector3 validation
 local function validateAndConvertCFrame(cframeData)
     if not cframeData then 
         return CFrame.new(0, 0, 0) 
     end
-    
     if typeof(cframeData) == "CFrame" then
         return cframeData
     end
-    
     if type(cframeData) == "table" and #cframeData == 12 then
         local success, result = pcall(function()
             return CFrame.new(unpack(cframeData))
@@ -150,7 +132,6 @@ local function validateAndConvertCFrame(cframeData)
             return result
         end
     end
-    
     if type(cframeData) == "table" and cframeData.x and cframeData.y and cframeData.z then
         local success, result = pcall(function()
             return CFrame.new(cframeData.x, cframeData.y, cframeData.z)
@@ -159,8 +140,6 @@ local function validateAndConvertCFrame(cframeData)
             return result
         end
     end
-    
-    warn("[SUPERTOOL] Invalid CFrame data, using origin: " .. tostring(cframeData))
     return CFrame.new(0, 0, 0)
 end
 
@@ -168,11 +147,9 @@ local function validateAndConvertVector3(vectorData)
     if not vectorData then 
         return Vector3.new(0, 0, 0) 
     end
-    
     if typeof(vectorData) == "Vector3" then
         return vectorData
     end
-    
     if type(vectorData) == "table" and #vectorData == 3 then
         local success, result = pcall(function()
             return Vector3.new(vectorData[1] or 0, vectorData[2] or 0, vectorData[3] or 0)
@@ -181,12 +158,9 @@ local function validateAndConvertVector3(vectorData)
             return result
         end
     end
-    
     if type(vectorData) == "table" and type(vectorData.x) == "number" and type(vectorData.y) == "number" and type(vectorData.z) == "number" then
         return Vector3.new(vectorData.x, vectorData.y, vectorData.z)
     end
-    
-    warn("[SUPERTOOL] Invalid Vector3 data, using zero: " .. tostring(vectorData))
     return Vector3.new(0, 0, 0)
 end
 
@@ -206,19 +180,16 @@ local function killPlayer()
 end
 
 local function resetCharacter()
-    killPlayer()  -- Changed to kill for client-side respawn
+    killPlayer()
 end
 
--- Path Movement Detection
 local function detectMovementType(velocity, position)
     local speed = velocity.Magnitude
     local yVelocity = velocity.Y
-    
     local isInWater = false
     if humanoid and humanoid:GetState() == Enum.HumanoidStateType.Swimming then
         isInWater = true
     end
-    
     if isInWater then
         return "swimming"
     elseif yVelocity > JUMP_THRESHOLD then
@@ -232,12 +203,10 @@ local function detectMovementType(velocity, position)
     end
 end
 
--- Get color from movement type
 local function getColorFromType(movementType)
     return movementColors[movementType] or Color3.fromRGB(200, 200, 200)
 end
 
--- Path Visualization
 local function createPathVisual(position, movementType, isMarker, idleDuration, isClickable)
     local color = getColorFromType(movementType)
     local part = Instance.new("Part")
@@ -251,18 +220,13 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
     part.Size = isMarker and Vector3.new(1, 1, 1) or (isClickable and Vector3.new(0.8, 0.8, 0.8) or Vector3.new(0.5, 0.5, 0.5))
     part.Shape = isMarker and Enum.PartType.Ball or Enum.PartType.Block
     part.CFrame = CFrame.new(position)
-    
     if isClickable then
-        -- Add click detection
         local detector = Instance.new("ClickDetector")
         detector.Parent = part
         detector.MaxActivationDistance = 50
-        
         detector.MouseClick:Connect(function(player)
-            -- Find the closest point in the path
             local closestIndex = 1
             local closestDistance = math.huge
-            
             for i, point in pairs(currentPath.points or savedPaths[currentPathName].points or {}) do
                 local distance = (position - point.position).Magnitude
                 if distance < closestDistance then
@@ -270,14 +234,11 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
                     closestIndex = i
                 end
             end
-            
-            -- Create "Start From Here" label
             local billboard = Instance.new("BillboardGui")
             billboard.Parent = part
             billboard.Size = UDim2.new(0, 120, 0, 40)
             billboard.StudsOffset = Vector3.new(0, 3, 0)
             billboard.AlwaysOnTop = false
-            
             local textLabel = Instance.new("TextLabel")
             textLabel.Parent = billboard
             textLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -289,21 +250,14 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             textLabel.TextSize = 14
             textLabel.Font = Enum.Font.GothamBold
             textLabel.Text = "START FROM HERE"
-            
-            -- Auto-remove after 3 seconds
             game:GetService("Debris"):AddItem(billboard, 3)
-            
-            -- Set playback start index
             pathPauseIndex = closestIndex
-            print("[SUPERTOOL] Path playback will start from index " .. closestIndex)
-            
             if pathPlaying then
                 stopPathPlayback()
                 playPath(currentPathName, false, pathAutoPlaying, pathAutoRespawning)
             end
         end)
     end
-    
     if isMarker then        
         if movementType == "idle" and idleDuration then
             local billboard = Instance.new("BillboardGui")
@@ -311,7 +265,6 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             billboard.Size = UDim2.new(0, 100, 0, 30)
             billboard.StudsOffset = Vector3.new(0, 2, 0)
             billboard.AlwaysOnTop = false
-            
             local textLabel = Instance.new("TextLabel")
             textLabel.Parent = billboard
             textLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -327,7 +280,6 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             textLabel.Name = "IdleLabel"
         end
     end
-    
     return part
 end
 
@@ -344,8 +296,6 @@ local function clearPathVisuals()
     end
     pathVisualParts = {}
     pathMarkerParts = {}
-    
-    -- Clear paused here label
     if pausedHereLabel and pausedHereLabel.Parent then
         pausedHereLabel:Destroy()
         pausedHereLabel = nil
@@ -356,7 +306,6 @@ local function createPausedHereMarker(position)
     if pausedHereLabel and pausedHereLabel.Parent then
         pausedHereLabel:Destroy()
     end
-    
     pausedHereLabel = Instance.new("Part")
     pausedHereLabel.Name = "PausedHereMarker"
     pausedHereLabel.Parent = workspace
@@ -368,13 +317,11 @@ local function createPausedHereMarker(position)
     pausedHereLabel.Size = Vector3.new(1.5, 1.5, 1.5)
     pausedHereLabel.Shape = Enum.PartType.Ball
     pausedHereLabel.CFrame = CFrame.new(position)
-    
     local billboard = Instance.new("BillboardGui")
     billboard.Parent = pausedHereLabel
     billboard.Size = UDim2.new(0, 120, 0, 40)
     billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = false
-    
     local textLabel = Instance.new("TextLabel")
     textLabel.Parent = billboard
     textLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -390,9 +337,7 @@ end
 
 local function togglePathVisibility()
     pathVisualsVisible = not pathVisualsVisible
-    
     local transparency = pathVisualsVisible and 0 or 1
-    
     for _, part in pairs(pathVisualParts) do
         if part and part.Parent then
             part.Transparency = transparency
@@ -402,7 +347,6 @@ local function togglePathVisibility()
             end
         end
     end
-    
     for _, part in pairs(pathMarkerParts) do
         if part and part.Parent then
             part.Transparency = transparency
@@ -412,7 +356,6 @@ local function togglePathVisibility()
             end
         end
     end
-    
     if pausedHereLabel and pausedHereLabel.Parent then
         pausedHereLabel.Transparency = transparency
         local billboard = pausedHereLabel:FindFirstChildOfClass("BillboardGui")
@@ -420,22 +363,15 @@ local function togglePathVisibility()
             billboard.Enabled = pathVisualsVisible
         end
     end
-    
-    print("[SUPERTOOL] Path visuals " .. (pathVisualsVisible and "shown" or "hidden"))
 end
 
--- Path Recording Functions
 local function startPathRecording()
     if pathRecording or pathPlaying then 
-        warn("[SUPERTOOL] Cannot start path recording: Another recording/playback is active")
         return 
     end
-    
     if not updateCharacterReferences() then
-        warn("[SUPERTOOL] Cannot start path recording: Character not ready")
         return
     end
-    
     pathRecording = true
     currentPath = {points = {}, startTime = tick(), markers = {}}
     lastPathTime = 0
@@ -443,22 +379,15 @@ local function startPathRecording()
     currentIdleLabel = nil
     idleStartPosition = nil
     clearPathVisuals()
-    
-    print("[SUPERTOOL] Path recording started")
     updatePathStatus()
-    
     local previousMovementType = nil
-    
     pathConnection = RunService.Heartbeat:Connect(function()
         if not pathRecording or pathPaused then return end
-        
         if not updateCharacterReferences() then return end
-        
         local currentTime = tick() - currentPath.startTime
         local position = rootPart.Position
         local velocity = rootPart.Velocity
         local movementType = detectMovementType(velocity, position)
-        
         local pathPoint = {
             time = currentTime,
             position = position,
@@ -468,12 +397,9 @@ local function startPathRecording()
             walkSpeed = humanoid.WalkSpeed,
             jumpPower = humanoid.JumpPower
         }
-        
         table.insert(currentPath.points, pathPoint)
-        
         local visualPart = createPathVisual(position, movementType, false)
         table.insert(pathVisualParts, visualPart)
-        
         if movementType == "idle" then
             if previousMovementType ~= "idle" then
                 idleStartTime = currentTime
@@ -509,7 +435,6 @@ local function startPathRecording()
                 idleStartPosition = nil
             end
         end
-        
         local shouldCreateMarker = false
         if #currentPath.markers == 0 then
             shouldCreateMarker = true
@@ -520,7 +445,6 @@ local function startPathRecording()
                 shouldCreateMarker = true
             end
         end
-        
         if shouldCreateMarker and movementType ~= "idle" then
             local marker = {
                 time = currentTime,
@@ -530,20 +454,15 @@ local function startPathRecording()
                 movementType = movementType
             }
             table.insert(currentPath.markers, marker)
-            
             local markerPart = createPathVisual(position, movementType, true)
             table.insert(pathMarkerParts, markerPart)
-            
-            print("[SUPERTOOL] Path marker created at " .. tostring(position))
         end
-        
         previousMovementType = movementType
     end)
 end
 
 local function stopPathRecording()
     if not pathRecording then return end
-    
     if idleStartTime then
         local duration = (tick() - currentPath.startTime) - idleStartTime
         table.insert(currentPath.markers, {
@@ -558,59 +477,44 @@ local function stopPathRecording()
         currentIdleLabel = nil
         idleStartPosition = nil
     end
-    
     pathRecording = false
     pathPaused = false
     if pathConnection then
         pathConnection:Disconnect()
         pathConnection = nil
     end
-    
     local pathName = PathInput.Text
     if pathName == "" then
         pathName = "Path_" .. os.date("%H%M%S")
     end
-    
     if #currentPath.points == 0 then
-        warn("[SUPERTOOL] Cannot save empty path")
         clearPathVisuals()
         updatePathStatus()
         return
     end
-    
     currentPath.name = pathName
     currentPath.created = os.time()
     currentPath.pointCount = #currentPath.points
     currentPath.markerCount = #currentPath.markers
     currentPath.duration = currentPath.points[#currentPath.points].time
-    
     savedPaths[pathName] = currentPath
     savePathToJSON(pathName, currentPath)
-    
     PathInput.Text = ""
     updatePathList()
     updatePathStatus()
-    
-    print("[SUPERTOOL] Path recorded: " .. pathName .. " (" .. #currentPath.points .. " points, " .. #currentPath.markers .. " markers)")
 end
 
--- Path Playback Functions
 local function playPath(pathName, showOnly, autoPlay, respawn)
     if pathRecording or pathPlaying then 
         stopPathPlayback()
     end
-    
     if not updateCharacterReferences() then
-        warn("[SUPERTOOL] Cannot play path: Character not ready")
         return
     end
-    
     local path = savedPaths[pathName] or loadPathFromJSON(pathName)
     if not path or not path.points or #path.points == 0 then
-        warn("[SUPERTOOL] Cannot play path: Invalid path data")
         return
     end
-    
     pathPlaying = true
     pathShowOnly = showOnly or false
     pathAutoPlaying = autoPlay or false
@@ -620,44 +524,29 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
     playbackStartTime = tick()
     playbackPauseTime = 0
     playbackOffsetTime = path.points[pathPauseIndex].time or 0
-    
     clearPathVisuals()
-    
-    -- Create path visuals with clickable points every 5 meters
     local lastClickablePosition = nil
     for i, point in pairs(path.points) do
         local visualPart = createPathVisual(point.position, point.movementType, false)
         table.insert(pathVisualParts, visualPart)
-        
-        -- Add clickable points every 5 meters
         if not lastClickablePosition or (point.position - lastClickablePosition).Magnitude >= CLICKABLE_RADIUS then
             local clickablePart = createPathVisual(point.position, point.movementType, false, nil, true)
             table.insert(pathMarkerParts, clickablePart)
             lastClickablePosition = point.position
         end
     end
-    
     for i, marker in pairs(path.markers or {}) do
         local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
         table.insert(pathMarkerParts, markerPart)
     end
-    
     updatePathStatus()
-    
     if pathShowOnly then
-        print("[SUPERTOOL] Showing path: " .. pathName)
         return
     end
-    
-    print("[SUPERTOOL] Playing path: " .. pathName)
-    
     local index = pathPauseIndex
-    
     pathPlayConnection = RunService.Heartbeat:Connect(function()
         if not pathPlaying or pathPaused then return end
-        
         if not updateCharacterReferences() then return end
-        
         if index > #path.points then
             if pathAutoPlaying then
                 if pathAutoRespawning then
@@ -673,7 +562,6 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
                 return
             end
         end
-        
         local point = path.points[index]
         if point then
             local adjustedTime = point.time - playbackOffsetTime - playbackPauseTime
@@ -719,85 +607,61 @@ local function stopPathPlayback()
         humanoid.WalkSpeed = settings.WalkSpeed.value or 16
     end
     currentPathName = nil
-    
-    -- Clear paused here marker
     if pausedHereLabel and pausedHereLabel.Parent then
         pausedHereLabel:Destroy()
         pausedHereLabel = nil
     end
-    
     updatePathList()
     updatePathStatus()
 end
 
 local function pausePath()
     if not pathPlaying or pathShowOnly then return end
-    
     pathPaused = not pathPaused
-    
     if pathPaused then
-        -- Create paused marker at current position
         if updateCharacterReferences() then
             createPausedHereMarker(rootPart.Position)
             playbackPauseTime = playbackPauseTime + (tick() - playbackStartTime)
         end
     else
-        -- Remove paused marker and resume
         if pausedHereLabel and pausedHereLabel.Parent then
             pausedHereLabel:Destroy()
             pausedHereLabel = nil
         end
         playbackStartTime = tick()
     end
-    
     updatePathStatus()
 end
 
--- FIXED: Path Undo System
 local function undoToLastMarker()
     if not pathRecording or not currentPath or not currentPath.markers or #currentPath.markers == 0 then
-        warn("[SUPERTOOL] Undo only available during path recording with existing markers")
         return
     end
-    
     local lastMarkerIndex = #currentPath.markers
     local lastMarker = currentPath.markers[lastMarkerIndex]
-    
     if lastMarker and updateCharacterReferences() then
-        -- Teleport to last marker
         rootPart.CFrame = lastMarker.cframe
-        print("[SUPERTOOL] Undid to last marker at " .. tostring(lastMarker.position))
-        
-        -- Remove points and markers after the last marker
         currentPath.points = {table.unpack(currentPath.points, 1, lastMarker.pathIndex)}
         currentPath.markers = {table.unpack(currentPath.markers, 1, lastMarkerIndex - 1)}
-        
-        -- Update visuals - clear and recreate
         clearPathVisuals()
         for i, point in pairs(currentPath.points) do
             local visualPart = createPathVisual(point.position, point.movementType, false)
             table.insert(pathVisualParts, visualPart)
         end
-        
         for i, marker in pairs(currentPath.markers) do
             local markerPart = createPathVisual(marker.position, marker.movementType or "marker", true, marker.idleDuration)
             table.insert(pathMarkerParts, markerPart)
         end
-        
-        -- Create white sphere at undo position
         local undoMarker = createPathVisual(lastMarker.position, "paused", true)
         table.insert(pathMarkerParts, undoMarker)
     end
 end
 
--- FIXED: Load all existing files function
 local function loadAllSavedPaths()
     local success, result = pcall(function()
         if not isfolder(PATH_FOLDER_PATH) then return 0 end
-        
         local files = listfiles(PATH_FOLDER_PATH)
         local loadedCount = 0
-        
         for _, filePath in pairs(files) do
             local fileName = filePath:match("([^/\\]+)%.json$")
             if fileName then
@@ -808,23 +672,17 @@ local function loadAllSavedPaths()
                 end
             end
         end
-        
         return loadedCount
     end)
-    
     if success then
-        print("[SUPERTOOL] Loaded " .. result .. " paths from disk")
         return result
     else
-        warn("[SUPERTOOL] Failed to load paths: " .. tostring(result))
         return 0
     end
 end
 
--- Status Update Functions - FIXED
 function updatePathStatus()
     if not PathStatusLabel then return end
-    
     local statusText = ""
     if pathRecording then
         statusText = pathPaused and "🔴 Recording Paused" or "🔴 Recording Path..."
@@ -834,22 +692,18 @@ function updatePathStatus()
         statusText = (pathPaused and "⏸️ Paused: " or statusPrefix) .. currentPathName .. 
                     (pathShowOnly and "" or " (" .. modeText .. ")")
     end
-    
     PathStatusLabel.Text = statusText
     PathStatusLabel.Visible = statusText ~= ""
 end
 
--- File system functions for paths
 function savePathToJSON(pathName, pathData)
     local success, error = pcall(function()
         local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
         local filePath = PATH_FOLDER_PATH .. fileName
-        
         if not isfolder(PATH_FOLDER_PATH) then
             makefolder(PATH_FOLDER_PATH)
         end
-        
         local serializedPoints = {}
         for _, point in ipairs(pathData.points or {}) do
             table.insert(serializedPoints, {
@@ -862,7 +716,6 @@ function savePathToJSON(pathName, pathData)
                 jumpPower = point.jumpPower
             })
         end
-        
         local serializedMarkers = {}
         for _, marker in ipairs(pathData.markers or {}) do
             table.insert(serializedMarkers, {
@@ -874,7 +727,6 @@ function savePathToJSON(pathName, pathData)
                 movementType = marker.movementType
             })
         end
-        
         local jsonData = {
             name = pathName,
             created = pathData.created or os.time(),
@@ -885,14 +737,10 @@ function savePathToJSON(pathName, pathData)
             duration = pathData.duration,
             speed = pathData.speed or 1
         }
-        
         local jsonString = HttpService:JSONEncode(jsonData)
         writefile(filePath, jsonString)
-        
-        print("[SUPERTOOL] Path saved: " .. filePath)
         return true
     end)
-    
     return success
 end
 
@@ -901,12 +749,9 @@ function loadPathFromJSON(pathName)
         local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
         local filePath = PATH_FOLDER_PATH .. fileName
-        
         if not isfile(filePath) then return nil end
-        
         local jsonString = readfile(filePath)
         local jsonData = HttpService:JSONDecode(jsonString)
-        
         local validPoints = {}
         for _, pointData in ipairs(jsonData.points or {}) do
             local point = {
@@ -920,7 +765,6 @@ function loadPathFromJSON(pathName)
             }
             table.insert(validPoints, point)
         end
-        
         local validMarkers = {}
         for _, markerData in ipairs(jsonData.markers or {}) do
             local marker = {
@@ -933,7 +777,6 @@ function loadPathFromJSON(pathName)
             }
             table.insert(validMarkers, marker)
         end
-        
         return {
             name = jsonData.name or pathName,
             created = jsonData.created or os.time(),
@@ -945,7 +788,6 @@ function loadPathFromJSON(pathName)
             speed = jsonData.speed or 1
         }
     end)
-    
     return success and result or nil
 end
 
@@ -954,15 +796,12 @@ function deletePathFromJSON(pathName)
         local sanitizedName = sanitizeFileName(pathName)
         local fileName = sanitizedName .. ".json"
         local filePath = PATH_FOLDER_PATH .. fileName
-        
         if isfile(filePath) then
             delfile(filePath)
-            print("[SUPERTOOL] Path deleted: " .. filePath)
             return true
         end
         return false
     end)
-    
     return success and error or false
 end
 
@@ -970,21 +809,17 @@ function renamePathInJSON(oldName, newName)
     local success, error = pcall(function()
         local oldData = loadPathFromJSON(oldName)
         if not oldData then return false end
-        
         oldData.name = newName
         oldData.modified = os.time()
-        
         if savePathToJSON(newName, oldData) then
             deletePathFromJSON(oldName)
             return true
         end
         return false
     end)
-    
     return success and error or false
 end
 
--- Helper to get full path of object
 local function getFullPath(obj)
     local path = obj.Name
     local parent = obj.Parent
@@ -995,7 +830,6 @@ local function getFullPath(obj)
     return "workspace." .. path
 end
 
--- Save object edits to JSON
 local function saveObjectEdits(update)
     local filePath = OBJECT_EDITOR_FOLDER .. tostring(currentPlaceId) .. ".json"
     if not isfolder(OBJECT_EDITOR_FOLDER) then
@@ -1011,10 +845,8 @@ local function saveObjectEdits(update)
     end
     local jsonString = HttpService:JSONEncode(data)
     writefile(filePath, jsonString)
-    print("[SUPERTOOL] Object edits saved to " .. filePath)
 end
 
--- Load object edits from JSON
 local function loadObjectEdits()
     local filePath = OBJECT_EDITOR_FOLDER .. tostring(currentPlaceId) .. ".json"
     if isfile(filePath) then
@@ -1045,15 +877,12 @@ local function loadObjectEdits()
             end
         end
         objectEdits = data
-        print("[SUPERTOOL] Loaded object edits for place " .. currentPlaceId)
         return true
     else
-        print("[SUPERTOOL] No object edits file found for place " .. currentPlaceId)
         return false
     end
 end
 
--- Enhanced Object Editor Functions with more features, fixes, details, and user-friendly elements
 local function clearSelection()
     for _, box in pairs(selectionBoxes) do
         if box and box.Parent then
@@ -1062,10 +891,10 @@ local function clearSelection()
     end
     selectionBoxes = {}
     selectedObjects = {}
-    isDragging = false -- Reset drag on clear
+    isDragging = false
     if editorGui and editorGui.Parent then
-        lastGuiPosition = editorGui.Position  -- Save last position
-        lastScrollPosition = editorGui:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.Y  -- Save scroll position
+        lastGuiPosition = editorGui.Position
+        lastScrollPosition = editorGui:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.Y
         editorGui:Destroy()
         editorGui = nil
     end
@@ -1077,48 +906,37 @@ end
 
 local function duplicateObject()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for duplicate")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local clone = obj:Clone()
-            clone.CFrame = obj.CFrame * CFrame.new(5, 0, 0)  -- Improved offset to avoid overlap
+            clone.CFrame = obj.CFrame * CFrame.new(5, 0, 0)
             clone.Parent = obj.Parent
-            print("[SUPERTOOL] Duplicated: " .. obj.Name)
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Duplicate failed: " .. tostring(err))
-    end
 end
 
 local function copyObject()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for copy")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local clone = obj:Clone()
             table.insert(copiedObjects, {object = clone, originalCFrame = obj.CFrame, name = obj.Name})
-            print("[SUPERTOOL] Copied: " .. obj.Name .. " to list (#" .. #copiedObjects .. ")")
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Copy failed: " .. tostring(err))
-    end
 end
 
 local function pasteObject(index, position)
     if #copiedObjects == 0 or not index or index < 1 or index > #copiedObjects then 
-        warn("[SUPERTOOL] Invalid copy index to paste")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         local copied = copiedObjects[index]
         local newPaste = copied.object:Clone()
-        newPaste.Name = copied.name  -- Preserve renamed name
+        newPaste.Name = copied.name
         newPaste.CFrame = CFrame.new(position or copied.originalCFrame.Position)
         newPaste.Parent = workspace
         for _, script in pairs(newPaste:GetDescendants()) do
@@ -1126,118 +944,91 @@ local function pasteObject(index, position)
                 script.Disabled = false
             end
         end
-        print("[SUPERTOOL] Pasted from list #" .. index .. ": " .. copied.name)
     end)
-    if not success then
-        warn("[SUPERTOOL] Paste failed: " .. tostring(err))
-    end
 end
 
 local function deleteCopy(index)
     if index and index >= 1 and index <= #copiedObjects then
         table.remove(copiedObjects, index)
-        print("[SUPERTOOL] Deleted copy #" .. index .. " from list")
     end
 end
 
 local function renameCopy(index, newName)
     if index and index >= 1 and index <= #copiedObjects then
         copiedObjects[index].name = newName
-        print("[SUPERTOOL] Renamed copy #" .. index .. " to " .. newName)
     end
 end
 
 local function resizeObject(scale)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for resize")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
-            obj.Size = oldSize * Vector3.new(scale, scale, scale)  -- Uniform scale for simplicity
-            print("[SUPERTOOL] Resized " .. obj.Name .. " by " .. scale)
+            obj.Size = oldSize * Vector3.new(scale, scale, scale)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Resize failed: " .. tostring(err))
-    end
 end
 
 local function deleteObject()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for delete")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local name = obj.Name
             local parent = obj.Parent
             local clone = obj:Clone()
             table.insert(deletedObjects, {object = clone, parent = parent, name = name})
             obj:Destroy()
-            print("[SUPERTOOL] Deleted: " .. name)
         end
         clearSelection()
         updateEditorList()
     end)
-    if not success then
-        warn("[SUPERTOOL] Delete failed: " .. tostring(err))
-    end
 end
 
 local function toggleAnchored()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for anchor toggle")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldValue = obj.Anchored
             table.insert(editedObjects, {object = obj, property = "Anchored", oldValue = oldValue})
             obj.Anchored = not oldValue
-            print("[SUPERTOOL] Toggled Anchored to " .. tostring(not oldValue) .. " for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Anchored = obj.Anchored
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Anchor toggle failed: " .. tostring(err))
-    end
 end
 
 local function toggleCanCollide()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for collide toggle")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldValue = obj.CanCollide
             table.insert(editedObjects, {object = obj, property = "CanCollide", oldValue = oldValue})
             obj.CanCollide = not oldValue
-            print("[SUPERTOOL] Toggled CanCollide to " .. tostring(not oldValue) .. " for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].CanCollide = obj.CanCollide
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Collide toggle failed: " .. tostring(err))
-    end
 end
 
 local function changeColor(hex)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for color change")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         local r, g, b = hex:match("#?(%x%x)(%x%x)(%x%x)")
         r = tonumber(r, 16)
         g = tonumber(g, 16)
@@ -1246,85 +1037,64 @@ local function changeColor(hex)
             local oldColor = obj.Color
             table.insert(editedObjects, {object = obj, property = "Color", oldValue = oldColor})
             obj.Color = Color3.fromRGB(r, g, b)
-            print("[SUPERTOOL] Changed color to HEX #" .. hex .. " for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Color = {obj.Color.R, obj.Color.G, obj.Color.B}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Color change failed: " .. tostring(err))
-    end
 end
 
 local function changeTransparency(trans)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for transparency change")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldTrans = obj.Transparency
             table.insert(editedObjects, {object = obj, property = "Transparency", oldValue = oldTrans})
             obj.Transparency = math.clamp(trans, 0, 1)
-            print("[SUPERTOOL] Changed transparency to " .. trans .. " for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Transparency = obj.Transparency
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Transparency change failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Change Position
 local function changePosition(x, y, z)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for position change")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldPosition = obj.Position
             table.insert(editedObjects, {object = obj, property = "Position", oldValue = oldPosition})
             obj.Position = Vector3.new(x, y, z)
-            print("[SUPERTOOL] Changed position to (" .. x .. "," .. y .. "," .. z .. ") for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Position = {x, y, z}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Position change failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Change Rotation
 local function changeRotation(x, y, z)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for rotation change")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldCFrame = obj.CFrame
             table.insert(editedObjects, {object = obj, property = "CFrame", oldValue = oldCFrame})
             obj.CFrame = CFrame.new(obj.Position) * CFrame.Angles(math.rad(x), math.rad(y), math.rad(z))
-            print("[SUPERTOOL] Changed rotation to (" .. x .. "," .. y .. "," .. z .. ") degrees for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Orientation = {x, y, z}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Rotation change failed: " .. tostring(err))
-    end
 end
 
 local function changeRotX(x)
     if #selectedObjects == 0 then return end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local rx, ry, rz = obj.CFrame:ToEulerAnglesXYZ()
             local oldCFrame = obj.CFrame
@@ -1335,14 +1105,11 @@ local function changeRotX(x)
             objectEdits[path].Orientation = {math.deg(rx), math.deg(ry), math.deg(rz)}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Rot X change failed: " .. tostring(err))
-    end
 end
 
 local function changeRotY(y)
     if #selectedObjects == 0 then return end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local rx, ry, rz = obj.CFrame:ToEulerAnglesXYZ()
             local oldCFrame = obj.CFrame
@@ -1353,14 +1120,11 @@ local function changeRotY(y)
             objectEdits[path].Orientation = {math.deg(rx), math.deg(ry), math.deg(rz)}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Rot Y change failed: " .. tostring(err))
-    end
 end
 
 local function changeRotZ(z)
     if #selectedObjects == 0 then return end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local rx, ry, rz = obj.CFrame:ToEulerAnglesXYZ()
             local oldCFrame = obj.CFrame
@@ -1371,14 +1135,11 @@ local function changeRotZ(z)
             objectEdits[path].Orientation = {math.deg(rx), math.deg(ry), math.deg(rz)}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Rot Z change failed: " .. tostring(err))
-    end
 end
 
 local function changeSizeX(x)
     if #selectedObjects == 0 then return end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
@@ -1388,14 +1149,11 @@ local function changeSizeX(x)
             objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Size X change failed: " .. tostring(err))
-    end
 end
 
 local function changeSizeY(y)
     if #selectedObjects == 0 then return end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
@@ -1405,14 +1163,11 @@ local function changeSizeY(y)
             objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Size Y change failed: " .. tostring(err))
-    end
 end
 
 local function changeSizeZ(z)
     if #selectedObjects == 0 then return end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
@@ -1422,14 +1177,11 @@ local function changeSizeZ(z)
             objectEdits[path].Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Size Z change failed: " .. tostring(err))
-    end
 end
 
 local function resetSize()
     if #selectedObjects == 0 then return end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldSize = obj.Size
             table.insert(editedObjects, {object = obj, property = "Size", oldValue = oldSize})
@@ -1439,86 +1191,63 @@ local function resetSize()
             objectEdits[path].Size = {4, 2, 4}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Reset size failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Change Material
 local function changeMaterial(materialName)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for material change")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldMaterial = obj.Material
             table.insert(editedObjects, {object = obj, property = "Material", oldValue = oldMaterial})
             obj.Material = Enum.Material[materialName] or Enum.Material.SmoothPlastic
-            print("[SUPERTOOL] Changed material to " .. materialName .. " for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Material = materialName
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Material change failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Change Shape
 local function changeShape(shapeName)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for shape change")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldShape = obj.Shape
             table.insert(editedObjects, {object = obj, property = "Shape", oldValue = oldShape})
             obj.Shape = Enum.PartType[shapeName] or Enum.PartType.Block
-            print("[SUPERTOOL] Changed shape to " .. shapeName .. " for " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Shape = shapeName
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Shape change failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Add Surface Light
 local function addSurfaceLight()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for adding light")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local light = Instance.new("SurfaceLight")
             light.Parent = obj
             light.Face = Enum.NormalId.Top
             light.Color = Color3.fromRGB(255, 255, 255)
             light.Brightness = 1
-            print("[SUPERTOOL] Added SurfaceLight to " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].SurfaceLight = true
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Add light failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Freeze Object
 local function freezeObject()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for freeze")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldAnchored = obj.Anchored
             local oldVelocity = obj.Velocity
@@ -1526,51 +1255,39 @@ local function freezeObject()
             table.insert(editedObjects, {object = obj, property = "Velocity", oldValue = oldVelocity})
             obj.Anchored = true
             obj.Velocity = Vector3.new(0, 0, 0)
-            print("[SUPERTOOL] Froze object: " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Anchored = true
             objectEdits[path].Velocity = {0, 0, 0}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Freeze failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Unfreeze Object
 local function unfreezeObject()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for unfreeze")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldAnchored = obj.Anchored
             table.insert(editedObjects, {object = obj, property = "Anchored", oldValue = oldAnchored})
             obj.Anchored = false
-            print("[SUPERTOOL] Unfroze object: " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].Anchored = false
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Unfreeze failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Remove Effects (e.g., slippery, custom physics)
 local function removeEffects()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for removing effects")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldProperties = obj.CustomPhysicalProperties
             table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
-            obj.CustomPhysicalProperties = nil  -- Remove custom physics
+            obj.CustomPhysicalProperties = nil
             for _, surface in pairs(Enum.SurfaceType:GetEnumItems()) do
                 if obj.TopSurface == surface or obj.BottomSurface == surface or obj.LeftSurface == surface or obj.RightSurface == surface or obj.FrontSurface == surface or obj.BackSurface == surface then
                     obj.TopSurface = Enum.SurfaceType.Smooth
@@ -1581,90 +1298,65 @@ local function removeEffects()
                     obj.BackSurface = Enum.SurfaceType.Smooth
                 end
             end
-            print("[SUPERTOOL] Removed effects from: " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].CustomPhysicalProperties = nil
             objectEdits[path].TopSurface = "Smooth"
-            -- Repeat for other surfaces
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Remove effects failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Set Slippery
 local function setSlippery()
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for slippery effect")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldProperties = obj.CustomPhysicalProperties
             table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
-            obj.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.01, 0.5, 100, 1)  -- Low friction for slippery
-            print("[SUPERTOOL] Applied slippery effect to: " .. obj.Name)
+            obj.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.01, 0.5, 100, 1)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].CustomPhysicalProperties = {Density = 0.7, Friction = 0.01, Elasticity = 0.5, FrictionWeight = 100, ElasticityWeight = 1}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Set slippery failed: " .. tostring(err))
-    end
 end
 
--- New Feature: Set Custom Physical Properties
 local function setCustomPhysics(density, friction, elasticity, frictionWeight, elasticityWeight)
     if #selectedObjects == 0 then 
-        warn("[SUPERTOOL] No object selected for custom physics")
         return 
     end
-    local success, err = pcall(function()
+    pcall(function()
         for _, obj in pairs(selectedObjects) do
             local oldProperties = obj.CustomPhysicalProperties
             table.insert(editedObjects, {object = obj, property = "CustomPhysicalProperties", oldValue = oldProperties})
             obj.CustomPhysicalProperties = PhysicalProperties.new(density, friction, elasticity, frictionWeight, elasticityWeight)
-            print("[SUPERTOOL] Set custom physics for: " .. obj.Name)
             local path = getFullPath(obj)
             objectEdits[path] = objectEdits[path] or {}
             objectEdits[path].CustomPhysicalProperties = {Density = density, Friction = friction, Elasticity = elasticity, FrictionWeight = frictionWeight, ElasticityWeight = elasticityWeight}
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Set custom physics failed: " .. tostring(err))
-    end
 end
 
 local function undoObjectEdit()
     if #editedObjects > 0 then
         local lastEdit = table.remove(editedObjects)
-        local success, err = pcall(function()
+        pcall(function()
             if lastEdit.object and lastEdit.object.Parent then
                 local current = lastEdit.object[lastEdit.property]
-                lastEdit.newValue = current -- Store the value before undo for redo
+                lastEdit.newValue = current
                 lastEdit.object[lastEdit.property] = lastEdit.oldValue
-                table.insert(redoObjects, lastEdit) -- Push to redo
-                print("[SUPERTOOL] Undid edit on " .. lastEdit.property)
+                table.insert(redoObjects, lastEdit)
             end
         end)
-        if not success then
-            warn("[SUPERTOOL] Undo edit failed: " .. tostring(err))
-        end
     elseif #deletedObjects > 0 then
         local lastDelete = table.remove(deletedObjects)
-        local success, err = pcall(function()
+        pcall(function()
             if lastDelete.object then
                 lastDelete.object.Parent = lastDelete.parent
-                table.insert(redoObjects, {action = "delete", data = lastDelete}) -- For redo delete
-                print("[SUPERTOOL] Undid deletion of: " .. lastDelete.name)
+                table.insert(redoObjects, {action = "delete", data = lastDelete})
             end
         end)
-        if not success then
-            warn("[SUPERTOOL] Undo delete failed: " .. tostring(err))
-        end
     end
     updateEditorList()
 end
@@ -1672,27 +1364,22 @@ end
 local function redoObjectEdit()
     if #redoObjects > 0 then
         local lastRedo = table.remove(redoObjects)
-        local success, err = pcall(function()
+        pcall(function()
             if lastRedo.action == "delete" then
                 local delData = lastRedo.data
                 if delData.object and delData.object.Parent then
                     delData.object:Destroy()
                     table.insert(deletedObjects, delData)
-                    print("[SUPERTOOL] Redid deletion of: " .. delData.name)
                 end
             else
                 if lastRedo.object and lastRedo.object.Parent then
                     local current = lastRedo.object[lastRedo.property]
-                    lastRedo.oldValue = current -- Update old for next undo
+                    lastRedo.oldValue = current
                     lastRedo.object[lastRedo.property] = lastRedo.newValue
-                    table.insert(editedObjects, lastRedo) -- Push back to undo stack
-                    print("[SUPERTOOL] Redid edit on " .. lastRedo.property)
+                    table.insert(editedObjects, lastRedo)
                 end
             end
         end)
-        if not success then
-            warn("[SUPERTOOL] Redo failed: " .. tostring(err))
-        end
     end
     updateEditorList()
 end
@@ -1702,12 +1389,10 @@ local function clearEditorHistory()
     deletedObjects = {}
     redoObjects = {}
     updateEditorList()
-    print("[SUPERTOOL] Cleared editor history")
 end
 
 local function initCopyListUI()
     if copyListFrame then return end
-    
     copyListFrame = Instance.new("Frame")
     copyListFrame.Name = "CopyListFrame"
     copyListFrame.Parent = ScreenGui
@@ -1719,7 +1404,6 @@ local function initCopyListUI()
     copyListFrame.Visible = false
     copyListFrame.Active = true
     copyListFrame.Draggable = true
-
     local title = Instance.new("TextLabel")
     title.Parent = copyListFrame
     title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -1729,7 +1413,6 @@ local function initCopyListUI()
     title.Text = "Copy List"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextSize = 12
-
     local closeButton = Instance.new("TextButton")
     closeButton.Parent = copyListFrame
     closeButton.BackgroundTransparency = 1
@@ -1739,7 +1422,6 @@ local function initCopyListUI()
     closeButton.Text = "X"
     closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     closeButton.TextSize = 14
-
     local copyScrollFrame = Instance.new("ScrollingFrame")
     copyScrollFrame.Parent = copyListFrame
     copyScrollFrame.BackgroundTransparency = 1
@@ -1748,11 +1430,9 @@ local function initCopyListUI()
     copyScrollFrame.ScrollBarThickness = 4
     copyScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     copyScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
     local copyLayout = Instance.new("UIListLayout")
     copyLayout.Parent = copyScrollFrame
     copyLayout.Padding = UDim.new(0, 3)
-
     closeButton.MouseButton1Click:Connect(function()
         copyListFrame.Visible = false
         copyListVisible = false
@@ -1763,19 +1443,16 @@ local function updateCopyList()
     if not copyListFrame then initCopyListUI() end
     local scrollFrame = copyListFrame:FindFirstChildOfClass("ScrollingFrame")
     if not scrollFrame then return end
-    
     for _, child in pairs(scrollFrame:GetChildren()) do
         if child:IsA("Frame") then
             child:Destroy()
         end
     end
-    
     for i, copied in ipairs(copiedObjects) do
         local itemFrame = Instance.new("Frame")
         itemFrame.Parent = scrollFrame
         itemFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
         itemFrame.Size = UDim2.new(1, 0, 0, 30)
-        
         local nameInput = Instance.new("TextBox")
         nameInput.Parent = itemFrame
         nameInput.Position = UDim2.new(0, 5, 0, 5)
@@ -1788,7 +1465,6 @@ local function updateCopyList()
         nameInput.FocusLost:Connect(function()
             renameCopy(i, nameInput.Text)
         end)
-        
         local pasteBtn = Instance.new("TextButton")
         pasteBtn.Parent = itemFrame
         pasteBtn.Position = UDim2.new(0.45, 0, 0, 5)
@@ -1808,7 +1484,6 @@ local function updateCopyList()
             local pastePos = result and result.Position or copied.originalCFrame.Position
             pasteObject(i, pastePos)
         end)
-        
         local deleteBtn = Instance.new("TextButton")
         deleteBtn.Parent = itemFrame
         deleteBtn.Position = UDim2.new(0.7, 0, 0, 5)
@@ -1823,7 +1498,6 @@ local function updateCopyList()
             updateCopyList()
         end)
     end
-    
     local layout = scrollFrame:FindFirstChildOfClass("UIListLayout")
     if layout then
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
@@ -1844,7 +1518,6 @@ local function createSlider(parent, labelText, min, max, initial, callback)
     sliderFrame.Parent = parent
     sliderFrame.Size = UDim2.new(1, 0, 0, 25)
     sliderFrame.BackgroundTransparency = 1
-
     local label = Instance.new("TextLabel")
     label.Parent = sliderFrame
     label.Size = UDim2.new(0.3, 0, 1, 0)
@@ -1854,20 +1527,17 @@ local function createSlider(parent, labelText, min, max, initial, callback)
     label.Font = Enum.Font.Gotham
     label.TextSize = 10
     label.TextXAlignment = Enum.TextXAlignment.Left
-
     local track = Instance.new("Frame")
     track.Parent = sliderFrame
     track.Position = UDim2.new(0.3, 0, 0.25, 0)
     track.Size = UDim2.new(0.6, 0, 0.5, 0)
     track.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-
     local knob = Instance.new("TextButton")
     knob.Parent = track
     knob.Size = UDim2.new(0, 10, 2, 0)
     knob.Position = UDim2.new(0, 0, -0.5, 0)
     knob.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
     knob.Text = ""
-
     local valueLabel = Instance.new("TextLabel")
     valueLabel.Parent = sliderFrame
     valueLabel.Position = UDim2.new(0.9, 0, 0, 0)
@@ -1876,7 +1546,6 @@ local function createSlider(parent, labelText, min, max, initial, callback)
     valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     valueLabel.TextSize = 10
     valueLabel.Font = Enum.Font.Gotham
-
     local function updateValue(noCallback)
         local frac = knob.Position.X.Scale
         local value = min + (max - min) * frac
@@ -1886,7 +1555,6 @@ local function createSlider(parent, labelText, min, max, initial, callback)
             callback(value)
         end
     end
-
     local dragConn
     knob.MouseButton1Down:Connect(function()
         local mouseStart = UserInputService:GetMouseLocation().X
@@ -1899,19 +1567,15 @@ local function createSlider(parent, labelText, min, max, initial, callback)
             updateValue()
         end)
     end)
-
     local endConn = UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 and dragConn then
             dragConn:Disconnect()
             endConn:Disconnect()
         end
     end)
-
-    -- Set initial
     local initFrac = (initial - min) / (max - min)
     knob.Position = UDim2.new(math.clamp(initFrac, 0, 1), 0, -0.5, 0)
-    updateValue(true)  -- Initial update without callback
-
+    updateValue(true)
     return sliderFrame
 end
 
@@ -1931,7 +1595,6 @@ local function selectAllSimilar()
         end
     end
     showEditorGUI()
-    print("[SUPERTOOL] Selected all similar objects to " .. name)
 end
 
 local function viewScripts()
@@ -1944,7 +1607,6 @@ local function viewScripts()
         end
     end
     if #scripts == 0 then
-        print("[SUPERTOOL] No scripts found in " .. obj.Name)
         return
     end
     local scriptFrame = Instance.new("Frame")
@@ -1954,7 +1616,6 @@ local function viewScripts()
     scriptFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     scriptFrame.Draggable = true
     scriptFrame.Active = true
-
     local title = Instance.new("TextLabel")
     title.Parent = scriptFrame
     title.Size = UDim2.new(1, 0, 0, 25)
@@ -1963,7 +1624,6 @@ local function viewScripts()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 12
-
     local closeBtn = Instance.new("TextButton")
     closeBtn.Parent = scriptFrame
     closeBtn.Position = UDim2.new(1, -25, 0, 0)
@@ -1974,30 +1634,25 @@ local function viewScripts()
     closeBtn.MouseButton1Click:Connect(function()
         scriptFrame:Destroy()
     end)
-
     local scroll = Instance.new("ScrollingFrame")
     scroll.Parent = scriptFrame
     scroll.Position = UDim2.new(0, 0, 0, 25)
     scroll.Size = UDim2.new(1, 0, 1, -25)
     scroll.BackgroundTransparency = 1
-
     local layout = Instance.new("UIListLayout")
     layout.Parent = scroll
     layout.Padding = UDim.new(0, 5)
-
     for _, script in pairs(scripts) do
         local frame = Instance.new("Frame")
         frame.Parent = scroll
         frame.Size = UDim2.new(1, 0, 0, 50)
         frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Parent = frame
         nameLabel.Position = UDim2.new(0, 5, 0, 5)
         nameLabel.Size = UDim2.new(1, -10, 0, 20)
         nameLabel.Text = script.Name .. " (" .. script.ClassName .. ")"
         nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-
         local sourceBtn = Instance.new("TextButton")
         sourceBtn.Parent = frame
         sourceBtn.Position = UDim2.new(0, 5, 0, 30)
@@ -2007,9 +1662,6 @@ local function viewScripts()
         sourceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         sourceBtn.MouseButton1Click:Connect(function()
             if script:IsA("LocalScript") or script:IsA("ModuleScript") then
-                print("[SUPERTOOL] Script Source for " .. script.Name .. ":\n" .. script.Source)
-            else
-                print("[SUPERTOOL] server Script source cannot be viewed from client")
             end
         end)
     end
@@ -2022,18 +1674,15 @@ local function injectScript(code)
     script.Parent = obj
     script.Source = code
     script.Disabled = false
-    print("[SUPERTOOL] Injected LocalScript into " .. obj.Name)
 end
 
 local function showEditorGUI()
     if #selectedObjects == 0 then return end
-    
     if editorGui then
         lastGuiPosition = editorGui.Position
         lastScrollPosition = editorGui:FindFirstChildOfClass("ScrollingFrame").CanvasPosition.Y
         editorGui:Destroy()
     end
-    
     editorGui = Instance.new("Frame")
     editorGui.Parent = ScreenGui
     editorGui.Position = lastGuiPosition
@@ -2044,11 +1693,9 @@ local function showEditorGUI()
     editorGui.Active = true
     editorGui.Draggable = true
     editorGui.ZIndex = 10
-    
     local uiCorner = Instance.new("UICorner")
     uiCorner.CornerRadius = UDim.new(0, 5)
     uiCorner.Parent = editorGui
-    
     local title = Instance.new("TextLabel")
     title.Parent = editorGui
     title.Size = UDim2.new(1, 0, 0, 25)
@@ -2057,7 +1704,6 @@ local function showEditorGUI()
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 12
-
     local closeButton = Instance.new("TextButton")
     closeButton.Parent = editorGui
     closeButton.BackgroundTransparency = 1
@@ -2068,7 +1714,6 @@ local function showEditorGUI()
     closeButton.Font = Enum.Font.GothamBold
     closeButton.TextSize = 14
     closeButton.ZIndex = 11
-    
     local scrollFrame = Instance.new("ScrollingFrame")
     scrollFrame.Parent = editorGui
     scrollFrame.Position = UDim2.new(0, 5, 0, 30)
@@ -2076,14 +1721,11 @@ local function showEditorGUI()
     scrollFrame.BackgroundTransparency = 1
     scrollFrame.ScrollBarThickness = 5
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None  -- Prevent auto scroll
-    
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
     local layout = Instance.new("UIListLayout")
     layout.Parent = scrollFrame
     layout.Padding = UDim.new(0, 5)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    
-    -- Helper function to create section labels
     local function createSectionLabel(text)
         local label = Instance.new("TextLabel")
         label.Size = UDim2.new(1, 0, 0, 20)
@@ -2095,12 +1737,8 @@ local function showEditorGUI()
         label.TextXAlignment = Enum.TextXAlignment.Left
         return label
     end
-    
-    -- Basic Actions Section
     local basicSection = createSectionLabel("Basic Actions (Copy, Paste, Duplicate, Delete)")
     basicSection.Parent = scrollFrame
-    
-    -- Duplicate Button
     local duplicateBtn = Instance.new("TextButton")
     duplicateBtn.Parent = scrollFrame
     duplicateBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2110,8 +1748,6 @@ local function showEditorGUI()
     duplicateBtn.Font = Enum.Font.Gotham
     duplicateBtn.TextSize = 10
     duplicateBtn.MouseButton1Click:Connect(duplicateObject)
-    
-    -- Copy Button
     local copyBtn = Instance.new("TextButton")
     copyBtn.Parent = scrollFrame
     copyBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2121,8 +1757,6 @@ local function showEditorGUI()
     copyBtn.Font = Enum.Font.Gotham
     copyBtn.TextSize = 10
     copyBtn.MouseButton1Click:Connect(copyObject)
-    
-    -- View Copy List Button
     local viewCopyListBtn = Instance.new("TextButton")
     viewCopyListBtn.Parent = scrollFrame
     viewCopyListBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2132,8 +1766,6 @@ local function showEditorGUI()
     viewCopyListBtn.Font = Enum.Font.Gotham
     viewCopyListBtn.TextSize = 10
     viewCopyListBtn.MouseButton1Click:Connect(toggleCopyList)
-    
-    -- Delete Button
     local deleteBtn = Instance.new("TextButton")
     deleteBtn.Parent = scrollFrame
     deleteBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2143,8 +1775,6 @@ local function showEditorGUI()
     deleteBtn.Font = Enum.Font.Gotham
     deleteBtn.TextSize = 10
     deleteBtn.MouseButton1Click:Connect(deleteObject)
-    
-    -- Clear Selection Button
     local clearBtn = Instance.new("TextButton")
     clearBtn.Parent = scrollFrame
     clearBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2154,8 +1784,6 @@ local function showEditorGUI()
     clearBtn.Font = Enum.Font.Gotham
     clearBtn.TextSize = 10
     clearBtn.MouseButton1Click:Connect(clearSelection)
-    
-    -- Paste Confirmation Toggle
     local confirmToggle = Instance.new("TextButton")
     confirmToggle.Parent = scrollFrame
     confirmToggle.Size = UDim2.new(1, 0, 0, 25)
@@ -2168,8 +1796,6 @@ local function showEditorGUI()
         pasteConfirmationEnabled = not pasteConfirmationEnabled
         confirmToggle.Text = "Paste Confirmation: " .. (pasteConfirmationEnabled and "ON" or "OFF")
     end)
-    
-    -- Multi-Select Toggle
     local multiToggle = Instance.new("TextButton")
     multiToggle.Parent = scrollFrame
     multiToggle.Size = UDim2.new(1, 0, 0, 25)
@@ -2190,8 +1816,6 @@ local function showEditorGUI()
             showEditorGUI()
         end
     end)
-    
-    -- Select All Similar Button
     local selectAllBtn = Instance.new("TextButton")
     selectAllBtn.Parent = scrollFrame
     selectAllBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2201,12 +1825,8 @@ local function showEditorGUI()
     selectAllBtn.Font = Enum.Font.Gotham
     selectAllBtn.TextSize = 10
     selectAllBtn.MouseButton1Click:Connect(selectAllSimilar)
-    
-    -- Toggles Section (multi)
     local togglesSection = createSectionLabel("Toggles (Anchored, CanCollide)")
     togglesSection.Parent = scrollFrame
-    
-    -- Toggle Anchored
     local anchoredBtn = Instance.new("TextButton")
     anchoredBtn.Parent = scrollFrame
     anchoredBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2219,8 +1839,6 @@ local function showEditorGUI()
         toggleAnchored()
         anchoredBtn.Text = selectedObjects[1].Anchored and "Unanchor (Allow physics)" or "Anchor (Fix in place)"
     end)
-    
-    -- Toggle CanCollide
     local collideBtn = Instance.new("TextButton")
     collideBtn.Parent = scrollFrame
     collideBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2233,17 +1851,12 @@ local function showEditorGUI()
         toggleCanCollide()
         collideBtn.Text = selectedObjects[1].CanCollide and "Disable Collision (Pass through)" or "Enable Collision (Solid)"
     end)
-    
-    -- Transform Section
     local transformSection = createSectionLabel("Transform (Position, Rotation, Size)")
     transformSection.Parent = scrollFrame
-    
-    -- Position Inputs
     local posFrame = Instance.new("Frame")
     posFrame.Parent = scrollFrame
     posFrame.Size = UDim2.new(1, 0, 0, 30)
     posFrame.BackgroundTransparency = 1
-    
     local posLabel = Instance.new("TextLabel")
     posLabel.Parent = posFrame
     posLabel.Size = UDim2.new(1, 0, 0, 15)
@@ -2252,7 +1865,6 @@ local function showEditorGUI()
     posLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     posLabel.Font = Enum.Font.Gotham
     posLabel.TextSize = 10
-    
     local posX = Instance.new("TextBox")
     posX.Parent = posFrame
     posX.Position = UDim2.new(0, 0, 0.5, 0)
@@ -2262,7 +1874,6 @@ local function showEditorGUI()
     posX.TextColor3 = Color3.fromRGB(255, 255, 255)
     posX.Font = Enum.Font.Gotham
     posX.TextSize = 10
-    
     local posY = Instance.new("TextBox")
     posY.Parent = posFrame
     posY.Position = UDim2.new(0.33, 0, 0.5, 0)
@@ -2272,7 +1883,6 @@ local function showEditorGUI()
     posY.TextColor3 = Color3.fromRGB(255, 255, 255)
     posY.Font = Enum.Font.Gotham
     posY.TextSize = 10
-    
     local posZ = Instance.new("TextBox")
     posZ.Parent = posFrame
     posZ.Position = UDim2.new(0.66, 0, 0.5, 0)
@@ -2282,7 +1892,6 @@ local function showEditorGUI()
     posZ.TextColor3 = Color3.fromRGB(255, 255, 255)
     posZ.Font = Enum.Font.Gotham
     posZ.TextSize = 10
-    
     local posBtn = Instance.new("TextButton")
     posBtn.Parent = scrollFrame
     posBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2297,8 +1906,6 @@ local function showEditorGUI()
             changePosition(x, y, z)
         end
     end)
-    
-    -- Move Buttons with reduced sensitivity (step = 0.2)
     local moveLabel = Instance.new("TextLabel")
     moveLabel.Parent = scrollFrame
     moveLabel.Size = UDim2.new(1, 0, 0, 15)
@@ -2307,12 +1914,10 @@ local function showEditorGUI()
     moveLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     moveLabel.Font = Enum.Font.Gotham
     moveLabel.TextSize = 10
-    
     local moveFrame = Instance.new("Frame")
     moveFrame.Parent = scrollFrame
     moveFrame.Size = UDim2.new(1, 0, 0, 60)
     moveFrame.BackgroundTransparency = 1
-    
     local function createHoldButton(parent, pos, size, color, text, direction)
         local btn = Instance.new("TextButton")
         btn.Parent = parent
@@ -2323,45 +1928,36 @@ local function showEditorGUI()
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         btn.Font = Enum.Font.Gotham
         btn.TextSize = 10
-        
         local connection
         btn.MouseButton1Down:Connect(function()
             connection = RunService.Heartbeat:Connect(function()
                 for _, obj in pairs(selectedObjects) do
-                    obj.Position = obj.Position + direction * 0.2  -- Reduced sensitivity
+                    obj.Position = obj.Position + direction * 0.2
                 end
             end)
         end)
-        
         btn.MouseButton1Up:Connect(function()
             if connection then
                 connection:Disconnect()
             end
         end)
-        
         btn.MouseLeave:Connect(function()
             if connection then
                 connection:Disconnect()
             end
         end)
-        
         return btn
     end
-    
     createHoldButton(moveFrame, UDim2.new(0.4, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Up", Vector3.new(0, 0.2, 0))
     createHoldButton(moveFrame, UDim2.new(0.4, 0, 0.5, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Down", Vector3.new(0, -0.2, 0))
     createHoldButton(moveFrame, UDim2.new(0, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Left", Vector3.new(-0.2, 0, 0))
     createHoldButton(moveFrame, UDim2.new(0.8, 0, 0.25, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Right", Vector3.new(0.2, 0, 0))
     createHoldButton(moveFrame, UDim2.new(0.2, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Forward", Vector3.new(0, 0, -0.2))
     createHoldButton(moveFrame, UDim2.new(0.6, 0, 0, 0), UDim2.new(0.2, 0, 0.5, 0), Color3.fromRGB(80, 80, 120), "Backward", Vector3.new(0, 0, 0.2))
-    
-    -- Rotation Sliders
     local rx, ry, rz = selectedObjects[1].CFrame:ToEulerAnglesXYZ()
     createSlider(scrollFrame, "Rotation X:", -180, 180, math.deg(rx), changeRotX)
     createSlider(scrollFrame, "Rotation Y:", -180, 180, math.deg(ry), changeRotY)
     createSlider(scrollFrame, "Rotation Z:", -180, 180, math.deg(rz), changeRotZ)
-    
-    -- Reset Rotation Button
     local resetRotBtn = Instance.new("TextButton")
     resetRotBtn.Parent = scrollFrame
     resetRotBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2373,14 +1969,10 @@ local function showEditorGUI()
     resetRotBtn.MouseButton1Click:Connect(function()
         changeRotation(0, 0, 0)
     end)
-    
-    -- Size Sliders
     local sx, sy, sz = selectedObjects[1].Size.X, selectedObjects[1].Size.Y, selectedObjects[1].Size.Z
     createSlider(scrollFrame, "Size X:", 0.1, 100, sx, changeSizeX)
     createSlider(scrollFrame, "Size Y:", 0.1, 100, sy, changeSizeY)
     createSlider(scrollFrame, "Size Z:", 0.1, 100, sz, changeSizeZ)
-    
-    -- Reset Size Button
     local resetSizeBtn = Instance.new("TextButton")
     resetSizeBtn.Parent = scrollFrame
     resetSizeBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2390,12 +1982,8 @@ local function showEditorGUI()
     resetSizeBtn.Font = Enum.Font.Gotham
     resetSizeBtn.TextSize = 10
     resetSizeBtn.MouseButton1Click:Connect(resetSize)
-    
-    -- Effects Section
     local effectsSection = createSectionLabel("Effects (Add Light, Freeze, Remove Effects)")
     effectsSection.Parent = scrollFrame
-    
-    -- Add Light Button
     local lightBtn = Instance.new("TextButton")
     lightBtn.Parent = scrollFrame
     lightBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2405,8 +1993,6 @@ local function showEditorGUI()
     lightBtn.Font = Enum.Font.Gotham
     lightBtn.TextSize = 10
     lightBtn.MouseButton1Click:Connect(addSurfaceLight)
-    
-    -- Freeze Button
     local freezeBtn = Instance.new("TextButton")
     freezeBtn.Parent = scrollFrame
     freezeBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2416,8 +2002,6 @@ local function showEditorGUI()
     freezeBtn.Font = Enum.Font.Gotham
     freezeBtn.TextSize = 10
     freezeBtn.MouseButton1Click:Connect(freezeObject)
-    
-    -- Unfreeze Button
     local unfreezeBtn = Instance.new("TextButton")
     unfreezeBtn.Parent = scrollFrame
     unfreezeBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2427,8 +2011,6 @@ local function showEditorGUI()
     unfreezeBtn.Font = Enum.Font.Gotham
     unfreezeBtn.TextSize = 10
     unfreezeBtn.MouseButton1Click:Connect(unfreezeObject)
-    
-    -- Remove Effects Button
     local removeEffectsBtn = Instance.new("TextButton")
     removeEffectsBtn.Parent = scrollFrame
     removeEffectsBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2438,8 +2020,6 @@ local function showEditorGUI()
     removeEffectsBtn.Font = Enum.Font.Gotham
     removeEffectsBtn.TextSize = 10
     removeEffectsBtn.MouseButton1Click:Connect(removeEffects)
-    
-    -- Slippery Button
     local slipperyBtn = Instance.new("TextButton")
     slipperyBtn.Parent = scrollFrame
     slipperyBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2449,33 +2029,26 @@ local function showEditorGUI()
     slipperyBtn.Font = Enum.Font.Gotham
     slipperyBtn.TextSize = 10
     slipperyBtn.MouseButton1Click:Connect(setSlippery)
-    
-    -- Custom Physics Section
     local physicsSection = createSectionLabel("Custom Physics (Density, Friction, etc)")
     physicsSection.Parent = scrollFrame
-    
     createSlider(scrollFrame, "Density:", 0.01, 10, 1, function(value)
         for _, obj in pairs(selectedObjects) do
             local props = obj.CustomPhysicalProperties or PhysicalProperties.new(Enum.Material.Plastic)
             setCustomPhysics(value, props.Friction, props.Elasticity, props.FrictionWeight, props.ElasticityWeight)
         end
     end)
-    
     createSlider(scrollFrame, "Friction:", 0, 2, 0.7, function(value)
         for _, obj in pairs(selectedObjects) do
             local props = obj.CustomPhysicalProperties or PhysicalProperties.new(Enum.Material.Plastic)
             setCustomPhysics(props.Density, value, props.Elasticity, props.FrictionWeight, props.ElasticityWeight)
         end
     end)
-    
     createSlider(scrollFrame, "Elasticity:", 0, 1, 0.5, function(value)
         for _, obj in pairs(selectedObjects) do
             local props = obj.CustomPhysicalProperties or PhysicalProperties.new(Enum.Material.Plastic)
             setCustomPhysics(props.Density, props.Friction, value, props.FrictionWeight, props.ElasticityWeight)
         end
     end)
-    
-    -- Color Change
     local colorLabel = Instance.new("TextLabel")
     colorLabel.Parent = scrollFrame
     colorLabel.Size = UDim2.new(1, 0, 0, 15)
@@ -2484,7 +2057,6 @@ local function showEditorGUI()
     colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     colorLabel.Font = Enum.Font.Gotham
     colorLabel.TextSize = 10
-    
     local colorInput = Instance.new("TextBox")
     colorInput.Parent = scrollFrame
     colorInput.Size = UDim2.new(1, 0, 0, 25)
@@ -2496,8 +2068,6 @@ local function showEditorGUI()
     colorInput.FocusLost:Connect(function()
         changeColor(colorInput.Text)
     end)
-    
-    -- Transparency Change
     local transLabel = Instance.new("TextLabel")
     transLabel.Parent = scrollFrame
     transLabel.Size = UDim2.new(1, 0, 0, 15)
@@ -2506,7 +2076,6 @@ local function showEditorGUI()
     transLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     transLabel.Font = Enum.Font.Gotham
     transLabel.TextSize = 10
-    
     local transInput = Instance.new("TextBox")
     transInput.Parent = scrollFrame
     transInput.Size = UDim2.new(1, 0, 0, 25)
@@ -2521,8 +2090,6 @@ local function showEditorGUI()
             changeTransparency(trans)
         end
     end)
-    
-    -- Drag Move Button (existing, with better label)
     local dragBtn = Instance.new("TextButton")
     dragBtn.Parent = scrollFrame
     dragBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2539,8 +2106,6 @@ local function showEditorGUI()
             dragSteppedConn = nil
         end
     end)
-    
-    -- View Scripts Button
     local viewScriptsBtn = Instance.new("TextButton")
     viewScriptsBtn.Parent = scrollFrame
     viewScriptsBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2550,8 +2115,6 @@ local function showEditorGUI()
     viewScriptsBtn.Font = Enum.Font.Gotham
     viewScriptsBtn.TextSize = 10
     viewScriptsBtn.MouseButton1Click:Connect(viewScripts)
-    
-    -- Inject Script
     local injectLabel = Instance.new("TextLabel")
     injectLabel.Parent = scrollFrame
     injectLabel.Size = UDim2.new(1, 0, 0, 15)
@@ -2560,7 +2123,6 @@ local function showEditorGUI()
     injectLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     injectLabel.Font = Enum.Font.Gotham
     injectLabel.TextSize = 10
-    
     local injectInput = Instance.new("TextBox")
     injectInput.Parent = scrollFrame
     injectInput.Size = UDim2.new(1, 0, 0, 50)
@@ -2570,7 +2132,6 @@ local function showEditorGUI()
     injectInput.Font = Enum.Font.Gotham
     injectInput.TextSize = 10
     injectInput.MultiLine = true
-    
     local injectBtn = Instance.new("TextButton")
     injectBtn.Parent = scrollFrame
     injectBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2585,8 +2146,6 @@ local function showEditorGUI()
             injectInput.Text = ""
         end
     end)
-    
-    -- Load Edits Button
     local loadBtn = Instance.new("TextButton")
     loadBtn.Parent = scrollFrame
     loadBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2597,10 +2156,7 @@ local function showEditorGUI()
     loadBtn.TextSize = 10
     loadBtn.MouseButton1Click:Connect(function()
         local success = loadObjectEdits()
-        print("[SUPERTOOL] Load edits: " .. (success and "success" or "failed"))
     end)
-    
-    -- Save and Update Buttons
     local saveBtn = Instance.new("TextButton")
     saveBtn.Parent = scrollFrame
     saveBtn.Size = UDim2.new(0.5, 0, 0, 25)
@@ -2612,7 +2168,6 @@ local function showEditorGUI()
     saveBtn.MouseButton1Click:Connect(function()
         saveObjectEdits(false)
     end)
-    
     local updateBtn = Instance.new("TextButton")
     updateBtn.Parent = scrollFrame
     updateBtn.Position = UDim2.new(0.5, 0, 0, 0)
@@ -2625,8 +2180,6 @@ local function showEditorGUI()
     updateBtn.MouseButton1Click:Connect(function()
         saveObjectEdits(true)
     end)
-    
-    -- Clear History Button
     local clearHistoryBtn = Instance.new("TextButton")
     clearHistoryBtn.Parent = scrollFrame
     clearHistoryBtn.Size = UDim2.new(1, 0, 0, 25)
@@ -2636,15 +2189,11 @@ local function showEditorGUI()
     clearHistoryBtn.Font = Enum.Font.Gotham
     clearHistoryBtn.TextSize = 10
     clearHistoryBtn.MouseButton1Click:Connect(clearEditorHistory)
-    
-    -- Update canvas size
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     end)
-    
     task.wait(0.1)
     scrollFrame.CanvasPosition = Vector2.new(0, lastScrollPosition)
-    
     closeButton.MouseButton1Click:Connect(function()
         if dragSteppedConn then
             dragSteppedConn:Disconnect()
@@ -2652,8 +2201,6 @@ local function showEditorGUI()
         end
         clearSelection()
     end)
-    
-    -- Update selected status
     if not selectedStatusLabel then
         selectedStatusLabel = Instance.new("TextLabel")
         selectedStatusLabel.Parent = ScreenGui
@@ -2713,7 +2260,7 @@ local function setupEditorInput()
     selectionConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
-            if isDragging then return end  -- Don't select new when dragging
+            if isDragging then return end
             local mouse = player:GetMouse()
             local target = mouse.Target
             if target and target:IsA("BasePart") and target ~= workspace.Terrain then
@@ -2729,15 +2276,12 @@ local function setupEditorInput()
             end
         end
     end)
-    
     local multiSelectConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if editorEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
             showEditorGUI()
         end
     end)
-    
-    -- Drag input
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if isDragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -2746,7 +2290,6 @@ local function setupEditorInput()
             dragSteppedConn = RunService.RenderStepped:Connect(updateDrag)
         end
     end)
-    
     UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if isDragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -2763,9 +2306,7 @@ end
 local function toggleEditor()
     editorEnabled = not editorEnabled
     if editorEnabled then
-        print("[SUPERTOOL] Object Editor enabled - Click on parts to edit")
         setupEditorInput()
-        -- Setup right-click for paste
         if rightClickConnection then
             rightClickConnection:Disconnect()
         end
@@ -2803,7 +2344,6 @@ local function toggleEditor()
                             confirmFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
                             confirmFrame.BorderSizePixel = 1
                             confirmFrame.ZIndex = 100
-
                             local text = Instance.new("TextLabel")
                             text.Parent = confirmFrame
                             text.Size = UDim2.new(1, 0, 0.5, 0)
@@ -2812,7 +2352,6 @@ local function toggleEditor()
                             text.TextColor3 = Color3.fromRGB(255, 255, 255)
                             text.Font = Enum.Font.Gotham
                             text.TextSize = 12
-
                             local yesBtn = Instance.new("TextButton")
                             yesBtn.Parent = confirmFrame
                             yesBtn.Position = UDim2.new(0, 0, 0.5, 0)
@@ -2831,7 +2370,6 @@ local function toggleEditor()
                                 confirmVisual:Destroy()
                                 confirmVisual = nil
                             end)
-
                             local noBtn = Instance.new("TextButton")
                             noBtn.Parent = confirmFrame
                             noBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -2858,7 +2396,6 @@ local function toggleEditor()
             end
         end)
     else
-        print("[SUPERTOOL] Object Editor disabled")
         clearSelection()
         if rightClickConnection then
             rightClickConnection:Disconnect()
@@ -2869,7 +2406,6 @@ end
 
 local function initEditorListUI()
     if EditorListFrame then return end
-    
     EditorListFrame = Instance.new("Frame")
     EditorListFrame.Name = "EditorListFrame"
     EditorListFrame.Parent = ScreenGui
@@ -2881,7 +2417,6 @@ local function initEditorListUI()
     EditorListFrame.Visible = false
     EditorListFrame.Active = true
     EditorListFrame.Draggable = true
-
     local title = Instance.new("TextLabel")
     title.Parent = EditorListFrame
     title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -2891,7 +2426,6 @@ local function initEditorListUI()
     title.Text = "Edit History (Undo with Ctrl+Z)"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextSize = 12
-
     local closeButton = Instance.new("TextButton")
     closeButton.Parent = EditorListFrame
     closeButton.BackgroundTransparency = 1
@@ -2901,7 +2435,6 @@ local function initEditorListUI()
     closeButton.Text = "X"
     closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     closeButton.TextSize = 14
-
     EditorScrollFrame = Instance.new("ScrollingFrame")
     EditorScrollFrame.Parent = EditorListFrame
     EditorScrollFrame.BackgroundTransparency = 1
@@ -2910,11 +2443,9 @@ local function initEditorListUI()
     EditorScrollFrame.ScrollBarThickness = 4
     EditorScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     EditorScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
     EditorLayout = Instance.new("UIListLayout")
     EditorLayout.Parent = EditorScrollFrame
     EditorLayout.Padding = UDim.new(0, 3)
-
     closeButton.MouseButton1Click:Connect(function()
         EditorListFrame.Visible = false
         editorListVisible = false
@@ -2923,15 +2454,12 @@ end
 
 local function updateEditorList()
     if not EditorScrollFrame or not EditorLayout then return end
-    
     pcall(function()
         for _, child in pairs(EditorScrollFrame:GetChildren()) do
             if child:IsA("Frame") then
                 child:Destroy()
             end
         end
-        
-        -- Show recent edits and deletes (increased limit to 10 for more history)
         for i = #editedObjects, math.max(1, #editedObjects - 9), -1 do
             local edit = editedObjects[i]
             if edit then
@@ -2945,7 +2473,6 @@ local function updateEditorList()
                 label.Font = Enum.Font.Gotham
             end
         end
-        
         for i = #deletedObjects, math.max(1, #deletedObjects - 9), -1 do
             local del = deletedObjects[i]
             if del and del.name then
@@ -2959,7 +2486,6 @@ local function updateEditorList()
                 label.Font = Enum.Font.Gotham
             end
         end
-        
         task.wait(0.1)
         if EditorLayout then
             EditorScrollFrame.CanvasSize = UDim2.new(0, 0, 0, EditorLayout.AbsoluteContentSize.Y)
@@ -2976,10 +2502,8 @@ local function toggleEditorList()
     end
 end
 
--- UI Components for Path
 local function initPathUI()
     if PathFrame then return end
-    
     PathFrame = Instance.new("Frame")
     PathFrame.Name = "PathFrame"
     PathFrame.Parent = ScreenGui
@@ -2991,7 +2515,6 @@ local function initPathUI()
     PathFrame.Visible = false
     PathFrame.Active = true
     PathFrame.Draggable = true
-
     local PathTitle = Instance.new("TextLabel")
     PathTitle.Parent = PathFrame
     PathTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -3001,7 +2524,6 @@ local function initPathUI()
     PathTitle.Text = "PATH CREATOR v2.0 - Enhanced"
     PathTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathTitle.TextSize = 10
-
     local ClosePathButton = Instance.new("TextButton")
     ClosePathButton.Parent = PathFrame
     ClosePathButton.BackgroundTransparency = 1
@@ -3011,7 +2533,6 @@ local function initPathUI()
     ClosePathButton.Text = "X"
     ClosePathButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     ClosePathButton.TextSize = 12
-
     PathInput = Instance.new("TextBox")
     PathInput.Parent = PathFrame
     PathInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -3022,7 +2543,6 @@ local function initPathUI()
     PathInput.PlaceholderText = "Search paths or enter new path name..."
     PathInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathInput.TextSize = 8
-
     PathScrollFrame = Instance.new("ScrollingFrame")
     PathScrollFrame.Parent = PathFrame
     PathScrollFrame.BackgroundTransparency = 1
@@ -3031,18 +2551,15 @@ local function initPathUI()
     PathScrollFrame.ScrollBarThickness = 3
     PathScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
     PathLayout = Instance.new("UIListLayout")
     PathLayout.Parent = PathScrollFrame
     PathLayout.Padding = UDim.new(0, 3)
-
     local PathControlsFrame = Instance.new("Frame")
     PathControlsFrame.Parent = PathFrame
     PathControlsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     PathControlsFrame.BorderSizePixel = 0
     PathControlsFrame.Position = UDim2.new(0, 5, 1, -35)
     PathControlsFrame.Size = UDim2.new(1, -10, 0, 30)
-
     local PathPauseButton = Instance.new("TextButton")
     PathPauseButton.Parent = PathControlsFrame
     PathPauseButton.BackgroundColor3 = Color3.fromRGB(80, 80, 60)
@@ -3053,7 +2570,6 @@ local function initPathUI()
     PathPauseButton.Text = "PAUSE/RESUME"
     PathPauseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     PathPauseButton.TextSize = 8
-
     local ClearVisualsButton = Instance.new("TextButton")
     ClearVisualsButton.Parent = PathControlsFrame
     ClearVisualsButton.BackgroundColor3 = Color3.fromRGB(80, 60, 60)
@@ -3064,7 +2580,6 @@ local function initPathUI()
     ClearVisualsButton.Text = "CLEAR"
     ClearVisualsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     ClearVisualsButton.TextSize = 8
-
     local UndoButton = Instance.new("TextButton")
     UndoButton.Parent = PathControlsFrame
     UndoButton.BackgroundColor3 = Color3.fromRGB(60, 80, 80)
@@ -3075,8 +2590,6 @@ local function initPathUI()
     UndoButton.Text = "UNDO (Ctrl+Z)"
     UndoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     UndoButton.TextSize = 7
-
-    -- Status Label positioned at top right
     PathStatusLabel = Instance.new("TextLabel")
     PathStatusLabel.Parent = ScreenGui
     PathStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
@@ -3090,18 +2603,13 @@ local function initPathUI()
     PathStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     PathStatusLabel.Visible = false
     PathStatusLabel.ZIndex = 100
-
-    -- Event connections
     ClosePathButton.MouseButton1Click:Connect(function()
         PathFrame.Visible = false
         pathFrameVisible = false
     end)
-
     PathPauseButton.MouseButton1Click:Connect(pausePath)
     ClearVisualsButton.MouseButton1Click:Connect(clearPathVisuals)
     UndoButton.MouseButton1Click:Connect(undoToLastMarker)
-    
-    -- Search functionality
     PathInput.Changed:Connect(function(property)
         if property == "Text" then
             updatePathList()
@@ -3111,13 +2619,11 @@ end
 
 function updatePathList()
     if not PathScrollFrame then return end
-    
     for _, child in pairs(PathScrollFrame:GetChildren()) do
         if child:IsA("Frame") then
             child:Destroy()
         end
     end
-    
     local searchText = PathInput.Text:lower()
     for pathName, path in pairs(savedPaths) do
         if searchText == "" or string.find(pathName:lower(), searchText) then
@@ -3127,7 +2633,6 @@ function updatePathList()
             pathItem.BorderColor3 = Color3.fromRGB(40, 40, 40)
             pathItem.BorderSizePixel = 1
             pathItem.Size = UDim2.new(1, -5, 0, 120)
-            
             local nameLabel = Instance.new("TextLabel")
             nameLabel.Parent = pathItem
             nameLabel.Position = UDim2.new(0, 5, 0, 3)
@@ -3138,7 +2643,6 @@ function updatePathList()
             nameLabel.TextSize = 9
             nameLabel.Font = Enum.Font.GothamBold
             nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
             local infoLabel = Instance.new("TextLabel")
             infoLabel.Parent = pathItem
             infoLabel.Position = UDim2.new(0, 5, 0, 20)
@@ -3152,8 +2656,6 @@ function updatePathList()
                                          path.markerCount or 0, 
                                          path.duration or 0)
             infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            -- Button row 1
             local playButton = Instance.new("TextButton")
             playButton.Parent = pathItem
             playButton.Position = UDim2.new(0, 5, 0, 38)
@@ -3163,7 +2665,6 @@ function updatePathList()
             playButton.TextSize = 7
             playButton.Font = Enum.Font.GothamBold
             playButton.Text = (pathPlaying and currentPathName == pathName and not pathAutoPlaying) and "STOP" or "PLAY"
-            
             local autoPlayButton = Instance.new("TextButton")
             autoPlayButton.Parent = pathItem
             autoPlayButton.Position = UDim2.new(0, 55, 0, 38)
@@ -3173,7 +2674,6 @@ function updatePathList()
             autoPlayButton.TextSize = 7
             autoPlayButton.Font = Enum.Font.GothamBold
             autoPlayButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning) and "STOP" or "LOOP"
-            
             local autoRespButton = Instance.new("TextButton")
             autoRespButton.Parent = pathItem
             autoRespButton.Position = UDim2.new(0, 105, 0, 38)
@@ -3183,7 +2683,6 @@ function updatePathList()
             autoPlayButton.TextSize = 7
             autoRespButton.Font = Enum.Font.GothamBold
             autoRespButton.Text = (pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning) and "STOP" or "A-RESP"
-
             local toggleShowButton = Instance.new("TextButton")
             toggleShowButton.Parent = pathItem
             toggleShowButton.Position = UDim2.new(0, 155, 0, 38)
@@ -3193,7 +2692,6 @@ function updatePathList()
             toggleShowButton.TextSize = 7
             toggleShowButton.Font = Enum.Font.GothamBold
             toggleShowButton.Text = (pathShowOnly and currentPathName == pathName) and "HIDE" or "SHOW"
-            
             local deleteButton = Instance.new("TextButton")
             deleteButton.Parent = pathItem
             deleteButton.Position = UDim2.new(0, 205, 0, 38)
@@ -3203,8 +2701,6 @@ function updatePathList()
             deleteButton.TextSize = 7
             deleteButton.Font = Enum.Font.GothamBold
             deleteButton.Text = "DELETE"
-            
-            -- Rename section
             local renameInput = Instance.new("TextBox")
             renameInput.Parent = pathItem
             renameInput.Position = UDim2.new(0, 5, 0, 65)
@@ -3215,7 +2711,6 @@ function updatePathList()
             renameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
             renameInput.TextSize = 7
             renameInput.Font = Enum.Font.Gotham
-            
             local renameButton = Instance.new("TextButton")
             renameButton.Parent = pathItem
             renameButton.Position = UDim2.new(0, 160, 0, 65)
@@ -3225,8 +2720,6 @@ function updatePathList()
             renameButton.TextSize = 7
             renameButton.Font = Enum.Font.GothamBold
             renameButton.Text = "RENAME"
-            
-            -- Speed control
             local speedLabel = Instance.new("TextLabel")
             speedLabel.Parent = pathItem
             speedLabel.Position = UDim2.new(0, 5, 0, 90)
@@ -3237,7 +2730,6 @@ function updatePathList()
             speedLabel.TextSize = 7
             speedLabel.Font = Enum.Font.Gotham
             speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
             local speedInput = Instance.new("TextBox")
             speedInput.Parent = pathItem
             speedInput.Position = UDim2.new(0, 55, 0, 90)
@@ -3248,8 +2740,6 @@ function updatePathList()
             speedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
             speedInput.TextSize = 7
             speedInput.Font = Enum.Font.Gotham
-            
-            -- Event connections
             playButton.MouseButton1Click:Connect(function()
                 if pathPlaying and currentPathName == pathName and not pathAutoPlaying then
                     stopPathPlayback()
@@ -3258,7 +2748,6 @@ function updatePathList()
                 end
                 updatePathList()
             end)
-            
             autoPlayButton.MouseButton1Click:Connect(function()
                 if pathPlaying and currentPathName == pathName and pathAutoPlaying and not pathAutoRespawning then
                     stopPathPlayback()
@@ -3267,7 +2756,6 @@ function updatePathList()
                 end
                 updatePathList()
             end)
-            
             autoRespButton.MouseButton1Click:Connect(function()
                 if pathPlaying and currentPathName == pathName and pathAutoPlaying and pathAutoRespawning then
                     stopPathPlayback()
@@ -3276,11 +2764,9 @@ function updatePathList()
                 end
                 updatePathList()
             end)
-            
             toggleShowButton.MouseButton1Click:Connect(function()
                 togglePathVisuals(pathName)
             end)
-            
             deleteButton.MouseButton1Click:Connect(function()
                 if pathPlaying and currentPathName == pathName then
                     stopPathPlayback()
@@ -3290,25 +2776,21 @@ function updatePathList()
                 updatePathList()
                 clearPathVisuals()
             end)
-            
             renameButton.MouseButton1Click:Connect(function()
                 if renameInput.Text ~= "" then
                     local newName = renameInput.Text
                     if savedPaths[pathName] then
                         savedPaths[newName] = savedPaths[pathName]
                         savedPaths[pathName] = nil
-                        
                         if pathPlaying and currentPathName == pathName then
                             currentPathName = newName
                         end
-                        
                         renamePathInJSON(pathName, newName)
                         renameInput.Text = ""
                         updatePathList()
                     end
                 end
             end)
-            
             speedInput.FocusLost:Connect(function(enterPressed)
                 if enterPressed then
                     local newSpeed = tonumber(speedInput.Text)
@@ -3322,21 +2804,16 @@ function updatePathList()
             end)
         end
     end
-    
     task.wait(0.1)
     if PathLayout then
         PathScrollFrame.CanvasSize = UDim2.new(0, 0, 0, PathLayout.AbsoluteContentSize.Y + 10)
     end
 end
 
--- FIXED: Keyboard Controls
 local function setupKeyboardControls()
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
-        
         local currentTime = tick()
-        
-        -- FIXED: Ctrl+Z for undo during path recording or object edit/delete
         if input.KeyCode == Enum.KeyCode.Z and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
             if pathRecording then
                 undoToLastMarker()
@@ -3344,21 +2821,15 @@ local function setupKeyboardControls()
                 undoObjectEdit()
             end
         end
-        
-        -- Ctrl+Y for redo
         if input.KeyCode == Enum.KeyCode.Y and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
             redoObjectEdit()
         end
-        
-        -- Ctrl+P for pause/resume
         if input.KeyCode == Enum.KeyCode.P and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
             if currentTime - lastPauseToggleTime >= DEBOUNCE_TIME then
                 lastPauseToggleTime = currentTime
                 pausePath()
             end
         end
-        
-        -- Ctrl+L for hide/show path visuals
         if input.KeyCode == Enum.KeyCode.L and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
             if currentTime - lastVisibilityToggleTime >= DEBOUNCE_TIME then
                 lastVisibilityToggleTime = currentTime
@@ -3368,60 +2839,32 @@ local function setupKeyboardControls()
     end)
 end
 
--- Method 1: Direct Tool Creation (bypass FilteringEnabled)
 local function createDirectTool(gearId)
-    local success, err = pcall(function()
-        -- Load asset
+    pcall(function()
         local assets = game:GetObjects("rbxassetid://" .. gearId)
         local originalTool = assets[1]
-        
         if not originalTool or not originalTool:IsA("Tool") then
-            warn("Invalid tool asset")
             return
         end
-        
-        -- Create new tool with basic functionality
         local newTool = Instance.new("Tool")
         newTool.Name = originalTool.Name
         newTool.RequiresHandle = true
         newTool.CanBeDropped = true
-        
-        -- Clone handle and other essential parts, including textures for inventory icon
         for _, child in pairs(originalTool:GetChildren()) do
             if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") or child:IsA("Decal") or child:IsA("SpecialMesh") or child:IsA("Script") or child:IsA("LocalScript") or child:IsA("ModuleScript") then
                 local clonedChild = child:Clone()
                 clonedChild.Parent = newTool
-                -- Clone scripts if they exist, but disable them to avoid conflicts (only for Script and LocalScript)
                 if clonedChild:IsA("Script") or clonedChild:IsA("LocalScript") then
                     clonedChild.Disabled = true
                 end
-                -- ModuleScripts don't have Disabled property, so skip setting it
             end
         end
-        
-        -- Ensure Handle has proper texture for inventory icon if available
-        local handle = newTool:FindFirstChild("Handle")
-        if handle then
-            local texture = handle:FindFirstChildOfClass("Texture") or handle:FindFirstChildOfClass("Decal")
-            if texture then
-                -- Texture/Decal on Handle will show as inventory icon
-                print("[SUPERTOOL] Inventory icon preserved via Handle texture")
-            end
-        end
-        
         newTool.Parent = player.Backpack
-        print("[SUPERTOOL] Direct tool created: " .. newTool.Name)
-        
-        -- Auto equip
         task.wait(0.1)
         if player.Character and player.Character:FindFirstChild("Humanoid") then
             player.Character.Humanoid:EquipTool(newTool)
         end
     end)
-    
-    if not success then
-        warn("[SUPERTOOL] Direct tool creation failed: " .. tostring(err))
-    end
 end
 
 local function loadGear(id)
@@ -3430,7 +2873,6 @@ end
 
 local function initGearUI()
     if GearFrame then return end
-    
     GearFrame = Instance.new("Frame")
     GearFrame.Name = "GearFrame"
     GearFrame.Parent = ScreenGui
@@ -3442,7 +2884,6 @@ local function initGearUI()
     GearFrame.Visible = false
     GearFrame.Active = true
     GearFrame.Draggable = true
-
     local GearTitle = Instance.new("TextLabel")
     GearTitle.Parent = GearFrame
     GearTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -3452,7 +2893,6 @@ local function initGearUI()
     GearTitle.Text = "GEAR LOADER"
     GearTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     GearTitle.TextSize = 10
-
     local CloseGearButton = Instance.new("TextButton")
     CloseGearButton.Parent = GearFrame
     CloseGearButton.BackgroundTransparency = 1
@@ -3462,7 +2902,6 @@ local function initGearUI()
     CloseGearButton.Text = "X"
     CloseGearButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     CloseGearButton.TextSize = 12
-
     GearInput = Instance.new("TextBox")
     GearInput.Parent = GearFrame
     GearInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -3473,7 +2912,6 @@ local function initGearUI()
     GearInput.PlaceholderText = "Enter Gear ID..."
     GearInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     GearInput.TextSize = 8
-
     local LoadCustomButton = Instance.new("TextButton")
     LoadCustomButton.Parent = GearFrame
     LoadCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
@@ -3484,7 +2922,6 @@ local function initGearUI()
     LoadCustomButton.Text = "LOAD"
     LoadCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     LoadCustomButton.TextSize = 8
-
     GearScrollFrame = Instance.new("ScrollingFrame")
     GearScrollFrame.Parent = GearFrame
     GearScrollFrame.BackgroundTransparency = 1
@@ -3493,28 +2930,20 @@ local function initGearUI()
     GearScrollFrame.ScrollBarThickness = 3
     GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
     GearLayout = Instance.new("UIListLayout")
     GearLayout.Parent = GearScrollFrame
     GearLayout.Padding = UDim.new(0, 3)
-
-    -- Event connections
     CloseGearButton.MouseButton1Click:Connect(function()
         GearFrame.Visible = false
         gearFrameVisible = false
     end)
-
     LoadCustomButton.MouseButton1Click:Connect(function()
         local id = tonumber(GearInput.Text)
         if id then
             loadGear(id)
             GearInput.Text = ""
-        else
-            warn("[SUPERTOOL] Invalid Gear ID")
         end
     end)
-
-    -- Populate predefined gears
     for _, gear in ipairs(predefinedGears) do
         local gearItem = Instance.new("TextButton")
         gearItem.Parent = GearScrollFrame
@@ -3524,12 +2953,10 @@ local function initGearUI()
         gearItem.TextColor3 = Color3.fromRGB(255, 255, 255)
         gearItem.TextSize = 8
         gearItem.Font = Enum.Font.Gotham
-
         gearItem.MouseButton1Click:Connect(function()
             loadGear(gear.id)
         end)
     end
-
     GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, GearLayout.AbsoluteContentSize.Y + 10)
 end
 
@@ -3539,24 +2966,18 @@ local function toggleGearManager()
     GearFrame.Visible = gearFrameVisible
 end
 
--- New Object Spawner Functions
 local function spawnObject(id)
-    local success, err = pcall(function()
+    pcall(function()
         local assets = game:GetObjects("rbxassetid://" .. id)
         local obj = assets[1]
         if obj then
             obj.Parent = workspace
-            print("[SUPERTOOL] Spawned object: " .. obj.Name)
         end
     end)
-    if not success then
-        warn("[SUPERTOOL] Object spawn failed: " .. tostring(err))
-    end
 end
 
 local function initObjectUI()
     if ObjectFrame then return end
-    
     ObjectFrame = Instance.new("Frame")
     ObjectFrame.Name = "ObjectFrame"
     ObjectFrame.Parent = ScreenGui
@@ -3568,7 +2989,6 @@ local function initObjectUI()
     ObjectFrame.Visible = false
     ObjectFrame.Active = true
     ObjectFrame.Draggable = true
-
     local ObjectTitle = Instance.new("TextLabel")
     ObjectTitle.Parent = ObjectFrame
     ObjectTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -3578,7 +2998,6 @@ local function initObjectUI()
     ObjectTitle.Text = "OBJECT SPAWNER"
     ObjectTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     ObjectTitle.TextSize = 10
-
     local CloseObjectButton = Instance.new("TextButton")
     CloseObjectButton.Parent = ObjectFrame
     CloseObjectButton.BackgroundTransparency = 1
@@ -3588,7 +3007,6 @@ local function initObjectUI()
     CloseObjectButton.Text = "X"
     CloseObjectButton.TextColor3 = Color3.fromRGB(255, 100, 100)
     CloseObjectButton.TextSize = 12
-
     ObjectInput = Instance.new("TextBox")
     ObjectInput.Parent = ObjectFrame
     ObjectInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -3599,7 +3017,6 @@ local function initObjectUI()
     ObjectInput.PlaceholderText = "Enter Object ID..."
     ObjectInput.TextColor3 = Color3.fromRGB(255, 255, 255)
     ObjectInput.TextSize = 8
-
     local SpawnCustomButton = Instance.new("TextButton")
     SpawnCustomButton.Parent = ObjectFrame
     SpawnCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
@@ -3610,7 +3027,6 @@ local function initObjectUI()
     SpawnCustomButton.Text = "SPAWN"
     SpawnCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     SpawnCustomButton.TextSize = 8
-
     ObjectScrollFrame = Instance.new("ScrollingFrame")
     ObjectScrollFrame.Parent = ObjectFrame
     ObjectScrollFrame.BackgroundTransparency = 1
@@ -3619,28 +3035,20 @@ local function initObjectUI()
     ObjectScrollFrame.ScrollBarThickness = 3
     ObjectScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
     ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-
     ObjectLayout = Instance.new("UIListLayout")
     ObjectLayout.Parent = ObjectScrollFrame
     ObjectLayout.Padding = UDim.new(0, 3)
-
-    -- Event connections
     CloseObjectButton.MouseButton1Click:Connect(function()
         ObjectFrame.Visible = false
         objectFrameVisible = false
     end)
-
     SpawnCustomButton.MouseButton1Click:Connect(function()
         local id = tonumber(ObjectInput.Text)
         if id then
             spawnObject(id)
             ObjectInput.Text = ""
-        else
-            warn("[SUPERTOOL] Invalid Object ID")
         end
     end)
-
-    -- Populate predefined objects
     for _, obj in ipairs(predefinedObjects) do
         local objItem = Instance.new("TextButton")
         objItem.Parent = ObjectScrollFrame
@@ -3650,12 +3058,10 @@ local function initObjectUI()
         objItem.TextColor3 = Color3.fromRGB(255, 255, 255)
         objItem.TextSize = 8
         objItem.Font = Enum.Font.Gotham
-
         objItem.MouseButton1Click:Connect(function()
             spawnObject(obj.id)
         end)
     end
-
     ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, ObjectLayout.AbsoluteContentSize.Y + 10)
 end
 
@@ -3687,16 +3093,13 @@ local function applyMessageMods(message)
 end
 
 local function setupChatCustom()
-    local success, err = pcall(function()
+    pcall(function()
         local chatGui = player.PlayerGui:WaitForChild("Chat", 10)
         if not chatGui then return end
-        -- Get chat bar
         local chatBar = chatGui.Frame.ChatBarParentFrame.Frame.BoxFrame.BackgroundFrame.TextBox
-        -- Get say request
         local rs = game:GetService("ReplicatedStorage")
         local chatEventsFolder = rs:WaitForChild("DefaultChatSystemChatEvents")
         sayMessageRequest = chatEventsFolder:WaitForChild("SayMessageRequest")
-        -- Hook focus lost
         chatBar.FocusLost:Connect(function(enterPressed)
             if enterPressed then
                 local msg = chatBar.Text
@@ -3707,7 +3110,6 @@ local function setupChatCustom()
                 end
             end
         end)
-        -- For name tag
         local messageLog = chatGui.Frame.ChatChannelParentFrame.Frame_MessageLogDisplay.Scroller
         local ourDisplayName = player.DisplayName
         local ourUsername = player.Name
@@ -3728,7 +3130,7 @@ local function setupChatCustom()
                             tagged = nameTag .. baseName
                         elseif tagPosition == "back" then
                             tagged = baseName .. nameTag
-                        else  -- middle
+                        else
                             local half = math.floor(#baseName / 2)
                             tagged = baseName:sub(1, half) .. nameTag .. baseName:sub(half + 1)
                         end
@@ -3738,9 +3140,6 @@ local function setupChatCustom()
             end
         end)
     end)
-    if not success then
-        warn("[SUPERTOOL] Chat setup failed: " .. err)
-    end
 end
 
 local function initChatUI()
@@ -3756,7 +3155,6 @@ local function initChatUI()
     ChatFrame.Visible = false
     ChatFrame.Active = true
     ChatFrame.Draggable = true
-
     local title = Instance.new("TextLabel")
     title.Parent = ChatFrame
     title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -3766,7 +3164,6 @@ local function initChatUI()
     title.Text = "CHAT CUSTOMIZER"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextSize = 10
-
     local closeBtn = Instance.new("TextButton")
     closeBtn.Parent = ChatFrame
     closeBtn.BackgroundTransparency = 1
@@ -3780,8 +3177,6 @@ local function initChatUI()
         ChatFrame.Visible = false
         chatFrameVisible = false
     end)
-
-    -- Tag input
     local tagLabel = Instance.new("TextLabel")
     tagLabel.Parent = ChatFrame
     tagLabel.Position = UDim2.new(0, 5, 0, 30)
@@ -3791,7 +3186,6 @@ local function initChatUI()
     tagLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     tagLabel.TextSize = 10
     tagLabel.Font = Enum.Font.Gotham
-
     ChatInputTag = Instance.new("TextBox")
     ChatInputTag.Parent = ChatFrame
     ChatInputTag.Position = UDim2.new(0.4, 0, 0, 30)
@@ -3804,8 +3198,6 @@ local function initChatUI()
     ChatInputTag.FocusLost:Connect(function()
         nameTag = ChatInputTag.Text
     end)
-
-    -- Position toggle
     local posLabel = Instance.new("TextLabel")
     posLabel.Parent = ChatFrame
     posLabel.Position = UDim2.new(0, 5, 0, 60)
@@ -3815,7 +3207,6 @@ local function initChatUI()
     posLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     posLabel.TextSize = 10
     posLabel.Font = Enum.Font.Gotham
-
     ChatPositionToggle = Instance.new("TextButton")
     ChatPositionToggle.Parent = ChatFrame
     ChatPositionToggle.Position = UDim2.new(0.4, 0, 0, 60)
@@ -3835,8 +3226,6 @@ local function initChatUI()
         end
         ChatPositionToggle.Text = tagPosition:upper()
     end)
-
-    -- Rainbow toggle
     RainbowToggle = Instance.new("TextButton")
     RainbowToggle.Parent = ChatFrame
     RainbowToggle.Position = UDim2.new(0, 5, 0, 90)
@@ -3851,8 +3240,6 @@ local function initChatUI()
         RainbowToggle.Text = "Rainbow Chat: " .. (rainbowChat and "ON" or "OFF")
         RainbowToggle.BackgroundColor3 = rainbowChat and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(150, 50, 50)
     end)
-
-    -- Custom color
     local colorLabel = Instance.new("TextLabel")
     colorLabel.Parent = ChatFrame
     colorLabel.Position = UDim2.new(0, 5, 0, 120)
@@ -3862,7 +3249,6 @@ local function initChatUI()
     colorLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     colorLabel.TextSize = 10
     colorLabel.Font = Enum.Font.Gotham
-
     ColorInput = Instance.new("TextBox")
     ColorInput.Parent = ChatFrame
     ColorInput.Position = UDim2.new(0.4, 0, 0, 120)
@@ -3884,8 +3270,6 @@ local function initChatUI()
             customChatColor = nil
         end
     end)
-
-    -- Custom font
     local fontLabel = Instance.new("TextLabel")
     fontLabel.Parent = ChatFrame
     fontLabel.Position = UDim2.new(0, 5, 0, 150)
@@ -3895,7 +3279,6 @@ local function initChatUI()
     fontLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     fontLabel.TextSize = 10
     fontLabel.Font = Enum.Font.Gotham
-
     FontInput = Instance.new("TextBox")
     FontInput.Parent = ChatFrame
     FontInput.Position = UDim2.new(0.4, 0, 0, 150)
@@ -3924,7 +3307,6 @@ local function toggleChatCustomizer()
     ChatFrame.Visible = chatFrameVisible
 end
 
--- Load utility buttons
 function Utility.loadUtilityButtons(createButton)
     createButton("Record Path", startPathRecording)
     createButton("Stop Path", stopPathRecording)
@@ -3936,7 +3318,6 @@ function Utility.loadUtilityButtons(createButton)
             updatePathList()
         end
     end)
-    
     createButton("Clear Visuals", clearPathVisuals)
     createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
@@ -3948,7 +3329,6 @@ function Utility.loadUtilityButtons(createButton)
     createButton("Chat Customizer", toggleChatCustomizer)
 end
 
--- Initialize function
 function Utility.init(deps)
     if not deps then return end
     if not deps.Players then return end
@@ -3956,7 +3336,6 @@ function Utility.init(deps)
     if not deps.player then return end
     if not deps.ScreenGui then return end
     if not deps.settings then return end
-
     Players = deps.Players
     humanoid = deps.humanoid
     rootPart = deps.rootPart
@@ -3966,17 +3345,13 @@ function Utility.init(deps)
     RunService = deps.RunService
     settings = deps.settings
     ScreenGui = deps.ScreenGui
-    
-    -- Reset all states
     pathRecording = false
     pathPlaying = false
     pathShowOnly = false
     pathPaused = false
     pathAutoPlaying = false
     pathAutoRespawning = false
-
-    -- FIXED: Create folder structure first
-    local success = pcall(function()
+    pcall(function()
         if not isfolder("Supertool") then
             makefolder("Supertool")
         end
@@ -3987,19 +3362,10 @@ function Utility.init(deps)
             makefolder(OBJECT_EDITOR_FOLDER)
         end
     end)
-    
-    if not success then
-        warn("[SUPERTOOL] Failed to create folder structure")
-    end
-    
-    -- FIXED: Load all existing files on initialization
     local pathCount = loadAllSavedPaths()
-    print("[SUPERTOOL] Initialization complete - Paths loaded: " .. pathCount)
-    
     setupKeyboardControls()
     setupEditorInput()
     setupChatCustom()
-    
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
             task.spawn(function()
@@ -4020,7 +3386,6 @@ function Utility.init(deps)
                 end
             end)
         end)
-        
         player.CharacterRemoving:Connect(function()
             if pathRecording then
                 pathPaused = true
@@ -4031,7 +3396,6 @@ function Utility.init(deps)
                 updatePathStatus()
             end
         end)
-        
         if humanoid then
             humanoid.Died:Connect(function()
                 if pathRecording then
@@ -4045,7 +3409,6 @@ function Utility.init(deps)
             end)
         end
     end
-    
     task.spawn(function()
         initPathUI()
         initEditorListUI()
@@ -4053,10 +3416,7 @@ function Utility.init(deps)
         initGearUI()
         initObjectUI()
         initChatUI()
-        print("[SUPERTOOL] Enhanced Path Utility v2.0 initialized (Enhanced Object Editor with fixes)")
     end)
-    
-    -- Reapply edits every 5 seconds to persist against server changes
     RunService:BindToRenderStep("ReapplyEdits", Enum.RenderPriority.Last.Value, function()
         if tick() % 5 == 0 then
             loadObjectEdits()

@@ -1,12 +1,7 @@
--- Movement.lua - Updated version with enhanced GUI and chat commands /fly and /unfly for SpeedHack, JumpHack, and Fly
-
--- Dependencies
 local Players, RunService, Workspace, UserInputService, humanoid, rootPart, connections, buttonStates, ScrollFrame, ScreenGui, settings, player
 
--- Initialize module
 local Movement = {}
 
--- Movement states
 Movement.speedEnabled = false
 Movement.jumpEnabled = false
 Movement.flyEnabled = false
@@ -29,7 +24,6 @@ Movement.isRewinding = false
 Movement.bunnyHopEnabled = false
 Movement.persistFeatures = false
 
--- Default values
 Movement.defaultWalkSpeed = 16
 Movement.defaultJumpPower = 50
 Movement.defaultJumpHeight = 7.2
@@ -37,7 +31,6 @@ Movement.defaultGravity = 196.2
 Movement.jumpCount = 0
 Movement.maxJumps = 1
 
--- Fly controls
 local flySpeed = 50
 local flyBodyVelocity = nil
 local flyBodyGyro = nil
@@ -51,20 +44,16 @@ local joystickDelta = Vector2.new(0, 0)
 local isTouchingJoystick = false
 local joystickTouchId = nil
 
--- Key states for PC controls
 local flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
 local floatKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
 
--- New features variables
 local positionHistory = {}
-local maxHistorySize = 300 -- Increased to handle up to 5 seconds at ~60 fps
+local maxHistorySize = 300 
 local isBoostActive = false
 local isRespawning = false
 
--- Rewind text display
 local rewindText
 
--- New settings GUI
 local settingsFrame
 local speedInput, jumpInput, sprintInput, flyInput, swimInput
 local boostSpeedInput, boostDurationInput
@@ -75,7 +64,6 @@ local persistToggle
 local rewindSlowButton, rewindMediumButton, rewindFastButton
 local currentRewindMode = "medium"
 
--- Default settings
 local defaultSettings = {
     WalkSpeed = 50,
     JumpHeight = 50,
@@ -92,7 +80,6 @@ local defaultSettings = {
     InfiniteJumpMultiplier = 3
 }
 
--- Chat system
 local function sendServerMessage(message)
     local StarterGui = game:GetService("StarterGui")
     if StarterGui then
@@ -106,10 +93,9 @@ local function sendServerMessage(message)
         end)
     end
     
-    -- Alternative method - print to console
-    print("[SERVER] " .. message)
     
-    -- Try to add to chat directly if possible
+    
+
     local Chat = game:GetService("Chat")
     if Chat then
         pcall(function()
@@ -128,7 +114,6 @@ local function sendServerMessage(message)
     end
 end
 
--- Scroll frame for UI
 local function setupScrollFrame()
     if ScrollFrame then
         ScrollFrame.ScrollingEnabled = true
@@ -137,7 +122,6 @@ local function setupScrollFrame()
     end
 end
 
--- Reference refresh function
 local function refreshReferences()
     if not player or not player.Character then 
         return false 
@@ -156,7 +140,6 @@ local function refreshReferences()
     return humanoid ~= nil and rootPart ~= nil
 end
 
--- Helper function to get setting value safely
 local function getSettingValue(settingName, defaultValue)
     if settings and settings[settingName] and settings[settingName].value then
         return settings[settingName].value
@@ -164,7 +147,6 @@ local function getSettingValue(settingName, defaultValue)
     return defaultValue
 end
 
--- Update button visual state
 local function updateButtonState(featureName, enabled)
     if buttonStates and buttonStates[featureName] then
         local button = buttonStates[featureName]
@@ -175,7 +157,6 @@ local function updateButtonState(featureName, enabled)
     end
 end
 
--- Create settings GUI for SpeedHack, JumpHack, and Fly
 local function createSettingsGUI()
     if settingsFrame then settingsFrame:Destroy() end
 
@@ -295,7 +276,7 @@ local function createSettingsGUI()
     wallClimbSpeedInput = createInputField(scrolling, "Wall Climb Speed", "WallClimbSpeed", defaultSettings.WallClimbSpeed)
     infiniteJumpMultiplierInput = createInputField(scrolling, "Infinite Jump Multiplier", "InfiniteJumpMultiplier", defaultSettings.InfiniteJumpMultiplier)
 
-    -- Rewind mode selection
+    
     local rewindModeFrame = Instance.new("Frame")
     rewindModeFrame.Size = UDim2.new(1, 0, 0, 50)
     rewindModeFrame.BackgroundTransparency = 1
@@ -433,10 +414,7 @@ local function createSettingsGUI()
     end)
 end
 
--- Create mobile controls
 local function createMobileControls()
-    print("Creating mobile controls")
-    
     if flyJoystickFrame then flyJoystickFrame:Destroy() end
     if flyUpButton then flyUpButton:Destroy() end
     if flyDownButton then flyDownButton:Destroy() end
@@ -551,7 +529,6 @@ local function createMobileControls()
     wallClimbCorner.Parent = wallClimbButton
 end
 
--- Joystick handling for float
 local function handleFloatJoystick(input, gameProcessed)
     if not Movement.floatEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
         return 
@@ -587,7 +564,6 @@ local function handleFloatJoystick(input, gameProcessed)
     end
 end
 
--- Joystick handling for fly
 local function handleFlyJoystick(input, gameProcessed)
     if not Movement.flyEnabled or not flyJoystickFrame or not flyJoystickFrame.Visible then 
         return 
@@ -623,7 +599,6 @@ local function handleFlyJoystick(input, gameProcessed)
     end
 end
 
--- Speed Hack with settings integration
 local function toggleSpeed(enabled)
     Movement.speedEnabled = enabled
     updateButtonState("Speed Hack", enabled)
@@ -651,7 +626,6 @@ local function toggleSpeed(enabled)
     end
 end
 
--- Jump Hack with settings integration
 local function toggleJump(enabled)
     Movement.jumpEnabled = enabled
     updateButtonState("Jump Hack", enabled)
@@ -687,7 +661,6 @@ local function toggleJump(enabled)
     end
 end
 
--- Slow Fall
 local function toggleSlowFall(enabled)
     Movement.slowFallEnabled = enabled
     updateButtonState("Slow Fall", enabled)
@@ -718,7 +691,6 @@ local function toggleSlowFall(enabled)
     end
 end
 
--- Fast Fall
 local function toggleFastFall(enabled)
     Movement.fastFallEnabled = enabled
     updateButtonState("Fast Fall", enabled)
@@ -749,8 +721,6 @@ local function toggleFastFall(enabled)
     end
 end
 
--- Sprint feature
-local function toggleSprint(enabled)
     Movement.sprintEnabled = enabled
     updateButtonState("Sprint", enabled)
     
@@ -810,7 +780,6 @@ local function toggleSprint(enabled)
     end
 end
 
--- Float Hack
 local function toggleFloat(enabled)
     Movement.floatEnabled = enabled
     updateButtonState("Float", enabled)
@@ -822,9 +791,9 @@ local function toggleFloat(enabled)
             connections[connName] = nil
         end
     end
-    
+
     floatKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
-    
+
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
@@ -902,7 +871,7 @@ local function toggleFloat(enabled)
             connections.floatEnded = UserInputService.InputEnded:Connect(handleFloatJoystick)
             
             connections.floatKeyBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-                if gameProcessed or not Movement.floatEnabled then return end
+                if gameProcessed then return end
                 local kc = input.KeyCode
                 if kc == Enum.KeyCode.W then floatKeys.forward = true
                 elseif kc == Enum.KeyCode.S then floatKeys.back = true
@@ -954,7 +923,6 @@ local function toggleFloat(enabled)
     end
 end
 
--- Boost
 local function createBoostButton()
     if boostButton then boostButton:Destroy() end
     
@@ -1066,12 +1034,12 @@ local function toggleBoost(enabled)
     else
         if boostButton then
             boostButton.Visible = false
+            boostButton.Text = "BOOST"
         end
         isBoostActive = false
     end
 end
 
--- Rewind Movement
 local function createRewindButton()
     if rewindButton then rewindButton:Destroy() end
     
@@ -1254,7 +1222,6 @@ local function toggleRewind(enabled)
     end
 end
 
--- Moon Gravity
 local function toggleMoonGravity(enabled)
     Movement.moonGravityEnabled = enabled
     updateButtonState("Moon Gravity", enabled)
@@ -1266,7 +1233,6 @@ local function toggleMoonGravity(enabled)
     end
 end
 
--- Double Jump
 local function toggleDoubleJump(enabled)
     Movement.doubleJumpEnabled = enabled
     updateButtonState("Double Jump", enabled)
@@ -1294,7 +1260,6 @@ local function toggleDoubleJump(enabled)
     end
 end
 
--- Infinite Jump
 local function toggleInfiniteJump(enabled)
     Movement.infiniteJumpEnabled = enabled
     updateButtonState("Infinite Jump", enabled)
@@ -1314,7 +1279,6 @@ local function toggleInfiniteJump(enabled)
     end
 end
 
--- Wall Climbing
 local function toggleWallClimb(enabled)
     Movement.wallClimbEnabled = enabled
     updateButtonState("Wall Climb", enabled)
@@ -1390,7 +1354,6 @@ local function toggleWallClimb(enabled)
     end
 end
 
--- Bunny Hop (CS:GO style with air acceleration)
 local function toggleBunnyHop(enabled)
     Movement.bunnyHopEnabled = enabled
     updateButtonState("Bunny Hop", enabled)
@@ -1401,7 +1364,7 @@ local function toggleBunnyHop(enabled)
     end
 
     if enabled then
-        local airAccel = 100  -- Adjust for more/less acceleration
+        local airAccel = 100  
         connections.bunnyHop = RunService.Stepped:Connect(function(_, step)
             if not Movement.bunnyHopEnabled then return end
             if not refreshReferences() or not humanoid or not rootPart then return end
@@ -1425,98 +1388,70 @@ local function toggleBunnyHop(enabled)
     end
 end
 
--- Fly Hack with enhanced chat commands
--- Simple and reliable fly implementation
+
 local function toggleFly(enabled)
     Movement.flyEnabled = enabled
     updateButtonState("Fly", enabled)
     
-    -- Send message
     if enabled then
         sendServerMessage("FLY ACTIVATED")
-        print("=== ACTIVATING FLY ===")
     else
         sendServerMessage("FLY DEACTIVATED") 
-        print("=== DEACTIVATING FLY ===")
     end
     
-    -- Clean up ALL fly connections first
     local flyConnections = {"fly", "flyBegan", "flyChanged", "flyEnded", "flyUp", "flyUpEnd", "flyDown", "flyDownEnd", "flyKeyBegan", "flyKeyEnded"}
     for _, connName in ipairs(flyConnections) do
         if connections[connName] then
             connections[connName]:Disconnect()
             connections[connName] = nil
-            print("Disconnected:", connName)
         end
     end
     
-    -- Destroy existing fly objects
     if flyBodyVelocity then
         flyBodyVelocity:Destroy()
         flyBodyVelocity = nil
-        print("Destroyed flyBodyVelocity")
     end
     if flyBodyGyro then
         flyBodyGyro:Destroy() 
         flyBodyGyro = nil
-        print("Destroyed flyBodyGyro")
     end
     
     if enabled then
-        -- Force refresh references
         if not refreshReferences() then
-            print("ERROR: Cannot refresh references!")
             Movement.flyEnabled = false
             updateButtonState("Fly", false)
             return
         end
-        
-        print("Player:", player.Name)
-        print("Character:", player.Character and player.Character.Name or "nil")
-        print("Humanoid:", humanoid and "found" or "nil")
-        print("RootPart:", rootPart and "found" or "nil")
         
         if not humanoid or not rootPart then
-            print("ERROR: Missing humanoid or rootPart!")
             Movement.flyEnabled = false
             updateButtonState("Fly", false)
             return
         end
         
-        -- SIMPLE FLY SETUP - no delays, direct approach
-        print("Setting PlatformStand...")
         humanoid.PlatformStand = true
         
-        print("Creating BodyVelocity...")
         flyBodyVelocity = Instance.new("BodyVelocity")
         flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
         flyBodyVelocity.Parent = rootPart
         
-        print("Creating BodyGyro...")  
         flyBodyGyro = Instance.new("BodyGyro")
         flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         flyBodyGyro.P = 10000
         flyBodyGyro.CFrame = rootPart.CFrame
         flyBodyGyro.Parent = rootPart
         
-        -- Show controls
         if flyJoystickFrame then flyJoystickFrame.Visible = true end
         if flyUpButton then flyUpButton.Visible = true end  
         if flyDownButton then flyDownButton.Visible = true end
         
-        print("Starting fly heartbeat...")
-        
-        -- SIMPLE FLY LOOP
         connections.fly = RunService.Heartbeat:Connect(function()
             if not Movement.flyEnabled then 
-                print("Fly disabled, stopping loop")
                 return 
             end
             
-            -- Check if objects still exist
             if not flyBodyVelocity or not flyBodyVelocity.Parent then
-                print("BodyVelocity missing, recreating...")
                 flyBodyVelocity = Instance.new("BodyVelocity")
                 flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                 flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
@@ -1524,7 +1459,6 @@ local function toggleFly(enabled)
             end
             
             if not flyBodyGyro or not flyBodyGyro.Parent then
-                print("BodyGyro missing, recreating...")
                 flyBodyGyro = Instance.new("BodyGyro")
                 flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
                 flyBodyGyro.P = 10000
@@ -1535,19 +1469,15 @@ local function toggleFly(enabled)
             local camera = Workspace.CurrentCamera
             if not camera then return end
             
-            -- Set rotation to camera
             flyBodyGyro.CFrame = camera.CFrame
             
-            -- Get fly speed
             local speed = getSettingValue("FlySpeed", defaultSettings.FlySpeed)
             local moveVector = Vector3.new(0, 0, 0)
             
-            -- Joystick controls
             if joystickDelta.Magnitude > 0.05 then
                 moveVector = moveVector + (camera.CFrame.RightVector * joystickDelta.X) + (camera.CFrame.LookVector * -joystickDelta.Y)
             end
             
-            -- Keyboard controls - SIMPLE
             if flyKeys.forward then 
                 moveVector = moveVector + camera.CFrame.LookVector
             end
@@ -1567,7 +1497,6 @@ local function toggleFly(enabled)
                 moveVector = moveVector - Vector3.new(0, 1, 0)
             end
             
-            -- Apply movement
             if moveVector.Magnitude > 0 then
                 flyBodyVelocity.Velocity = moveVector.Unit * speed
             else
@@ -1575,28 +1504,21 @@ local function toggleFly(enabled)
             end
         end)
         
-        -- SIMPLE KEYBOARD INPUT
         connections.flyKeyBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then return end
             
             if input.KeyCode == Enum.KeyCode.W then
                 flyKeys.forward = true
-                print("W pressed")
             elseif input.KeyCode == Enum.KeyCode.S then  
                 flyKeys.back = true
-                print("S pressed")
             elseif input.KeyCode == Enum.KeyCode.A then
                 flyKeys.left = true
-                print("A pressed")
             elseif input.KeyCode == Enum.KeyCode.D then
                 flyKeys.right = true  
-                print("D pressed")
             elseif input.KeyCode == Enum.KeyCode.Space then
                 flyKeys.up = true
-                print("Space pressed")
             elseif input.KeyCode == Enum.KeyCode.LeftShift then
                 flyKeys.down = true
-                print("Shift pressed") 
             end
         end)
         
@@ -1616,12 +1538,10 @@ local function toggleFly(enabled)
             end
         end)
         
-        -- Joystick input
         connections.flyBegan = UserInputService.InputBegan:Connect(handleFlyJoystick)
         connections.flyChanged = UserInputService.InputChanged:Connect(handleFlyJoystick)
         connections.flyEnded = UserInputService.InputEnded:Connect(handleFlyJoystick)
         
-        -- Up/Down buttons
         connections.flyUp = flyUpButton.MouseButton1Down:Connect(function()
             flyKeys.up = true
         end)
@@ -1635,46 +1555,31 @@ local function toggleFly(enabled)
             flyKeys.down = false
         end)
         
-        print("FLY SETUP COMPLETE!")
-        
     else
-        -- DISABLE FLY
-        print("Disabling fly...")
-        
         if humanoid then
             humanoid.PlatformStand = false
-            print("PlatformStand disabled")
         end
         
-        -- Hide controls
         if flyJoystickFrame then flyJoystickFrame.Visible = false end
         if flyUpButton then flyUpButton.Visible = false end
         if flyDownButton then flyDownButton.Visible = false end
         
-        -- Reset keys and joystick
         flyKeys = {forward = false, back = false, left = false, right = false, up = false, down = false}
         joystickDelta = Vector2.new(0, 0)
         isTouchingJoystick = false
         joystickTouchId = nil
-        
-        print("FLY DISABLED!")
     end
 end
 
--- SIMPLE CHAT COMMANDS - Fixed
 local function setupChatCommands()
-    print("=== SETTING UP CHAT COMMANDS ===")
     
-    -- Clean existing
     if connections.chatCommand then
         connections.chatCommand:Disconnect()
         connections.chatCommand = nil
     end
     
-    -- Simple player chat connection
     if player and player.Chatted then
         connections.chatCommand = player.Chatted:Connect(function(message)
-            print("CHAT MESSAGE:", message)
             
             local args = {}
             for word in message:gmatch("%S+") do
@@ -1683,10 +1588,8 @@ local function setupChatCommands()
             local cmd = string.lower(args[1] or "")
             
             if cmd == "/fly" then
-                print("CHAT: Activating fly!")
                 toggleFly(true)
             elseif cmd == "/unfly" then
-                print("CHAT: Deactivating fly!")  
                 toggleFly(false)
             elseif cmd == "/flyspeed" then
                 local val = tonumber(args[2])
@@ -1722,7 +1625,6 @@ local function setupChatCommands()
                     settings.SprintSpeed = {value = math.max(val, 50)}
                     sendServerMessage("Sprint speed set to " .. settings.SprintSpeed.value)
                     if Movement.sprintEnabled then
-                        toggleSprint(true)
                     end
                 end
             elseif cmd == "/swim" then
@@ -1736,43 +1638,9 @@ local function setupChatCommands()
                 end
             end
         end)
-        print("Chat commands connected successfully!")
-    else
-        print("ERROR: Could not connect to player.Chatted")
     end
 end
 
--- Test function to manually trigger fly
-function Movement.testFly()
-    print("=== MANUAL FLY TEST ===")
-    toggleFly(not Movement.flyEnabled)
-end
-
--- Debug function specifically for fly
-function Movement.debugFly()
-    print("=== FLY DEBUG ===")
-    print("flyEnabled:", Movement.flyEnabled)
-    print("flyBodyVelocity:", flyBodyVelocity ~= nil)
-    print("flyBodyGyro:", flyBodyGyro ~= nil) 
-    print("player:", player ~= nil)
-    print("humanoid:", humanoid ~= nil)
-    print("rootPart:", rootPart ~= nil)
-    print("fly connection:", connections.fly ~= nil)
-    print("chat connection:", connections.chatCommand ~= nil)
-    
-    if flyBodyVelocity then
-        print("BodyVelocity parent:", flyBodyVelocity.Parent and flyBodyVelocity.Parent.Name or "nil")
-        print("BodyVelocity velocity:", flyBodyVelocity.Velocity)
-    end
-    
-    if flyBodyGyro then  
-        print("BodyGyro parent:", flyBodyGyro.Parent and flyBodyGyro.Parent.Name or "nil")
-    end
-    
-    print("flyKeys:", flyKeys)
-end
-
--- NoClip
 local function toggleNoclip(enabled)
     Movement.noclipEnabled = enabled
     updateButtonState("NoClip", enabled)
@@ -1804,7 +1672,6 @@ local function toggleNoclip(enabled)
     end
 end
 
--- Walk on Water
 local function toggleWalkOnWater(enabled)
     Movement.walkOnWaterEnabled = enabled
     updateButtonState("Walk on Water", enabled)
@@ -1845,7 +1712,6 @@ local function toggleWalkOnWater(enabled)
     end
 end
 
--- Player NoClip
 local function togglePlayerNoclip(enabled)
     Movement.playerNoclipEnabled = enabled
     updateButtonState("Player NoClip", enabled)
@@ -1922,7 +1788,6 @@ local function togglePlayerNoclip(enabled)
     end
 end
 
--- Super Swim
 local function toggleSwim(enabled)
     Movement.swimEnabled = enabled
     updateButtonState("Super Swim", enabled)
@@ -1954,7 +1819,6 @@ local function toggleSwim(enabled)
     end
 end
 
--- Apply settings
 function Movement.applySettings()
     if Movement.speedEnabled then
         toggleSpeed(true)
@@ -1965,11 +1829,9 @@ function Movement.applySettings()
     end
     
     if Movement.sprintEnabled then
-        toggleSprint(true)
     end
 end
 
--- Load movement buttons with new settings button
 function Movement.loadMovementButtons(createButton, createToggleButton)
     if not createButton or not createToggleButton then
         warn("Error: createButton or createToggleButton not provided!")
@@ -2005,7 +1867,6 @@ function Movement.loadMovementButtons(createButton, createToggleButton)
     settingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 end
 
--- Reset states
 function Movement.resetStates()
     isRespawning = true
     
@@ -2151,7 +2012,6 @@ function Movement.resetStates()
     isRespawning = false
 end
 
--- Update references
 function Movement.updateReferences(newHumanoid, newRootPart)
     humanoid = newHumanoid
     rootPart = newRootPart
@@ -2195,12 +2055,11 @@ function Movement.updateReferences(newHumanoid, newRootPart)
             updateButtonState(featureName, enabled)
         end
         
-        -- Setup chat commands again after respawn
+        
         setupChatCommands()
     end)
 end
 
--- Initialize module
 function Movement.init(deps)
     if not deps then
         warn("Error: No dependencies provided!")
@@ -2225,7 +2084,7 @@ function Movement.init(deps)
         return false
     end
     
-    -- Initialize default settings if not present
+    
     for k, v in pairs(defaultSettings) do
         if not settings[k] then
             settings[k] = {value = v}
@@ -2298,7 +2157,6 @@ function Movement.init(deps)
             if Movement.boostEnabled then toggleBoost(true) end
             if Movement.slowFallEnabled then toggleSlowFall(true) end
             if Movement.fastFallEnabled then toggleFastFall(true) end
-            if Movement.sprintEnabled then toggleSprint(true) end
             if Movement.bunnyHopEnabled then toggleBunnyHop(true) end
         end
     end)
@@ -2306,56 +2164,6 @@ function Movement.init(deps)
     return true
 end
 
--- Debug function
-function Movement.debug()
-    print("=== Movement Module Debug Info ===")
-    print("Movement Features:")
-    print("  speedEnabled:", Movement.speedEnabled)
-    print("  jumpEnabled:", Movement.jumpEnabled)
-    print("  flyEnabled:", Movement.flyEnabled)
-    print("  noclipEnabled:", Movement.noclipEnabled)
-    print("  infiniteJumpEnabled:", Movement.infiniteJumpEnabled)
-    print("  walkOnWaterEnabled:", Movement.walkOnWaterEnabled)
-    print("  swimEnabled:", Movement.swimEnabled)
-    print("  moonGravityEnabled:", Movement.moonGravityEnabled)
-    print("  doubleJumpEnabled:", Movement.doubleJumpEnabled)
-    print("  wallClimbEnabled:", Movement.wallClimbEnabled)
-    print("  playerNoclipEnabled:", Movement.playerNoclipEnabled)
-    print("  floatEnabled:", Movement.floatEnabled)
-    print("  rewindEnabled:", Movement.rewindEnabled)
-    print("  boostEnabled:", Movement.boostEnabled)
-    print("  slowFallEnabled:", Movement.slowFallEnabled)
-    print("  fastFallEnabled:", Movement.fastFallEnabled)
-    print("  sprintEnabled:", Movement.sprintEnabled)
-    print("  bunnyHopEnabled:", Movement.bunnyHopEnabled)
-    
-    print("Settings GUI:")
-    print("  settingsFrame:", settingsFrame ~= nil)
-    print("  speedInput:", speedInput ~= nil)
-    print("  jumpInput:", jumpInput ~= nil)
-    print("  sprintInput:", sprintInput ~= nil)
-    print("  flyInput:", flyInput ~= nil)
-    print("  swimInput:", swimInput ~= nil)
-    
-    print("References:")
-    print("  player:", player ~= nil)
-    print("  humanoid:", humanoid ~= nil)
-    print("  rootPart:", rootPart ~= nil)
-    
-    print("Settings Values:")
-    print("  WalkSpeed:", getSettingValue("WalkSpeed", "not found"))
-    print("  JumpHeight:", getSettingValue("JumpHeight", "not found"))
-    print("  SprintSpeed:", getSettingValue("SprintSpeed", "not found"))
-    print("  FlySpeed:", getSettingValue("FlySpeed", "not found"))
-    print("  SwimSpeed:", getSettingValue("SwimSpeed", "not found"))
-    
-    print("Chat Commands:")
-    print("  chat connection:", connections.chat ~= nil)
-    print("  chatInput connection:", connections.chatInput ~= nil)
-    print("  chatMonitor connection:", connections.chatMonitor ~= nil)
-end
-
--- Cleanup function
 function Movement.cleanup()
     Movement.resetStates()
     

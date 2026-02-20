@@ -1,33 +1,26 @@
--- Main entry point for MinimalHackGUI by Fari Noveri - UPDATED VERSION WITH NEW SETTINGS
---
--- Services
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
-local TweenService = game:GetService("TweenService") -- Added for slide animation
+local TweenService = game:GetService("TweenService")
 
--- Local Player
 local player = Players.LocalPlayer
 local character, humanoid, rootPart
 
--- Connections and states
 local connections = {}
 local buttonStates = {}
 local selectedCategory = "Movement"
-local categoryStates = {} -- Store feature states per category
-local activeFeature = nil -- Track currently active exclusive feature
-local exclusiveFeatures = {} -- List of features that should be exclusive
+local categoryStates = {}
+local activeFeature = nil
+local exclusiveFeatures = {}
 
--- Settings - UPDATED: Removed WalkSpeed, Added GUI Controls
 local settings = {
     GuiWidth = {value = 500, min = 300, max = 800, default = 500},
     GuiHeight = {value = 300, min = 200, max = 600, default = 300},
     GuiOpacity = {value = 1.0, min = 0.1, max = 1.0, default = 1.0}
 }
 
--- ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MinimalHackGUI"
 ScreenGui.Parent = player:WaitForChild("PlayerGui")
@@ -35,14 +28,12 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
 
--- Check for existing script instances
 for _, gui in pairs(player.PlayerGui:GetChildren()) do
     if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
         gui:Destroy()
     end
 end
 
--- Main Frame
 local Frame = Instance.new("Frame")
 Frame.Name = "MainFrame"
 Frame.Parent = ScreenGui
@@ -54,7 +45,6 @@ Frame.Size = UDim2.new(0, settings.GuiWidth.value, 0, settings.GuiHeight.value)
 Frame.Active = true
 Frame.Draggable = true
 
--- Title
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
 Title.Parent = Frame
@@ -66,7 +56,6 @@ Title.Text = "MinimalHackGUI by Fari Noveri [Fixed Loader]"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 10
 
--- Minimized Logo
 local MinimizedLogo = Instance.new("Frame")
 MinimizedLogo.Name = "MinimizedLogo"
 MinimizedLogo.Parent = ScreenGui
@@ -99,7 +88,6 @@ LogoButton.BackgroundTransparency = 1
 LogoButton.Size = UDim2.new(1, 0, 1, 0)
 LogoButton.Text = ""
 
--- Minimize Button
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Parent = Frame
 MinimizeButton.BackgroundTransparency = 1
@@ -110,25 +98,21 @@ MinimizeButton.Text = "-"
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.TextSize = 10
 
--- ===== SLIDE NOTIFICATION SYSTEM =====
 local function createSlideNotification()
-    -- Notification Frame
     local NotificationFrame = Instance.new("Frame")
     NotificationFrame.Name = "SlideNotification"
     NotificationFrame.Parent = ScreenGui
-    NotificationFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- White background
+    NotificationFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     NotificationFrame.BorderSizePixel = 0
     NotificationFrame.Size = UDim2.new(0, 200, 0, 70)
-    NotificationFrame.Position = UDim2.new(1, 0, 1, -80) -- Start off-screen (right)
-    NotificationFrame.ZIndex = 1000 -- High z-index to appear on top
-    NotificationFrame.Active = true -- Make it clickable
+    NotificationFrame.Position = UDim2.new(1, 0, 1, -80)
+    NotificationFrame.ZIndex = 1000
+    NotificationFrame.Active = true
     
-    -- Rounded corners
     local NotificationCorner = Instance.new("UICorner")
     NotificationCorner.CornerRadius = UDim.new(0, 8)
     NotificationCorner.Parent = NotificationFrame
     
-    -- Drop shadow effect
     local Shadow = Instance.new("Frame")
     Shadow.Name = "Shadow"
     Shadow.Parent = ScreenGui
@@ -143,7 +127,6 @@ local function createSlideNotification()
     ShadowCorner.CornerRadius = UDim.new(0, 8)
     ShadowCorner.Parent = Shadow
     
-    -- Logo ImageLabel
     local LogoImage = Instance.new("ImageLabel")
     LogoImage.Name = "Logo"
     LogoImage.Parent = NotificationFrame
@@ -153,12 +136,10 @@ local function createSlideNotification()
     LogoImage.Image = "https://cdn.rafled.com/anime-icons/images/cADJDgHDli9YzzGB5AhH0Aa2dR8Bfu8w.jpg"
     LogoImage.ScaleType = Enum.ScaleType.Fit
     
-    -- Logo rounded corners
     local LogoCorner = Instance.new("UICorner")
     LogoCorner.CornerRadius = UDim.new(0, 6)
     LogoCorner.Parent = LogoImage
     
-    -- Main Text (Made by fari noveri)
     local MainText = Instance.new("TextLabel")
     MainText.Name = "MainText"
     MainText.Parent = NotificationFrame
@@ -172,7 +153,6 @@ local function createSlideNotification()
     MainText.TextXAlignment = Enum.TextXAlignment.Left
     MainText.TextYAlignment = Enum.TextYAlignment.Center
     
-    -- Sub Text (SuperTool)
     local SubText = Instance.new("TextLabel")
     SubText.Name = "SubText"
     SubText.Parent = NotificationFrame
@@ -186,7 +166,6 @@ local function createSlideNotification()
     SubText.TextXAlignment = Enum.TextXAlignment.Left
     SubText.TextYAlignment = Enum.TextYAlignment.Center
     
-    -- Version/Status Text
     local StatusText = Instance.new("TextLabel")
     StatusText.Name = "StatusText"
     StatusText.Parent = NotificationFrame
@@ -200,7 +179,6 @@ local function createSlideNotification()
     StatusText.TextXAlignment = Enum.TextXAlignment.Left
     StatusText.TextYAlignment = Enum.TextYAlignment.Center
     
-    -- Click to dismiss button (invisible overlay)
     local DismissButton = Instance.new("TextButton")
     DismissButton.Name = "DismissButton"
     DismissButton.Parent = NotificationFrame
@@ -209,18 +187,16 @@ local function createSlideNotification()
     DismissButton.Text = ""
     DismissButton.ZIndex = 1001
     
-    -- Animation variables
     local slideInTime = 0.4
     local stayTime = 4.5
     local slideOutTime = 0.3
     
-    local slideInPosition = UDim2.new(1, -210, 1, -80) -- Final position (visible)
-    local slideOutPosition = UDim2.new(1, 0, 1, -80) -- Off-screen right
+    local slideInPosition = UDim2.new(1, -210, 1, -80)
+    local slideOutPosition = UDim2.new(1, 0, 1, -80)
     
     local shadowSlideInPosition = UDim2.new(1, -208, 1, -78)
     local shadowSlideOutPosition = UDim2.new(1, 2, 1, -78)
     
-    -- Tween info
     local slideInInfo = TweenInfo.new(
         slideInTime,
         Enum.EasingStyle.Quart,
@@ -239,11 +215,9 @@ local function createSlideNotification()
         0
     )
     
-    -- Slide in animation
     local slideInTween = TweenService:Create(NotificationFrame, slideInInfo, {Position = slideInPosition})
     local shadowSlideInTween = TweenService:Create(Shadow, slideInInfo, {Position = shadowSlideInPosition})
     
-    -- Slide out function
     local function slideOut()
         local slideOutTween = TweenService:Create(NotificationFrame, slideOutInfo, {Position = slideOutPosition})
         local shadowSlideOutTween = TweenService:Create(Shadow, slideOutInfo, {Position = shadowSlideOutPosition})
@@ -257,31 +231,23 @@ local function createSlideNotification()
         end)
     end
     
-    -- Click to dismiss
     DismissButton.MouseButton1Click:Connect(function()
         slideOut()
     end)
     
-    -- Auto dismiss after stay time
     local autoDismissConnection
     
-    -- Start animation sequence
     slideInTween:Play()
     shadowSlideInTween:Play()
     
     slideInTween.Completed:Connect(function()
-        -- Start auto-dismiss timer after slide in completes
         autoDismissConnection = task.spawn(function()
             task.wait(stayTime)
             slideOut()
         end)
     end)
-    
-    print("✨ Slide notification created and animated!")
 end
--- ===== END SLIDE NOTIFICATION SYSTEM =====
 
--- Category Container with Scrolling
 local CategoryContainer = Instance.new("ScrollingFrame")
 CategoryContainer.Parent = Frame
 CategoryContainer.BackgroundTransparency = 1
@@ -299,12 +265,10 @@ CategoryLayout.Padding = UDim.new(0, 3)
 CategoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
 CategoryLayout.FillDirection = Enum.FillDirection.Vertical
 
--- Update category canvas size when content changes
 CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     CategoryContainer.CanvasSize = UDim2.new(0, 0, 0, CategoryLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- Feature Container
 local FeatureContainer = Instance.new("ScrollingFrame")
 FeatureContainer.Parent = Frame
 FeatureContainer.BackgroundTransparency = 1
@@ -322,19 +286,16 @@ FeatureLayout.Parent = FeatureContainer
 FeatureLayout.Padding = UDim.new(0, 2)
 FeatureLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- Update feature canvas size when content changes
 FeatureLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     FeatureContainer.CanvasSize = UDim2.new(0, 0, 0, FeatureLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- Categories
 local categories = {
     {name = "Movement", order = 1},
     {name = "Player", order = 2},
     {name = "Teleport", order = 3},
     {name = "Visual", order = 4},
     {name = "Utility", order = 5},
-    {name = "AntiAdmin", order = 6},
     {name = "Settings", order = 7},
     {name = "Info", order = 8},
     {name = "Credit", order = 9}
@@ -344,7 +305,6 @@ local categoryFrames = {}
 local isMinimized = false
 local previousMouseBehavior
 
--- Load modules
 local modules = {}
 local modulesLoaded = {}
 
@@ -354,15 +314,12 @@ local moduleURLs = {
     Teleport = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Teleport.lua",
     Visual = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Visual.lua",
     Utility = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Utility.lua",
-    AntiAdmin = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/AntiAdmin.lua",
     Settings = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Settings.lua",
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua",
     Credit = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Credit.lua"
 }
 
--- PROPER MODULE LOADING FUNCTION
 local function loadModule(moduleName)
-    print("Attempting to load module: " .. moduleName)
     
     if not moduleURLs[moduleName] then
         warn("No URL defined for module: " .. moduleName)
@@ -370,22 +327,18 @@ local function loadModule(moduleName)
     end
     
     local success, result = pcall(function()
-        -- Try to get the module content
         local response = game:HttpGet(moduleURLs[moduleName])
         
         if not response or response == "" or response:find("404") then
             error("Failed to fetch module or got 404")
         end
         
-        print("Got response for " .. moduleName .. " (length: " .. #response .. ")")
         
-        -- Try to load the string as Lua code
         local moduleFunc, loadError = loadstring(response)
         if not moduleFunc then
             error("Failed to compile module: " .. tostring(loadError))
         end
         
-        -- Execute the module code to get the module table
         local moduleTable = moduleFunc()
         
         if not moduleTable then
@@ -396,18 +349,16 @@ local function loadModule(moduleName)
             error("Module must return a table, got: " .. type(moduleTable))
         end
         
-        print("Successfully compiled and executed module: " .. moduleName)
         return moduleTable
     end)
     
     if success and result then
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
-        print("✓ Module loaded successfully: " .. moduleName)
         
-        -- If this is the currently selected category, reload buttons
+        
         if selectedCategory == moduleName then
-            task.wait(0.1) -- Small delay to ensure everything is ready
+            task.wait(0.1)
             loadButtons()
         end
         return true
@@ -417,18 +368,15 @@ local function loadModule(moduleName)
     end
 end
 
--- Load all modules asynchronously
-print("Starting module loading...")
 for moduleName, _ in pairs(moduleURLs) do
     task.spawn(function()
         local startTime = tick()
         local success = loadModule(moduleName)
         local loadTime = tick() - startTime
-        print(string.format("Module %s: %s (%.2fs)", moduleName, success and "SUCCESS" or "FAILED", loadTime))
+        
     end)
 end
 
--- Dependencies for modules - UPDATED with new settings
 local dependencies = {
     Players = Players,
     UserInputService = UserInputService,
@@ -443,9 +391,8 @@ local dependencies = {
     player = player
 }
 
--- Initialize modules function
 local function initializeModules()
-    print("Initializing loaded modules...")
+    
     local initResults = {}
     
     for moduleName, module in pairs(modules) do
@@ -454,24 +401,16 @@ local function initializeModules()
         
         if module and type(module.init) == "function" then
             success, errorMsg = pcall(function()
-                -- Always update dependencies with current info
                 dependencies.character = character
                 dependencies.humanoid = humanoid
                 dependencies.rootPart = rootPart
                 dependencies.ScrollFrame = FeatureContainer
                 
-                -- Validate critical dependencies before init
                 if not dependencies.ScrollFrame then
                     error("ScrollFrame (FeatureContainer) is nil - cannot initialize " .. moduleName)
                 end
                 
-                print("Initializing " .. moduleName .. " with dependencies:", {
-                    character = dependencies.character and "OK" or "NIL",
-                    humanoid = dependencies.humanoid and "OK" or "NIL",
-                    rootPart = dependencies.rootPart and "OK" or "NIL",
-                    ScrollFrame = dependencies.ScrollFrame and "OK" or "NIL",
-                    ScreenGui = dependencies.ScreenGui and "OK" or "NIL"
-                })
+                
                 
                 local result = module.init(dependencies)
                 if result == false then
@@ -481,7 +420,7 @@ local function initializeModules()
             end)
             
             if success then
-                print("✓ Initialized module: " .. moduleName)
+                
                 initResults[moduleName] = "SUCCESS"
             else
                 warn("✗ Failed to initialize module " .. moduleName .. ": " .. tostring(errorMsg))
@@ -493,7 +432,6 @@ local function initializeModules()
         end
     end
     
-    -- Report initialization results
     local successCount = 0
     local failCount = 0
     
@@ -505,14 +443,12 @@ local function initializeModules()
         end
     end
     
-    print(string.format("Module initialization complete: %d success, %d failed", successCount, failCount))
     
     if successCount == 0 then
         warn("WARNING: No modules initialized successfully!")
     end
 end
 
--- Helper functions for exclusive features
 local function isExclusiveFeature(featureName)
     local exclusives = {"Fly", "Noclip", "Freecam", "Speed Hack", "Jump Hack"}
     for _, exclusive in ipairs(exclusives) do
@@ -533,7 +469,6 @@ local function disableActiveFeature()
     activeFeature = nil
 end
 
--- Create button with error handling
 local function createButton(name, callback, categoryName)
     local success, result = pcall(function()
         local button = Instance.new("TextButton")
@@ -576,7 +511,6 @@ local function createButton(name, callback, categoryName)
     return result
 end
 
--- Create toggle button with exclusive feature support and error handling
 local function createToggleButton(name, callback, categoryName, disableCallback)
     local success, result = pcall(function()
         local button = Instance.new("TextButton")
@@ -591,7 +525,6 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
         button.TextSize = 8
         button.LayoutOrder = #FeatureContainer:GetChildren()
         
-        -- Ensure category state exists
         if not categoryStates[categoryName] then
             categoryStates[categoryName] = {}
         end
@@ -605,7 +538,6 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
         button.MouseButton1Click:Connect(function()
             local newState = not categoryStates[categoryName][name]
             
-            -- Handle exclusive features
             if newState and isExclusiveFeature(name) then
                 disableActiveFeature()
                 activeFeature = {
@@ -647,11 +579,9 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     return result
 end
 
--- LOAD BUTTONS FUNCTION
 local function loadButtons()
-    print("Loading buttons for category: " .. selectedCategory)
     
-    -- Clear existing buttons first - with error handling
+    
     pcall(function()
         for _, child in pairs(FeatureContainer:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
@@ -660,7 +590,6 @@ local function loadButtons()
         end
     end)
     
-    -- Update category button backgrounds - with error handling
     pcall(function()
         for categoryName, categoryData in pairs(categoryFrames) do
             if categoryData and categoryData.button then
@@ -674,7 +603,6 @@ local function loadButtons()
         return
     end
     
-    -- Check if module exists and is loaded
     if not modules[selectedCategory] then
         local loadingLabel = Instance.new("TextLabel")
         loadingLabel.Parent = FeatureContainer
@@ -686,7 +614,6 @@ local function loadButtons()
         loadingLabel.TextSize = 8
         loadingLabel.TextXAlignment = Enum.TextXAlignment.Left
         
-        -- Try to load the module if not already loading
         if not modulesLoaded[selectedCategory] then
             task.spawn(function()
                 loadModule(selectedCategory)
@@ -699,18 +626,16 @@ local function loadButtons()
     local success = false
     local errorMessage = nil
 
-    -- INDIVIDUAL ERROR HANDLING FOR EACH MODULE TYPE INCLUDING CREDIT
     if selectedCategory == "Credit" and module.createCreditDisplay then
         success, errorMessage = pcall(function()
-            print("Calling Credit.createCreditDisplay")
+            
             module.createCreditDisplay(FeatureContainer)
         end)
         
     elseif selectedCategory == "Visual" and module.loadVisualButtons then
         success, errorMessage = pcall(function()
-            print("Calling Visual.loadVisualButtons")
             
-            -- Extra validation for Visual module
+            
             if not module.isInitialized or not module.isInitialized() then
                 error("Visual module is not properly initialized")
             end
@@ -722,7 +647,7 @@ local function loadButtons()
         
     elseif selectedCategory == "Movement" and module.loadMovementButtons then
         success, errorMessage = pcall(function()
-            print("Calling Movement.loadMovementButtons")
+            
             module.loadMovementButtons(
                 function(name, callback) return createButton(name, callback, "Movement") end,
                 function(name, callback, disableCallback) return createToggleButton(name, callback, "Movement", disableCallback) end
@@ -732,7 +657,7 @@ local function loadButtons()
     elseif selectedCategory == "Player" and module.loadPlayerButtons then
         success, errorMessage = pcall(function()
             local selectedPlayer = module.getSelectedPlayer and module.getSelectedPlayer() or nil
-            print("Calling Player.loadPlayerButtons with selectedPlayer: " .. tostring(selectedPlayer))
+            
             module.loadPlayerButtons(
                 function(name, callback) return createButton(name, callback, "Player") end,
                 function(name, callback, disableCallback) return createToggleButton(name, callback, "Player", disableCallback) end,
@@ -746,7 +671,7 @@ local function loadButtons()
             local freecamEnabled = modules.Visual and modules.Visual.getFreecamState and modules.Visual.getFreecamState() or false
             local freecamPosition = freecamEnabled and select(2, modules.Visual.getFreecamState()) or nil
             local toggleFreecam = modules.Visual and modules.Visual.toggleFreecam or function() end
-            print("Calling Teleport.loadTeleportButtons")
+            
             module.loadTeleportButtons(
                 function(name, callback) return createButton(name, callback, "Teleport") end,
                 selectedPlayer, freecamEnabled, freecamPosition, toggleFreecam
@@ -755,23 +680,15 @@ local function loadButtons()
         
     elseif selectedCategory == "Utility" and module.loadUtilityButtons then
         success, errorMessage = pcall(function()
-            print("Calling Utility.loadUtilityButtons")
+            
             module.loadUtilityButtons(function(name, callback)
                 return createButton(name, callback, "Utility")
             end)
         end)
         
-    elseif selectedCategory == "AntiAdmin" and module.loadAntiAdminButtons then
-        success, errorMessage = pcall(function()
-            print("Calling AntiAdmin.loadAntiAdminButtons")
-            module.loadAntiAdminButtons(function(name, callback, disableCallback)
-                return createToggleButton(name, callback, "AntiAdmin", disableCallback)
-            end, FeatureContainer)
-        end)
-        
     elseif selectedCategory == "Settings" and module.loadSettingsButtons then
         success, errorMessage = pcall(function()
-            print("Calling Settings.loadSettingsButtons")
+            
             module.loadSettingsButtons(function(name, callback)
                 return createButton(name, callback, "Settings")
             end)
@@ -779,12 +696,11 @@ local function loadButtons()
         
     elseif selectedCategory == "Info" and module.createInfoDisplay then
         success, errorMessage = pcall(function()
-            print("Calling Info.createInfoDisplay")
+            
             module.createInfoDisplay(FeatureContainer)
         end)
         
     else
-        -- Fallback for modules without proper functions
         local fallbackLabel = Instance.new("TextLabel")
         fallbackLabel.Parent = FeatureContainer
         fallbackLabel.BackgroundTransparency = 1
@@ -799,7 +715,6 @@ local function loadButtons()
         return
     end
 
-    -- Show result with better messaging
     if not success and errorMessage then
         local errorLabel = Instance.new("TextLabel")
         errorLabel.Parent = FeatureContainer
@@ -812,13 +727,12 @@ local function loadButtons()
         errorLabel.TextXAlignment = Enum.TextXAlignment.Left
         errorLabel.TextYAlignment = Enum.TextYAlignment.Top
         errorLabel.TextWrapped = true
-        print("Error loading " .. selectedCategory .. ": " .. tostring(errorMessage))
+        
     elseif success then
-        print("✓ Successfully loaded buttons for " .. selectedCategory)
+        
     end
 end
 
--- Helper function to get available functions in a module
 local function getModuleFunctions(module)
     local functions = {}
     if type(module) == "table" then
@@ -831,7 +745,6 @@ local function getModuleFunctions(module)
     return functions
 end
 
--- Create category buttons
 for _, category in ipairs(categories) do
     local categoryButton = Instance.new("TextButton")
     categoryButton.Name = category.name .. "Category"
@@ -866,7 +779,6 @@ for _, category in ipairs(categories) do
     categoryStates[category.name] = {}
 end
 
--- Minimize/Maximize
 local function toggleMinimize()
     isMinimized = not isMinimized
     Frame.Visible = not isMinimized
@@ -884,11 +796,9 @@ local function toggleMinimize()
     end
 end
 
--- Enhanced reset states with better error handling
 local function resetStates()
-    print("Resetting all states")
     
-    -- Disconnect all connections safely
+    
     for key, connection in pairs(connections) do
         pcall(function()
             if connection and connection.Disconnect then
@@ -898,7 +808,6 @@ local function resetStates()
         connections[key] = nil
     end
     
-    -- Reset module states safely
     for moduleName, module in pairs(modules) do
         if module and type(module.resetStates) == "function" then
             local success, error = pcall(function() 
@@ -907,21 +816,19 @@ local function resetStates()
             if not success then
                 warn("Failed to reset states for " .. moduleName .. ": " .. tostring(error))
             else
-                print("✓ Reset states for " .. moduleName)
+                
             end
         end
     end
     
-    -- Reload current category buttons
     if selectedCategory then
         task.spawn(function()
-            task.wait(0.5) -- Give modules time to reset
+            task.wait(0.5)
             loadButtons()
         end)
     end
 end
 
--- Enhanced character setup with better error handling and module updates
 local function onCharacterAdded(newCharacter)
     if not newCharacter then return end
     
@@ -934,15 +841,12 @@ local function onCharacterAdded(newCharacter)
             error("Failed to find Humanoid or HumanoidRootPart")
         end
         
-        -- Update dependencies for all modules
         dependencies.character = character
         dependencies.humanoid = humanoid
         dependencies.rootPart = rootPart
         dependencies.ScrollFrame = FeatureContainer
         
-        print("Character setup complete, updating module references...")
         
-        -- Update references for modules that support it
         for moduleName, module in pairs(modules) do
             if module and type(module.updateReferences) == "function" then
                 local updateSuccess, updateError = pcall(function()
@@ -951,25 +855,22 @@ local function onCharacterAdded(newCharacter)
                 if not updateSuccess then
                     warn("Failed to update references for " .. moduleName .. ": " .. tostring(updateError))
                 else
-                    print("✓ Updated references for " .. moduleName)
+                    
                 end
             end
         end
         
-        -- Re-initialize modules that need character data
         initializeModules()
         
-        -- Set up death connection with error handling
         if humanoid and humanoid.Died then
             connections.humanoidDied = humanoid.Died:Connect(function()
                 pcall(resetStates)
             end)
         end
         
-        -- Reload current buttons if needed
         if selectedCategory and modules[selectedCategory] then
             task.spawn(function()
-                task.wait(1) -- Give modules time to fully update
+                task.wait(1)
                 loadButtons()
             end)
         end
@@ -977,22 +878,19 @@ local function onCharacterAdded(newCharacter)
     
     if not success then
         warn("Failed to set up character: " .. tostring(result))
-        -- Don't completely fail - try to continue with basic setup
         character = newCharacter
         dependencies.character = character
         dependencies.ScrollFrame = FeatureContainer
     else
-        print("✓ Character setup successful")
+        
     end
 end
 
--- Initialize character with error handling
 if player.Character then
     onCharacterAdded(player.Character)
 end
 connections.characterAdded = player.CharacterAdded:Connect(onCharacterAdded)
 
--- Event connections with error handling
 MinimizeButton.MouseButton1Click:Connect(function()
     pcall(toggleMinimize)
 end)
@@ -1007,19 +905,16 @@ connections.toggleGui = UserInputService.InputBegan:Connect(function(input, game
     end
 end)
 
--- Enhanced startup sequence with better error handling and reporting
 task.spawn(function()
-    local timeout = 45 -- Increased timeout for better reliability
+    local timeout = 45
     local startTime = tick()
     
-    print("=== MinimalHackGUI Initialization Started ===")
-    print("Settings updated: Removed WalkSpeed, Added GuiOpacity")
     
-    -- Wait for at least one critical module to load
+    
     while tick() - startTime < timeout do
         local loadedCount = 0
         local criticalModulesLoaded = 0
-        local criticalModules = {"Movement", "Visual", "Player"} -- Essential modules
+        local criticalModules = {"Movement", "Visual", "Player"}
         
         for moduleName, _ in pairs(moduleURLs) do
             if modulesLoaded[moduleName] then
@@ -1033,18 +928,15 @@ task.spawn(function()
             end
         end
         
-        print(string.format("Loading progress: %d/%d total, %d/%d critical", 
-              loadedCount, #categories, criticalModulesLoaded, #criticalModules))
         
         if criticalModulesLoaded >= 2 or loadedCount >= 4 then
-            print("Sufficient modules loaded, proceeding with initialization...")
+            
             break
         end
         
         task.wait(1)
     end
 
-    -- Report final loading results
     local loadedModules = {}
     local failedModules = {}
     
@@ -1056,32 +948,29 @@ task.spawn(function()
         end
     end
     
-    print("=== Module Loading Results ===")
+    
     if #loadedModules > 0 then
-        print("✓ Successfully loaded: " .. table.concat(loadedModules, ", "))
+        
     end
     
     if #failedModules > 0 then
-        print("✗ Failed to load: " .. table.concat(failedModules, ", "))
-        print("Note: Failed modules will be retried when accessed")
+        
+        
     end
 
-    -- Initialize loaded modules
     if #loadedModules > 0 then
-        print("=== Starting Module Initialization ===")
+        
         initializeModules()
     else
         warn("WARNING: No modules loaded successfully! GUI will have limited functionality.")
     end
     
-    -- Load initial category buttons
-    print("=== Loading Initial Interface ===")
-    task.wait(0.5) -- Give modules time to fully initialize
+    
+    task.wait(0.5)
     
     local buttonLoadSuccess, buttonLoadError = pcall(loadButtons)
     if not buttonLoadSuccess then
         warn("Failed to load initial buttons: " .. tostring(buttonLoadError))
-        -- Create fallback message
         local fallbackLabel = Instance.new("TextLabel")
         fallbackLabel.Parent = FeatureContainer
         fallbackLabel.BackgroundTransparency = 1
@@ -1094,49 +983,47 @@ task.spawn(function()
         fallbackLabel.TextYAlignment = Enum.TextYAlignment.Top
         fallbackLabel.TextWrapped = true
     else
-        print("✓ Initial interface loaded successfully")
+        
     end
     
-    -- ===== SHOW SLIDE NOTIFICATION AFTER SUCCESSFUL INITIALIZATION =====
-    task.wait(1) -- Wait a bit more to ensure everything is stable
+    task.wait(1)
     pcall(function()
         createSlideNotification()
-        print("✓ Slide notification triggered!")
+        
     end)
-    -- ===== END NOTIFICATION TRIGGER =====
     
-    print("=== MinimalHackGUI Initialization Complete ===")
-    print("Press HOME key to toggle GUI visibility")
-    print("New Settings: GUI Width, GUI Height, GUI Opacity controls added")
-    print("Removed: WalkSpeed setting (now handled in Movement module)")
-    print("Loaded modules will continue loading in background")
     
-    -- Continue trying to load failed modules in background
+    
+    
+    
+    
+    
+    
+    
+    
     if #failedModules > 0 then
         task.spawn(function()
-            task.wait(5) -- Wait before retry
-            print("=== Retrying Failed Modules ===")
+            task.wait(5)
+            
             for _, failedModule in ipairs(failedModules) do
                 if not modulesLoaded[failedModule] then
-                    print("Retrying: " .. failedModule)
+                    
                     task.spawn(function()
                         loadModule(failedModule)
                     end)
                 end
-                task.wait(2) -- Stagger retries
+                task.wait(2)
             end
         end)
     end
 end)
 
--- Add cleanup on script termination
 game:GetService("RunService").Heartbeat:Connect(function()
     if ScreenGui.Parent ~= player.PlayerGui then
         ScreenGui.Parent = player.PlayerGui
     end
 end)
 
--- Final safety check
 task.spawn(function()
     task.wait(10)
     if not ScreenGui or not ScreenGui.Parent then
@@ -1153,13 +1040,5 @@ task.spawn(function()
         end
     end
     
-    print(string.format("Health check: %d working modules, GUI %s", 
-          workingModules, (ScreenGui and ScreenGui.Parent) and "OK" or "ERROR"))
     
-    -- Display current settings info
-    print("Current Settings Configuration:")
-    for settingName, setting in pairs(settings) do
-        print(string.format("  %s: %s (range: %s-%s)", 
-              settingName, setting.value, setting.min, setting.max))
-    end
 end)
