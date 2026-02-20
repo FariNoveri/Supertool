@@ -335,7 +335,6 @@ local function loadModule(moduleName)
             error("Failed to fetch module or got 404")
         end
         
-        
         local moduleFunc, loadError = loadstring(response)
         if not moduleFunc then
             error("Failed to compile module: " .. tostring(loadError))
@@ -358,7 +357,6 @@ local function loadModule(moduleName)
         modules[moduleName] = result
         modulesLoaded[moduleName] = true
         
-        
         if selectedCategory == moduleName then
             task.wait(0.1)
             loadButtons()
@@ -375,7 +373,6 @@ for moduleName, _ in pairs(moduleURLs) do
         local startTime = tick()
         local success = loadModule(moduleName)
         local loadTime = tick() - startTime
-        
     end)
 end
 
@@ -412,8 +409,6 @@ local function initializeModules()
                     error("ScrollFrame (FeatureContainer) is nil - cannot initialize " .. moduleName)
                 end
                 
-                
-                
                 local result = module.init(dependencies)
                 if result == false then
                     error("Module init returned false")
@@ -422,7 +417,6 @@ local function initializeModules()
             end)
             
             if success then
-                
                 initResults[moduleName] = "SUCCESS"
             else
                 warn("✗ Failed to initialize module " .. moduleName .. ": " .. tostring(errorMsg))
@@ -444,7 +438,6 @@ local function initializeModules()
             failCount = failCount + 1
         end
     end
-    
     
     if successCount == 0 then
         warn("WARNING: No modules initialized successfully!")
@@ -581,8 +574,19 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
     return result
 end
 
+local function getModuleFunctions(module)
+    local functions = {}
+    if type(module) == "table" then
+        for key, value in pairs(module) do
+            if type(value) == "function" then
+                table.insert(functions, key)
+            end
+        end
+    end
+    return functions
+end
+
 local function loadButtons()
-    
     
     pcall(function()
         for _, child in pairs(FeatureContainer:GetChildren()) do
@@ -630,14 +634,11 @@ local function loadButtons()
 
     if selectedCategory == "Credit" and module.createCreditDisplay then
         success, errorMessage = pcall(function()
-            
             module.createCreditDisplay(FeatureContainer)
         end)
         
     elseif selectedCategory == "Visual" and module.loadVisualButtons then
         success, errorMessage = pcall(function()
-            
-            
             if not module.isInitialized or not module.isInitialized() then
                 error("Visual module is not properly initialized")
             end
@@ -649,7 +650,6 @@ local function loadButtons()
         
     elseif selectedCategory == "Movement" and module.loadMovementButtons then
         success, errorMessage = pcall(function()
-            
             module.loadMovementButtons(
                 function(name, callback) return createButton(name, callback, "Movement") end,
                 function(name, callback, disableCallback) return createToggleButton(name, callback, "Movement", disableCallback) end
@@ -682,7 +682,6 @@ local function loadButtons()
         
     elseif selectedCategory == "Utility" and module.loadUtilityButtons then
         success, errorMessage = pcall(function()
-            
             module.loadUtilityButtons(function(name, callback)
                 return createButton(name, callback, "Utility")
             end)
@@ -690,7 +689,6 @@ local function loadButtons()
         
     elseif selectedCategory == "AntiAdmin" and module.loadAntiAdminButtons then
         success, errorMessage = pcall(function()
-            
             module.loadAntiAdminButtons(function(name, callback, disableCallback)
                 return createToggleButton(name, callback, "AntiAdmin", disableCallback)
             end, FeatureContainer)
@@ -698,7 +696,6 @@ local function loadButtons()
         
     elseif selectedCategory == "Settings" and module.loadSettingsButtons then
         success, errorMessage = pcall(function()
-            
             module.loadSettingsButtons(function(name, callback)
                 return createButton(name, callback, "Settings")
             end)
@@ -706,7 +703,6 @@ local function loadButtons()
         
     elseif selectedCategory == "Info" and module.createInfoDisplay then
         success, errorMessage = pcall(function()
-            
             module.createInfoDisplay(FeatureContainer)
         end)
         
@@ -737,22 +733,7 @@ local function loadButtons()
         errorLabel.TextXAlignment = Enum.TextXAlignment.Left
         errorLabel.TextYAlignment = Enum.TextYAlignment.Top
         errorLabel.TextWrapped = true
-        
-    elseif success then
-        
     end
-end
-
-local function getModuleFunctions(module)
-    local functions = {}
-    if type(module) == "table" then
-        for key, value in pairs(module) do
-            if type(value) == "function" then
-                table.insert(functions, key)
-            end
-        end
-    end
-    return functions
 end
 
 for _, category in ipairs(categories) do
@@ -807,8 +788,6 @@ local function toggleMinimize()
 end
 
 local function resetStates()
-    
-    
     for key, connection in pairs(connections) do
         pcall(function()
             if connection and connection.Disconnect then
@@ -825,8 +804,6 @@ local function resetStates()
             end)
             if not success then
                 warn("Failed to reset states for " .. moduleName .. ": " .. tostring(error))
-            else
-                
             end
         end
     end
@@ -856,7 +833,6 @@ local function onCharacterAdded(newCharacter)
         dependencies.rootPart = rootPart
         dependencies.ScrollFrame = FeatureContainer
         
-        
         for moduleName, module in pairs(modules) do
             if module and type(module.updateReferences) == "function" then
                 local updateSuccess, updateError = pcall(function()
@@ -864,8 +840,6 @@ local function onCharacterAdded(newCharacter)
                 end)
                 if not updateSuccess then
                     warn("Failed to update references for " .. moduleName .. ": " .. tostring(updateError))
-                else
-                    
                 end
             end
         end
@@ -891,8 +865,6 @@ local function onCharacterAdded(newCharacter)
         character = newCharacter
         dependencies.character = character
         dependencies.ScrollFrame = FeatureContainer
-    else
-        
     end
 end
 
@@ -919,8 +891,6 @@ task.spawn(function()
     local timeout = 45
     local startTime = tick()
     
-    
-    
     while tick() - startTime < timeout do
         local loadedCount = 0
         local criticalModulesLoaded = 0
@@ -938,9 +908,7 @@ task.spawn(function()
             end
         end
         
-        
         if criticalModulesLoaded >= 2 or loadedCount >= 4 then
-            
             break
         end
         
@@ -957,24 +925,12 @@ task.spawn(function()
             table.insert(failedModules, moduleName)
         end
     end
-    
-    
-    if #loadedModules > 0 then
-        
-    end
-    
-    if #failedModules > 0 then
-        
-        
-    end
 
     if #loadedModules > 0 then
-        
         initializeModules()
     else
         warn("WARNING: No modules loaded successfully! GUI will have limited functionality.")
     end
-    
     
     task.wait(0.5)
     
@@ -992,32 +948,18 @@ task.spawn(function()
         fallbackLabel.TextXAlignment = Enum.TextXAlignment.Left
         fallbackLabel.TextYAlignment = Enum.TextYAlignment.Top
         fallbackLabel.TextWrapped = true
-    else
-        
     end
     
     task.wait(1)
     pcall(function()
         createSlideNotification()
-        
     end)
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     if #failedModules > 0 then
         task.spawn(function()
             task.wait(5)
-            
             for _, failedModule in ipairs(failedModules) do
                 if not modulesLoaded[failedModule] then
-                    
                     task.spawn(function()
                         loadModule(failedModule)
                     end)
@@ -1028,19 +970,24 @@ task.spawn(function()
     end
 end)
 
-game:GetService("RunService").Heartbeat:Connect(function()
-    if ScreenGui.Parent ~= player.PlayerGui then
-        ScreenGui.Parent = player.PlayerGui
-    end
+-- FIXED: Wrapped in pcall to prevent spam when Parent is locked by Roblox
+RunService.Heartbeat:Connect(function()
+    pcall(function()
+        if ScreenGui and ScreenGui.Parent ~= player.PlayerGui then
+            ScreenGui.Parent = player.PlayerGui
+        end
+    end)
 end)
 
 task.spawn(function()
     task.wait(10)
     if not ScreenGui or not ScreenGui.Parent then
         warn("GUI lost parent, attempting recovery...")
-        if ScreenGui then
-            ScreenGui.Parent = player.PlayerGui
-        end
+        pcall(function()
+            if ScreenGui then
+                ScreenGui.Parent = player.PlayerGui
+            end
+        end)
     end
     
     local workingModules = 0
@@ -1049,6 +996,4 @@ task.spawn(function()
             workingModules = workingModules + 1
         end
     end
-    
-    
-end)
+end)`
