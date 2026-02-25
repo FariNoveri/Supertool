@@ -1,10 +1,7 @@
--- Info.lua - GhostHub Style Profile Card for MinimalHackGUI by Fari Noveri
-
 local Info = {}
 local initialized = false
 local scrollFrame
 
--- Initialize the Info module
 function Info.init(deps)
     if initialized then return true end
     
@@ -15,11 +12,9 @@ function Info.init(deps)
     end
     
     initialized = true
-    print("Info module initialized successfully (GhostHub Style)")
     return true
 end
 
--- Main function to create the profile display
 function Info.createInfoDisplay(container)
     if not initialized then
         warn("Info module not initialized")
@@ -31,14 +26,12 @@ function Info.createInfoDisplay(container)
         return false
     end
 
-    -- Clear existing content
     for _, child in pairs(container:GetChildren()) do
         if child:IsA("GuiObject") and child.Name ~= "UIListLayout" then
             child:Destroy()
         end
     end
 
-    -- Main Profile Card Container
     local profileCard = Instance.new("Frame")
     profileCard.Name = "ProfileCard"
     profileCard.Parent = container
@@ -48,12 +41,10 @@ function Info.createInfoDisplay(container)
     profileCard.Position = UDim2.new(0, 5, 0, 5)
     profileCard.LayoutOrder = 1
     
-    -- Rounded corners
     local cardCorner = Instance.new("UICorner")
     cardCorner.CornerRadius = UDim.new(0, 12)
     cardCorner.Parent = profileCard
     
-    -- Gradient background effect
     local gradient = Instance.new("UIGradient")
     gradient.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 50)),
@@ -62,7 +53,6 @@ function Info.createInfoDisplay(container)
     gradient.Rotation = 135
     gradient.Parent = profileCard
     
-    -- Profile Picture Frame
     local profilePicFrame = Instance.new("Frame")
     profilePicFrame.Name = "ProfilePicFrame"
     profilePicFrame.Parent = profileCard
@@ -71,31 +61,27 @@ function Info.createInfoDisplay(container)
     profilePicFrame.Position = UDim2.new(0.5, -45, 0, 15)
     profilePicFrame.Size = UDim2.new(0, 90, 0, 90)
     
-    -- Circular profile picture
     local profileCorner = Instance.new("UICorner")
     profileCorner.CornerRadius = UDim.new(1, 0)
     profileCorner.Parent = profilePicFrame
     
-    -- Profile border glow effect
     local profileBorder = Instance.new("UIStroke")
     profileBorder.Color = Color3.fromRGB(100, 150, 255)
     profileBorder.Thickness = 3
     profileBorder.Parent = profilePicFrame
     
-    -- Profile Image
     local profileImage = Instance.new("ImageLabel")
     profileImage.Name = "ProfileImage"
     profileImage.Parent = profilePicFrame
     profileImage.BackgroundTransparency = 1
     profileImage.Size = UDim2.new(1, 0, 1, 0)
-    profileImage.Image = "https://cdn.rafled.com/anime-icons/images/cADJDgHDli9YzzGB5AhH0Aa2dR8Bfu8w.jpg" -- Your logo/profile pic
+    profileImage.Image = "https://cdn.rafled.com/anime-icons/images/cADJDgHDli9YzzGB5AhH0Aa2dR8Bfu8w.jpg"
     profileImage.ScaleType = Enum.ScaleType.Fit
     
     local imageCorner = Instance.new("UICorner")
     imageCorner.CornerRadius = UDim.new(1, 0)
     imageCorner.Parent = profileImage
     
-    -- Creator Name
     local creatorName = Instance.new("TextLabel")
     creatorName.Name = "CreatorName"
     creatorName.Parent = profileCard
@@ -108,7 +94,6 @@ function Info.createInfoDisplay(container)
     creatorName.TextSize = 18
     creatorName.TextXAlignment = Enum.TextXAlignment.Center
     
-    -- Title/Role
     local roleLabel = Instance.new("TextLabel")
     roleLabel.Name = "RoleLabel"
     roleLabel.Parent = profileCard
@@ -121,7 +106,6 @@ function Info.createInfoDisplay(container)
     roleLabel.TextSize = 11
     roleLabel.TextXAlignment = Enum.TextXAlignment.Center
     
-    -- Divider Line
     local divider = Instance.new("Frame")
     divider.Name = "Divider"
     divider.Parent = profileCard
@@ -130,7 +114,6 @@ function Info.createInfoDisplay(container)
     divider.Position = UDim2.new(0.1, 0, 0, 170)
     divider.Size = UDim2.new(0.8, 0, 0, 1)
     
-    -- Stats Container
     local statsContainer = Instance.new("Frame")
     statsContainer.Name = "StatsContainer"
     statsContainer.Parent = profileCard
@@ -138,7 +121,6 @@ function Info.createInfoDisplay(container)
     statsContainer.Position = UDim2.new(0, 10, 0, 180)
     statsContainer.Size = UDim2.new(1, -20, 0, 90)
     
-    -- Stat items
     local stats = {
         {label = "GUI Version", value = "v2.5"},
         {label = "Total Features", value = "60+"},
@@ -178,7 +160,6 @@ function Info.createInfoDisplay(container)
         statValue.TextXAlignment = Enum.TextXAlignment.Right
     end
     
-    -- Description Card
     local descCard = Instance.new("Frame")
     descCard.Name = "DescriptionCard"
     descCard.Parent = container
@@ -192,7 +173,6 @@ function Info.createInfoDisplay(container)
     descCorner.CornerRadius = UDim.new(0, 12)
     descCorner.Parent = descCard
     
-    -- Description Title
     local descTitle = Instance.new("TextLabel")
     descTitle.Name = "DescTitle"
     descTitle.Parent = descCard
@@ -200,12 +180,11 @@ function Info.createInfoDisplay(container)
     descTitle.Position = UDim2.new(0, 15, 0, 10)
     descTitle.Size = UDim2.new(1, -30, 0, 20)
     descTitle.Font = Enum.Font.GothamBold
-    descTitle.Text = "📝 About MinimalHackGUI"
+    descTitle.Text = "About MinimalHackGUI"
     descTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     descTitle.TextSize = 12
     descTitle.TextXAlignment = Enum.TextXAlignment.Left
     
-    -- Description Text
     local descText = Instance.new("TextLabel")
     descText.Name = "DescText"
     descText.Parent = descCard
@@ -213,14 +192,13 @@ function Info.createInfoDisplay(container)
     descText.Position = UDim2.new(0, 15, 0, 35)
     descText.Size = UDim2.new(1, -30, 0, 105)
     descText.Font = Enum.Font.Gotham
-    descText.Text = "MinimalHackGUI adalah script exploit yang powerful namun tetap ringan dan mudah digunakan. Dilengkapi dengan berbagai fitur seperti Movement, Player Control, Teleport, Visual Effects, dan Anti-Admin protection.\n\nDibuat dengan ❤️ untuk komunitas Roblox exploiting."
+    descText.Text = "MinimalHackGUI adalah script exploit yang powerful namun tetap ringan dan mudah digunakan. Dilengkapi dengan berbagai fitur seperti Movement, Player Control, Teleport, Visual Effects, dan Anti-Admin protection.\n\nDibuat untuk komunitas Roblox exploiting."
     descText.TextColor3 = Color3.fromRGB(200, 200, 200)
     descText.TextSize = 9
     descText.TextXAlignment = Enum.TextXAlignment.Left
     descText.TextYAlignment = Enum.TextYAlignment.Top
     descText.TextWrapped = true
     
-    -- Features Highlight Card
     local featuresCard = Instance.new("Frame")
     featuresCard.Name = "FeaturesCard"
     featuresCard.Parent = container
@@ -234,7 +212,6 @@ function Info.createInfoDisplay(container)
     featCorner.CornerRadius = UDim.new(0, 12)
     featCorner.Parent = featuresCard
     
-    -- Features Title
     local featTitle = Instance.new("TextLabel")
     featTitle.Name = "FeatTitle"
     featTitle.Parent = featuresCard
@@ -242,21 +219,20 @@ function Info.createInfoDisplay(container)
     featTitle.Position = UDim2.new(0, 15, 0, 10)
     featTitle.Size = UDim2.new(1, -30, 0, 20)
     featTitle.Font = Enum.Font.GothamBold
-    featTitle.Text = "⚡ Key Features"
+    featTitle.Text = "Key Features"
     featTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     featTitle.TextSize = 12
     featTitle.TextXAlignment = Enum.TextXAlignment.Left
     
-    -- Feature highlights list
     local highlights = {
-        "🚀 Advanced Movement System (Fly, NoClip, Speed)",
-        "👥 Player Interaction Tools (Spectate, Teleport)",
-        "📍 Smart Teleport with Position Manager",
-        "👁️ Visual Enhancements (ESP, Freecam, Fullbright)",
-        "🛡️ Anti-Admin Protection System",
-        "🎮 Mobile-Friendly Controls",
-        "⚙️ Customizable GUI Settings",
-        "💾 Save/Load System for Positions & Paths"
+        "Advanced Movement System (Fly, NoClip, Speed)",
+        "Player Interaction Tools (Spectate, Teleport)",
+        "Smart Teleport with Position Manager",
+        "Visual Enhancements (ESP, Freecam, Fullbright)",
+        "Anti-Admin Protection System",
+        "Mobile-Friendly Controls",
+        "Customizable GUI Settings",
+        "Save/Load System for Positions & Paths"
     }
     
     for i, highlight in ipairs(highlights) do
@@ -273,7 +249,6 @@ function Info.createInfoDisplay(container)
         highlightLabel.TextXAlignment = Enum.TextXAlignment.Left
     end
     
-    -- Contact/Social Card
     local socialCard = Instance.new("Frame")
     socialCard.Name = "SocialCard"
     socialCard.Parent = container
@@ -287,7 +262,6 @@ function Info.createInfoDisplay(container)
     socialCorner.CornerRadius = UDim.new(0, 12)
     socialCorner.Parent = socialCard
     
-    -- Social Title
     local socialTitle = Instance.new("TextLabel")
     socialTitle.Name = "SocialTitle"
     socialTitle.Parent = socialCard
@@ -295,16 +269,15 @@ function Info.createInfoDisplay(container)
     socialTitle.Position = UDim2.new(0, 15, 0, 10)
     socialTitle.Size = UDim2.new(1, -30, 0, 20)
     socialTitle.Font = Enum.Font.GothamBold
-    socialTitle.Text = "🔗 Connect"
+    socialTitle.Text = "Connect"
     socialTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     socialTitle.TextSize = 12
     socialTitle.TextXAlignment = Enum.TextXAlignment.Left
     
-    -- Social info
     local socialInfo = {
-        {icon = "📧", text = "GitHub: FariNoveri"},
-        {icon = "💬", text = "Discord: Available on request"},
-        {icon = "🌐", text = "Repository: Supertool"}
+        {icon = "", text = "GitHub: FariNoveri"},
+        {icon = "", text = "Discord: Available on request"},
+        {icon = "", text = "Repository: Supertool"}
     }
     
     for i, info in ipairs(socialInfo) do
@@ -321,7 +294,6 @@ function Info.createInfoDisplay(container)
         infoLabel.TextXAlignment = Enum.TextXAlignment.Left
     end
     
-    -- Footer
     local footer = Instance.new("TextLabel")
     footer.Name = "Footer"
     footer.Parent = container
@@ -329,29 +301,24 @@ function Info.createInfoDisplay(container)
     footer.Size = UDim2.new(1, -10, 0, 40)
     footer.Position = UDim2.new(0, 5, 0, 0)
     footer.Font = Enum.Font.Gotham
-    footer.Text = "Press HOME to toggle GUI\nMade with ❤️ by Fari Noveri © 2025"
+    footer.Text = "Press HOME to toggle GUI\nMade by Fari Noveri © 2025"
     footer.TextColor3 = Color3.fromRGB(120, 120, 120)
     footer.TextSize = 8
     footer.TextXAlignment = Enum.TextXAlignment.Center
     footer.TextWrapped = true
     footer.LayoutOrder = 5
     
-    print("✨ GhostHub style profile display created successfully")
-    
     return true
 end
 
--- Reset function
 function Info.resetStates()
     return true
 end
 
--- Update references function
 function Info.updateReferences()
     return true
 end
 
--- Check if module is initialized
 function Info.isInitialized()
     return initialized
 end

@@ -1,31 +1,21 @@
--- AntiAdminInfo.lua
--- Anti Admin Info Module by Fari Noveri
-
 local AntiAdminInfo = {}
 
--- Services
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
--- Variables
 local player = Players.LocalPlayer
 local detectionGUI = nil
 local isActive = false
 local detectionConnection = nil
 
--- Initialize function (required by mainloader)
 function AntiAdminInfo.init(dependencies)
-    -- Store dependencies if needed
     if dependencies then
-        -- Can use dependencies like Watermark, ScreenGui, etc.
     end
-    print("AntiAdminInfo module initialized")
     AntiAdminInfo.createDetectionGUI()
     AntiAdminInfo.startDetection()
 end
 
--- Create detection notification GUI
 function AntiAdminInfo.createDetectionGUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "AntiAdminDetection"
@@ -42,12 +32,10 @@ function AntiAdminInfo.createDetectionGUI()
     notificationFrame.BorderSizePixel = 0
     notificationFrame.Visible = false
     
-    -- Corner radius
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = notificationFrame
     
-    -- Notification text
     local notificationText = Instance.new("TextLabel")
     notificationText.Name = "NotificationText"
     notificationText.Parent = notificationFrame
@@ -66,14 +54,12 @@ function AntiAdminInfo.createDetectionGUI()
     }
 end
 
--- Show admin detection notification
 function AntiAdminInfo.showDetection(adminName)
     if not detectionGUI then return end
     
     detectionGUI.text.Text = "ADMIN DETECTED\n" .. adminName
     detectionGUI.frame.Visible = true
     
-    -- Fade in
     detectionGUI.frame.BackgroundTransparency = 1
     local fadeIn = TweenService:Create(
         detectionGUI.frame,
@@ -82,7 +68,6 @@ function AntiAdminInfo.showDetection(adminName)
     )
     fadeIn:Play()
     
-    -- Hide after 3 seconds
     wait(3)
     local fadeOut = TweenService:Create(
         detectionGUI.frame,
@@ -96,7 +81,6 @@ function AntiAdminInfo.showDetection(adminName)
     end)
 end
 
--- Start detection system
 function AntiAdminInfo.startDetection()
     if detectionConnection then
         detectionConnection:Disconnect()
@@ -104,41 +88,34 @@ function AntiAdminInfo.startDetection()
     
     isActive = true
     
-    -- Check existing players
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player then
             AntiAdminInfo.scanPlayer(p)
         end
     end
     
-    -- Monitor new players
     Players.PlayerAdded:Connect(function(newPlayer)
         if isActive then
-            wait(0.1) -- Quick scan delay
+            wait(0.1)
             AntiAdminInfo.scanPlayer(newPlayer)
         end
     end)
 end
 
--- Scan player for suspicious behavior
 function AntiAdminInfo.scanPlayer(targetPlayer)
     if not targetPlayer or targetPlayer == player then return end
     
-    -- Simple detection logic (replace with your actual detection)
     local suspiciousFactors = 0
     local playerName = targetPlayer.Name
     
-    -- Check various factors
     if targetPlayer.AccountAge < 30 then
         suspiciousFactors = suspiciousFactors + 1
     end
     
-    -- Random detection for demo (replace with real detection)
-    if math.random(1, 100) <= 25 then -- 25% chance for demo
+    if math.random(1, 100) <= 25 then
         suspiciousFactors = suspiciousFactors + 2
     end
     
-    -- If suspicious enough, show notification
     if suspiciousFactors >= 2 then
         spawn(function()
             AntiAdminInfo.showDetection(playerName)
@@ -146,15 +123,13 @@ function AntiAdminInfo.scanPlayer(targetPlayer)
     end
 end
 
--- Function to get watermark text
 function AntiAdminInfo.getWatermarkText()
     local suspiciousPlayers = 0
     local totalPlayers = #Players:GetPlayers()
     
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player then
-            -- Simple random detection for demo
-            if math.random(1, 100) <= 30 then -- 30% chance to be "suspicious"
+            if math.random(1, 100) <= 30 then
                 suspiciousPlayers = suspiciousPlayers + 1
             end
         end
@@ -172,7 +147,6 @@ function AntiAdminInfo.getWatermarkText()
     return "AntiAdmin: " .. status .. " (" .. suspiciousPlayers .. "/" .. (totalPlayers - 1) .. ")"
 end
 
--- Function to load info buttons (for compatibility)
 function AntiAdminInfo.loadInfoButtons(createButton)
     if not createButton or type(createButton) ~= "function" then
         warn("Invalid createButton function provided to AntiAdminInfo.loadInfoButtons")
@@ -180,42 +154,23 @@ function AntiAdminInfo.loadInfoButtons(createButton)
     end
 
     createButton("Show Protection Info", function()
-        print("=== ANTI ADMIN PROTECTION INFO ===")
-        print("System Status: ACTIVE")
-        print("Protection Level: MAXIMUM")
-        print("Features: Kill, Teleport, Fling, Freeze Protection")
-        print("Hot Potato System: ENABLED")
-        print("Real-time Detection: ACTIVE")
-        print("Created by: Fari Noveri")
     end)
 
     createButton("Show Detection Stats", function()
-        local totalPlayers = #Players:GetPlayers() - 1 -- Exclude local player
-        local suspiciousCount = math.floor(totalPlayers * math.random(0.1, 0.4)) -- Random for demo
-        
-        print("=== DETECTION STATISTICS ===")
-        print("Total Players Scanned: " .. totalPlayers)
-        print("Suspicious Players: " .. suspiciousCount)
-        print("Clean Players: " .. (totalPlayers - suspiciousCount))
-        print("Confidence Level: " .. math.random(85, 99) .. "%")
-        print("Last Scan: " .. os.date("%X"))
     end)
 
     createButton("Toggle Detection", function()
         isActive = not isActive
         if isActive then
             AntiAdminInfo.startDetection()
-            print("Detection system ENABLED")
         else
             if detectionConnection then
                 detectionConnection:Disconnect()
             end
-            print("Detection system DISABLED")
         end
     end)
 end
 
--- Function to load buttons with old signature (for backward compatibility)
 function AntiAdminInfo.loadButtons(scrollFrame, utils)
     if not scrollFrame then
         warn("No scrollFrame provided to AntiAdminInfo.loadButtons")
@@ -270,7 +225,6 @@ Created by Fari Noveri - Ultimate protection for Unknown Block members!]]
     infoLabel.TextXAlignment = Enum.TextXAlignment.Left
     infoLabel.TextYAlignment = Enum.TextYAlignment.Top
 
-    -- Add padding
     local padding = Instance.new("UIPadding")
     padding.PaddingLeft = UDim.new(0, 10)
     padding.PaddingRight = UDim.new(0, 10)
@@ -278,15 +232,12 @@ Created by Fari Noveri - Ultimate protection for Unknown Block members!]]
     padding.PaddingBottom = UDim.new(0, 10)
     padding.Parent = infoLabel
 
-    -- Notify if utils is available
     if utils and utils.notify then
         utils.notify("Anti Admin Info loaded - By Fari Noveri")
     else
-        print("Anti Admin Info loaded - By Fari Noveri")
     end
 end
 
--- Toggle detection system
 function AntiAdminInfo.toggleDetection()
     isActive = not isActive
     if isActive then
@@ -299,7 +250,6 @@ function AntiAdminInfo.toggleDetection()
     return isActive
 end
 
--- Reset states function
 function AntiAdminInfo.resetStates()
     isActive = false
     if detectionConnection then
