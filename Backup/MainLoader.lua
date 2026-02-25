@@ -16,7 +16,7 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbyffukVjhbdbWkSRXlaA8zA6uUovcmwrCSHEH9PKqH7fEc62inqVXyAndT3Ohmljk_3/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbxnKYwu9owBgrvlqgBizxFoTC85yp8As988M5R1wiq_9PngWR_YPJqEY35aYIl7P6R7/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
