@@ -14,47 +14,105 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 
 -- =====================================================
--- FIREBASE CONFIG
+-- FIRESTORE CONFIG
 -- =====================================================
-local FIREBASE_URL = "https://supertool-18bae-default-rtdb.firebaseio.com"
+local FIRESTORE_PROJECT = "supertool-18bae"
 local FIREBASE_API_KEY = "AIzaSyAICeLezq9zrxKzIH2iQMpQVLhzeaebxKg"
+local FIRESTORE_BASE = "https://firestore.googleapis.com/v1/projects/" .. FIRESTORE_PROJECT .. "/databases/(default)/documents"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
--- FIREBASE HELPER FUNCTIONS
+-- FIRESTORE HELPER FUNCTIONS
 -- =====================================================
 
-local function firebaseGet(path)
-    local url = FIREBASE_URL .. path .. ".json?auth=" .. FIREBASE_API_KEY
+-- Convert Lua value ke Firestore field value format
+local function toFirestoreValue(val)
+    local t = type(val)
+    if t == "boolean" then
+        return {booleanValue = val}
+    elseif t == "number" then
+        if val == math.floor(val) then
+            return {integerValue = tostring(val)}
+        else
+            return {doubleValue = val}
+        end
+    elseif t == "string" then
+        return {stringValue = val}
+    end
+    return {nullValue = "NULL_VALUE"}
+end
+
+-- Convert Lua table ke Firestore fields format
+local function toFirestoreFields(data)
+    local fields = {}
+    for k, v in pairs(data) do
+        fields[k] = toFirestoreValue(v)
+    end
+    return fields
+end
+
+-- Extract nilai dari Firestore document fields
+local function fromFirestoreDoc(doc)
+    if not doc or not doc.fields then return nil end
+    local result = {}
+    for k, v in pairs(doc.fields) do
+        if v.booleanValue ~= nil then
+            result[k] = v.booleanValue
+        elseif v.integerValue ~= nil then
+            result[k] = tonumber(v.integerValue)
+        elseif v.doubleValue ~= nil then
+            result[k] = v.doubleValue
+        elseif v.stringValue ~= nil then
+            result[k] = v.stringValue
+        else
+            result[k] = nil
+        end
+    end
+    return result
+end
+
+-- GET document dari Firestore
+local function firestoreGet(collection, docId)
+    local url = FIRESTORE_BASE .. "/" .. collection .. "/" .. docId .. "?key=" .. FIREBASE_API_KEY
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
     if not success or not response then return nil end
     local ok, data = pcall(HttpService.JSONDecode, HttpService, response)
-    return ok and data or nil
+    if not ok or not data or data.error then return nil end
+    return fromFirestoreDoc(data)
 end
 
-local function firebasePut(path, data)
-    local url = FIREBASE_URL .. path .. ".json?auth=" .. FIREBASE_API_KEY
-    local success, response = pcall(function()
-        return HttpService:RequestAsync({
-            Url = url,
-            Method = "PUT",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(data)
-        })
-    end)
-    return success
-end
-
-local function firebasePatch(path, data)
-    local url = FIREBASE_URL .. path .. ".json?auth=" .. FIREBASE_API_KEY
+-- CREATE / OVERWRITE document di Firestore (PATCH = upsert)
+local function firestoreSet(collection, docId, data)
+    local url = FIRESTORE_BASE .. "/" .. collection .. "/" .. docId .. "?key=" .. FIREBASE_API_KEY
+    local body = HttpService:JSONEncode({fields = toFirestoreFields(data)})
     local success, response = pcall(function()
         return HttpService:RequestAsync({
             Url = url,
             Method = "PATCH",
             Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(data)
+            Body = body
+        })
+    end)
+    return success
+end
+
+-- UPDATE sebagian field saja (updateMask)
+local function firestoreUpdate(collection, docId, data)
+    local fieldPaths = {}
+    for k, _ in pairs(data) do
+        table.insert(fieldPaths, "updateMask.fieldPaths=" .. k)
+    end
+    local maskQuery = table.concat(fieldPaths, "&")
+    local url = FIRESTORE_BASE .. "/" .. collection .. "/" .. docId .. "?" .. maskQuery .. "&key=" .. FIREBASE_API_KEY
+    local body = HttpService:JSONEncode({fields = toFirestoreFields(data)})
+    local success, response = pcall(function()
+        return HttpService:RequestAsync({
+            Url = url,
+            Method = "PATCH",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = body
         })
     end)
     return success
@@ -67,29 +125,30 @@ end
 local isBlacklisted = false
 
 task.spawn(function()
-    local blacklistData = firebaseGet("/users/" .. player.Name .. "/blacklisted")
-    if blacklistData == true then
+    local userData = firestoreGet("users", player.Name)
+
+    -- Cek blacklist
+    if userData and userData.blacklisted == true then
         isBlacklisted = true
-        -- Destroy semua GUI script ini
         for _, gui in pairs(player.PlayerGui:GetChildren()) do
             if gui.Name == "MinimalHackGUI" then
                 gui:Destroy()
             end
         end
         warn("[SuperTool] Akses ditolak untuk: " .. player.Name)
-        -- Stop eksekusi lebih lanjut
         return
     end
 
-    -- Register / update user di Firebase
-    local existing = firebaseGet("/users/" .. player.Name)
-    if existing and type(existing) == "table" then
-        firebasePatch("/users/" .. player.Name, {
+    -- Register / update user di Firestore
+    if userData then
+        -- User sudah ada, update last_online & map_id saja
+        firestoreUpdate("users", player.Name, {
             last_online = os.time(),
             map_id = tostring(game.PlaceId)
         })
     else
-        firebasePut("/users/" .. player.Name, {
+        -- User baru, buat dokumen lengkap
+        firestoreSet("users", player.Name, {
             username = player.Name,
             last_online = os.time(),
             map_id = tostring(game.PlaceId),
@@ -102,7 +161,7 @@ task.spawn(function()
         while task.wait(60) do
             if not isBlacklisted then
                 pcall(function()
-                    firebasePatch("/users/" .. player.Name, {
+                    firestoreUpdate("users", player.Name, {
                         last_online = os.time(),
                         map_id = tostring(game.PlaceId)
                     })
@@ -222,7 +281,7 @@ if player.Name == OWNER_NAME then
     local function checkAndHighlight(p)
         if p == player then return end
         task.spawn(function()
-            local userData = firebaseGet("/users/" .. p.Name)
+            local userData = firestoreGet("users", p.Name)
             if userData and type(userData) == "table" then
                 local lastOn = userData.last_online or 0
                 -- Aktif kalau last_online dalam 3 menit terakhir
