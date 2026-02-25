@@ -1,16 +1,21 @@
+-- Credit.lua - Credit module for MinimalHackGUI by Fari Noveri
+
 local CreditModule = {}
 
 function CreditModule.init(deps)
+    print("Credit module initialized")
     return true
 end
 
 function CreditModule.createCreditDisplay(container)
+    -- Clear existing content
     for _, child in pairs(container:GetChildren()) do
         if child:IsA("TextLabel") or child:IsA("Frame") then
             child:Destroy()
         end
     end
     
+    -- Main credit text with ASCII box
     local creditText = Instance.new("TextLabel")
     creditText.Name = "CreditText"
     creditText.Parent = container
@@ -45,12 +50,15 @@ function CreditModule.createCreditDisplay(container)
     creditText.TextYAlignment = Enum.TextYAlignment.Top
     creditText.TextWrapped = false
     
+    print("Credit display created successfully")
 end
 
 function CreditModule.resetStates()
+    -- Nothing to reset for credit module
 end
 
 function CreditModule.updateReferences()
+    -- Nothing to update for credit module
 end
 
 return CreditModule

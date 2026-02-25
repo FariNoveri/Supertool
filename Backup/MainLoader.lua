@@ -1,3 +1,8 @@
+-- =====================================================
+-- MinimalHackGUI by Fari Noveri [Firebase Edition]
+-- Firebase: user tracking, blacklist, owner highlight
+-- =====================================================
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -8,8 +13,15 @@ local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
+-- =====================================================
+-- PROXY CONFIG (Google Apps Script)
+-- =====================================================
 local PROXY_URL = "https://script.google.com/macros/s/AKfycbxe2gCPMCSzRI7vN_-gppZiwh1ScRaZTmIJFQofYvCLM40DKuoiYfyNek5TAP4HL_3A/exec"
 local OWNER_NAME = "FariNoveri_2"
+
+-- =====================================================
+-- FIRESTORE via PROXY (semua request pakai HttpGet biasa)
+-- =====================================================
 
 local function encodeParams(params)
     local parts = {}
@@ -19,6 +31,7 @@ local function encodeParams(params)
     return table.concat(parts, "&")
 end
 
+-- GET user data dari Firestore via proxy
 local function firestoreGet(collection, docId)
     local url = PROXY_URL .. "?action=get&username=" .. docId
     local success, response = pcall(function()
@@ -30,7 +43,8 @@ local function firestoreGet(collection, docId)
     end
     local ok, data = pcall(HttpService.JSONDecode, HttpService, response)
     if not ok then warn("[Proxy GET decode failed]: " .. tostring(data)) return nil end
-    if data and data.error then return nil end
+    if data and data.error then return nil end -- doc not found = normal
+    -- Parse Firestore format
     if not data.fields then return nil end
     local result = {}
     for k, v in pairs(data.fields) do
@@ -43,6 +57,7 @@ local function firestoreGet(collection, docId)
     return result
 end
 
+-- SET/UPDATE user data via proxy
 local function firestoreSet(collection, docId, data)
     local params = {
         action = "set",
@@ -62,15 +77,21 @@ local function firestoreSet(collection, docId, data)
     return success
 end
 
+-- UPDATE = sama dengan SET via proxy
 local function firestoreUpdate(collection, docId, data)
     return firestoreSet(collection, docId, data)
 end
+
+-- =====================================================
+-- BLACKLIST CHECK — jalankan PERTAMA sebelum GUI load
+-- =====================================================
 
 local isBlacklisted = false
 
 task.spawn(function()
     local userData = firestoreGet("users", player.Name)
 
+    -- Cek blacklist
     if userData and (userData.blacklisted == true or userData.blacklisted == "true") then
         isBlacklisted = true
         for _, gui in pairs(player.PlayerGui:GetChildren()) do
@@ -83,13 +104,16 @@ task.spawn(function()
         return
     end
 
+    -- Register / update user di Firestore
     if userData then
+        -- User sudah ada, update last_online & map_id saja
         firestoreUpdate("users", player.Name, {
             last_online = os.time(),
             map_id = tostring(game.PlaceId),
             job_id = tostring(game.JobId)
         })
     else
+        -- User baru, buat dokumen lengkap
         firestoreSet("users", player.Name, {
             username = player.Name,
             last_online = os.time(),
@@ -99,6 +123,7 @@ task.spawn(function()
         })
     end
 
+    -- Update last_online setiap 60 detik
     task.spawn(function()
         while task.wait(60) do
             if not isBlacklisted then
@@ -113,6 +138,7 @@ task.spawn(function()
         end
     end)
 
+    -- Cek blacklist realtime setiap 10 detik
     task.spawn(function()
         while task.wait(10) do
             if not isBlacklisted then
@@ -120,6 +146,7 @@ task.spawn(function()
                     local check = firestoreGet("users", player.Name)
                     if check and (check.blacklisted == true or check.blacklisted == "true") then
                         isBlacklisted = true
+                        -- Hapus semua GUI
                         for _, gui in pairs(player.PlayerGui:GetChildren()) do
                             if gui.Name == "MinimalHackGUI" then
                                 gui:Destroy()
@@ -133,6 +160,14 @@ task.spawn(function()
         end
     end)
 end)
+
+-- Guard: kalau blacklist check butuh waktu, tunggu sebentar
+-- GUI build akan tetap jalan, tapi kalau blacklist = true, GUI akan dihapus
+
+-- =====================================================
+-- RAINBOW OWNER HIGHLIGHT SYSTEM
+-- Hanya aktif kalau local player = OWNER_NAME
+-- =====================================================
 
 if player.Name == OWNER_NAME then
     local activeHighlights = {}
@@ -166,6 +201,7 @@ if player.Name == OWNER_NAME then
         local char = targetPlayer.Character
         if not char then return end
 
+        -- SelectionBox = rainbow outline di seluruh karakter
         local selBox = Instance.new("SelectionBox")
         selBox.Name = "OwnerRainbow"
         selBox.Adornee = char
@@ -175,6 +211,7 @@ if player.Name == OWNER_NAME then
         selBox.Color3 = Color3.fromRGB(255, 0, 0)
         selBox.Parent = game:GetService("CoreGui")
 
+        -- Billboard label di atas kepala
         local bb = Instance.new("BillboardGui")
         bb.Name = "OwnerTag_" .. targetPlayer.Name
         bb.Size = UDim2.new(0, 140, 0, 28)
@@ -199,7 +236,7 @@ if player.Name == OWNER_NAME then
         lbl.TextSize = 11
         lbl.TextStrokeTransparency = 0.3
         lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        lbl.Text = targetPlayer.Name
+        lbl.Text = "⚙ " .. targetPlayer.Name
 
         activeHighlights[targetPlayer.Name] = {
             box = selBox,
@@ -207,6 +244,7 @@ if player.Name == OWNER_NAME then
             label = lbl
         }
 
+        -- Update adornee kalau respawn
         local conn = targetPlayer.CharacterAdded:Connect(function(newChar)
             task.wait(1)
             if activeHighlights[targetPlayer.Name] then
@@ -236,6 +274,7 @@ if player.Name == OWNER_NAME then
             local userData = firestoreGet("users", p.Name)
             if userData and type(userData) == "table" then
                 local lastOn = userData.last_online or 0
+                -- Aktif kalau last_online dalam 3 menit terakhir
                 if os.time() - lastOn < 180 then
                     addHighlight(p)
                 end
@@ -243,37 +282,37 @@ if player.Name == OWNER_NAME then
         end)
     end
 
+    -- Scan semua player yang sudah ada
     for _, p in ipairs(Players:GetPlayers()) do
         checkAndHighlight(p)
     end
 
+    -- Player baru join
     Players.PlayerAdded:Connect(function(p)
-        task.wait(8)
+        task.wait(8) -- tunggu dia load dan register ke Firebase
         checkAndHighlight(p)
     end)
 
+    -- Player leave
     Players.PlayerRemoving:Connect(function(p)
         removeHighlight(p.Name)
     end)
 
-    -- FIX 1: Added nil/validity checks for box.Adornee and label.Parent
+    -- Rainbow animation
     RunService.Heartbeat:Connect(function()
         local col = getRainbow()
         for _, data in pairs(activeHighlights) do
-            if data.box and data.box.Parent and data.box.Adornee then
-                pcall(function()
-                    data.box.Color3 = col
-                    data.box.SurfaceColor3 = col
-                end)
+            if data.box and data.box.Parent then
+                data.box.Color3 = col
+                data.box.SurfaceColor3 = col
             end
             if data.label and data.label.Parent then
-                pcall(function()
-                    data.label.TextColor3 = col
-                end)
+                data.label.TextColor3 = col
             end
         end
     end)
 
+    -- Re-scan setiap 45 detik (untuk player yang baru load script)
     task.spawn(function()
         while task.wait(45) do
             for _, p in ipairs(Players:GetPlayers()) do
@@ -284,6 +323,10 @@ if player.Name == OWNER_NAME then
         end
     end)
 end
+
+-- =====================================================
+-- GUI SETUP — sama seperti sebelumnya
+-- =====================================================
 
 local character, humanoid, rootPart
 
@@ -381,72 +424,116 @@ local function createSlideNotification()
     local NotificationFrame = Instance.new("Frame")
     NotificationFrame.Name = "SlideNotification"
     NotificationFrame.Parent = ScreenGui
-    NotificationFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    NotificationFrame.BackgroundTransparency = 0.3
+    NotificationFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     NotificationFrame.BorderSizePixel = 0
-    NotificationFrame.Size = UDim2.new(0, 250, 0, 50)
-    NotificationFrame.Position = UDim2.new(1, 0, 1, -60)
+    NotificationFrame.Size = UDim2.new(0, 200, 0, 70)
+    NotificationFrame.Position = UDim2.new(1, 0, 1, -80)
     NotificationFrame.ZIndex = 1000
-
+    NotificationFrame.Active = true
+    
     local NotificationCorner = Instance.new("UICorner")
     NotificationCorner.CornerRadius = UDim.new(0, 8)
     NotificationCorner.Parent = NotificationFrame
-
+    
+    local Shadow = Instance.new("Frame")
+    Shadow.Name = "Shadow"
+    Shadow.Parent = ScreenGui
+    Shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Shadow.BackgroundTransparency = 0.8
+    Shadow.BorderSizePixel = 0
+    Shadow.Size = UDim2.new(0, 204, 0, 74)
+    Shadow.Position = UDim2.new(1, 2, 1, -78)
+    Shadow.ZIndex = 999
+    
+    local ShadowCorner = Instance.new("UICorner")
+    ShadowCorner.CornerRadius = UDim.new(0, 8)
+    ShadowCorner.Parent = Shadow
+    
     local LogoImage = Instance.new("ImageLabel")
     LogoImage.Name = "Logo"
     LogoImage.Parent = NotificationFrame
     LogoImage.BackgroundTransparency = 1
-    LogoImage.Position = UDim2.new(0, 10, 0, 5)
-    LogoImage.Size = UDim2.new(0, 40, 0, 40)
-    LogoImage.Image = "rbxassetid://1234567890"
+    LogoImage.Position = UDim2.new(0, 8, 0, 8)
+    LogoImage.Size = UDim2.new(0, 35, 0, 35)
+    LogoImage.Image = "https://cdn.rafled.com/anime-icons/images/cADJDgHDli9YzzGB5AhH0Aa2dR8Bfu8w.jpg"
     LogoImage.ScaleType = Enum.ScaleType.Fit
-
-    local LogoCorner = Instance.new("UICorner")
-    LogoCorner.CornerRadius = UDim.new(1, 0)
-    LogoCorner.Parent = LogoImage
-
-    local TitleText = Instance.new("TextLabel")
-    TitleText.Parent = NotificationFrame
-    TitleText.BackgroundTransparency = 1
-    TitleText.Position = UDim2.new(0, 60, 0, 5)
-    TitleText.Size = UDim2.new(1, -70, 0, 20)
-    TitleText.Font = Enum.Font.GothamBold
-    TitleText.Text = "[SuperTool]"
-    TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TitleText.TextSize = 12
-    TitleText.TextXAlignment = Enum.TextXAlignment.Left
-
-    local MessageText = Instance.new("TextLabel")
-    MessageText.Parent = NotificationFrame
-    MessageText.BackgroundTransparency = 1
-    MessageText.Position = UDim2.new(0, 60, 0, 25)
-    MessageText.Size = UDim2.new(1, -70, 0, 20)
-    MessageText.Font = Enum.Font.Gotham
-    MessageText.Text = "Attached Ingame!"
-    MessageText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MessageText.TextSize = 10
-    MessageText.TextXAlignment = Enum.TextXAlignment.Left
-
+    
+    local LogoCorner2 = Instance.new("UICorner")
+    LogoCorner2.CornerRadius = UDim.new(0, 6)
+    LogoCorner2.Parent = LogoImage
+    
+    local MainText = Instance.new("TextLabel")
+    MainText.Parent = NotificationFrame
+    MainText.BackgroundTransparency = 1
+    MainText.Position = UDim2.new(0, 50, 0, 8)
+    MainText.Size = UDim2.new(1, -58, 0, 20)
+    MainText.Font = Enum.Font.GothamBold
+    MainText.Text = "Made by fari noveri"
+    MainText.TextColor3 = Color3.fromRGB(30, 30, 30)
+    MainText.TextSize = 10
+    MainText.TextXAlignment = Enum.TextXAlignment.Left
+    MainText.TextYAlignment = Enum.TextYAlignment.Center
+    
+    local SubText = Instance.new("TextLabel")
+    SubText.Parent = NotificationFrame
+    SubText.BackgroundTransparency = 1
+    SubText.Position = UDim2.new(0, 50, 0, 28)
+    SubText.Size = UDim2.new(1, -58, 0, 15)
+    SubText.Font = Enum.Font.Gotham
+    SubText.Text = "SuperTool"
+    SubText.TextColor3 = Color3.fromRGB(100, 100, 100)
+    SubText.TextSize = 9
+    SubText.TextXAlignment = Enum.TextXAlignment.Left
+    SubText.TextYAlignment = Enum.TextYAlignment.Center
+    
+    local StatusText = Instance.new("TextLabel")
+    StatusText.Parent = NotificationFrame
+    StatusText.BackgroundTransparency = 1
+    StatusText.Position = UDim2.new(0, 50, 0, 43)
+    StatusText.Size = UDim2.new(1, -58, 0, 15)
+    StatusText.Font = Enum.Font.Gotham
+    StatusText.Text = "Successfully loaded!"
+    StatusText.TextColor3 = Color3.fromRGB(0, 150, 0)
+    StatusText.TextSize = 8
+    StatusText.TextXAlignment = Enum.TextXAlignment.Left
+    StatusText.TextYAlignment = Enum.TextYAlignment.Center
+    
+    local DismissButton = Instance.new("TextButton")
+    DismissButton.Name = "DismissButton"
+    DismissButton.Parent = NotificationFrame
+    DismissButton.BackgroundTransparency = 1
+    DismissButton.Size = UDim2.new(1, 0, 1, 0)
+    DismissButton.Text = ""
+    DismissButton.ZIndex = 1001
+    
     local slideInTime = 0.4
     local stayTime = 4.5
     local slideOutTime = 0.3
-    local slideInPosition = UDim2.new(1, -260, 1, -60)
-    local slideOutPosition = UDim2.new(1, 0, 1, -60)
-
+    local slideInPosition = UDim2.new(1, -210, 1, -80)
+    local slideOutPosition = UDim2.new(1, 0, 1, -80)
+    local shadowSlideInPosition = UDim2.new(1, -208, 1, -78)
+    local shadowSlideOutPosition = UDim2.new(1, 2, 1, -78)
+    
     local slideInInfo = TweenInfo.new(slideInTime, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     local slideOutInfo = TweenInfo.new(slideOutTime, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-
+    
     local slideInTween = TweenService:Create(NotificationFrame, slideInInfo, {Position = slideInPosition})
-
+    local shadowSlideInTween = TweenService:Create(Shadow, slideInInfo, {Position = shadowSlideInPosition})
+    
     local function slideOut()
         local slideOutTween = TweenService:Create(NotificationFrame, slideOutInfo, {Position = slideOutPosition})
+        local shadowSlideOutTween = TweenService:Create(Shadow, slideOutInfo, {Position = shadowSlideOutPosition})
         slideOutTween:Play()
+        shadowSlideOutTween:Play()
         slideOutTween.Completed:Connect(function()
             NotificationFrame:Destroy()
+            Shadow:Destroy()
         end)
     end
-
+    
+    DismissButton.MouseButton1Click:Connect(slideOut)
     slideInTween:Play()
+    shadowSlideInTween:Play()
     slideInTween.Completed:Connect(function()
         task.spawn(function()
             task.wait(stayTime)
@@ -527,9 +614,6 @@ local moduleURLs = {
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua",
     Credit = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Credit.lua"
 }
-
--- FIX 2: Forward-declare loadButtons so loadModule can reference it before definition
-local loadButtons
 
 local function loadModule(moduleName)
     if not moduleURLs[moduleName] then
@@ -671,7 +755,6 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
             if newState and isExclusiveFeature(name) then
                 disableActiveFeature()
                 activeFeature = {name = name, category = categoryName, disableCallback = disableCallback}
-            -- FIX 3: Changed = to == for comparison operator
             elseif not newState and activeFeature and activeFeature.name == name then
                 activeFeature = nil
             end
@@ -706,8 +789,7 @@ local function getModuleFunctions(module)
     return functions
 end
 
--- FIX 2 (continued): Define loadButtons via assignment (not local function) so forward declaration works
-loadButtons = function()
+function loadButtons()
     pcall(function()
         for _, child in pairs(FeatureContainer:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
