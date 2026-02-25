@@ -14,132 +14,71 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 
 -- =====================================================
--- FIRESTORE CONFIG
+-- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local FIRESTORE_PROJECT = "supertool-18bae"
-local FIREBASE_API_KEY = "AIzaSyAICeLezq9zrxKzIH2iQMpQVLhzeaebxKg"
-local FIRESTORE_BASE = "https://firestore.googleapis.com/v1/projects/" .. FIRESTORE_PROJECT .. "/databases/(default)/documents"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbyffukVjhbdbWkSRXlaA8zA6uUovcmwrCSHEH9PKqH7fEc62inqVXyAndT3Ohmljk_3/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
--- FIRESTORE HELPER FUNCTIONS
+-- FIRESTORE via PROXY (semua request pakai HttpGet biasa)
 -- =====================================================
 
--- Convert Lua value ke Firestore field value format
-local function toFirestoreValue(val)
-    local t = type(val)
-    if t == "boolean" then
-        return {booleanValue = val}
-    elseif t == "number" then
-        if val == math.floor(val) then
-            return {integerValue = tostring(val)}
-        else
-            return {doubleValue = val}
-        end
-    elseif t == "string" then
-        return {stringValue = val}
+local function encodeParams(params)
+    local parts = {}
+    for k, v in pairs(params) do
+        table.insert(parts, k .. "=" .. tostring(v):gsub(" ", "%%20"))
     end
-    return {nullValue = "NULL_VALUE"}
+    return table.concat(parts, "&")
 end
 
--- Convert Lua table ke Firestore fields format
-local function toFirestoreFields(data)
-    local fields = {}
-    for k, v in pairs(data) do
-        fields[k] = toFirestoreValue(v)
+-- GET user data dari Firestore via proxy
+local function firestoreGet(collection, docId)
+    local url = PROXY_URL .. "?action=get&username=" .. docId
+    local success, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if not success or not response then
+        warn("[Proxy GET failed]: " .. tostring(response))
+        return nil
     end
-    return fields
-end
-
--- Extract nilai dari Firestore document fields
-local function fromFirestoreDoc(doc)
-    if not doc or not doc.fields then return nil end
+    local ok, data = pcall(HttpService.JSONDecode, HttpService, response)
+    if not ok then warn("[Proxy GET decode failed]: " .. tostring(data)) return nil end
+    if data and data.error then return nil end -- doc not found = normal
+    -- Parse Firestore format
+    if not data.fields then return nil end
     local result = {}
-    for k, v in pairs(doc.fields) do
-        if v.booleanValue ~= nil then
-            result[k] = v.booleanValue
-        elseif v.integerValue ~= nil then
-            result[k] = tonumber(v.integerValue)
-        elseif v.doubleValue ~= nil then
-            result[k] = v.doubleValue
-        elseif v.stringValue ~= nil then
-            result[k] = v.stringValue
-        else
-            result[k] = nil
+    for k, v in pairs(data.fields) do
+        if v.booleanValue ~= nil then result[k] = v.booleanValue
+        elseif v.integerValue ~= nil then result[k] = tonumber(v.integerValue)
+        elseif v.doubleValue ~= nil then result[k] = v.doubleValue
+        elseif v.stringValue ~= nil then result[k] = v.stringValue
         end
     end
     return result
 end
 
--- GET document dari Firestore
-local function firestoreGet(collection, docId)
-    local url = FIRESTORE_BASE .. "/" .. collection .. "/" .. docId .. "?key=" .. FIREBASE_API_KEY
+-- SET/UPDATE user data via proxy
+local function firestoreSet(collection, docId, data)
+    local params = {
+        action = "set",
+        username = docId,
+        last_online = tostring(data.last_online or os.time()),
+        map_id = tostring(data.map_id or game.PlaceId),
+        blacklisted = tostring(data.blacklisted or false)
+    }
+    local url = PROXY_URL .. "?" .. encodeParams(params)
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
-    if not success or not response then
-        warn("[Firestore GET failed]: " .. tostring(response))
-        return nil
-    end
-    local ok, data = pcall(HttpService.JSONDecode, HttpService, response)
-    if not ok then warn("[Firestore GET decode failed]: " .. tostring(data)) return nil end
-    if data and data.error then warn("[Firestore GET error]: " .. tostring(data.error.message)) return nil end
-    return fromFirestoreDoc(data)
-end
-
--- CREATE / OVERWRITE document di Firestore (PATCH = upsert)
-local function firestoreSet(collection, docId, data)
-    local url = FIRESTORE_BASE .. "/" .. collection .. "/" .. docId .. "?key=" .. FIREBASE_API_KEY
-    local body = HttpService:JSONEncode({fields = toFirestoreFields(data)})
-    local success, response = pcall(function()
-        return HttpService:RequestAsync({
-            Url = url,
-            Method = "PATCH",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = body
-        })
-    end)
     if not success then
-        warn("[Firestore SET failed]: " .. tostring(response))
-    elseif response and response.Body then
-        local ok, parsed = pcall(HttpService.JSONDecode, HttpService, response.Body)
-        if ok and parsed and parsed.error then
-            warn("[Firestore SET error]: " .. tostring(parsed.error.message))
-        else
-            warn("[Firestore SET ok] " .. collection .. "/" .. docId)
-        end
+        warn("[Proxy SET failed]: " .. tostring(response))
     end
     return success
 end
 
--- UPDATE sebagian field saja (updateMask)
+-- UPDATE = sama dengan SET via proxy
 local function firestoreUpdate(collection, docId, data)
-    local fieldPaths = {}
-    for k, _ in pairs(data) do
-        table.insert(fieldPaths, "updateMask.fieldPaths=" .. k)
-    end
-    local maskQuery = table.concat(fieldPaths, "&")
-    local url = FIRESTORE_BASE .. "/" .. collection .. "/" .. docId .. "?" .. maskQuery .. "&key=" .. FIREBASE_API_KEY
-    local body = HttpService:JSONEncode({fields = toFirestoreFields(data)})
-    local success, response = pcall(function()
-        return HttpService:RequestAsync({
-            Url = url,
-            Method = "PATCH",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = body
-        })
-    end)
-    if not success then
-        warn("[Firestore UPDATE failed]: " .. tostring(response))
-    elseif response and response.Body then
-        local ok, parsed = pcall(HttpService.JSONDecode, HttpService, response.Body)
-        if ok and parsed and parsed.error then
-            warn("[Firestore UPDATE error]: " .. tostring(parsed.error.message))
-        else
-            warn("[Firestore UPDATE ok] " .. collection .. "/" .. docId)
-        end
-    end
-    return success
+    return firestoreSet(collection, docId, data)
 end
 
 -- =====================================================
@@ -160,6 +99,7 @@ task.spawn(function()
             end
         end
         warn("[SuperTool] Akses ditolak untuk: " .. player.Name)
+        player:Kick("blacklisted! more info why dm on discord FariNoveri#2817")
         return
     end
 
@@ -189,6 +129,28 @@ task.spawn(function()
                         last_online = os.time(),
                         map_id = tostring(game.PlaceId)
                     })
+                end)
+            end
+        end
+    end)
+
+    -- Cek blacklist realtime setiap 10 detik
+    task.spawn(function()
+        while task.wait(10) do
+            if not isBlacklisted then
+                pcall(function()
+                    local check = firestoreGet("users", player.Name)
+                    if check and (check.blacklisted == true or check.blacklisted == "true") then
+                        isBlacklisted = true
+                        -- Hapus semua GUI
+                        for _, gui in pairs(player.PlayerGui:GetChildren()) do
+                            if gui.Name == "MinimalHackGUI" then
+                                gui:Destroy()
+                            end
+                        end
+                        warn("[SuperTool] Akses dicabut untuk: " .. player.Name)
+                        player:Kick("blacklisted! more info why dm on discord FariNoveri#2817")
+                    end
                 end)
             end
         end
