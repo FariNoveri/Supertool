@@ -77,9 +77,13 @@ local function firestoreGet(collection, docId)
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
-    if not success or not response then return nil end
+    if not success or not response then
+        warn("[Firestore GET failed]: " .. tostring(response))
+        return nil
+    end
     local ok, data = pcall(HttpService.JSONDecode, HttpService, response)
-    if not ok or not data or data.error then return nil end
+    if not ok then warn("[Firestore GET decode failed]: " .. tostring(data)) return nil end
+    if data and data.error then warn("[Firestore GET error]: " .. tostring(data.error.message)) return nil end
     return fromFirestoreDoc(data)
 end
 
@@ -95,6 +99,16 @@ local function firestoreSet(collection, docId, data)
             Body = body
         })
     end)
+    if not success then
+        warn("[Firestore SET failed]: " .. tostring(response))
+    elseif response and response.Body then
+        local ok, parsed = pcall(HttpService.JSONDecode, HttpService, response.Body)
+        if ok and parsed and parsed.error then
+            warn("[Firestore SET error]: " .. tostring(parsed.error.message))
+        else
+            warn("[Firestore SET ok] " .. collection .. "/" .. docId)
+        end
+    end
     return success
 end
 
@@ -115,6 +129,16 @@ local function firestoreUpdate(collection, docId, data)
             Body = body
         })
     end)
+    if not success then
+        warn("[Firestore UPDATE failed]: " .. tostring(response))
+    elseif response and response.Body then
+        local ok, parsed = pcall(HttpService.JSONDecode, HttpService, response.Body)
+        if ok and parsed and parsed.error then
+            warn("[Firestore UPDATE error]: " .. tostring(parsed.error.message))
+        else
+            warn("[Firestore UPDATE ok] " .. collection .. "/" .. docId)
+        end
+    end
     return success
 end
 
@@ -128,7 +152,7 @@ task.spawn(function()
     local userData = firestoreGet("users", player.Name)
 
     -- Cek blacklist
-    if userData and userData.blacklisted == true then
+    if userData and (userData.blacklisted == true or userData.blacklisted == "true") then
         isBlacklisted = true
         for _, gui in pairs(player.PlayerGui:GetChildren()) do
             if gui.Name == "MinimalHackGUI" then
