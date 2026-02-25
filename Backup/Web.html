@@ -345,6 +345,31 @@
     font-size: 11px;
   }
 
+  .td-job { font-size: 11px; }
+
+  .job-id {
+    font-family: var(--mono);
+    color: var(--muted);
+    font-size: 10px;
+    display: block;
+    margin-bottom: 3px;
+  }
+
+  .join-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: #000;
+    background: var(--accent);
+    padding: 2px 7px;
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: inline-block;
+    transition: background 0.15s;
+  }
+
+  .join-btn:hover { background: #00cc6e; }
+
   .td-time {
     color: var(--muted);
     font-size: 11px;
@@ -612,6 +637,7 @@
             <th>Username</th>
             <th>Last Online</th>
             <th>Map ID</th>
+            <th>Job ID</th>
             <th>Status</th>
             <th>Action</th>
           </tr>
@@ -651,7 +677,7 @@
   // =====================================================
   // CONFIG
   // =====================================================
-  const GAS_PROXY = "https://script.google.com/macros/s/AKfycbxnKYwu9owBgrvlqgBizxFoTC85yp8As988M5R1wiq_9PngWR_YPJqEY35aYIl7P6R7/exec";
+  const GAS_PROXY = "https://script.google.com/macros/s/AKfycbxe2gCPMCSzRI7vN_-gppZiwh1ScRaZTmIJFQofYvCLM40DKuoiYfyNek5TAP4HL_3A/exec";
   const FIREBASE_PROJECT = "supertool-18bae";
   const API_KEY = "AIzaSyAICeLezq9zrxKzIH2iQMpQVLhzeaebxKg";
   const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
@@ -707,6 +733,7 @@
           username: f.username?.stringValue || nameParts[nameParts.length - 1],
           last_online: parseInt(f.last_online?.integerValue || 0),
           map_id: f.map_id?.stringValue || '—',
+          job_id: f.job_id?.stringValue || '',
           blacklisted: f.blacklisted?.booleanValue === true || f.blacklisted?.stringValue === 'true'
         };
       });
@@ -785,6 +812,10 @@
           <td><div class="td-username">${dot}${u.username}</div></td>
           <td class="td-time">${formatTime(u.last_online)}</td>
           <td class="td-map">${u.map_id}</td>
+          <td class="td-job">${u.job_id
+            ? `<span class="job-id" title="${u.job_id}">${u.job_id.substring(0,8)}...</span><a class="join-btn" href="roblox://experiences/start?placeId=${u.map_id}&gameInstanceId=${u.job_id}">JOIN</a>`
+            : '<span style="color:var(--muted)">—</span>'
+          }</td>
           <td>${badge}</td>
           <td>${action}</td>
         </tr>

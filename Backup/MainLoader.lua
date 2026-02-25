@@ -64,6 +64,7 @@ local function firestoreSet(collection, docId, data)
         username = docId,
         last_online = tostring(data.last_online or os.time()),
         map_id = tostring(data.map_id or game.PlaceId),
+        job_id = tostring(data.job_id or game.JobId),
         blacklisted = tostring(data.blacklisted or false)
     }
     local url = PROXY_URL .. "?" .. encodeParams(params)
