@@ -1104,14 +1104,16 @@ task.spawn(function()
 end)
 
 RunService.Heartbeat:Connect(function()
-    if ScreenGui.Parent ~= player.PlayerGui then
-        ScreenGui.Parent = player.PlayerGui
+    if ScreenGui and ScreenGui.Parent ~= player.PlayerGui then
+        pcall(function() ScreenGui.Parent = player.PlayerGui end)
     end
 end)
 
 task.spawn(function()
     task.wait(10)
     if not ScreenGui or not ScreenGui.Parent then
-        if ScreenGui then ScreenGui.Parent = player.PlayerGui end
+        pcall(function()
+            if ScreenGui then ScreenGui.Parent = player.PlayerGui end
+        end)
     end
 end)
