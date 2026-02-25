@@ -1,11 +1,5 @@
--- AntiAdmin.lua Module for MinimalHackGUI
--- Sistem perlindungan anti-admin buatan Fari Noveri
--- Versi Single Button dengan Settings
--- Tanggal dan waktu: 13:17 WIB, Minggu, 14 September 2025
-
 local AntiAdmin = {}
 
--- Layanan Roblox yang dipakai
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -17,58 +11,53 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 
--- Variabel penting
 local player = Players.LocalPlayer
 local character, humanoid, rootPart
 
--- Dependensi (diatur saat mulai)
 local dependencies = {}
 
--- Settings GUI References
 local settingsFrame = nil
 local isSettingsOpen = false
 
--- Daftar perlindungan dengan checkbox states
 local protectionStates = {
     mainProtection = {
         enabled = false,
-        selected = true, -- Default selected
-        name = "🛡️ Pelindung Utama",
+        selected = true,
+        name = "Pelindung Utama",
         description = "Melindungi dari tendang, blokir, bunuh, pindah karakter. Bisa balik serang ke admin!"
     },
     massProtection = {
         enabled = false,
         selected = true,
-        name = "🌊 Pelindung Spam",
+        name = "Pelindung Spam",
         description = "Hapus spam benda (>50 objek), mute suara berisik (>3 suara), blokir perubahan cahaya aneh"
     },
     stealthMode = {
         enabled = false,
         selected = false,
-        name = "👤 Mode Siluman",
+        name = "Mode Siluman",
         description = "Sembunyi dari admin dengan ngacak data jadi kayak pemain biasa"
     },
     antiDetection = {
         enabled = false,
         selected = false,
-        name = "🔍 Anti Ketahuan",
+        name = "Anti Ketahuan",
         description = "Memblokir admin yang coba cek script dan scan system"
     },
     memoryProtection = {
         enabled = false,
         selected = false,
-        name = "💾 Pelindung Memori",
+        name = "Pelindung Memori",
         description = "Melindungi dari admin yang coba cek memori game"
     },
     advancedBypass = {
         enabled = false,
         selected = false,
-        name = "⚡ Jalan Pintas Canggih",
+        name = "Jalan Pintas Canggih",
         description = "Melewati sistem keamanan admin dengan trik advanced"
     }
 }
 
--- Variabel untuk perlindungan
 local protectedPlayers = {}
 local lastKnownPosition
 local lastKnownHealth = 100
@@ -86,7 +75,6 @@ local antiAdminConnections = {}
 local maxReverseAttempts = 10
 local oldNamecall, oldIndex, oldNewIndex
 
--- Variabel anti-spam
 local lastKnownLighting = {}
 local originalAvatar = {}
 local partSpamThreshold = 50
@@ -95,7 +83,6 @@ local resetSpamThreshold = 5
 local resetCount = 0
 local lastResetTime = 0
 
--- Variabel pelindung canggih
 local detectionCounters = {
     scriptScan = 0,
     behaviorCheck = 0,
@@ -113,7 +100,6 @@ local normalPlayerStats = {
 local fakeBehaviorData = {}
 local sessionRandomized = false
 
--- Fungsi aman biar ga error
 local function safeCall(func, ...)
     if type(func) == "function" then
         local success, result = pcall(func, ...)
@@ -128,7 +114,6 @@ local function safeCall(func, ...)
     end
 end
 
--- Fungsi aman buat ganti properti
 local function safeSetProperty(object, property, value)
     if not object then return false end
     if not object[property] then return false end
@@ -143,7 +128,6 @@ local function safeSetProperty(object, property, value)
     return success
 end
 
--- Fungsi aman buat ambil layanan
 local function safeGetService(serviceName)
     local success, service = pcall(function()
         return game:GetService(serviceName)
@@ -157,20 +141,16 @@ local function safeGetService(serviceName)
     end
 end
 
--- Mulai sistem
 function AntiAdmin.init(deps)
-    print("🚀 Mulai sistem AntiAdmin...")
     
     dependencies = deps or {}
     
-    -- Cek pemain
     player = dependencies.player or Players.LocalPlayer
     if not player then
         warn("AntiAdmin: Pemain ga ketemu!")
         return false
     end
     
-    -- Cek karakter
     local function initCharacter()
         character = dependencies.character or (player.Character or player.CharacterAdded:Wait())
         if character then
@@ -191,11 +171,9 @@ function AntiAdmin.init(deps)
             character = char
             humanoid = char:WaitForChild("Humanoid")
             rootPart = char:WaitForChild("HumanoidRootPart")
-            print("🔄 AntiAdmin: Karakter muncul lagi, mulai ulang...")
         end)
     end
     
-    -- Simpan data asli karakter
     if character then
         safeCall(function()
             originalAvatar.userId = player.UserId
@@ -226,11 +204,9 @@ function AntiAdmin.init(deps)
     
     saveLightingSettings()
     sessionRandomization()
-    print("✅ AntiAdmin: Mulai selesai!")
     return true
 end
 
--- Ngacak sesi biar ga ketahuan
 local function sessionRandomization()
     if sessionRandomized then return end
     
@@ -244,14 +220,12 @@ local function sessionRandomization()
             keyPresses = math.random(100, 1000),
             cameraMovements = math.random(200, 800),
             lastActivity = tick()
-        }
+        end
         
         sessionRandomized = true
-        print("🎲 Anti-Admin: Sesi diacak")
     end)
 end
 
--- Simpan setting cahaya
 local function saveLightingSettings()
     safeCall(function()
         lastKnownLighting = {
@@ -268,7 +242,6 @@ local function saveLightingSettings()
     end)
 end
 
--- Kembalikan setting cahaya
 local function restoreLightingSettings()
     safeCall(function()
         if lastKnownLighting and next(lastKnownLighting) then
@@ -281,10 +254,8 @@ local function restoreLightingSettings()
     end)
 end
 
--- Mulai anti ketahuan
 local function initializeAntiDetection()
     safeCall(function()
-        -- Skip jika game.GetDescendants ga ada
         local hasGetDescendants = pcall(function() 
             return game.GetDescendants and type(game.GetDescendants) == "function"
         end)
@@ -295,21 +266,16 @@ local function initializeAntiDetection()
                 game.GetDescendants = function(self)
                     detectionCounters.scriptScan = detectionCounters.scriptScan + 1
                     if detectionCounters.scriptScan > 10 then
-                        print("🔍 Anti-Admin: Scan script ditemukan dan diblokir")
                         return {}
                     end
                     return originalGetDescendants(self)
                 end
             end)
         else
-            print("👤 Anti-Admin: GetDescendants ga tersedia, skip hook ini")
         end
-        
-        print("👤 Anti-Admin: Anti ketahuan aktif")
     end)
 end
 
--- Set pelindung memori
 local function setupMemoryProtection()
     safeCall(function()
         local protectedMemory = {}
@@ -328,33 +294,26 @@ local function setupMemoryProtection()
                 wait(math.random(5, 15))
             end
         end)
-        
-        print("💾 Anti-Admin: Pelindung memori aktif")
     end)
 end
 
--- Set pelindung metatable canggih
 local function setupAdvancedMetatableProtection()
     safeCall(function()
-        -- Skip metatable protection jika fungsi exploit ga ada
         local hasMetatableFunctions = pcall(function() 
             return getrawmetatable and setreadonly and getnamecallmethod
         end)
         
         if not hasMetatableFunctions then
-            print("🔐 Anti-Admin: Executor ga support metatable, skip proteksi ini")
             return
         end
         
         local success, mt = pcall(getrawmetatable, game)
         if not success or not mt then 
-            print("🔐 Anti-Admin: Ga bisa akses metatable, skip proteksi ini")
             return 
         end
         
         local success2, oldCall = pcall(function() return mt.__namecall end)
         if not success2 or not oldCall then 
-            print("🔐 Anti-Admin: Ga bisa akses __namecall, skip proteksi ini")
             return 
         end
         
@@ -362,7 +321,6 @@ local function setupAdvancedMetatableProtection()
         
         local success3 = pcall(setreadonly, mt, false)
         if not success3 then
-            print("🔐 Anti-Admin: Ga bisa ubah metatable readonly, skip proteksi ini")
             return
         end
 
@@ -377,12 +335,10 @@ local function setupAdvancedMetatableProtection()
             end)
             
             if method == "Kick" or method == "Ban" then
-                print("🚫 Anti-Admin: Blokir tendang/blokir")
                 return nil
             end
             
             if method == "CaptureService" or method == "RecordingService" then
-                print("📹 Anti-Admin: Blokir rekam")
                 return nil
             end
             
@@ -397,7 +353,6 @@ local function setupAdvancedMetatableProtection()
                 
                 for _, blocked in pairs(blockedRemotes) do
                     if remoteName:find(blocked) then
-                        print("🛡️ Anti-Admin: Blokir remote admin - " .. remoteName)
                         return nil
                     end
                 end
@@ -407,17 +362,14 @@ local function setupAdvancedMetatableProtection()
         end
 
         pcall(setreadonly, mt, true)
-        print("🔐 Anti-Admin: Pelindung metatable aktif")
     end)
 end
 
--- Cek kalau pemain punya anti admin
 local function hasAntiAdmin(targetPlayer)
     if not targetPlayer or not targetPlayer.Parent then return false end
     return protectedPlayers[targetPlayer] or math.random(1, 100) <= 50
 end
 
--- Cari target tanpa pelindung
 local function findUnprotectedTarget(excludePlayers)
     local availablePlayers = {}
     
@@ -438,7 +390,6 @@ local function findUnprotectedTarget(excludePlayers)
     return nil
 end
 
--- Balik efek serangan
 local function reverseEffect(effectType, originalSource)
     if not protectionStates.mainProtection.enabled then return end
 
@@ -473,7 +424,6 @@ local function reverseEffect(effectType, originalSource)
 
             if effectType == "kill" then
                 safeSetProperty(targetHumanoid, "Health", 0)
-                print("⚡ Balik bunuh ke: " .. currentTarget.Name)
             elseif effectType == "teleport" then
                 local randomPos = Vector3.new(
                     math.random(-1000, 1000),
@@ -481,24 +431,20 @@ local function reverseEffect(effectType, originalSource)
                     math.random(-1000, 1000)
                 )
                 safeSetProperty(targetRootPart, "CFrame", CFrame.new(randomPos))
-                print("🌀 Balik pindah ke: " .. currentTarget.Name)
             elseif effectType == "fling" then
                 safeSetProperty(targetRootPart, "Velocity", Vector3.new(
                     math.random(-100, 100),
                     math.random(50, 200),
                     math.random(-100, 100)
                 ))
-                print("💨 Balik lempar ke: " .. currentTarget.Name)
             end
         end
     end)
 end
 
--- Tangani pelindung utama
 local function handleAntiAdmin()
     if not humanoid or not rootPart then return end
 
-    -- Pelindung health
     if humanoid and typeof(humanoid) == "Instance" then
         local healthConnection = safeCall(function()
             return humanoid.HealthChanged:Connect(function(health)
@@ -506,7 +452,6 @@ local function handleAntiAdmin()
                 if health < lastKnownHealth and health <= 0 then
                     safeCall(function()
                         safeSetProperty(humanoid, "Health", lastKnownHealth)
-                        print("💖 Anti-Admin: Serangan bunuh diblokir")
                         reverseEffect("kill", effectSources[player])
                     end)
                 end
@@ -519,7 +464,6 @@ local function handleAntiAdmin()
         end
     end
 
-    -- Pelindung posisi
     if rootPart and typeof(rootPart) == "Instance" then
         local positionConnection = safeCall(function()
             return rootPart:GetPropertyChangedSignal("CFrame"):Connect(function()
@@ -530,7 +474,6 @@ local function handleAntiAdmin()
                         local distance = (currentPos.Position - lastKnownPosition.Position).Magnitude
                         if distance > 100 then
                             safeSetProperty(rootPart, "CFrame", lastKnownPosition)
-                            print("🚀 Anti-Admin: Pindah massal diblokir")
                             reverseEffect("teleport", effectSources[player])
                         end
                     end
@@ -545,14 +488,12 @@ local function handleAntiAdmin()
     end
 end
 
--- Deteksi efek spam
 local function detectMassEffects()
     spawn(function()
         while protectionStates.massProtection.enabled do
             safeCall(function()
                 restoreLightingSettings()
                 
-                -- Deteksi spam benda
                 local partCount = 0
                 for _, obj in pairs(Workspace:GetChildren()) do
                     if obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
@@ -568,10 +509,8 @@ local function detectMassEffects()
                             end
                         end
                     end
-                    print("🧹 Anti-Admin: Spam benda ditemukan dan dibersihkan")
                 end
                 
-                -- Deteksi spam suara
                 local soundCount = 0
                 for _, obj in pairs(Workspace:GetDescendants()) do
                     if obj:IsA("Sound") and obj.IsPlaying and obj.Volume > 0.5 then
@@ -585,21 +524,16 @@ local function detectMassEffects()
                     end
                 end
                 
-                if soundCount > soundSpamThreshold then
-                    print("🔇 Anti-Admin: Spam suara ditemukan dan dibisukan")
-                end
             end)
             wait(2)
         end
     end)
 end
 
--- Set jalan pintas canggih
 local function setupAdvancedBypass()
     spawn(function()
         while protectionStates.advancedBypass.enabled do
             safeCall(function()
-                -- Operasi memori dummy
                 local dummy = {}
                 for i = 1, math.random(10, 100) do
                     dummy[i] = math.random(1, 1000000)
@@ -614,7 +548,6 @@ local function setupAdvancedBypass()
     spawn(function()
         while protectionStates.advancedBypass.enabled do
             safeCall(function()
-                -- Simulasi data
                 local tempData = {
                     status = "active",
                     timestamp = tick(),
@@ -625,22 +558,17 @@ local function setupAdvancedBypass()
             wait(math.random(40, 60))
         end
     end)
-    
-    print("⚡ Anti-Admin: Jalan pintas canggih dimulai")
 end
 
--- Individual protection toggles
 local function toggleMainProtection(enabled)
     protectionStates.mainProtection.enabled = enabled
     
     if enabled then
-        print("🛡️ " .. protectionStates.mainProtection.name .. " HIDUP")
         if character and humanoid and rootPart then
             handleAntiAdmin()
         end
         setupAdvancedMetatableProtection()
     else
-        print("🛡️ " .. protectionStates.mainProtection.name .. " MATI")
         for _, conn in pairs(antiAdminConnections) do
             if conn and typeof(conn) == "RBXScriptConnection" then
                 safeCall(function() conn:Disconnect() end)
@@ -654,10 +582,8 @@ local function toggleMassProtection(enabled)
     protectionStates.massProtection.enabled = enabled
     
     if enabled then
-        print("🌊 " .. protectionStates.massProtection.name .. " HIDUP")
         detectMassEffects()
     else
-        print("🌊 " .. protectionStates.massProtection.name .. " MATI")
     end
 end
 
@@ -665,10 +591,8 @@ local function toggleStealthMode(enabled)
     protectionStates.stealthMode.enabled = enabled
     
     if enabled then
-        print("👤 " .. protectionStates.stealthMode.name .. " HIDUP")
         initializeAntiDetection()
     else
-        print("👤 " .. protectionStates.stealthMode.name .. " MATI")
     end
 end
 
@@ -676,10 +600,8 @@ local function toggleMemoryProtection(enabled)
     protectionStates.memoryProtection.enabled = enabled
     
     if enabled then
-        print("💾 " .. protectionStates.memoryProtection.name .. " HIDUP")
         setupMemoryProtection()
     else
-        print("💾 " .. protectionStates.memoryProtection.name .. " MATI")
     end
 end
 
@@ -687,26 +609,21 @@ local function toggleAdvancedBypass(enabled)
     protectionStates.advancedBypass.enabled = enabled
     
     if enabled then
-        print("⚡ " .. protectionStates.advancedBypass.name .. " HIDUP")
         setupAdvancedBypass()
     else
-        print("⚡ " .. protectionStates.advancedBypass.name .. " MATI")
     end
 end
 
--- Function mapping
 local protectionFunctions = {
     mainProtection = toggleMainProtection,
     massProtection = toggleMassProtection,
     stealthMode = toggleStealthMode,
-    antiDetection = toggleStealthMode, -- Same as stealth mode
+    antiDetection = toggleStealthMode,
     memoryProtection = toggleMemoryProtection,
     advancedBypass = toggleAdvancedBypass
 }
 
--- Apply selected protections
 local function applySelectedProtections()
-    print("🚀 Mengaktifkan proteksi terpilih...")
     
     for key, state in pairs(protectionStates) do
         if state.selected and protectionFunctions[key] then
@@ -716,12 +633,9 @@ local function applySelectedProtections()
         end
     end
     
-    print("✅ Proteksi diterapkan!")
 end
 
--- Stop all protections
 local function stopAllProtections()
-    print("🛑 Menonaktifkan semua proteksi...")
     
     for key, state in pairs(protectionStates) do
         if protectionFunctions[key] then
@@ -729,7 +643,6 @@ local function stopAllProtections()
         end
     end
     
-    -- Reset detection counters
     detectionCounters = {
         scriptScan = 0,
         behaviorCheck = 0,
@@ -738,16 +651,13 @@ local function stopAllProtections()
         memoryCheck = 0
     }
     
-    print("🔄 Semua proteksi dinonaktifkan!")
 end
 
--- Create Settings GUI
 local function createSettingsGUI(parent)
     if settingsFrame then
         settingsFrame:Destroy()
     end
     
-    -- Main settings frame
     settingsFrame = Instance.new("Frame")
     settingsFrame.Name = "AntiAdminSettings"
     settingsFrame.Parent = parent
@@ -762,25 +672,23 @@ local function createSettingsGUI(parent)
     settingsCorner.CornerRadius = UDim.new(0, 8)
     settingsCorner.Parent = settingsFrame
     
-    -- Title
     local titleLabel = Instance.new("TextLabel")
     titleLabel.Parent = settingsFrame
     titleLabel.BackgroundTransparency = 1
     titleLabel.Size = UDim2.new(1, 0, 0, 40)
     titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.Text = "🛡️ ANTI-ADMIN SETTINGS"
+    titleLabel.Text = "ANTI-ADMIN SETTINGS"
     titleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
     titleLabel.TextSize = 16
     titleLabel.TextYAlignment = Enum.TextYAlignment.Center
     
-    -- Close button
     local closeButton = Instance.new("TextButton")
     closeButton.Parent = settingsFrame
     closeButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     closeButton.Size = UDim2.new(0, 30, 0, 30)
     closeButton.Position = UDim2.new(1, -35, 0, 5)
     closeButton.Font = Enum.Font.GothamBold
-    closeButton.Text = "✕"
+    closeButton.Text = "X"
     closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeButton.TextSize = 14
     
@@ -788,7 +696,6 @@ local function createSettingsGUI(parent)
     closeCorner.CornerRadius = UDim.new(0, 4)
     closeCorner.Parent = closeButton
     
-    -- Scroll frame for checkboxes
     local scrollFrame = Instance.new("ScrollingFrame")
     scrollFrame.Parent = settingsFrame
     scrollFrame.BackgroundTransparency = 1
@@ -803,7 +710,6 @@ local function createSettingsGUI(parent)
     listLayout.Padding = UDim.new(0, 5)
     listLayout.SortOrder = Enum.SortOrder.LayoutOrder
     
-    -- Create checkboxes
     local checkboxes = {}
     local yPos = 0
     
@@ -818,7 +724,6 @@ local function createSettingsGUI(parent)
         checkboxCorner.CornerRadius = UDim.new(0, 6)
         checkboxCorner.Parent = checkboxFrame
         
-        -- Checkbox
         local checkbox = Instance.new("TextButton")
         checkbox.Parent = checkboxFrame
         checkbox.BackgroundColor3 = Color3.fromRGB(40, 45, 50)
@@ -827,7 +732,7 @@ local function createSettingsGUI(parent)
         checkbox.Size = UDim2.new(0, 25, 0, 25)
         checkbox.Position = UDim2.new(0, 10, 0, 10)
         checkbox.Font = Enum.Font.GothamBold
-        checkbox.Text = state.selected and "✓" or ""
+        checkbox.Text = state.selected and "V" or ""
         checkbox.TextColor3 = Color3.fromRGB(0, 255, 0)
         checkbox.TextSize = 16
         
@@ -835,7 +740,6 @@ local function createSettingsGUI(parent)
         checkboxCorner2.CornerRadius = UDim.new(0, 4)
         checkboxCorner2.Parent = checkbox
         
-        -- Feature name
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Parent = checkboxFrame
         nameLabel.BackgroundTransparency = 1
@@ -848,7 +752,6 @@ local function createSettingsGUI(parent)
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         nameLabel.TextYAlignment = Enum.TextYAlignment.Center
         
-        -- Feature description
         local descLabel = Instance.new("TextLabel")
         descLabel.Parent = checkboxFrame
         descLabel.BackgroundTransparency = 1
@@ -862,14 +765,12 @@ local function createSettingsGUI(parent)
         descLabel.TextYAlignment = Enum.TextYAlignment.Top
         descLabel.TextWrapped = true
         
-        -- Checkbox functionality
         checkboxes[key] = checkbox
         checkbox.MouseButton1Click:Connect(function()
             state.selected = not state.selected
-            checkbox.Text = state.selected and "✓" or ""
+            checkbox.Text = state.selected and "V" or ""
             checkbox.BackgroundColor3 = state.selected and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 45, 50)
             
-            -- Visual feedback
             local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
             local tween = TweenService:Create(checkbox, tweenInfo, {
                 Size = UDim2.new(0, 30, 0, 30)
@@ -886,17 +787,15 @@ local function createSettingsGUI(parent)
         yPos = yPos + 85
     end
     
-    -- Update canvas size
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, yPos)
     
-    -- Apply button
     local applyButton = Instance.new("TextButton")
     applyButton.Parent = settingsFrame
     applyButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
     applyButton.Size = UDim2.new(0, 120, 0, 35)
     applyButton.Position = UDim2.new(0, 20, 1, -45)
     applyButton.Font = Enum.Font.GothamBold
-    applyButton.Text = "🚀 TERAPKAN"
+    applyButton.Text = "TERAPKAN"
     applyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     applyButton.TextSize = 14
     
@@ -904,14 +803,13 @@ local function createSettingsGUI(parent)
     applyCorner.CornerRadius = UDim.new(0, 6)
     applyCorner.Parent = applyButton
     
-    -- Stop All button
     local stopButton = Instance.new("TextButton")
     stopButton.Parent = settingsFrame
     stopButton.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
     stopButton.Size = UDim2.new(0, 120, 0, 35)
     stopButton.Position = UDim2.new(0, 150, 1, -45)
     stopButton.Font = Enum.Font.GothamBold
-    stopButton.Text = "🛑 STOP ALL"
+    stopButton.Text = "STOP ALL"
     stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     stopButton.TextSize = 14
     
@@ -919,14 +817,13 @@ local function createSettingsGUI(parent)
     stopCorner.CornerRadius = UDim.new(0, 6)
     stopCorner.Parent = stopButton
     
-    -- Select All button
     local selectAllButton = Instance.new("TextButton")
     selectAllButton.Parent = settingsFrame
     selectAllButton.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
     selectAllButton.Size = UDim2.new(0, 100, 0, 35)
     selectAllButton.Position = UDim2.new(1, -120, 1, -45)
     selectAllButton.Font = Enum.Font.GothamBold
-    selectAllButton.Text = "☑️ ALL"
+    selectAllButton.Text = "ALL"
     selectAllButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     selectAllButton.TextSize = 14
     
@@ -934,7 +831,6 @@ local function createSettingsGUI(parent)
     selectAllCorner.CornerRadius = UDim.new(0, 6)
     selectAllCorner.Parent = selectAllButton
     
-    -- Button functionalities
     closeButton.MouseButton1Click:Connect(function()
         settingsFrame.Visible = false
         isSettingsOpen = false
@@ -965,18 +861,17 @@ local function createSettingsGUI(parent)
             state.selected = not allSelected
             local checkbox = checkboxes[key]
             if checkbox then
-                checkbox.Text = state.selected and "✓" or ""
+                checkbox.Text = state.selected and "V" or ""
                 checkbox.BackgroundColor3 = state.selected and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 45, 50)
             end
         end
         
-        selectAllButton.Text = allSelected and "☑️ ALL" or "✅ NONE"
+        selectAllButton.Text = allSelected and "ALL" or "NONE"
     end)
     
     return settingsFrame
 end
 
--- Toggle settings window
 local function toggleSettings(parent)
     if isSettingsOpen then
         if settingsFrame then
@@ -992,7 +887,6 @@ local function toggleSettings(parent)
     end
 end
 
--- Reset semua status
 function AntiAdmin.resetStates()
     safeCall(function()
         stopAllProtections()
@@ -1002,7 +896,6 @@ function AntiAdmin.resetStates()
             state.selected = false
         end
         
-        -- Reset default selections
         protectionStates.mainProtection.selected = true
         protectionStates.massProtection.selected = true
         
@@ -1021,11 +914,9 @@ function AntiAdmin.resetStates()
             memoryCheck = 0
         }
         
-        print("🔄 Anti-Admin: Semua reset")
     end)
 end
 
--- Dapat status pelindung
 function AntiAdmin.getProtectionStatus()
     local status = {}
     for key, state in pairs(protectionStates) do
@@ -1039,14 +930,12 @@ function AntiAdmin.getProtectionStatus()
     return status
 end
 
--- Main function to load single button
 function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
     if not createToggleButton or not FeatureContainer then
         warn("AntiAdmin: Fungsi UI ga ada")
         return
     end
     
-    -- Create single main button
     local mainButton = Instance.new("TextButton")
     mainButton.Name = "AntiAdminMain"
     mainButton.Parent = FeatureContainer
@@ -1055,7 +944,7 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
     mainButton.BorderSizePixel = 2
     mainButton.Size = UDim2.new(1, -2, 0, 45)
     mainButton.Font = Enum.Font.GothamBold
-    mainButton.Text = "🛡️ ANTI-ADMIN SETTINGS"
+    mainButton.Text = "ANTI-ADMIN SETTINGS"
     mainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     mainButton.TextSize = 14
     mainButton.TextStrokeTransparency = 0.7
@@ -1065,12 +954,10 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
     mainCorner.CornerRadius = UDim.new(0, 6)
     mainCorner.Parent = mainButton
     
-    -- Button click functionality
     mainButton.MouseButton1Click:Connect(function()
         toggleSettings(FeatureContainer.Parent or FeatureContainer)
     end)
     
-    -- Hover effects
     mainButton.MouseEnter:Connect(function()
         local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         local tween = TweenService:Create(mainButton, tweenInfo, {
@@ -1089,20 +976,18 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         tween:Play()
     end)
     
-    -- Status indicator
     local statusLabel = Instance.new("TextLabel")
     statusLabel.Parent = mainButton
     statusLabel.BackgroundTransparency = 1
     statusLabel.Size = UDim2.new(0, 120, 1, 0)
     statusLabel.Position = UDim2.new(1, -125, 0, 0)
     statusLabel.Font = Enum.Font.Gotham
-    statusLabel.Text = "⚙️ Klik untuk Settings"
+    statusLabel.Text = "Klik untuk Settings"
     statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
     statusLabel.TextSize = 10
     statusLabel.TextYAlignment = Enum.TextYAlignment.Center
     statusLabel.TextXAlignment = Enum.TextXAlignment.Right
     
-    -- Update status indicator
     spawn(function()
         while mainButton.Parent do
             local activeCount = 0
@@ -1113,10 +998,10 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
             end
             
             if activeCount > 0 then
-                statusLabel.Text = "🟢 " .. activeCount .. " Aktif"
+                statusLabel.Text = activeCount .. " Aktif"
                 statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
             else
-                statusLabel.Text = "🔴 Nonaktif"
+                statusLabel.Text = "Nonaktif"
                 statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
             end
             
@@ -1124,7 +1009,6 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         end
     end)
     
-    -- Info label (compact version)
     safeCall(function()
         local InfoLabel = Instance.new("TextLabel")
         InfoLabel.Name = "AntiAdminInfo"
@@ -1144,19 +1028,19 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
         InfoLabel.TextScaled = false
         
-        InfoLabel.Text = [[🛡️ SISTEM ANTI-ADMIN v2.3
-📌 Buatan: Fari Noveri | 🚀 Error 117 & 217 Fixed
+        InfoLabel.Text = [[SISTEM ANTI-ADMIN v2.3
+Buatan: Fari Noveri | Error 117 & 217 Fixed
 
-✨ FITUR BARU:
+FITUR BARU:
 • Single button dengan settings GUI
 • Checkbox untuk pilih fitur yang mau diaktifin
 • Status indicator real-time
 • Select All / Stop All buttons
 • Improved UI dengan hover effects
 
-🎯 Klik tombol di atas untuk buka settings!
-⚙️ Pilih fitur yang diinginkan lalu klik TERAPKAN
-🛑 Gunakan STOP ALL untuk matikan semua proteksi]]
+Klik tombol di atas untuk buka settings!
+Pilih fitur yang diinginkan lalu klik TERAPKAN
+Gunakan STOP ALL untuk matikan semua proteksi]]
 
         local TextPadding = Instance.new("UIPadding")
         TextPadding.Parent = InfoLabel
@@ -1169,7 +1053,6 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         InfoCorner.CornerRadius = UDim.new(0, 6)
         InfoCorner.Parent = InfoLabel
         
-        -- Animated glow effect
         spawn(function()
             if not TweenService then return end
             local colors = {
@@ -1197,11 +1080,6 @@ function AntiAdmin.loadAntiAdminButtons(createToggleButton, FeatureContainer)
         end)
     end)
     
-    print("✅ AntiAdmin Single Button dimuat!")
-    print("🎯 Error 117 & 217 fixed")
-    print("⚙️ Single button dengan settings GUI")
-    print("📋 Checkbox system untuk pilih fitur")
-    print("🔄 Status indicator real-time")
 end
 
 return AntiAdmin
