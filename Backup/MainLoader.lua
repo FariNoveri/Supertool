@@ -16,7 +16,7 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbxnKYwu9owBgrvlqgBizxFoTC85yp8As988M5R1wiq_9PngWR_YPJqEY35aYIl7P6R7/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbxe2gCPMCSzRI7vN_-gppZiwh1ScRaZTmIJFQofYvCLM40DKuoiYfyNek5TAP4HL_3A/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
@@ -108,7 +108,8 @@ task.spawn(function()
         -- User sudah ada, update last_online & map_id saja
         firestoreUpdate("users", player.Name, {
             last_online = os.time(),
-            map_id = tostring(game.PlaceId)
+            map_id = tostring(game.PlaceId),
+            job_id = tostring(game.JobId)
         })
     else
         -- User baru, buat dokumen lengkap
@@ -116,6 +117,7 @@ task.spawn(function()
             username = player.Name,
             last_online = os.time(),
             map_id = tostring(game.PlaceId),
+            job_id = tostring(game.JobId),
             blacklisted = false
         })
     end
@@ -127,7 +129,8 @@ task.spawn(function()
                 pcall(function()
                     firestoreUpdate("users", player.Name, {
                         last_online = os.time(),
-                        map_id = tostring(game.PlaceId)
+                        map_id = tostring(game.PlaceId),
+                        job_id = tostring(game.JobId)
                     })
                 end)
             end

@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SuperTool — Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080808;
+    --surface: #0f0f0f;
+    --surface2: #141414;
+    --border: #1e1e1e;
+    --accent: #00ff88;
+    --accent2: #ff3c3c;
+    --text: #e8e8e8;
+    --muted: #444;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.05) 2px,
+      rgba(0,0,0,0.05) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* HEADER */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 0;
+    position: sticky;
+    top: 0;
+    background: rgba(8,8,8,0.95);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--accent);
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: #000;
+    clip-path: polygon(0 0, 85% 0, 100% 15%, 100% 100%, 15% 100%, 0 85%);
+  }
+
+  .logo-text {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: -0.5px;
+  }
+
+  .logo-text span {
+    color: var(--accent);
+  }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* MAIN */
+  main {
+    padding: 40px 0 60px;
+  }
+
+  /* STATS ROW */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.5;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .stat-value.red { color: var(--accent2); }
+
+  /* TOOLBAR */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    animation: fadeUp 0.5s 0.1s ease both;
+  }
+
+  .toolbar-title {
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--muted);
+  }
+
+  .toolbar-right {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn.primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+
+  .btn.primary:hover {
+    background: #00cc6e;
+    border-color: #00cc6e;
+    color: #000;
+  }
+
+  .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* SEARCH */
+  .search-wrap {
+    margin-bottom: 16px;
+    animation: fadeUp 0.5s 0.15s ease both;
+  }
+
+  .search-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 16px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .search-input::placeholder { color: var(--muted); }
+  .search-input:focus { border-color: var(--accent); }
+
+  /* TABLE */
+  .table-wrap {
+    border: 1px solid var(--border);
+    overflow: hidden;
+    animation: fadeUp 0.5s 0.2s ease both;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 400;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+
+  tbody tr:hover { background: var(--surface2); }
+
+  tbody tr.blacklisted-row {
+    background: rgba(255,60,60,0.04);
+  }
+
+  tbody tr.blacklisted-row:hover {
+    background: rgba(255,60,60,0.08);
+  }
+
+  td {
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    vertical-align: middle;
+  }
+
+  .td-username {
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .td-username .online-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    animation: pulse 2s infinite;
+  }
+
+  .td-username .offline-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .td-map {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .td-time {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 9px;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 1px solid;
+  }
+
+  .badge.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(0,255,136,0.05);
+  }
+
+  .badge.blacklisted {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: rgba(255,60,60,0.05);
+  }
+
+  .toggle-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 5px 12px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: transparent;
+  }
+
+  .toggle-btn.ban {
+    color: var(--accent2);
+    border-color: rgba(255,60,60,0.3);
+  }
+
+  .toggle-btn.ban:hover {
+    background: rgba(255,60,60,0.1);
+    border-color: var(--accent2);
+  }
+
+  .toggle-btn.unban {
+    color: var(--accent);
+    border-color: rgba(0,255,136,0.3);
+  }
+
+  .toggle-btn.unban:hover {
+    background: rgba(0,255,136,0.1);
+    border-color: var(--accent);
+  }
+
+  .toggle-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* EMPTY / LOADING */
+  .state-msg {
+    text-align: center;
+    padding: 60px 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .state-msg .big {
+    font-size: 32px;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  /* TOAST */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 12px 20px;
+    z-index: 9998;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all 0.25s ease;
+    pointer-events: none;
+  }
+
+  #toast.show {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  #toast.error {
+    border-color: var(--accent2);
+    color: var(--accent2);
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    display: none;
+    place-items: center;
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-overlay.show { display: grid; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 32px;
+    width: 380px;
+    position: relative;
+    animation: fadeUp 0.2s ease;
+  }
+
+  .modal::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent2);
+  }
+
+  .modal-title {
+    font-weight: 800;
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .modal-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+
+  .modal-sub strong {
+    color: var(--accent2);
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .row-enter {
+    animation: fadeUp 0.3s ease both;
+  }
+
+  /* CONFIG BANNER */
+  .config-banner {
+    background: rgba(255,60,60,0.06);
+    border: 1px solid rgba(255,60,60,0.2);
+    padding: 14px 20px;
+    margin-bottom: 24px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .config-banner input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255,60,60,0.3);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 4px;
+    outline: none;
+  }
+
+  .config-banner input:focus {
+    border-bottom-color: var(--accent2);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">ST</div>
+        <div class="logo-text">Super<span>Tool</span></div>
+      </div>
+      <div class="header-status">
+        <div class="status-dot"></div>
+        <span id="status-text">CONNECTING...</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <!-- Config Banner -->
+    <div class="config-banner" id="config-banner">
+      ⚠ SET PROXY URL:
+      <input type="text" id="proxy-input" placeholder="https://script.google.com/macros/s/.../exec" />
+      <button class="btn primary" onclick="saveProxy()">SAVE</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Total Users</div>
+        <div class="stat-value" id="stat-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Online (3 min)</div>
+        <div class="stat-value" id="stat-online">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Blacklisted</div>
+        <div class="stat-value red" id="stat-banned">—</div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-title">USER LIST</div>
+      <div class="toolbar-right">
+        <button class="btn" onclick="loadUsers()" id="refresh-btn">↺ REFRESH</button>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <input class="search-input" type="text" id="search" placeholder="Search username..." oninput="filterUsers()" />
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Last Online</th>
+            <th>Map ID</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="user-table">
+          <tr>
+            <td colspan="5">
+              <div class="state-msg">
+                <span class="big">⚙</span>
+                Set proxy URL above then refresh
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Confirm Action</div>
+    <div class="modal-sub" id="modal-sub"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">CANCEL</button>
+      <button class="btn primary" id="modal-confirm" style="background:#ff3c3c;border-color:#ff3c3c;">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // =====================================================
+  // CONFIG
+  // =====================================================
+  const GAS_PROXY = "https://script.google.com/macros/s/AKfycbxnKYwu9owBgrvlqgBizxFoTC85yp8As988M5R1wiq_9PngWR_YPJqEY35aYIl7P6R7/exec";
+  const FIREBASE_PROJECT = "supertool-18bae";
+  const API_KEY = "AIzaSyAICeLezq9zrxKzIH2iQMpQVLhzeaebxKg";
+  const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+
+  let proxyUrl = localStorage.getItem('supertool_proxy') || GAS_PROXY;
+  let allUsers = [];
+
+  // =====================================================
+  // INIT
+  // =====================================================
+  window.onload = () => {
+    const input = document.getElementById('proxy-input');
+    input.value = proxyUrl;
+    if (proxyUrl) {
+      document.getElementById('config-banner').style.display = 'none';
+      loadUsers();
+    }
+  };
+
+  function saveProxy() {
+    const val = document.getElementById('proxy-input').value.trim();
+    if (!val) return;
+    proxyUrl = val;
+    localStorage.setItem('supertool_proxy', val);
+    document.getElementById('config-banner').style.display = 'none';
+    loadUsers();
+  }
+
+  // =====================================================
+  // FIRESTORE — List all users
+  // =====================================================
+  async function loadUsers() {
+    const btn = document.getElementById('refresh-btn');
+    btn.disabled = true;
+    btn.textContent = '↺ LOADING...';
+    document.getElementById('status-text').textContent = 'FETCHING...';
+
+    try {
+      const url = `${FIRESTORE_BASE}/users?key=${API_KEY}&pageSize=300`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.error) {
+        showToast('Firestore error: ' + data.error.message, true);
+        document.getElementById('status-text').textContent = 'ERROR';
+        return;
+      }
+
+      allUsers = (data.documents || []).map(doc => {
+        const f = doc.fields || {};
+        const nameParts = doc.name.split('/');
+        return {
+          username: f.username?.stringValue || nameParts[nameParts.length - 1],
+          last_online: parseInt(f.last_online?.integerValue || 0),
+          map_id: f.map_id?.stringValue || '—',
+          blacklisted: f.blacklisted?.booleanValue === true || f.blacklisted?.stringValue === 'true'
+        };
+      });
+
+      // Sort: online first, then by last_online desc
+      allUsers.sort((a, b) => {
+        const aOnline = isOnline(a.last_online);
+        const bOnline = isOnline(b.last_online);
+        if (aOnline && !bOnline) return -1;
+        if (!aOnline && bOnline) return 1;
+        return b.last_online - a.last_online;
+      });
+
+      updateStats();
+      renderTable(allUsers);
+      document.getElementById('status-text').textContent = 'CONNECTED';
+      showToast('Loaded ' + allUsers.length + ' users');
+
+    } catch (e) {
+      showToast('Failed to fetch: ' + e.message, true);
+      document.getElementById('status-text').textContent = 'ERROR';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '↺ REFRESH';
+  }
+
+  function isOnline(ts) {
+    return (Date.now() / 1000) - ts < 180;
+  }
+
+  function updateStats() {
+    const total = allUsers.length;
+    const online = allUsers.filter(u => isOnline(u.last_online) && !u.blacklisted).length;
+    const banned = allUsers.filter(u => u.blacklisted).length;
+
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-online').textContent = online;
+    document.getElementById('stat-banned').textContent = banned;
+  }
+
+  function formatTime(ts) {
+    if (!ts) return '—';
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - ts;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  function renderTable(users) {
+    const tbody = document.getElementById('user-table');
+
+    if (users.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5"><div class="state-msg"><span class="big">◎</span>No users found</div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = users.map((u, i) => {
+      const online = isOnline(u.last_online) && !u.blacklisted;
+      const dot = online
+        ? '<span class="online-dot"></span>'
+        : '<span class="offline-dot"></span>';
+      const badge = u.blacklisted
+        ? '<span class="badge blacklisted">BLACKLISTED</span>'
+        : online
+          ? '<span class="badge active">ONLINE</span>'
+          : '<span class="badge" style="color:#555;border-color:#333">OFFLINE</span>';
+      const action = u.blacklisted
+        ? `<button class="toggle-btn unban" onclick="confirmToggle('${u.username}', false)">UNBAN</button>`
+        : `<button class="toggle-btn ban" onclick="confirmToggle('${u.username}', true)">BAN</button>`;
+
+      return `
+        <tr class="${u.blacklisted ? 'blacklisted-row' : ''} row-enter" style="animation-delay:${i * 0.03}s">
+          <td><div class="td-username">${dot}${u.username}</div></td>
+          <td class="td-time">${formatTime(u.last_online)}</td>
+          <td class="td-map">${u.map_id}</td>
+          <td>${badge}</td>
+          <td>${action}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function filterUsers() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const filtered = allUsers.filter(u => u.username.toLowerCase().includes(q));
+    renderTable(filtered);
+  }
+
+  // =====================================================
+  // BLACKLIST TOGGLE via GAS proxy
+  // =====================================================
+  let pendingAction = null;
+
+  function confirmToggle(username, blacklist) {
+    pendingAction = { username, blacklist };
+    document.getElementById('modal-title').textContent = blacklist ? 'Ban User' : 'Unban User';
+    document.getElementById('modal-sub').innerHTML = blacklist
+      ? `Ban <strong>${username}</strong>?<br>They will be kicked within 10 seconds.`
+      : `Unban <strong>${username}</strong>?<br>They will regain access immediately.`;
+
+    const confirmBtn = document.getElementById('modal-confirm');
+    confirmBtn.textContent = blacklist ? 'BAN' : 'UNBAN';
+    confirmBtn.style.background = blacklist ? '#ff3c3c' : '#00ff88';
+    confirmBtn.style.borderColor = blacklist ? '#ff3c3c' : '#00ff88';
+    confirmBtn.style.color = blacklist ? '#fff' : '#000';
+    confirmBtn.onclick = executeToggle;
+
+    document.getElementById('modal').classList.add('show');
+  }
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('show');
+    pendingAction = null;
+  }
+
+  async function executeToggle() {
+    if (!pendingAction) return;
+    const { username, blacklist } = pendingAction;
+    closeModal();
+
+    // Use GAS proxy to update blacklist field only
+    // We need a special action for blacklist since setUser doesn't touch blacklisted on existing docs
+    // Use direct Firestore REST with API key (read-only scope is fine for GET, for write we need proxy)
+    // Instead: add a blacklist action to GAS
+    const url = `${proxyUrl}?action=blacklist&username=${encodeURIComponent(username)}&value=${blacklist}`;
+
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch(e) { data = null; }
+
+      if (data && data.error) {
+        showToast('Error: ' + data.error.message, true);
+        return;
+      }
+
+      // Update local state
+      const user = allUsers.find(u => u.username === username);
+      if (user) user.blacklisted = blacklist;
+      updateStats();
+      filterUsers();
+      showToast(blacklist ? `${username} banned!` : `${username} unbanned!`);
+
+    } catch (e) {
+      showToast('Request failed: ' + e.message, true);
+    }
+  }
+
+  // =====================================================
+  // TOAST
+  // =====================================================
+  let toastTimer;
+  function showToast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show' + (isError ? ' error' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+  }
+
+  // Close modal on overlay click
+  document.getElementById('modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  // Auto refresh every 30s
+  setInterval(() => {
+    if (proxyUrl) loadUsers();
+  }, 30000);
+</script>
+</body>
+</html>
