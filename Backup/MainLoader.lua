@@ -256,15 +256,20 @@ if player.Name == OWNER_NAME then
         removeHighlight(p.Name)
     end)
 
+    -- FIX 1: Added nil/validity checks for box.Adornee and label.Parent
     RunService.Heartbeat:Connect(function()
         local col = getRainbow()
         for _, data in pairs(activeHighlights) do
-            if data.box and data.box.Parent then
-                data.box.Color3 = col
-                data.box.SurfaceColor3 = col
+            if data.box and data.box.Parent and data.box.Adornee then
+                pcall(function()
+                    data.box.Color3 = col
+                    data.box.SurfaceColor3 = col
+                end)
             end
             if data.label and data.label.Parent then
-                data.label.TextColor3 = col
+                pcall(function()
+                    data.label.TextColor3 = col
+                end)
             end
         end
     end)
@@ -382,7 +387,7 @@ local function createSlideNotification()
     NotificationFrame.Size = UDim2.new(0, 250, 0, 50)
     NotificationFrame.Position = UDim2.new(1, 0, 1, -60)
     NotificationFrame.ZIndex = 1000
-    
+
     local NotificationCorner = Instance.new("UICorner")
     NotificationCorner.CornerRadius = UDim.new(0, 8)
     NotificationCorner.Parent = NotificationFrame
@@ -393,9 +398,9 @@ local function createSlideNotification()
     LogoImage.BackgroundTransparency = 1
     LogoImage.Position = UDim2.new(0, 10, 0, 5)
     LogoImage.Size = UDim2.new(0, 40, 0, 40)
-    LogoImage.Image = "rbxassetid://1234567890" -- Ganti dengan asset ID UFO jika ada, atau url
+    LogoImage.Image = "rbxassetid://1234567890"
     LogoImage.ScaleType = Enum.ScaleType.Fit
-    
+
     local LogoCorner = Instance.new("UICorner")
     LogoCorner.CornerRadius = UDim.new(1, 0)
     LogoCorner.Parent = LogoImage
@@ -427,12 +432,12 @@ local function createSlideNotification()
     local slideOutTime = 0.3
     local slideInPosition = UDim2.new(1, -260, 1, -60)
     local slideOutPosition = UDim2.new(1, 0, 1, -60)
-    
+
     local slideInInfo = TweenInfo.new(slideInTime, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     local slideOutInfo = TweenInfo.new(slideOutTime, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    
+
     local slideInTween = TweenService:Create(NotificationFrame, slideInInfo, {Position = slideInPosition})
-    
+
     local function slideOut()
         local slideOutTween = TweenService:Create(NotificationFrame, slideOutInfo, {Position = slideOutPosition})
         slideOutTween:Play()
@@ -440,7 +445,7 @@ local function createSlideNotification()
             NotificationFrame:Destroy()
         end)
     end
-    
+
     slideInTween:Play()
     slideInTween.Completed:Connect(function()
         task.spawn(function()
@@ -522,6 +527,9 @@ local moduleURLs = {
     Info = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Info.lua",
     Credit = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Credit.lua"
 }
+
+-- FIX 2: Forward-declare loadButtons so loadModule can reference it before definition
+local loadButtons
 
 local function loadModule(moduleName)
     if not moduleURLs[moduleName] then
@@ -663,7 +671,8 @@ local function createToggleButton(name, callback, categoryName, disableCallback)
             if newState and isExclusiveFeature(name) then
                 disableActiveFeature()
                 activeFeature = {name = name, category = categoryName, disableCallback = disableCallback}
-            elseif not newState and activeFeature and activeFeature.name = name then
+            -- FIX 3: Changed = to == for comparison operator
+            elseif not newState and activeFeature and activeFeature.name == name then
                 activeFeature = nil
             end
             categoryStates[categoryName][name] = newState
@@ -697,7 +706,8 @@ local function getModuleFunctions(module)
     return functions
 end
 
-function loadButtons()
+-- FIX 2 (continued): Define loadButtons via assignment (not local function) so forward declaration works
+loadButtons = function()
     pcall(function()
         for _, child in pairs(FeatureContainer:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("Frame") then
