@@ -920,7 +920,7 @@
           <td><div class="td-username">${dot}${u.username}</div></td>
           <td class="td-time">${formatTime(u.last_online)}</td>
           <td class="td-map">${u.map_id}</td>
-          <td class="td-job">${u.job_id
+          <td class="td-job">${(u.job_id && isOnline(u.last_online) && !u.blacklisted)
             ? `<span class="job-id" title="${u.job_id}">${u.job_id.substring(0,8)}...</span><a class="join-btn" href="roblox://experiences/start?placeId=${u.map_id}&gameInstanceId=${u.job_id}">JOIN</a>`
             : '<span style="color:var(--muted)">—</span>'
           }</td>
