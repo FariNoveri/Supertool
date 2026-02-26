@@ -571,6 +571,114 @@
   .config-banner input:focus {
     border-bottom-color: var(--accent2);
   }
+
+  /* LOGIN SCREEN */
+  #login-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 9000;
+    display: grid;
+    place-items: center;
+  }
+
+  .login-box {
+    width: 340px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 40px;
+    position: relative;
+    animation: fadeUp 0.4s ease both;
+  }
+
+  .login-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .login-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .login-title {
+    font-weight: 800;
+    font-size: 20px;
+  }
+
+  .login-title span { color: var(--accent); }
+
+  .login-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .login-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 12px 16px;
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 16px;
+    letter-spacing: 3px;
+  }
+
+  .login-input:focus { border-color: var(--accent); }
+
+  .login-btn {
+    width: 100%;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 13px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: background 0.15s;
+  }
+
+  .login-btn:hover { background: #00cc6e; }
+
+  .login-error {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent2);
+    margin-top: 12px;
+    text-align: center;
+    min-height: 16px;
+    display: none;
+  }
+
+  .login-error.show { display: block; }
+
+  .login-shake {
+    animation: shake 0.4s ease;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(5px); }
+  }
 </style>
 </head>
 <body>
@@ -907,10 +1015,75 @@
     if (e.target === this) closeModal();
   });
 
+  // =====================================================
+  // LOGIN
+  // =====================================================
+  // Password stored as SHA-256 hash — original password never exposed in code
+  const _h = "0f722a8f957826acac360166ee9d37922adb04e6d8219c843a54bde17bf5ea78";
+
+  async function _sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  async function checkLogin() {
+    const saved = localStorage.getItem('supertool_auth');
+    if (saved === _h) {
+      document.getElementById('login-screen').style.display = 'none';
+    }
+  }
+
+  async function doLogin() {
+    const input = document.getElementById('login-pass');
+    const val = input.value;
+    const errorEl = document.getElementById('login-error');
+    const box = document.getElementById('login-box');
+
+    const hashed = await _sha256(val);
+
+    if (hashed === _h) {
+      localStorage.setItem('supertool_auth', _h);
+      document.getElementById('login-screen').style.display = 'none';
+      loadUsers();
+    } else {
+      errorEl.classList.add('show');
+      box.classList.remove('login-shake');
+      void box.offsetWidth;
+      box.classList.add('login-shake');
+      input.value = '';
+      setTimeout(() => errorEl.classList.remove('show'), 2000);
+    }
+  }
+
+  // Check on load
+  checkLogin();
+
   // Auto refresh every 30s
   setInterval(() => {
     if (proxyUrl) loadUsers();
   }, 30000);
 </script>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-box" id="login-box">
+    <div class="login-logo">
+      <div class="logo-icon">ST</div>
+      <div class="login-title">Super<span>Tool</span></div>
+    </div>
+    <label class="login-label">Password</label>
+    <input
+      class="login-input"
+      type="password"
+      id="login-pass"
+      placeholder="••••••••"
+      onkeydown="if(event.key==='Enter') doLogin()"
+      autocomplete="off"
+    />
+    <button class="login-btn" onclick="doLogin()">ACCESS PANEL</button>
+    <div class="login-error" id="login-error">⚠ Incorrect password</div>
+  </div>
+</div>
+
 </body>
 </html>
