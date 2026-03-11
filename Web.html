@@ -761,13 +761,70 @@
   // =====================================================
   // CONFIG
   // =====================================================
-  const GAS_PROXY = "https://script.google.com/macros/s/AKfycbxe2gCPMCSzRI7vN_-gppZiwh1ScRaZTmIJFQofYvCLM40DKuoiYfyNek5TAP4HL_3A/exec";
+  const GAS_PROXY = "https://script.google.com/macros/s/AKfycbx56Mw9cg3T3MeuRKoWakXbkI0uWCzz_WJZ1YFmMDOs4-rhHNTz0axQ95uZhJEBwOMC/exec";
   const FIREBASE_PROJECT = "supertool-18bae";
   const API_KEY = "AIzaSyAICeLezq9zrxKzIH2iQMpQVLhzeaebxKg";
   const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+  const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1481139205546573834/uaGSHAPADGKUO4_Kml93yI219AQqurMhxranpM9rUDcxmtl8yJFe3vdb0qVgioGqNTMR";
 
   let proxyUrl = localStorage.getItem('supertool_proxy') || GAS_PROXY;
   let allUsers = [];
+
+  // =====================================================
+  // DISCORD — kirim langsung dari browser
+  // =====================================================
+  async function sendDiscord(embed) {
+    try {
+      await fetch(DISCORD_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ embeds: [embed] })
+      });
+    } catch(e) {}
+  }
+
+  function discordBan(username, banned) {
+    sendDiscord({
+      title: banned ? "🔨 Player Dibanned" : "✅ Player Di-unban",
+      color: banned ? 0xff3c3c : 0x00ff88,
+      fields: [
+        { name: "Username", value: "`" + username + "`", inline: true },
+        { name: "Status", value: banned ? "**BLACKLISTED**" : "**UNBANNED**", inline: true }
+      ],
+      footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+    });
+  }
+
+  function discordKick(username, message) {
+    sendDiscord({
+      title: "⚡ Player Di-kick",
+      color: 0xffaa00,
+      fields: [
+        { name: "Username", value: "`" + username + "`", inline: true },
+        { name: "Pesan Kick", value: "`" + message + "`", inline: false }
+      ],
+      footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+    });
+  }
+
+  // =====================================================
+  // GAS REQUEST — fire and forget pakai fetch no-cors
+  // =====================================================
+  function gasRequest(url) {
+    return fetch(url, {
+      method: "GET",
+      mode: "no-cors",
+      redirect: "follow"
+    }).catch(() => {});
+  }
+
+  // Firestore REST langsung (tidak kena CORS karena pakai API key)
+  async function firestoreFetch(path) {
+    const url = `${FIRESTORE_BASE}/${path}?key=${API_KEY}&pageSize=300`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
 
   // =====================================================
   // INIT
@@ -791,7 +848,7 @@
   }
 
   // =====================================================
-  // FIRESTORE — List all users
+  // LOAD USERS
   // =====================================================
   async function loadUsers() {
     const btn = document.getElementById('refresh-btn');
@@ -800,13 +857,13 @@
     document.getElementById('status-text').textContent = 'FETCHING...';
 
     try {
-      const url = `${FIRESTORE_BASE}/users?key=${API_KEY}&pageSize=300`;
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await firestoreFetch('users');
 
       if (data.error) {
         showToast('Firestore error: ' + data.error.message, 'error');
         document.getElementById('status-text').textContent = 'ERROR';
+        btn.disabled = false;
+        btn.textContent = '↺ REFRESH';
         return;
       }
 
@@ -823,7 +880,6 @@
         };
       });
 
-      // Sort: online first, then by last_online desc
       allUsers.sort((a, b) => {
         const aOnline = isOnline(a.last_online);
         const bOnline = isOnline(b.last_online);
@@ -889,7 +945,6 @@
           ? '<span class="badge active">ONLINE</span>'
           : '<span class="badge" style="color:#555;border-color:#333">OFFLINE</span>';
 
-      // Kick button hanya muncul kalau user tidak blacklisted
       const actions = u.blacklisted
         ? `<div class="action-cell">
             <button class="toggle-btn unban" onclick="confirmToggle('${u.username}', false)">UNBAN</button>
@@ -937,12 +992,10 @@
       : `Unban <strong>${username}</strong>?<br>Mereka akan mendapatkan akses kembali.`;
 
     const confirmBtn = document.getElementById('modal-confirm');
-    const modalInner = document.getElementById('modal-inner');
     confirmBtn.textContent = blacklist ? 'BAN' : 'UNBAN';
     confirmBtn.style.background = blacklist ? '#ff3c3c' : '#00ff88';
     confirmBtn.style.borderColor = blacklist ? '#ff3c3c' : '#00ff88';
     confirmBtn.style.color = blacklist ? '#fff' : '#000';
-    modalInner.style.setProperty('--top-color', blacklist ? '#ff3c3c' : '#00ff88');
     confirmBtn.onclick = executeToggle;
 
     document.getElementById('modal').classList.add('show');
@@ -961,22 +1014,13 @@
     const url = `${proxyUrl}?action=blacklist&username=${encodeURIComponent(username)}&value=${blacklist}`;
 
     try {
-      const res = await fetch(url);
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch(e) { data = null; }
-
-      if (data && data.error) {
-        showToast('Error: ' + data.error.message, 'error');
-        return;
-      }
-
+      await gasRequest(url);
       const user = allUsers.find(u => u.username === username);
       if (user) user.blacklisted = blacklist;
       updateStats();
       filterUsers();
-      showToast(blacklist ? `${username} banned!` : `${username} unbanned!`);
-
+      showToast(blacklist ? `🔨 ${username} banned!` : `✅ ${username} unbanned!`);
+      discordBan(username, blacklist);
     } catch (e) {
       showToast('Request failed: ' + e.message, 'error');
     }
@@ -992,7 +1036,6 @@
     document.getElementById('kick-username-label').textContent = username;
     document.getElementById('kick-message-input').value = '';
     document.getElementById('kick-modal').classList.add('show');
-    // Auto-focus input
     setTimeout(() => {
       document.getElementById('kick-message-input').focus();
     }, 100);
@@ -1013,18 +1056,9 @@
     const url = `${proxyUrl}?action=kick&username=${encodeURIComponent(username)}&message=${encodeURIComponent(msg)}`;
 
     try {
-      const res = await fetch(url);
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch(e) { data = null; }
-
-      if (data && data.error) {
-        showToast('Kick error: ' + data.error.message, 'error');
-        return;
-      }
-
+      await gasRequest(url);
       showToast(`⚡ ${username} akan di-kick dalam ≤10 detik`, 'warn');
-
+      discordKick(username, msg);
     } catch (e) {
       showToast('Kick failed: ' + e.message, 'error');
     }

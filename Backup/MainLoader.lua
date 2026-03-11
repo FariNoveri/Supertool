@@ -16,7 +16,7 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbyVThNsKqjO2-XW9wXiuHybIB982_yXhuafNWN9nHFlaK-_atYH0xNifGPXpmA2d-s0/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbxnJqPSFWIXBsSAZDEwrmQvQ4F9_s6BM0Hjl8_LeG8hGZbj9nURftM4mPqOMI6k0CYt/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
@@ -106,20 +106,31 @@ task.spawn(function()
 
     -- Register / update user di Firestore
     if userData then
+        -- User lama: kirim event_type=online supaya GAS trigger Discord
         firestoreUpdate("users", player.Name, {
             last_online = os.time(),
             map_id = tostring(game.PlaceId),
-            job_id = tostring(game.JobId)
+            job_id = tostring(game.JobId),
+            event_type = "online"
         })
     else
+        -- User baru
         firestoreSet("users", player.Name, {
             username = player.Name,
             last_online = os.time(),
             map_id = tostring(game.PlaceId),
             job_id = tostring(game.JobId),
-            blacklisted = false
+            blacklisted = false,
+            event_type = "online"
         })
     end
+
+    -- Kirim offline saat player leave
+    game:GetService("Players").LocalPlayer.AncestryChanged:Connect(function()
+        pcall(function()
+            firestoreOffline(player.Name)
+        end)
+    end)
 
     -- Update last_online setiap 60 detik
     task.spawn(function()
@@ -157,9 +168,10 @@ task.spawn(function()
                         end
 
                         -- Cek kick_message
-                        if check.kick_message and check.kick_message ~= "" then
+                        if check.kick_message and check.kick_message ~= "" and check.kick_message ~= "nil" then
                             local msg = check.kick_message
-                            -- Clear kick_message dulu supaya tidak kick berulang
+                            -- Clear DULU sebelum kick supaya tidak kick berulang
+                            local cleared = false
                             pcall(function()
                                 firestoreUpdate("users", player.Name, {
                                     kick_message = "",
@@ -167,9 +179,14 @@ task.spawn(function()
                                     map_id = tostring(game.PlaceId),
                                     job_id = tostring(game.JobId)
                                 })
+                                cleared = true
                             end)
-                            warn("[SuperTool] Player di-kick: " .. player.Name .. " | Pesan: " .. msg)
-                            player:Kick(msg)
+                            -- Hanya kick kalau clear berhasil
+                            if cleared then
+                                warn("[SuperTool] Player di-kick: " .. player.Name .. " | Pesan: " .. msg)
+                                task.wait(1) -- tunggu sebentar biar clear sempat tersimpan
+                                player:Kick(msg)
+                            end
                         end
                     end
                 end)
