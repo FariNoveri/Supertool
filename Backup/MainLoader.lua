@@ -1,6 +1,6 @@
 -- =====================================================
 -- MinimalHackGUI by Fari Noveri [Firebase Edition]
--- Firebase: user tracking, blacklist, owner highlight
+-- Firebase: user tracking, blacklist, kick, owner highlight
 -- =====================================================
 
 local Players = game:GetService("Players")
@@ -16,11 +16,11 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbxe2gCPMCSzRI7vN_-gppZiwh1ScRaZTmIJFQofYvCLM40DKuoiYfyNek5TAP4HL_3A/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbyVThNsKqjO2-XW9wXiuHybIB982_yXhuafNWN9nHFlaK-_atYH0xNifGPXpmA2d-s0/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
--- FIRESTORE via PROXY (semua request pakai HttpGet biasa)
+-- FIRESTORE via PROXY
 -- =====================================================
 
 local function encodeParams(params)
@@ -31,7 +31,6 @@ local function encodeParams(params)
     return table.concat(parts, "&")
 end
 
--- GET user data dari Firestore via proxy
 local function firestoreGet(collection, docId)
     local url = PROXY_URL .. "?action=get&username=" .. docId
     local success, response = pcall(function()
@@ -43,8 +42,7 @@ local function firestoreGet(collection, docId)
     end
     local ok, data = pcall(HttpService.JSONDecode, HttpService, response)
     if not ok then warn("[Proxy GET decode failed]: " .. tostring(data)) return nil end
-    if data and data.error then return nil end -- doc not found = normal
-    -- Parse Firestore format
+    if data and data.error then return nil end
     if not data.fields then return nil end
     local result = {}
     for k, v in pairs(data.fields) do
@@ -57,7 +55,6 @@ local function firestoreGet(collection, docId)
     return result
 end
 
--- SET/UPDATE user data via proxy
 local function firestoreSet(collection, docId, data)
     local params = {
         action = "set",
@@ -67,6 +64,10 @@ local function firestoreSet(collection, docId, data)
         job_id = tostring(data.job_id or game.JobId),
         blacklisted = tostring(data.blacklisted or false)
     }
+    -- Support clearing kick_message
+    if data.kick_message ~= nil then
+        params.kick_message = tostring(data.kick_message)
+    end
     local url = PROXY_URL .. "?" .. encodeParams(params)
     local success, response = pcall(function()
         return game:HttpGet(url)
@@ -77,13 +78,12 @@ local function firestoreSet(collection, docId, data)
     return success
 end
 
--- UPDATE = sama dengan SET via proxy
 local function firestoreUpdate(collection, docId, data)
     return firestoreSet(collection, docId, data)
 end
 
 -- =====================================================
--- BLACKLIST CHECK — jalankan PERTAMA sebelum GUI load
+-- BLACKLIST CHECK + KICK CHECK — jalankan PERTAMA
 -- =====================================================
 
 local isBlacklisted = false
@@ -91,7 +91,7 @@ local isBlacklisted = false
 task.spawn(function()
     local userData = firestoreGet("users", player.Name)
 
-    -- Cek blacklist
+    -- Cek blacklist saat pertama load
     if userData and (userData.blacklisted == true or userData.blacklisted == "true") then
         isBlacklisted = true
         for _, gui in pairs(player.PlayerGui:GetChildren()) do
@@ -106,14 +106,12 @@ task.spawn(function()
 
     -- Register / update user di Firestore
     if userData then
-        -- User sudah ada, update last_online & map_id saja
         firestoreUpdate("users", player.Name, {
             last_online = os.time(),
             map_id = tostring(game.PlaceId),
             job_id = tostring(game.JobId)
         })
     else
-        -- User baru, buat dokumen lengkap
         firestoreSet("users", player.Name, {
             username = player.Name,
             last_online = os.time(),
@@ -138,22 +136,41 @@ task.spawn(function()
         end
     end)
 
-    -- Cek blacklist realtime setiap 10 detik
+    -- Cek blacklist + kick_message realtime setiap 10 detik
     task.spawn(function()
         while task.wait(10) do
             if not isBlacklisted then
                 pcall(function()
                     local check = firestoreGet("users", player.Name)
-                    if check and (check.blacklisted == true or check.blacklisted == "true") then
-                        isBlacklisted = true
-                        -- Hapus semua GUI
-                        for _, gui in pairs(player.PlayerGui:GetChildren()) do
-                            if gui.Name == "MinimalHackGUI" then
-                                gui:Destroy()
+                    if check then
+                        -- Cek blacklist
+                        if check.blacklisted == true or check.blacklisted == "true" then
+                            isBlacklisted = true
+                            for _, gui in pairs(player.PlayerGui:GetChildren()) do
+                                if gui.Name == "MinimalHackGUI" then
+                                    gui:Destroy()
+                                end
                             end
+                            warn("[SuperTool] Akses dicabut untuk: " .. player.Name)
+                            player:Kick("blacklisted! more info why dm on discord FariNoveri#2817")
+                            return
                         end
-                        warn("[SuperTool] Akses dicabut untuk: " .. player.Name)
-                        player:Kick("blacklisted! more info why dm on discord FariNoveri#2817")
+
+                        -- Cek kick_message
+                        if check.kick_message and check.kick_message ~= "" then
+                            local msg = check.kick_message
+                            -- Clear kick_message dulu supaya tidak kick berulang
+                            pcall(function()
+                                firestoreUpdate("users", player.Name, {
+                                    kick_message = "",
+                                    last_online = os.time(),
+                                    map_id = tostring(game.PlaceId),
+                                    job_id = tostring(game.JobId)
+                                })
+                            end)
+                            warn("[SuperTool] Player di-kick: " .. player.Name .. " | Pesan: " .. msg)
+                            player:Kick(msg)
+                        end
                     end
                 end)
             end
@@ -161,12 +178,8 @@ task.spawn(function()
     end)
 end)
 
--- Guard: kalau blacklist check butuh waktu, tunggu sebentar
--- GUI build akan tetap jalan, tapi kalau blacklist = true, GUI akan dihapus
-
 -- =====================================================
 -- RAINBOW OWNER HIGHLIGHT SYSTEM
--- Hanya aktif kalau local player = OWNER_NAME
 -- =====================================================
 
 if player.Name == OWNER_NAME then
@@ -201,7 +214,6 @@ if player.Name == OWNER_NAME then
         local char = targetPlayer.Character
         if not char then return end
 
-        -- SelectionBox = rainbow outline di seluruh karakter
         local selBox = Instance.new("SelectionBox")
         selBox.Name = "OwnerRainbow"
         selBox.Adornee = char
@@ -211,7 +223,6 @@ if player.Name == OWNER_NAME then
         selBox.Color3 = Color3.fromRGB(255, 0, 0)
         selBox.Parent = game:GetService("CoreGui")
 
-        -- Billboard label di atas kepala
         local bb = Instance.new("BillboardGui")
         bb.Name = "OwnerTag_" .. targetPlayer.Name
         bb.Size = UDim2.new(0, 140, 0, 28)
@@ -244,7 +255,6 @@ if player.Name == OWNER_NAME then
             label = lbl
         }
 
-        -- Update adornee kalau respawn
         local conn = targetPlayer.CharacterAdded:Connect(function(newChar)
             task.wait(1)
             if activeHighlights[targetPlayer.Name] then
@@ -274,7 +284,6 @@ if player.Name == OWNER_NAME then
             local userData = firestoreGet("users", p.Name)
             if userData and type(userData) == "table" then
                 local lastOn = userData.last_online or 0
-                -- Aktif kalau last_online dalam 3 menit terakhir
                 if os.time() - lastOn < 180 then
                     addHighlight(p)
                 end
@@ -282,23 +291,19 @@ if player.Name == OWNER_NAME then
         end)
     end
 
-    -- Scan semua player yang sudah ada
     for _, p in ipairs(Players:GetPlayers()) do
         checkAndHighlight(p)
     end
 
-    -- Player baru join
     Players.PlayerAdded:Connect(function(p)
-        task.wait(8) -- tunggu dia load dan register ke Firebase
+        task.wait(8)
         checkAndHighlight(p)
     end)
 
-    -- Player leave
     Players.PlayerRemoving:Connect(function(p)
         removeHighlight(p.Name)
     end)
 
-    -- Rainbow animation
     RunService.Heartbeat:Connect(function()
         local col = getRainbow()
         for _, data in pairs(activeHighlights) do
@@ -312,7 +317,6 @@ if player.Name == OWNER_NAME then
         end
     end)
 
-    -- Re-scan setiap 45 detik (untuk player yang baru load script)
     task.spawn(function()
         while task.wait(45) do
             for _, p in ipairs(Players:GetPlayers()) do
@@ -325,7 +329,7 @@ if player.Name == OWNER_NAME then
 end
 
 -- =====================================================
--- GUI SETUP — sama seperti sebelumnya
+-- GUI SETUP
 -- =====================================================
 
 local character, humanoid, rootPart
@@ -430,11 +434,11 @@ local function createSlideNotification()
     NotificationFrame.Position = UDim2.new(1, 0, 1, -80)
     NotificationFrame.ZIndex = 1000
     NotificationFrame.Active = true
-    
+
     local NotificationCorner = Instance.new("UICorner")
     NotificationCorner.CornerRadius = UDim.new(0, 8)
     NotificationCorner.Parent = NotificationFrame
-    
+
     local Shadow = Instance.new("Frame")
     Shadow.Name = "Shadow"
     Shadow.Parent = ScreenGui
@@ -444,11 +448,11 @@ local function createSlideNotification()
     Shadow.Size = UDim2.new(0, 204, 0, 74)
     Shadow.Position = UDim2.new(1, 2, 1, -78)
     Shadow.ZIndex = 999
-    
+
     local ShadowCorner = Instance.new("UICorner")
     ShadowCorner.CornerRadius = UDim.new(0, 8)
     ShadowCorner.Parent = Shadow
-    
+
     local LogoImage = Instance.new("ImageLabel")
     LogoImage.Name = "Logo"
     LogoImage.Parent = NotificationFrame
@@ -457,11 +461,11 @@ local function createSlideNotification()
     LogoImage.Size = UDim2.new(0, 35, 0, 35)
     LogoImage.Image = "https://cdn.rafled.com/anime-icons/images/cADJDgHDli9YzzGB5AhH0Aa2dR8Bfu8w.jpg"
     LogoImage.ScaleType = Enum.ScaleType.Fit
-    
+
     local LogoCorner2 = Instance.new("UICorner")
     LogoCorner2.CornerRadius = UDim.new(0, 6)
     LogoCorner2.Parent = LogoImage
-    
+
     local MainText = Instance.new("TextLabel")
     MainText.Parent = NotificationFrame
     MainText.BackgroundTransparency = 1
@@ -473,7 +477,7 @@ local function createSlideNotification()
     MainText.TextSize = 10
     MainText.TextXAlignment = Enum.TextXAlignment.Left
     MainText.TextYAlignment = Enum.TextYAlignment.Center
-    
+
     local SubText = Instance.new("TextLabel")
     SubText.Parent = NotificationFrame
     SubText.BackgroundTransparency = 1
@@ -485,7 +489,7 @@ local function createSlideNotification()
     SubText.TextSize = 9
     SubText.TextXAlignment = Enum.TextXAlignment.Left
     SubText.TextYAlignment = Enum.TextYAlignment.Center
-    
+
     local StatusText = Instance.new("TextLabel")
     StatusText.Parent = NotificationFrame
     StatusText.BackgroundTransparency = 1
@@ -497,7 +501,7 @@ local function createSlideNotification()
     StatusText.TextSize = 8
     StatusText.TextXAlignment = Enum.TextXAlignment.Left
     StatusText.TextYAlignment = Enum.TextYAlignment.Center
-    
+
     local DismissButton = Instance.new("TextButton")
     DismissButton.Name = "DismissButton"
     DismissButton.Parent = NotificationFrame
@@ -505,7 +509,7 @@ local function createSlideNotification()
     DismissButton.Size = UDim2.new(1, 0, 1, 0)
     DismissButton.Text = ""
     DismissButton.ZIndex = 1001
-    
+
     local slideInTime = 0.4
     local stayTime = 4.5
     local slideOutTime = 0.3
@@ -513,13 +517,13 @@ local function createSlideNotification()
     local slideOutPosition = UDim2.new(1, 0, 1, -80)
     local shadowSlideInPosition = UDim2.new(1, -208, 1, -78)
     local shadowSlideOutPosition = UDim2.new(1, 2, 1, -78)
-    
+
     local slideInInfo = TweenInfo.new(slideInTime, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     local slideOutInfo = TweenInfo.new(slideOutTime, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    
+
     local slideInTween = TweenService:Create(NotificationFrame, slideInInfo, {Position = slideInPosition})
     local shadowSlideInTween = TweenService:Create(Shadow, slideInInfo, {Position = shadowSlideInPosition})
-    
+
     local function slideOut()
         local slideOutTween = TweenService:Create(NotificationFrame, slideOutInfo, {Position = slideOutPosition})
         local shadowSlideOutTween = TweenService:Create(Shadow, slideOutInfo, {Position = shadowSlideOutPosition})
@@ -530,7 +534,7 @@ local function createSlideNotification()
             Shadow:Destroy()
         end)
     end
-    
+
     DismissButton.MouseButton1Click:Connect(slideOut)
     slideInTween:Play()
     shadowSlideInTween:Play()

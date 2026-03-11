@@ -13,6 +13,7 @@
     --border: #1e1e1e;
     --accent: #00ff88;
     --accent2: #ff3c3c;
+    --accent3: #ffaa00;
     --text: #e8e8e8;
     --muted: #444;
     --mono: 'Space Mono', monospace;
@@ -29,7 +30,6 @@
     overflow-x: hidden;
   }
 
-  /* Scanline overlay */
   body::before {
     content: '';
     position: fixed;
@@ -45,7 +45,6 @@
     z-index: 9999;
   }
 
-  /* Grid background */
   body::after {
     content: '';
     position: fixed;
@@ -109,9 +108,7 @@
     letter-spacing: -0.5px;
   }
 
-  .logo-text span {
-    color: var(--accent);
-  }
+  .logo-text span { color: var(--accent); }
 
   .header-status {
     display: flex;
@@ -136,9 +133,7 @@
   }
 
   /* MAIN */
-  main {
-    padding: 40px 0 60px;
-  }
+  main { padding: 40px 0 60px; }
 
   /* STATS ROW */
   .stats-row {
@@ -201,10 +196,7 @@
     color: var(--muted);
   }
 
-  .toolbar-right {
-    display: flex;
-    gap: 8px;
-  }
+  .toolbar-right { display: flex; gap: 8px; }
 
   .btn {
     font-family: var(--mono);
@@ -219,10 +211,7 @@
     letter-spacing: 1px;
   }
 
-  .btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
 
   .btn.primary {
     background: var(--accent);
@@ -231,16 +220,8 @@
     font-weight: 700;
   }
 
-  .btn.primary:hover {
-    background: #00cc6e;
-    border-color: #00cc6e;
-    color: #000;
-  }
-
-  .btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
+  .btn.primary:hover { background: #00cc6e; border-color: #00cc6e; color: #000; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
   /* SEARCH */
   .search-wrap {
@@ -270,10 +251,7 @@
     animation: fadeUp 0.5s 0.2s ease both;
   }
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-  }
+  table { width: 100%; border-collapse: collapse; }
 
   thead {
     background: var(--surface2);
@@ -297,16 +275,10 @@
   }
 
   tbody tr:last-child { border-bottom: none; }
-
   tbody tr:hover { background: var(--surface2); }
 
-  tbody tr.blacklisted-row {
-    background: rgba(255,60,60,0.04);
-  }
-
-  tbody tr.blacklisted-row:hover {
-    background: rgba(255,60,60,0.08);
-  }
+  tbody tr.blacklisted-row { background: rgba(255,60,60,0.04); }
+  tbody tr.blacklisted-row:hover { background: rgba(255,60,60,0.08); }
 
   td {
     padding: 14px 16px;
@@ -323,29 +295,22 @@
     gap: 8px;
   }
 
-  .td-username .online-dot {
-    width: 5px;
-    height: 5px;
+  .online-dot {
+    width: 5px; height: 5px;
     border-radius: 50%;
     background: var(--accent);
     flex-shrink: 0;
     animation: pulse 2s infinite;
   }
 
-  .td-username .offline-dot {
-    width: 5px;
-    height: 5px;
+  .offline-dot {
+    width: 5px; height: 5px;
     border-radius: 50%;
     background: var(--muted);
     flex-shrink: 0;
   }
 
-  .td-map {
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .td-job { font-size: 11px; }
+  .td-map { color: var(--muted); font-size: 11px; }
 
   .job-id {
     font-family: var(--mono);
@@ -370,10 +335,7 @@
 
   .join-btn:hover { background: #00cc6e; }
 
-  .td-time {
-    color: var(--muted);
-    font-size: 11px;
-  }
+  .td-time { color: var(--muted); font-size: 11px; }
 
   .badge {
     display: inline-block;
@@ -385,22 +347,16 @@
     border: 1px solid;
   }
 
-  .badge.active {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: rgba(0,255,136,0.05);
-  }
+  .badge.active { color: var(--accent); border-color: var(--accent); background: rgba(0,255,136,0.05); }
+  .badge.blacklisted { color: var(--accent2); border-color: var(--accent2); background: rgba(255,60,60,0.05); }
 
-  .badge.blacklisted {
-    color: var(--accent2);
-    border-color: var(--accent2);
-    background: rgba(255,60,60,0.05);
-  }
+  /* ACTION BUTTONS */
+  .action-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
   .toggle-btn {
     font-family: var(--mono);
     font-size: 10px;
-    padding: 5px 12px;
+    padding: 5px 10px;
     border: 1px solid;
     cursor: pointer;
     transition: all 0.15s;
@@ -409,30 +365,16 @@
     background: transparent;
   }
 
-  .toggle-btn.ban {
-    color: var(--accent2);
-    border-color: rgba(255,60,60,0.3);
-  }
+  .toggle-btn.ban { color: var(--accent2); border-color: rgba(255,60,60,0.3); }
+  .toggle-btn.ban:hover { background: rgba(255,60,60,0.1); border-color: var(--accent2); }
 
-  .toggle-btn.ban:hover {
-    background: rgba(255,60,60,0.1);
-    border-color: var(--accent2);
-  }
+  .toggle-btn.unban { color: var(--accent); border-color: rgba(0,255,136,0.3); }
+  .toggle-btn.unban:hover { background: rgba(0,255,136,0.1); border-color: var(--accent); }
 
-  .toggle-btn.unban {
-    color: var(--accent);
-    border-color: rgba(0,255,136,0.3);
-  }
+  .toggle-btn.kick { color: var(--accent3); border-color: rgba(255,170,0,0.3); }
+  .toggle-btn.kick:hover { background: rgba(255,170,0,0.1); border-color: var(--accent3); }
 
-  .toggle-btn.unban:hover {
-    background: rgba(0,255,136,0.1);
-    border-color: var(--accent);
-  }
-
-  .toggle-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
+  .toggle-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
   /* EMPTY / LOADING */
   .state-msg {
@@ -443,11 +385,7 @@
     color: var(--muted);
   }
 
-  .state-msg .big {
-    font-size: 32px;
-    margin-bottom: 12px;
-    display: block;
-  }
+  .state-msg .big { font-size: 32px; margin-bottom: 12px; display: block; }
 
   /* TOAST */
   #toast {
@@ -467,15 +405,9 @@
     pointer-events: none;
   }
 
-  #toast.show {
-    transform: translateY(0);
-    opacity: 1;
-  }
-
-  #toast.error {
-    border-color: var(--accent2);
-    color: var(--accent2);
-  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.error { border-color: var(--accent2); color: var(--accent2); }
+  #toast.warn { border-color: var(--accent3); color: var(--accent3); }
 
   /* MODAL */
   .modal-overlay {
@@ -494,7 +426,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     padding: 32px;
-    width: 380px;
+    width: 420px;
     position: relative;
     animation: fadeUp 0.2s ease;
   }
@@ -507,29 +439,38 @@
     background: var(--accent2);
   }
 
-  .modal-title {
-    font-weight: 800;
-    font-size: 16px;
-    margin-bottom: 8px;
-  }
+  .modal.kick-modal::before { background: var(--accent3); }
+
+  .modal-title { font-weight: 800; font-size: 16px; margin-bottom: 8px; }
 
   .modal-sub {
     font-family: var(--mono);
     font-size: 11px;
     color: var(--muted);
-    margin-bottom: 24px;
+    margin-bottom: 16px;
     line-height: 1.6;
   }
 
-  .modal-sub strong {
-    color: var(--accent2);
+  .modal-sub strong { color: var(--accent2); }
+  .modal-sub strong.orange { color: var(--accent3); }
+
+  .modal-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 20px;
   }
 
-  .modal-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-  }
+  .modal-input:focus { border-color: var(--accent3); }
+  .modal-input::placeholder { color: var(--muted); }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
   /* ANIMATIONS */
   @keyframes fadeUp {
@@ -537,9 +478,7 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  .row-enter {
-    animation: fadeUp 0.3s ease both;
-  }
+  .row-enter { animation: fadeUp 0.3s ease both; }
 
   /* CONFIG BANNER */
   .config-banner {
@@ -568,9 +507,7 @@
     outline: none;
   }
 
-  .config-banner input:focus {
-    border-bottom-color: var(--accent2);
-  }
+  .config-banner input:focus { border-bottom-color: var(--accent2); }
 
   /* LOGIN SCREEN */
   #login-screen {
@@ -599,18 +536,9 @@
     background: linear-gradient(90deg, transparent, var(--accent), transparent);
   }
 
-  .login-logo {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 32px;
-  }
+  .login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
 
-  .login-title {
-    font-weight: 800;
-    font-size: 20px;
-  }
-
+  .login-title { font-weight: 800; font-size: 20px; }
   .login-title span { color: var(--accent); }
 
   .login-label {
@@ -668,10 +596,6 @@
 
   .login-error.show { display: block; }
 
-  .login-shake {
-    animation: shake 0.4s ease;
-  }
-
   @keyframes shake {
     0%, 100% { transform: translateX(0); }
     20% { transform: translateX(-8px); }
@@ -679,9 +603,32 @@
     60% { transform: translateX(-5px); }
     80% { transform: translateX(5px); }
   }
+
+  .login-shake { animation: shake 0.4s ease; }
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-box" id="login-box">
+    <div class="login-logo">
+      <div class="logo-icon">ST</div>
+      <div class="login-title">Super<span>Tool</span></div>
+    </div>
+    <label class="login-label">Password</label>
+    <input
+      class="login-input"
+      type="password"
+      id="login-pass"
+      placeholder="••••••••"
+      onkeydown="if(event.key==='Enter') doLogin()"
+      autocomplete="off"
+    />
+    <button class="login-btn" onclick="doLogin()">ACCESS PANEL</button>
+    <div class="login-error" id="login-error">⚠ Incorrect password</div>
+  </div>
+</div>
 
 <header>
   <div class="container">
@@ -747,12 +694,12 @@
             <th>Map ID</th>
             <th>Job ID</th>
             <th>Status</th>
-            <th>Action</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="user-table">
           <tr>
-            <td colspan="5">
+            <td colspan="6">
               <div class="state-msg">
                 <span class="big">⚙</span>
                 Set proxy URL above then refresh
@@ -769,14 +716,43 @@
 <!-- Toast -->
 <div id="toast"></div>
 
-<!-- Confirm Modal -->
+<!-- Ban/Unban Confirm Modal -->
 <div class="modal-overlay" id="modal">
-  <div class="modal">
+  <div class="modal" id="modal-inner">
     <div class="modal-title" id="modal-title">Confirm Action</div>
     <div class="modal-sub" id="modal-sub"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">CANCEL</button>
-      <button class="btn primary" id="modal-confirm" style="background:#ff3c3c;border-color:#ff3c3c;">CONFIRM</button>
+      <button class="btn primary" id="modal-confirm">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kick Modal -->
+<div class="modal-overlay" id="kick-modal">
+  <div class="modal kick-modal">
+    <div class="modal-title">⚡ Kick User</div>
+    <div class="modal-sub">
+      Kick <strong class="orange" id="kick-username-label"></strong> dari game.<br>
+      Player akan di-kick dalam maksimal 10 detik.
+    </div>
+    <input
+      id="kick-message-input"
+      class="modal-input"
+      type="text"
+      placeholder="You have been kicked by admin."
+      onkeydown="if(event.key==='Enter') executeKick()"
+    />
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:-12px;margin-bottom:16px;">
+      Kosongkan untuk pakai pesan default
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeKickModal()">CANCEL</button>
+      <button
+        class="btn"
+        style="background:var(--accent3);border-color:var(--accent3);color:#000;font-weight:700;"
+        onclick="executeKick()"
+      >KICK</button>
     </div>
   </div>
 </div>
@@ -801,8 +777,8 @@
     input.value = proxyUrl;
     if (proxyUrl) {
       document.getElementById('config-banner').style.display = 'none';
-      loadUsers();
     }
+    checkLogin();
   };
 
   function saveProxy() {
@@ -829,7 +805,7 @@
       const data = await res.json();
 
       if (data.error) {
-        showToast('Firestore error: ' + data.error.message, true);
+        showToast('Firestore error: ' + data.error.message, 'error');
         document.getElementById('status-text').textContent = 'ERROR';
         return;
       }
@@ -842,7 +818,8 @@
           last_online: parseInt(f.last_online?.integerValue || 0),
           map_id: f.map_id?.stringValue || '—',
           job_id: f.job_id?.stringValue || '',
-          blacklisted: f.blacklisted?.booleanValue === true || f.blacklisted?.stringValue === 'true'
+          blacklisted: f.blacklisted?.booleanValue === true || f.blacklisted?.stringValue === 'true',
+          kick_message: f.kick_message?.stringValue || ''
         };
       });
 
@@ -861,7 +838,7 @@
       showToast('Loaded ' + allUsers.length + ' users');
 
     } catch (e) {
-      showToast('Failed to fetch: ' + e.message, true);
+      showToast('Failed to fetch: ' + e.message, 'error');
       document.getElementById('status-text').textContent = 'ERROR';
     }
 
@@ -877,7 +854,6 @@
     const total = allUsers.length;
     const online = allUsers.filter(u => isOnline(u.last_online) && !u.blacklisted).length;
     const banned = allUsers.filter(u => u.blacklisted).length;
-
     document.getElementById('stat-total').textContent = total;
     document.getElementById('stat-online').textContent = online;
     document.getElementById('stat-banned').textContent = banned;
@@ -897,7 +873,7 @@
     const tbody = document.getElementById('user-table');
 
     if (users.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5"><div class="state-msg"><span class="big">◎</span>No users found</div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6"><div class="state-msg"><span class="big">◎</span>No users found</div></td></tr>`;
       return;
     }
 
@@ -906,26 +882,37 @@
       const dot = online
         ? '<span class="online-dot"></span>'
         : '<span class="offline-dot"></span>';
+
       const badge = u.blacklisted
         ? '<span class="badge blacklisted">BLACKLISTED</span>'
         : online
           ? '<span class="badge active">ONLINE</span>'
           : '<span class="badge" style="color:#555;border-color:#333">OFFLINE</span>';
-      const action = u.blacklisted
-        ? `<button class="toggle-btn unban" onclick="confirmToggle('${u.username}', false)">UNBAN</button>`
-        : `<button class="toggle-btn ban" onclick="confirmToggle('${u.username}', true)">BAN</button>`;
+
+      // Kick button hanya muncul kalau user tidak blacklisted
+      const actions = u.blacklisted
+        ? `<div class="action-cell">
+            <button class="toggle-btn unban" onclick="confirmToggle('${u.username}', false)">UNBAN</button>
+           </div>`
+        : `<div class="action-cell">
+            <button class="toggle-btn ban" onclick="confirmToggle('${u.username}', true)">BAN</button>
+            <button class="toggle-btn kick" onclick="openKickModal('${u.username}')">KICK</button>
+           </div>`;
 
       return `
         <tr class="${u.blacklisted ? 'blacklisted-row' : ''} row-enter" style="animation-delay:${i * 0.03}s">
           <td><div class="td-username">${dot}${u.username}</div></td>
           <td class="td-time">${formatTime(u.last_online)}</td>
           <td class="td-map">${u.map_id}</td>
-          <td class="td-job">${(u.job_id && isOnline(u.last_online) && !u.blacklisted)
-            ? `<span class="job-id" title="${u.job_id}">${u.job_id.substring(0,8)}...</span><a class="join-btn" href="roblox://experiences/start?placeId=${u.map_id}&gameInstanceId=${u.job_id}">JOIN</a>`
-            : '<span style="color:var(--muted)">—</span>'
-          }</td>
+          <td>
+            ${(u.job_id && isOnline(u.last_online) && !u.blacklisted)
+              ? `<span class="job-id" title="${u.job_id}">${u.job_id.substring(0,8)}...</span>
+                 <a class="join-btn" href="roblox://experiences/start?placeId=${u.map_id}&gameInstanceId=${u.job_id}">JOIN</a>`
+              : '<span style="color:var(--muted)">—</span>'
+            }
+          </td>
           <td>${badge}</td>
-          <td>${action}</td>
+          <td>${actions}</td>
         </tr>
       `;
     }).join('');
@@ -938,7 +925,7 @@
   }
 
   // =====================================================
-  // BLACKLIST TOGGLE via GAS proxy
+  // BAN / UNBAN
   // =====================================================
   let pendingAction = null;
 
@@ -946,14 +933,16 @@
     pendingAction = { username, blacklist };
     document.getElementById('modal-title').textContent = blacklist ? 'Ban User' : 'Unban User';
     document.getElementById('modal-sub').innerHTML = blacklist
-      ? `Ban <strong>${username}</strong>?<br>They will be kicked within 10 seconds.`
-      : `Unban <strong>${username}</strong>?<br>They will regain access immediately.`;
+      ? `Ban <strong>${username}</strong>?<br>Mereka akan di-kick dalam 10 detik.`
+      : `Unban <strong>${username}</strong>?<br>Mereka akan mendapatkan akses kembali.`;
 
     const confirmBtn = document.getElementById('modal-confirm');
+    const modalInner = document.getElementById('modal-inner');
     confirmBtn.textContent = blacklist ? 'BAN' : 'UNBAN';
     confirmBtn.style.background = blacklist ? '#ff3c3c' : '#00ff88';
     confirmBtn.style.borderColor = blacklist ? '#ff3c3c' : '#00ff88';
     confirmBtn.style.color = blacklist ? '#fff' : '#000';
+    modalInner.style.setProperty('--top-color', blacklist ? '#ff3c3c' : '#00ff88');
     confirmBtn.onclick = executeToggle;
 
     document.getElementById('modal').classList.add('show');
@@ -969,10 +958,6 @@
     const { username, blacklist } = pendingAction;
     closeModal();
 
-    // Use GAS proxy to update blacklist field only
-    // We need a special action for blacklist since setUser doesn't touch blacklisted on existing docs
-    // Use direct Firestore REST with API key (read-only scope is fine for GET, for write we need proxy)
-    // Instead: add a blacklist action to GAS
     const url = `${proxyUrl}?action=blacklist&username=${encodeURIComponent(username)}&value=${blacklist}`;
 
     try {
@@ -982,11 +967,10 @@
       try { data = JSON.parse(text); } catch(e) { data = null; }
 
       if (data && data.error) {
-        showToast('Error: ' + data.error.message, true);
+        showToast('Error: ' + data.error.message, 'error');
         return;
       }
 
-      // Update local state
       const user = allUsers.find(u => u.username === username);
       if (user) user.blacklisted = blacklist;
       updateStats();
@@ -994,31 +978,82 @@
       showToast(blacklist ? `${username} banned!` : `${username} unbanned!`);
 
     } catch (e) {
-      showToast('Request failed: ' + e.message, true);
+      showToast('Request failed: ' + e.message, 'error');
     }
   }
+
+  // =====================================================
+  // KICK
+  // =====================================================
+  let pendingKickUser = null;
+
+  function openKickModal(username) {
+    pendingKickUser = username;
+    document.getElementById('kick-username-label').textContent = username;
+    document.getElementById('kick-message-input').value = '';
+    document.getElementById('kick-modal').classList.add('show');
+    // Auto-focus input
+    setTimeout(() => {
+      document.getElementById('kick-message-input').focus();
+    }, 100);
+  }
+
+  function closeKickModal() {
+    document.getElementById('kick-modal').classList.remove('show');
+    pendingKickUser = null;
+  }
+
+  async function executeKick() {
+    if (!pendingKickUser) return;
+    const inputVal = document.getElementById('kick-message-input').value.trim();
+    const msg = inputVal || 'You have been kicked by admin.';
+    const username = pendingKickUser;
+    closeKickModal();
+
+    const url = `${proxyUrl}?action=kick&username=${encodeURIComponent(username)}&message=${encodeURIComponent(msg)}`;
+
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch(e) { data = null; }
+
+      if (data && data.error) {
+        showToast('Kick error: ' + data.error.message, 'error');
+        return;
+      }
+
+      showToast(`⚡ ${username} akan di-kick dalam ≤10 detik`, 'warn');
+
+    } catch (e) {
+      showToast('Kick failed: ' + e.message, 'error');
+    }
+  }
+
+  // Close modals on overlay click
+  document.getElementById('modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  document.getElementById('kick-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeKickModal();
+  });
 
   // =====================================================
   // TOAST
   // =====================================================
   let toastTimer;
-  function showToast(msg, isError = false) {
+  function showToast(msg, type = '') {
     const t = document.getElementById('toast');
     t.textContent = msg;
-    t.className = 'show' + (isError ? ' error' : '');
+    t.className = 'show' + (type ? ' ' + type : '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+    toastTimer = setTimeout(() => { t.className = ''; }, 3500);
   }
-
-  // Close modal on overlay click
-  document.getElementById('modal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-  });
 
   // =====================================================
   // LOGIN
   // =====================================================
-  // Password stored as SHA-256 hash — original password never exposed in code
   const _h = "0f722a8f957826acac360166ee9d37922adb04e6d8219c843a54bde17bf5ea78";
 
   async function _sha256(str) {
@@ -1030,6 +1065,7 @@
     const saved = localStorage.getItem('supertool_auth');
     if (saved === _h) {
       document.getElementById('login-screen').style.display = 'none';
+      loadUsers();
     }
   }
 
@@ -1055,35 +1091,13 @@
     }
   }
 
-  // Check on load
-  checkLogin();
-
   // Auto refresh every 30s
   setInterval(() => {
-    if (proxyUrl) loadUsers();
+    if (proxyUrl && document.getElementById('login-screen').style.display === 'none') {
+      loadUsers();
+    }
   }, 30000);
 </script>
-
-<!-- LOGIN SCREEN -->
-<div id="login-screen">
-  <div class="login-box" id="login-box">
-    <div class="login-logo">
-      <div class="logo-icon">ST</div>
-      <div class="login-title">Super<span>Tool</span></div>
-    </div>
-    <label class="login-label">Password</label>
-    <input
-      class="login-input"
-      type="password"
-      id="login-pass"
-      placeholder="••••••••"
-      onkeydown="if(event.key==='Enter') doLogin()"
-      autocomplete="off"
-    />
-    <button class="login-btn" onclick="doLogin()">ACCESS PANEL</button>
-    <div class="login-error" id="login-error">⚠ Incorrect password</div>
-  </div>
-</div>
 
 </body>
 </html>
