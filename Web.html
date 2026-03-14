@@ -606,6 +606,23 @@
 
   .login-shake { animation: shake 0.4s ease; }
 
+  /* NAV TABS */
+  .nav-tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 12px 24px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: all 0.15s;
+  }
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
   /* COMMAND BUTTONS */
   .cmd-btn {
     font-family: var(--mono);
@@ -669,6 +686,14 @@
     </div>
   </div>
 </header>
+
+<!-- NAV TABS -->
+<div style="border-bottom:1px solid var(--border);background:rgba(8,8,8,0.95);position:sticky;top:61px;z-index:99;backdrop-filter:blur(12px);">
+  <div class="container" style="display:flex;gap:0;">
+    <button class="nav-tab active" id="tab-users" onclick="switchTab('users')">USERS</button>
+    <button class="nav-tab" id="tab-keys" onclick="switchTab('keys')">🔑 KEYS</button>
+  </div>
+</div>
 
 <main>
   <div class="container">
@@ -735,8 +760,87 @@
       </table>
     </div>
 
+    </div> <!-- end section-users -->
+
+    <!-- KEYS SECTION -->
+    <div id="section-keys" style="display:none">
+
+      <!-- Keys toolbar -->
+      <div class="toolbar" style="margin-top:0">
+        <div class="toolbar-title">KEY LIST</div>
+        <div class="toolbar-right">
+          <button class="btn primary" onclick="openCreateKeyModal()">+ CREATE KEY</button>
+          <button class="btn" onclick="loadKeys()" id="refresh-keys-btn">↺ REFRESH</button>
+        </div>
+      </div>
+
+      <!-- Keys table -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Assigned To</th>
+              <th>Used By</th>
+              <th>Last Used</th>
+              <th>Expiry</th>
+              <th>Note</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="keys-table">
+            <tr><td colspan="8"><div class="state-msg"><span class="big">🔑</span>Loading keys...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div> <!-- end section-keys -->
+
   </div>
 </main>
+
+<!-- Create Key Modal -->
+<div class="modal-overlay" id="create-key-modal">
+  <div class="modal" style="width:420px;">
+    <div class="modal-title">🔑 Create Key</div>
+    <div class="modal-sub">Key akan di-assign ke username tertentu.</div>
+
+    <div style="margin-bottom:10px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Key Value</div>
+      <div style="display:flex;gap:8px;">
+        <input id="ck-keyval" class="modal-input" style="margin:0;flex:1" placeholder="ST-XXXX-XXXX-XXXX" />
+        <button class="btn" onclick="generateKeyVal()" style="flex-shrink:0;padding:8px 12px">GEN</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Assigned To (Username)</div>
+      <input id="ck-assigned" class="modal-input" style="margin:0" placeholder="Username Roblox (kosong = semua bisa pakai)" />
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Expiry</div>
+      <select id="ck-expiry" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:10px 14px;outline:none;margin-bottom:0;">
+        <option value="0">Tidak ada (Permanen)</option>
+        <option value="3600">1 Jam</option>
+        <option value="86400">1 Hari</option>
+        <option value="604800">1 Minggu</option>
+        <option value="2592000">30 Hari</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Note (opsional)</div>
+      <input id="ck-note" class="modal-input" style="margin:0" placeholder="Catatan untuk key ini..." />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreateKeyModal()">CANCEL</button>
+      <button class="btn primary" onclick="executeCreateKey()">CREATE</button>
+    </div>
+  </div>
+</div>
 
 <!-- Toast -->
 <div id="toast"></div>
@@ -1328,6 +1432,243 @@
   // Close cmd modal on overlay click
   document.getElementById('cmd-modal').addEventListener('click', function(e) {
     if (e.target === this) closeCmdModal();
+  });
+
+  // =====================================================
+  // TAB SWITCHING
+  // =====================================================
+  function switchTab(tab) {
+    document.getElementById('section-users').style.display = tab === 'users' ? '' : 'none';
+    document.getElementById('section-keys').style.display = tab === 'keys' ? '' : 'none';
+    document.getElementById('tab-users').classList.toggle('active', tab === 'users');
+    document.getElementById('tab-keys').classList.toggle('active', tab === 'keys');
+    if (tab === 'keys') loadKeys();
+  }
+
+  // =====================================================
+  // KEY MANAGEMENT
+  // =====================================================
+  let allKeys = [];
+
+  async function loadKeys() {
+    const btn = document.getElementById('refresh-keys-btn');
+    btn.disabled = true;
+    btn.textContent = '↺ LOADING...';
+
+    try {
+      const url = `${FIRESTORE_BASE}/keys?key=${API_KEY}&pageSize=200`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.error) {
+        showToast('Error: ' + data.error.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '↺ REFRESH';
+        return;
+      }
+
+      allKeys = (data.documents || []).map(doc => {
+        const f = doc.fields || {};
+        const nameParts = doc.name.split('/');
+        return {
+          id: nameParts[nameParts.length - 1],
+          key: f.key?.stringValue || nameParts[nameParts.length - 1],
+          assigned_to: f.assigned_to?.stringValue || '',
+          used_by: f.used_by?.stringValue || '',
+          last_used: parseInt(f.last_used?.integerValue || 0),
+          expiry: parseInt(f.expiry?.integerValue || 0),
+          active: f.active?.booleanValue !== false,
+          note: f.note?.stringValue || '',
+          created_at: parseInt(f.created_at?.integerValue || 0)
+        };
+      });
+
+      // Sort by created_at desc
+      allKeys.sort((a, b) => b.created_at - a.created_at);
+      renderKeys();
+      showToast('Loaded ' + allKeys.length + ' keys');
+
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+
+    btn.disabled = false;
+    btn.textContent = '↺ REFRESH';
+  }
+
+  function renderKeys() {
+    const tbody = document.getElementById('keys-table');
+    if (allKeys.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8"><div class="state-msg"><span class="big">🔑</span>Belum ada key</div></td></tr>`;
+      return;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+
+    tbody.innerHTML = allKeys.map((k, i) => {
+      const isExpired = k.expiry !== 0 && now > k.expiry;
+      const expiryText = k.expiry === 0 ? '∞ Permanen'
+        : isExpired ? '⚠ Expired'
+        : formatTimeLeft(k.expiry - now);
+
+      const statusBadge = !k.active
+        ? '<span class="badge blacklisted">DISABLED</span>'
+        : isExpired
+          ? '<span class="badge" style="color:#ffaa00;border-color:#ffaa00">EXPIRED</span>'
+          : k.used_by
+            ? '<span class="badge active">USED</span>'
+            : '<span class="badge" style="color:#aaa;border-color:#333">UNUSED</span>';
+
+      return `
+        <tr class="row-enter" style="animation-delay:${i*0.03}s">
+          <td>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer"
+              onclick="copyToClipboard('${k.key}')" title="Klik untuk copy">
+              ${k.key}
+            </span>
+          </td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--text)">${k.assigned_to || '<span style="color:var(--muted)">Siapa saja</span>'}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.used_by || '—'}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.last_used ? formatTime(k.last_used) : '—'}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:${isExpired ? '#ffaa00' : 'var(--muted)'}">${expiryText}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.note || '—'}</td>
+          <td>${statusBadge}</td>
+          <td>
+            <div class="action-cell">
+              <button class="toggle-btn ${k.active ? 'ban' : 'unban'}" style="font-size:9px;padding:4px 8px"
+                onclick="toggleKeyActive('${k.id}', ${!k.active})">
+                ${k.active ? 'DISABLE' : 'ENABLE'}
+              </button>
+              <button class="toggle-btn" style="color:#ff3c3c;border-color:rgba(255,60,60,0.3);font-size:9px;padding:4px 8px"
+                onclick="confirmDeleteKey('${k.id}', '${k.key}')">
+                DEL
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function formatTimeLeft(secs) {
+    if (secs < 3600) return Math.floor(secs / 60) + 'm left';
+    if (secs < 86400) return Math.floor(secs / 3600) + 'h left';
+    return Math.floor(secs / 86400) + 'd left';
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => showToast('Key disalin: ' + text));
+  }
+
+  // CREATE KEY
+  function openCreateKeyModal() {
+    document.getElementById('ck-keyval').value = '';
+    document.getElementById('ck-assigned').value = '';
+    document.getElementById('ck-note').value = '';
+    document.getElementById('ck-expiry').value = '0';
+    generateKeyVal();
+    document.getElementById('create-key-modal').classList.add('show');
+  }
+
+  function closeCreateKeyModal() {
+    document.getElementById('create-key-modal').classList.remove('show');
+  }
+
+  function generateKeyVal() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const seg = () => Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+    document.getElementById('ck-keyval').value = `ST-${seg()}-${seg()}-${seg()}`;
+  }
+
+  async function executeCreateKey() {
+    const keyval = document.getElementById('ck-keyval').value.trim();
+    const assigned = document.getElementById('ck-assigned').value.trim();
+    const note = document.getElementById('ck-note').value.trim();
+    const expiryOffset = parseInt(document.getElementById('ck-expiry').value);
+    const expiry = expiryOffset === 0 ? 0 : Math.floor(Date.now()/1000) + expiryOffset;
+
+    if (!keyval) { showToast('Key value wajib diisi', 'error'); return; }
+
+    closeCreateKeyModal();
+
+    try {
+      // Tulis langsung ke Firestore
+      const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyval)}?key=${API_KEY}`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            key: { stringValue: keyval },
+            assigned_to: { stringValue: assigned },
+            expiry: { integerValue: String(expiry) },
+            active: { booleanValue: true },
+            note: { stringValue: note },
+            created_at: { integerValue: String(Math.floor(Date.now()/1000)) },
+            used_by: { stringValue: "" },
+            last_used: { integerValue: "0" }
+          }
+        })
+      });
+
+      if (!res.ok) { const e = await res.json(); showToast('Error: ' + e.error?.message, 'error'); return; }
+
+      showToast('✓ Key dibuat: ' + keyval);
+      sendDiscord({
+        title: "🔑 Key Baru Dibuat",
+        color: 0x00ff88,
+        fields: [
+          { name: "Key", value: "`" + keyval + "`", inline: true },
+          { name: "Assigned To", value: assigned || "Siapa saja", inline: true },
+          { name: "Note", value: note || "—", inline: false }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+      loadKeys();
+
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  // DELETE KEY
+  async function confirmDeleteKey(keyId, keyVal) {
+    if (!confirm(`Hapus key "${keyVal}"?`)) return;
+
+    try {
+      const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyId)}?key=${API_KEY}`;
+      const res = await fetch(url, { method: "DELETE" });
+      if (!res.ok && res.status !== 404) { showToast('Delete failed', 'error'); return; }
+      showToast('🗑 Key dihapus');
+      allKeys = allKeys.filter(k => k.id !== keyId);
+      renderKeys();
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  // TOGGLE KEY ACTIVE
+  async function toggleKeyActive(keyId, active) {
+    try {
+      const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyId)}?key=${API_KEY}&updateMask.fieldPaths=active`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { active: { booleanValue: active } } })
+      });
+      if (!res.ok) { showToast('Toggle failed', 'error'); return; }
+      const k = allKeys.find(k => k.id === keyId);
+      if (k) k.active = active;
+      renderKeys();
+      showToast(active ? '✓ Key diaktifkan' : '⊘ Key dinonaktifkan');
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  // Close create key modal on overlay
+  document.getElementById('create-key-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeCreateKeyModal();
   });
 </script>
 
