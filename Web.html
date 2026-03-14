@@ -605,6 +605,31 @@
   }
 
   .login-shake { animation: shake 0.4s ease; }
+
+  /* COMMAND BUTTONS */
+  .cmd-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 10px 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.03);
+    color: var(--c, var(--text));
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-align: center;
+  }
+
+  .cmd-btn:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: var(--c, var(--text));
+    box-shadow: 0 0 8px rgba(255,255,255,0.05);
+  }
+
+  .cmd-btn:active {
+    transform: scale(0.97);
+  }
 </style>
 </head>
 <body>
@@ -753,6 +778,32 @@
         style="background:var(--accent3);border-color:var(--accent3);color:#000;font-weight:700;"
         onclick="executeKick()"
       >KICK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Command Modal -->
+<div class="modal-overlay" id="cmd-modal">
+  <div class="modal" style="width:480px;">
+    <div class="modal-title">🎮 Remote Control — <span id="cmd-username-label" style="color:var(--accent)"></span></div>
+    <div class="modal-sub" style="margin-bottom:20px;">Pilih command yang akan dikirim ke player. Dieksekusi dalam ≤10 detik.</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">
+      <button class="cmd-btn" onclick="sendCommand('respawn')" style="--c:#00ff88">💀 Respawn</button>
+      <button class="cmd-btn" onclick="sendCommand('removegui')" style="--c:#3399ff">🗑️ Remove GUI</button>
+      <button class="cmd-btn" onclick="sendCommand('explode')" style="--c:#ff6600">💥 Explode</button>
+      <button class="cmd-btn" onclick="sendCommand('nuke')" style="--c:#ff3c3c">☢️ Nuke</button>
+      <button class="cmd-btn" onclick="sendCommand('fling')" style="--c:#ffaa00">🌀 Fling</button>
+      <button class="cmd-btn" onclick="sendCommand('seizure')" style="--c:#ff00ff">⚡ Seizure</button>
+      <button class="cmd-btn" onclick="sendCommand('freeze')" style="--c:#00ccff">🧊 Freeze</button>
+      <button class="cmd-btn" onclick="sendCommand('unfreeze')" style="--c:#ff9900">🔥 Unfreeze</button>
+      <button class="cmd-btn" onclick="sendCommand('invisible')" style="--c:#aaaaaa">👻 Invisible</button>
+      <button class="cmd-btn" onclick="sendCommand('visible')" style="--c:#ffffff">👁️ Visible</button>
+      <button class="cmd-btn" onclick="sendCommand('loopkill')" style="--c:#ff0000" style="grid-column:span 2">🔁 Loop Kill</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCmdModal()">CLOSE</button>
     </div>
   </div>
 </div>
@@ -952,6 +1003,7 @@
         : `<div class="action-cell">
             <button class="toggle-btn ban" onclick="confirmToggle('${u.username}', true)">BAN</button>
             <button class="toggle-btn kick" onclick="openKickModal('${u.username}')">KICK</button>
+            <button class="toggle-btn" style="color:#ff6600;border-color:rgba(255,102,0,0.3)" onclick="openCmdModal('${u.username}')">CMD</button>
            </div>`;
 
       return `
@@ -1131,6 +1183,67 @@
       loadUsers();
     }
   }, 30000);
+
+  // =====================================================
+  // COMMAND MODAL
+  // =====================================================
+  let cmdTargetUser = null;
+
+  function openCmdModal(username) {
+    cmdTargetUser = username;
+    document.getElementById('cmd-username-label').textContent = username;
+    document.getElementById('cmd-modal').classList.add('show');
+  }
+
+  function closeCmdModal() {
+    document.getElementById('cmd-modal').classList.remove('show');
+    cmdTargetUser = null;
+  }
+
+  async function sendCommand(command) {
+    if (!cmdTargetUser) return;
+    const username = cmdTargetUser;
+    closeCmdModal();
+
+    const url = `${proxyUrl}?action=command&username=${encodeURIComponent(username)}&command=${encodeURIComponent(command)}`;
+
+    const commandLabels = {
+      "respawn": "💀 Respawn",
+      "removegui": "🗑️ Remove GUI",
+      "explode": "💥 Explode",
+      "nuke": "☢️ Nuke",
+      "fling": "🌀 Fling",
+      "seizure": "⚡ Seizure",
+      "freeze": "🧊 Freeze",
+      "unfreeze": "🔥 Unfreeze",
+      "invisible": "👻 Invisible",
+      "visible": "👁️ Visible",
+      "loopkill": "🔁 Loop Kill"
+    };
+
+    try {
+      await gasRequest(url);
+      showToast(`${commandLabels[command] || command} → ${username}`, 'warn');
+
+      // Discord notif
+      sendDiscord({
+        title: (commandLabels[command] || command) + " — Command Sent",
+        color: 0xff6600,
+        fields: [
+          { name: "Username", value: "`" + username + "`", inline: true },
+          { name: "Command", value: "`" + command + "`", inline: true }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+    } catch(e) {
+      showToast('Command failed: ' + e.message, 'error');
+    }
+  }
+
+  // Close cmd modal on overlay click
+  document.getElementById('cmd-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeCmdModal();
+  });
 </script>
 
 </body>

