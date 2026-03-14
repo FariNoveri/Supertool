@@ -788,18 +788,39 @@
     <div class="modal-title">🎮 Remote Control — <span id="cmd-username-label" style="color:var(--accent)"></span></div>
     <div class="modal-sub" style="margin-bottom:20px;">Pilih command yang akan dikirim ke player. Dieksekusi dalam ≤10 detik.</div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">— General —</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">
       <button class="cmd-btn" onclick="sendCommand('respawn')" style="--c:#00ff88">💀 Respawn</button>
-      <button class="cmd-btn" onclick="sendCommand('removegui')" style="--c:#3399ff">🗑️ Remove GUI</button>
+      <button class="cmd-btn" onclick="sendCommand('rejoin')" style="--c:#3399ff">🔄 Rejoin</button>
+      <button class="cmd-btn" onclick="sendCommand('removegui')" style="--c:#aaaaaa">🗑️ Remove GUI</button>
+      <button class="cmd-btn" onclick="sendCommand('invisible')" style="--c:#888888">👻 Invisible</button>
+      <button class="cmd-btn" onclick="sendCommand('visible')" style="--c:#ffffff">👁️ Visible</button>
+    </div>
+
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">— Troll —</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">
       <button class="cmd-btn" onclick="sendCommand('explode')" style="--c:#ff6600">💥 Explode</button>
       <button class="cmd-btn" onclick="sendCommand('nuke')" style="--c:#ff3c3c">☢️ Nuke</button>
       <button class="cmd-btn" onclick="sendCommand('fling')" style="--c:#ffaa00">🌀 Fling</button>
       <button class="cmd-btn" onclick="sendCommand('seizure')" style="--c:#ff00ff">⚡ Seizure</button>
+      <button class="cmd-btn" onclick="sendCommand('fire')" style="--c:#ff4400">🔥 Fire</button>
+      <button class="cmd-btn" onclick="sendCommand('unfire')" style="--c:#aaaaaa">🚿 Unfire</button>
+      <button class="cmd-btn" onclick="sendCommand('loopkill')" style="--c:#ff0000">🔁 Loop Kill</button>
+      <button class="cmd-btn" onclick="sendCommand('unloopkill')" style="--c:#aaaaaa">🛑 Stop Loop Kill</button>
+    </div>
+
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">— Restrain —</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:20px;">
       <button class="cmd-btn" onclick="sendCommand('freeze')" style="--c:#00ccff">🧊 Freeze</button>
-      <button class="cmd-btn" onclick="sendCommand('unfreeze')" style="--c:#ff9900">🔥 Unfreeze</button>
-      <button class="cmd-btn" onclick="sendCommand('invisible')" style="--c:#aaaaaa">👻 Invisible</button>
-      <button class="cmd-btn" onclick="sendCommand('visible')" style="--c:#ffffff">👁️ Visible</button>
-      <button class="cmd-btn" onclick="sendCommand('loopkill')" style="--c:#ff0000" style="grid-column:span 2">🔁 Loop Kill</button>
+      <button class="cmd-btn" onclick="sendCommand('unfreeze')" style="--c:#99ddff">❄️ Unfreeze</button>
+      <button class="cmd-btn" onclick="sendCommand('jail')" style="--c:#cc8800">⛓️ Jail</button>
+      <button class="cmd-btn" onclick="sendCommand('unjail')" style="--c:#ffcc00">🔓 Unjail</button>
+    </div>
+
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">— Announce —</div>
+    <div style="display:flex;gap:6px;margin-bottom:20px;">
+      <input id="announce-input" class="search-input" style="flex:1;margin:0" placeholder="Tulis pesan announcement..." />
+      <button class="cmd-btn" onclick="sendAnnounce()" style="--c:#ffdd00;padding:0 16px;flex-shrink:0">📢 SEND</button>
     </div>
 
     <div class="modal-actions">
@@ -1230,27 +1251,40 @@
     cmdTargetUser = null;
   }
 
+  async function sendAnnounce() {
+    if (!cmdTargetUser) return;
+    const text = document.getElementById('announce-input').value.trim();
+    if (!text) { showToast('Tulis pesan dulu!', 'error'); return; }
+    await sendCommand('announce:' + text, true); // skipClose=true, modal tetap terbuka
+    document.getElementById('announce-input').value = '';
+  }
+
   const commandLabels = {
-    "respawn": "💀 Respawn",
-    "removegui": "🗑️ Remove GUI",
-    "explode": "💥 Explode",
-    "nuke": "☢️ Nuke",
-    "fling": "🌀 Fling",
-    "seizure": "⚡ Seizure",
-    "freeze": "🧊 Freeze",
-    "unfreeze": "🔥 Unfreeze",
-    "invisible": "👻 Invisible",
-    "visible": "👁️ Visible",
-    "loopkill": "🔁 Loop Kill"
+    "respawn":     "💀 Respawn",
+    "rejoin":      "🔄 Rejoin",
+    "removegui":   "🗑️ Remove GUI",
+    "explode":     "💥 Explode",
+    "nuke":        "☢️ Nuke",
+    "fling":       "🌀 Fling",
+    "seizure":     "⚡ Seizure",
+    "fire":        "🔥 Fire",
+    "unfire":      "🚿 Unfire",
+    "freeze":      "🧊 Freeze",
+    "unfreeze":    "❄️ Unfreeze",
+    "jail":        "⛓️ Jail",
+    "unjail":      "🔓 Unjail",
+    "invisible":   "👻 Invisible",
+    "visible":     "👁️ Visible",
+    "loopkill":    "🔁 Loop Kill",
+    "unloopkill":  "🛑 Stop Loop Kill"
   };
 
-  async function sendCommand(command) {
+  async function sendCommand(command, skipClose = false) {
     if (!cmdTargetUser) return;
     const username = cmdTargetUser;
-    closeCmdModal();
+    if (!skipClose) closeCmdModal();
 
     try {
-      // Tulis langsung ke Firestore pakai API key — sama seperti ban/unban
       const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}&updateMask.fieldPaths=command`;
       const res = await fetch(url, {
         method: "PATCH",
@@ -1268,15 +1302,20 @@
         return;
       }
 
-      showToast(`${commandLabels[command] || command} → ${username}`, 'warn');
+      // Label untuk toast & discord
+      const isAnnounce = command.startsWith('announce:');
+      const label = isAnnounce
+        ? '📢 Announce: ' + command.slice(9)
+        : (commandLabels[command] || command);
 
-      // Discord notif langsung dari browser
+      showToast(`${label} → ${username}`, 'warn');
+
       sendDiscord({
-        title: (commandLabels[command] || command) + " — Command Sent",
-        color: 0xff6600,
+        title: label + " — Command Sent",
+        color: isAnnounce ? 0xffdd00 : 0xff6600,
         fields: [
           { name: "Username", value: "`" + username + "`", inline: true },
-          { name: "Command", value: "`" + command + "`", inline: true }
+          { name: "Command", value: "`" + (isAnnounce ? command.slice(9) : command) + "`", inline: true }
         ],
         footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
       });

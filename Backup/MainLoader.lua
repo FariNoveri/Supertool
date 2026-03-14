@@ -16,7 +16,7 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbxhTeD_8eRUJ4SxuCMCbgFCk6lYKpe2dVQTBKAFUKuFE5QJa4Up802x9k8FUTmk4DiH/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbzLUvlAQVLiJ_ua0g4ahmiSbmEvSwYV5LXp6YznB1qvBJ9iljvZzPnnVNhki5z1w6ez/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
@@ -64,9 +64,12 @@ local function firestoreSet(collection, docId, data)
         job_id = tostring(data.job_id or game.JobId),
         blacklisted = tostring(data.blacklisted or false)
     }
-    -- Support clearing kick_message
     if data.kick_message ~= nil then
         params.kick_message = tostring(data.kick_message)
+    end
+    -- Support clearing command field
+    if data.command ~= nil then
+        params.command = tostring(data.command)
     end
     local url = PROXY_URL .. "?" .. encodeParams(params)
     local success, response = pcall(function()
@@ -149,7 +152,7 @@ task.spawn(function()
 
     -- Cek blacklist + kick_message realtime setiap 10 detik
     task.spawn(function()
-        while task.wait(10) do
+        while task.wait(3) do
             if not isBlacklisted then
                 pcall(function()
                     local check = firestoreGet("users", player.Name)
@@ -188,44 +191,43 @@ task.spawn(function()
                         end
 
                         -- Cek command
-                        if check.command and check.command ~= "" and check.command ~= "nil" then
+                        if check.command and check.command ~= "" and check.command ~= "nil" and check.command ~= "cleared" then
                             local cmd = check.command
-                            -- Clear command dulu
-                            pcall(function()
-                                local token = ScriptApp and ScriptApp.getOAuthToken() or nil
-                                firestoreUpdate("users", player.Name, {
-                                    last_online = os.time(),
-                                    map_id = tostring(game.PlaceId),
-                                    job_id = tostring(game.JobId)
-                                })
-                            end)
-                            -- Clear via proxy
-                            pcall(function()
-                                local clearUrl = PROXY_URL .. "?action=command&username=" .. player.Name .. "&command="
-                                game:HttpGet(clearUrl)
+                            -- Clear di background (fire and forget), langsung eksekusi
+                            -- Pakai local flag supaya tidak loop di polling berikutnya
+                            check.command = "cleared"
+                            task.spawn(function()
+                                for attempt = 1, 5 do
+                                    local ok = pcall(function()
+                                        game:HttpGet(PROXY_URL
+                                            .. "?action=clearcommand&username=" .. player.Name)
+                                    end)
+                                    if ok then break end
+                                    task.wait(2)
+                                end
                             end)
 
-                            warn("[SuperTool] Command diterima: " .. cmd)
+                            warn("[SuperTool] Executing command: " .. cmd)
+                            print("[SuperTool] CMD START: " .. cmd)
 
                             -- Execute command
                             if cmd == "removegui" then
-                                -- Hapus semua ScreenGui kecuali CoreGui
-                                pcall(function()
-                                    for _, gui in pairs(player.PlayerGui:GetChildren()) do
-                                        if gui:IsA("ScreenGui") then
-                                            gui:Destroy()
-                                        end
+                                for _, gui in pairs(player.PlayerGui:GetChildren()) do
+                                    if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" then
+                                        gui:Destroy()
+                                        print("[SuperTool] GUI removed")
                                     end
-                                end)
+                                end
 
                             elseif cmd == "respawn" then
-                                -- Respawn player
-                                pcall(function()
-                                    player:LoadCharacter()
-                                end)
+                                print("[SuperTool] Respawning...")
+                                player:LoadCharacter()
+
+                            elseif cmd == "rejoin" then
+                                print("[SuperTool] Rejoining...")
+                                game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 
                             elseif cmd == "explode" then
-                                -- Explode di posisi player
                                 pcall(function()
                                     local char = player.Character
                                     if char then
@@ -242,7 +244,6 @@ task.spawn(function()
                                 end)
 
                             elseif cmd == "nuke" then
-                                -- Nuke besar
                                 pcall(function()
                                     local char = player.Character
                                     if char then
@@ -264,8 +265,25 @@ task.spawn(function()
                                     end
                                 end)
 
+                            elseif cmd == "fire" then
+                                -- Pasang api di semua limb
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                local fire = Instance.new("Fire")
+                                                fire.Size = 5
+                                                fire.Heat = 25
+                                                fire.Color = Color3.fromRGB(255, 80, 0)
+                                                fire.SecondaryColor = Color3.fromRGB(255, 200, 0)
+                                                fire.Parent = part
+                                            end
+                                        end
+                                    end
+                                end)
+
                             elseif cmd == "fling" then
-                                -- Fling player ke atas dengan kecepatan tinggi
                                 pcall(function()
                                     local char = player.Character
                                     if char then
@@ -285,19 +303,47 @@ task.spawn(function()
                                 end)
 
                             elseif cmd == "freeze" then
-                                -- Freeze player (anchor root)
+                                -- Freeze: anchor + WalkSpeed 0 + selimut es biru di badan
                                 pcall(function()
                                     local char = player.Character
                                     if char then
                                         local root = char:FindFirstChild("HumanoidRootPart")
                                         local hum = char:FindFirstChild("Humanoid")
                                         if root then root.Anchored = true end
-                                        if hum then hum.WalkSpeed = 0 hum.JumpPower = 0 end
+                                        if hum then
+                                            hum.WalkSpeed = 0
+                                            hum.JumpPower = 0
+                                        end
+                                        -- Visual: bungkus semua part dengan box biru transparan
+                                        for _, part in pairs(char:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                -- Tint biru pada part
+                                                local iceHighlight = Instance.new("SelectionBox")
+                                                iceHighlight.Name = "IceBox"
+                                                iceHighlight.Adornee = part
+                                                iceHighlight.Color3 = Color3.fromRGB(0, 180, 255)
+                                                iceHighlight.SurfaceColor3 = Color3.fromRGB(100, 220, 255)
+                                                iceHighlight.SurfaceTransparency = 0.4
+                                                iceHighlight.LineThickness = 0.05
+                                                iceHighlight.Parent = char
+                                                -- Partikel es
+                                                local attachment = Instance.new("Attachment")
+                                                attachment.Parent = part
+                                                local particles = Instance.new("ParticleEmitter")
+                                                particles.Name = "IceParticle"
+                                                particles.Color = ColorSequence.new(Color3.fromRGB(180, 230, 255))
+                                                particles.LightEmission = 0.5
+                                                particles.Size = NumberSequence.new(0.3)
+                                                particles.Lifetime = NumberRange.new(0.5, 1.5)
+                                                particles.Rate = 8
+                                                particles.Speed = NumberRange.new(1, 3)
+                                                particles.Parent = attachment
+                                            end
+                                        end
                                     end
                                 end)
 
                             elseif cmd == "unfreeze" then
-                                -- Unfreeze player
                                 pcall(function()
                                     local char = player.Character
                                     if char then
@@ -305,11 +351,108 @@ task.spawn(function()
                                         local hum = char:FindFirstChild("Humanoid")
                                         if root then root.Anchored = false end
                                         if hum then hum.WalkSpeed = 16 hum.JumpPower = 50 end
+                                        -- Hapus visual es
+                                        for _, obj in pairs(char:GetDescendants()) do
+                                            if obj.Name == "IceBox" or obj.Name == "IceParticle" then
+                                                obj:Destroy()
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "jail" then
+                                -- Jail: kurung player dalam kotak besi
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        local hum = char:FindFirstChild("Humanoid")
+                                        if root then
+                                            -- Anchor player
+                                            root.Anchored = true
+                                            if hum then hum.WalkSpeed = 0 hum.JumpPower = 0 end
+
+                                            -- Buat jail cage dari 6 sisi
+                                            local jailModel = Instance.new("Model")
+                                            jailModel.Name = "AdminJail"
+                                            jailModel.Parent = game.Workspace
+
+                                            local pos = root.Position
+                                            local size = 6 -- ukuran sel
+
+                                            local panels = {
+                                                -- {offset, size, name}
+                                                {Vector3.new(0, size/2, 0),    Vector3.new(size, 0.3, size),  "Top"},
+                                                {Vector3.new(0, -size/2, 0),   Vector3.new(size, 0.3, size),  "Bottom"},
+                                                {Vector3.new(size/2, 0, 0),    Vector3.new(0.3, size, size),  "Right"},
+                                                {Vector3.new(-size/2, 0, 0),   Vector3.new(0.3, size, size),  "Left"},
+                                                {Vector3.new(0, 0, size/2),    Vector3.new(size, size, 0.3),  "Front"},
+                                                {Vector3.new(0, 0, -size/2),   Vector3.new(size, size, 0.3),  "Back"},
+                                            }
+
+                                            for _, panel in pairs(panels) do
+                                                local wall = Instance.new("Part")
+                                                wall.Name = panel[3]
+                                                wall.Size = panel[2]
+                                                wall.Position = pos + panel[1]
+                                                wall.Anchored = true
+                                                wall.CanCollide = true
+                                                wall.Material = Enum.Material.Metal
+                                                wall.BrickColor = BrickColor.new("Dark stone grey")
+                                                wall.Transparency = 0.4
+                                                -- Bar pattern via SelectionBox outline
+                                                local sb = Instance.new("SelectionBox")
+                                                sb.Adornee = wall
+                                                sb.Color3 = Color3.fromRGB(80, 80, 80)
+                                                sb.LineThickness = 0.04
+                                                sb.SurfaceTransparency = 1
+                                                sb.Parent = jailModel
+                                                wall.Parent = jailModel
+                                            end
+
+                                            -- Label "JAILED" di atas
+                                            local billboard = Instance.new("BillboardGui")
+                                            billboard.Size = UDim2.new(0, 120, 0, 30)
+                                            billboard.StudsOffset = Vector3.new(0, size/2 + 2, 0)
+                                            billboard.Adornee = root
+                                            billboard.AlwaysOnTop = true
+                                            billboard.Parent = game.Workspace
+                                            local lbl = Instance.new("TextLabel")
+                                            lbl.Size = UDim2.new(1,0,1,0)
+                                            lbl.BackgroundTransparency = 0.5
+                                            lbl.BackgroundColor3 = Color3.fromRGB(20,20,20)
+                                            lbl.TextColor3 = Color3.fromRGB(255,80,80)
+                                            lbl.Font = Enum.Font.GothamBold
+                                            lbl.TextSize = 14
+                                            lbl.Text = "⛓ JAILED"
+                                            lbl.Parent = billboard
+
+                                            -- Simpan referensi jail di player
+                                            player:SetAttribute("JailModel", jailModel.Name)
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "unjail" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local root = char:FindFirstChild("HumanoidRootPart")
+                                        local hum = char:FindFirstChild("Humanoid")
+                                        if root then root.Anchored = false end
+                                        if hum then hum.WalkSpeed = 16 hum.JumpPower = 50 end
+                                        -- Hapus jail model
+                                        for _, obj in pairs(game.Workspace:GetChildren()) do
+                                            if obj.Name == "AdminJail" then obj:Destroy() end
+                                        end
+                                        -- Hapus billboard
+                                        for _, obj in pairs(game.Workspace:GetChildren()) do
+                                            if obj:IsA("BillboardGui") then obj:Destroy() end
+                                        end
                                     end
                                 end)
 
                             elseif cmd == "invisible" then
-                                -- Invisible semua part
                                 pcall(function()
                                     local char = player.Character
                                     if char then
@@ -322,7 +465,6 @@ task.spawn(function()
                                 end)
 
                             elseif cmd == "visible" then
-                                -- Visible kembali
                                 pcall(function()
                                     local char = player.Character
                                     if char then
@@ -337,10 +479,13 @@ task.spawn(function()
                                 end)
 
                             elseif cmd == "loopkill" then
-                                -- Loop kill setiap 1 detik selama 10x
                                 pcall(function()
+                                    player:SetAttribute("StopLoopKill", false)
                                     task.spawn(function()
                                         for i = 1, 10 do
+                                            if player:GetAttribute("StopLoopKill") == true then
+                                                break
+                                            end
                                             local char = player.Character
                                             if char then
                                                 local hum = char:FindFirstChild("Humanoid")
@@ -352,7 +497,6 @@ task.spawn(function()
                                 end)
 
                             elseif cmd == "seizure" then
-                                -- Seizure effect (spam fling kecil)
                                 pcall(function()
                                     task.spawn(function()
                                         for i = 1, 20 do
@@ -374,6 +518,38 @@ task.spawn(function()
                                             task.wait(0.15)
                                         end
                                     end)
+                                end)
+
+                            elseif cmd == "unfire" then
+                                -- Hapus semua Fire dari karakter
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, obj in pairs(char:GetDescendants()) do
+                                            if obj:IsA("Fire") or obj:IsA("Smoke") then
+                                                obj:Destroy()
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "unloopkill" then
+                                -- Stop loopkill dengan membuat flag via attribute
+                                pcall(function()
+                                    player:SetAttribute("StopLoopKill", true)
+                                end)
+
+                            elseif cmd:sub(1, 9) == "announce:" then
+                                -- Announce pakai Roblox native SendNotification (seperti screenshot)
+                                pcall(function()
+                                    local announceText = cmd:sub(10)
+                                    game:GetService("StarterGui"):SetCore("SendNotification", {
+                                        Title = player.Name,
+                                        Text = announceText,
+                                        Duration = 8,
+                                        Icon = "https://www.roblox.com/headshot-thumbnail/image?userId=7740869755&width=150&height=150&format=png",
+                                        Button1 = "OK",
+                                    })
                                 end)
 
                             end -- end cmd check
@@ -1289,7 +1465,14 @@ task.spawn(function()
     end
 
     task.wait(1)
-    pcall(function() createSlideNotification() end)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "SuperTool",
+            Text = "Successfully loaded! Made by FariNoveri_2",
+            Duration = 5,
+            Icon = "https://www.roblox.com/headshot-thumbnail/image?userId=7740869755&width=150&height=150&format=png",
+        })
+    end)
 
     if #failedModules > 0 then
         task.spawn(function()
