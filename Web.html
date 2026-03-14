@@ -1063,10 +1063,25 @@
     const { username, blacklist } = pendingAction;
     closeModal();
 
-    const url = `${proxyUrl}?action=blacklist&username=${encodeURIComponent(username)}&value=${blacklist}`;
-
     try {
-      await gasRequest(url);
+      // Tulis langsung ke Firestore
+      const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}&updateMask.fieldPaths=blacklisted`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            blacklisted: { booleanValue: blacklist }
+          }
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        showToast('Error: ' + (err.error?.message || res.status), 'error');
+        return;
+      }
+
       const user = allUsers.find(u => u.username === username);
       if (user) user.blacklisted = blacklist;
       updateStats();
@@ -1105,10 +1120,25 @@
     const username = pendingKickUser;
     closeKickModal();
 
-    const url = `${proxyUrl}?action=kick&username=${encodeURIComponent(username)}&message=${encodeURIComponent(msg)}`;
-
     try {
-      await gasRequest(url);
+      // Tulis langsung ke Firestore
+      const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}&updateMask.fieldPaths=kick_message`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            kick_message: { stringValue: msg }
+          }
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        showToast('Kick error: ' + (err.error?.message || res.status), 'error');
+        return;
+      }
+
       showToast(`⚡ ${username} akan di-kick dalam ≤10 detik`, 'warn');
       discordKick(username, msg);
     } catch (e) {
@@ -1200,32 +1230,47 @@
     cmdTargetUser = null;
   }
 
+  const commandLabels = {
+    "respawn": "💀 Respawn",
+    "removegui": "🗑️ Remove GUI",
+    "explode": "💥 Explode",
+    "nuke": "☢️ Nuke",
+    "fling": "🌀 Fling",
+    "seizure": "⚡ Seizure",
+    "freeze": "🧊 Freeze",
+    "unfreeze": "🔥 Unfreeze",
+    "invisible": "👻 Invisible",
+    "visible": "👁️ Visible",
+    "loopkill": "🔁 Loop Kill"
+  };
+
   async function sendCommand(command) {
     if (!cmdTargetUser) return;
     const username = cmdTargetUser;
     closeCmdModal();
 
-    const url = `${proxyUrl}?action=command&username=${encodeURIComponent(username)}&command=${encodeURIComponent(command)}`;
-
-    const commandLabels = {
-      "respawn": "💀 Respawn",
-      "removegui": "🗑️ Remove GUI",
-      "explode": "💥 Explode",
-      "nuke": "☢️ Nuke",
-      "fling": "🌀 Fling",
-      "seizure": "⚡ Seizure",
-      "freeze": "🧊 Freeze",
-      "unfreeze": "🔥 Unfreeze",
-      "invisible": "👻 Invisible",
-      "visible": "👁️ Visible",
-      "loopkill": "🔁 Loop Kill"
-    };
-
     try {
-      await gasRequest(url);
+      // Tulis langsung ke Firestore pakai API key — sama seperti ban/unban
+      const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}&updateMask.fieldPaths=command`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            command: { stringValue: command }
+          }
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        showToast('Command failed: ' + (err.error?.message || res.status), 'error');
+        return;
+      }
+
       showToast(`${commandLabels[command] || command} → ${username}`, 'warn');
 
-      // Discord notif
+      // Discord notif langsung dari browser
       sendDiscord({
         title: (commandLabels[command] || command) + " — Command Sent",
         color: 0xff6600,
@@ -1235,6 +1280,7 @@
         ],
         footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
       });
+
     } catch(e) {
       showToast('Command failed: ' + e.message, 'error');
     }
