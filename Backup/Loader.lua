@@ -142,6 +142,20 @@ end
 -- BUILD KEY GUI
 -- =====================================================
 
+-- =====================================================
+-- ANTI DUPLIKAT — hapus instance lama kalau ada
+-- =====================================================
+for _, gui in pairs(player:WaitForChild("PlayerGui"):GetChildren()) do
+    if gui.Name == "KeySystemGUI" then
+        gui:Destroy()
+    end
+end
+
+-- Kalau MinimalHackGUI sudah ada = script sudah pernah jalan, skip
+if player:WaitForChild("PlayerGui"):FindFirstChild("MinimalHackGUI") then
+    return
+end
+
 -- Cek dulu kalau player sudah verified sebelumnya
 local alreadyVerified = checkSavedKey()
 if alreadyVerified then
@@ -180,8 +194,8 @@ overlay.Parent = ScreenGui
 
 -- Main container
 local container = Instance.new("Frame")
-container.Size = UDim2.new(0, 380, 0, 260)
-container.Position = UDim2.new(0.5, -190, 0.5, -130)
+container.Size = UDim2.new(0, 380, 0, 310)
+container.Position = UDim2.new(0.5, -190, 0.5, -155)
 container.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 container.BorderSizePixel = 0
 container.ZIndex = 10
@@ -302,7 +316,7 @@ statusLabel.Parent = container
 -- Submit button
 local submitBtn = Instance.new("TextButton")
 submitBtn.Size = UDim2.new(1, -40, 0, 38)
-submitBtn.Position = UDim2.new(0, 20, 0, 200)
+submitBtn.Position = UDim2.new(0, 20, 0, 210)
 submitBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 136)
 submitBtn.BorderSizePixel = 0
 submitBtn.Font = Enum.Font.GothamBold
@@ -313,11 +327,45 @@ submitBtn.ZIndex = 11
 submitBtn.Parent = container
 Instance.new("UICorner", submitBtn).CornerRadius = UDim.new(0, 8)
 
+-- Close button (X) di pojok kanan atas
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -30, 0, 10)
+closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+closeBtn.BorderSizePixel = 0
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+closeBtn.TextSize = 11
+closeBtn.ZIndex = 13
+closeBtn.Parent = container
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+closeBtn.MouseButton1Click:Connect(function()
+    -- Slide out dan destroy
+    TweenService:Create(container, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+        Position = UDim2.new(0.5, -190, 0.6, -155),
+        BackgroundTransparency = 1
+    }):Play()
+    task.wait(0.3)
+    blur:Destroy()
+    ScreenGui:Destroy()
+end)
+
+closeBtn.MouseEnter:Connect(function()
+    closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+end)
+closeBtn.MouseLeave:Connect(function()
+    closeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+end)
+
 -- Animate container masuk
-container.Position = UDim2.new(0.5, -190, 0.6, -130)
+container.Position = UDim2.new(0.5, -190, 0.6, -155)
 container.BackgroundTransparency = 1
 TweenService:Create(container, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-    Position = UDim2.new(0.5, -190, 0.5, -130),
+    Position = UDim2.new(0.5, -190, 0.5, -155),
     BackgroundTransparency = 0
 }):Play()
 
@@ -360,7 +408,7 @@ local function doVerify()
 
             -- Slide out container
             TweenService:Create(container, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-                Position = UDim2.new(0.5, -190, 0.4, -130),
+                Position = UDim2.new(0.5, -190, 0.4, -155),
                 BackgroundTransparency = 1
             }):Play()
 

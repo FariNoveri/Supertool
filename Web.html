@@ -625,8 +625,9 @@
   .nav-tab:hover { color: var(--text); }
   .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-  /* Hide scrollbar inside cmd modal */
+  /* Hide scrollbar inside modals */
   .cmd-scroll-area::-webkit-scrollbar { display: none; }
+  .global-scroll-area::-webkit-scrollbar { display: none; }
 
   /* COMMAND SECTION */
   .cmd-section-label {
@@ -750,6 +751,7 @@
       <div class="toolbar-title">USER LIST</div>
       <div class="toolbar-right">
         <button class="btn" onclick="loadUsers()" id="refresh-btn">↺ REFRESH</button>
+        <button class="btn" style="color:#ff6600;border-color:rgba(255,102,0,0.4)" onclick="openGlobalModal()">🌍 GLOBAL CMD</button>
       </div>
     </div>
 
@@ -884,6 +886,113 @@
       <button class="btn" id="user-key-revoke-btn" 
         style="color:var(--accent2);border-color:rgba(255,60,60,0.3)"
         onclick="revokeUserKey()">REVOKE KEY</button>
+    </div>
+  </div>
+</div>
+
+<!-- Global Command Modal -->
+<div class="modal-overlay" id="global-modal">
+  <div class="modal" style="width:560px;max-height:90vh;display:flex;flex-direction:column;">
+    <div style="flex-shrink:0">
+      <div class="modal-title">🌍 Global Command</div>
+      <div class="modal-sub" style="margin-bottom:8px;">
+        Dikirim ke semua <span id="global-online-count" style="color:var(--accent);font-weight:bold">0</span> player online sekaligus.
+      </div>
+      <input id="global-search" class="search-input" style="margin-bottom:10px;" placeholder="🔍 Search command..." oninput="filterGlobalCmds()" />
+    </div>
+
+    <div style="overflow-y:auto;flex:1;scrollbar-width:none;-ms-overflow-style:none;" class="global-scroll-area">
+
+      <div class="cmd-section-label">— General —</div>
+      <div class="cmd-grid" style="margin-bottom:14px;">
+        <button class="cmd-btn gcmd" onclick="sendGlobal('respawn')" style="--c:#00ff88">💀 Respawn</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('rejoin')" style="--c:#3399ff">🔄 Rejoin</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('removegui')" style="--c:#aaaaaa">🗑️ Remove GUI</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('invisible')" style="--c:#888888">👻 Invisible</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('visible')" style="--c:#ffffff">👁️ Visible</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('maxhealth')" style="--c:#00ff88">❤️ Max Health</button>
+      </div>
+
+      <div class="cmd-section-label">— Movement —</div>
+      <div class="cmd-grid" style="margin-bottom:14px;">
+        <button class="cmd-btn gcmd" onclick="sendGlobal('speed100')" style="--c:#ffaa00">⚡ Speed x100</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('speed0')" style="--c:#aaaaaa">🐢 Speed x0</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('jumppower100')" style="--c:#ffaa00">🦘 Jump x100</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('gravity0')" style="--c:#00ccff">🌌 No Gravity</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('gravityreset')" style="--c:#aaaaaa">🌍 Reset Gravity</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('noclip')" style="--c:#cc88ff">👁️ Noclip</button>
+      </div>
+
+      <div class="cmd-section-label">— Troll —</div>
+      <div class="cmd-grid" style="margin-bottom:14px;">
+        <button class="cmd-btn gcmd" onclick="sendGlobal('explode')" style="--c:#ff6600">💥 Explode</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('nuke')" style="--c:#ff3c3c">☢️ Nuke</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('fling')" style="--c:#ffaa00">🌀 Fling</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('flingloop')" style="--c:#ff6600">🌀 Fling Loop</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('seizure')" style="--c:#ff00ff">⚡ Seizure</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('spin')" style="--c:#ff88ff">🔄 Spin</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unspin')" style="--c:#aaaaaa">⏹️ Stop Spin</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('drunk')" style="--c:#ffaa33">🍺 Drunk</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('undrunk')" style="--c:#aaaaaa">🧹 Sober</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('fire')" style="--c:#ff4400">🔥 Fire</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unfire')" style="--c:#aaaaaa">🚿 Unfire</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('smoke')" style="--c:#888888">💨 Smoke</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unsmoke')" style="--c:#aaaaaa">🌬️ Unsmoke</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('sparkles')" style="--c:#ffdd00">✨ Sparkles</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('bighead')" style="--c:#ff88aa">🗿 Big Head</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('smallhead')" style="--c:#ff88aa">🔬 Small Head</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('normalhead')" style="--c:#aaaaaa">😐 Normal Head</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('loopkill')" style="--c:#ff0000">🔁 Loop Kill</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unloopkill')" style="--c:#aaaaaa">🛑 Stop Kill</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('rainbow')" style="--c:#ff88ff">🌈 Rainbow</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unrainbow')" style="--c:#aaaaaa">⬛ Unrainbow</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('dance')" style="--c:#ff44ff">💃 Dance</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('giant')" style="--c:#ff6600">🦕 Giant</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('tiny')" style="--c:#ffaa00">🐜 Tiny</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('chicken')" style="--c:#ffdd00">🐔 Chicken</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('flat')" style="--c:#aaaaaa">🥞 Flat</button>
+      </div>
+
+      <div class="cmd-section-label">— Restrain —</div>
+      <div class="cmd-grid" style="margin-bottom:14px;">
+        <button class="cmd-btn gcmd" onclick="sendGlobal('freeze')" style="--c:#00ccff">🧊 Freeze</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unfreeze')" style="--c:#99ddff">❄️ Unfreeze</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('jail')" style="--c:#cc8800">⛓️ Jail</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unjail')" style="--c:#ffcc00">🔓 Unjail</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('blind')" style="--c:#333333">🙈 Blind</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unblind')" style="--c:#aaaaaa">👀 Unblind</button>
+      </div>
+
+      <div class="cmd-section-label">— Screen FX —</div>
+      <div class="cmd-grid" style="margin-bottom:14px;">
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenblind')" style="--c:#111111">⬛ Blind Screen</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unscreenblind')" style="--c:#aaaaaa">💡 Unblind</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenblur')" style="--c:#aabbff">🌫️ Blur</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unscreenblur')" style="--c:#aaaaaa">🔭 Unblur</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenspin')" style="--c:#ff88ff">🌀 Spin Screen</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unscreenspin')" style="--c:#aaaaaa">⏹️ Stop Spin</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenshake')" style="--c:#ff6600">📳 Shake</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unscreenshake')" style="--c:#aaaaaa">🛑 Stop Shake</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenflip')" style="--c:#ff44aa">🙃 Flip</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unscreenflip')" style="--c:#aaaaaa">🔄 Unflip</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screennoise')" style="--c:#ffaa00">📺 Noise</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unscreennoise')" style="--c:#aaaaaa">📡 Clear</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenred')" style="--c:#ff0000">🔴 Red Tint</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenzoom')" style="--c:#ffdd00">🔍 Zoom In</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('unscreenzoom')" style="--c:#aaaaaa">🔎 Zoom Out</button>
+        <button class="cmd-btn gcmd" onclick="sendGlobal('screenclear')" style="--c:#00ff88">✅ Clear All FX</button>
+      </div>
+
+      <div class="cmd-section-label">— Global Announce —</div>
+      <div style="display:flex;gap:6px;margin-bottom:16px;">
+        <input id="global-announce-input" class="search-input" style="flex:1;margin:0" placeholder="Tulis pesan untuk semua player..." />
+        <button class="cmd-btn" onclick="sendGlobalAnnounce()" style="--c:#ffdd00;padding:0 16px;flex-shrink:0">📢 BROADCAST</button>
+      </div>
+
+    </div><!-- end scrollable -->
+
+    <div class="modal-actions" style="flex-shrink:0;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+      <button class="btn" onclick="closeGlobalModal()">CLOSE</button>
     </div>
   </div>
 </div>
@@ -1680,6 +1789,10 @@
     document.getElementById('cmd-username-label').textContent = username;
     document.getElementById('cmd-modal').classList.add('show');
     document.body.style.overflow = 'hidden';
+    // Update online count for global section
+    const onlineCount = allUsers.filter(u => isOnline(u.last_online) && !u.blacklisted).length;
+    const el = document.getElementById('global-online-count');
+    if (el) el.textContent = onlineCount;
   }
 
   function closeCmdModal() {
@@ -1729,6 +1842,142 @@
           }
         }
       }
+    });
+  }
+
+  // =====================================================
+  // GLOBAL MODAL
+  // =====================================================
+  function openGlobalModal() {
+    const onlineCount = allUsers.filter(u => isOnline(u.last_online) && !u.blacklisted).length;
+    document.getElementById('global-online-count').textContent = onlineCount;
+    document.getElementById('global-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeGlobalModal() {
+    document.getElementById('global-modal').classList.remove('show');
+    document.body.style.overflow = '';
+    const s = document.getElementById('global-search');
+    if (s) { s.value = ''; filterGlobalCmds(); }
+  }
+
+  function filterGlobalCmds() {
+    const q = (document.getElementById('global-search')?.value || '').toLowerCase().trim();
+    const btns = document.querySelectorAll('#global-modal .gcmd');
+    const sections = document.querySelectorAll('#global-modal .cmd-section-label');
+    const grids = document.querySelectorAll('#global-modal .cmd-grid');
+    if (!q) {
+      btns.forEach(b => b.style.display = '');
+      sections.forEach(s => s.style.display = '');
+      grids.forEach(g => g.style.display = '');
+      return;
+    }
+    sections.forEach(s => s.style.display = 'none');
+    grids.forEach(g => g.style.display = 'none');
+    btns.forEach(btn => {
+      const matches = btn.textContent.toLowerCase().includes(q);
+      btn.style.display = matches ? '' : 'none';
+      if (matches) {
+        const grid = btn.closest('.cmd-grid');
+        if (grid) {
+          grid.style.display = 'grid';
+          let prev = grid.previousElementSibling;
+          while (prev) {
+            if (prev.classList.contains('cmd-section-label')) { prev.style.display = ''; break; }
+            prev = prev.previousElementSibling;
+          }
+        }
+      }
+    });
+  }
+
+  document.getElementById('global-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeGlobalModal();
+  });
+
+  // =====================================================
+  // GLOBAL COMMAND — kirim ke semua player online
+  // =====================================================
+  async function sendGlobal(command) {
+    const onlinePlayers = allUsers.filter(u => isOnline(u.last_online) && !u.blacklisted);
+    if (onlinePlayers.length === 0) {
+      showToast('Tidak ada player online', 'error');
+      return;
+    }
+
+    const label = commandLabels[command] || command;
+    if (!confirm(`Kirim "${label}" ke ${onlinePlayers.length} player online?`)) return;
+
+    showToast(`🌍 Mengirim ${label} ke ${onlinePlayers.length} player...`, 'warn');
+
+    let success = 0;
+    for (const u of onlinePlayers) {
+      try {
+        const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(u.username)}?key=${API_KEY}&updateMask.fieldPaths=command`;
+        const res = await fetch(url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fields: { command: { stringValue: command } } })
+        });
+        if (res.ok) success++;
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    showToast(`✅ Global ${label}: ${success}/${onlinePlayers.length} berhasil`);
+    sendDiscord({
+      title: "🌍 Global Command",
+      color: 0xff6600,
+      fields: [
+        { name: "Command", value: "`" + label + "`", inline: true },
+        { name: "Target", value: success + " / " + onlinePlayers.length + " player", inline: true },
+        { name: "Players", value: onlinePlayers.slice(0,10).map(u => "`"+u.username+"`").join(", ") + (onlinePlayers.length > 10 ? " +" + (onlinePlayers.length-10) + " more" : ""), inline: false }
+      ],
+      footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+    });
+  }
+
+  // =====================================================
+  // GLOBAL ANNOUNCE
+  // =====================================================
+  async function sendGlobalAnnounce() {
+    const text = document.getElementById('global-announce-input').value.trim();
+    if (!text) { showToast('Tulis pesan dulu!', 'error'); return; }
+
+    const onlinePlayers = allUsers.filter(u => isOnline(u.last_online) && !u.blacklisted);
+    if (onlinePlayers.length === 0) { showToast('Tidak ada player online', 'error'); return; }
+
+    if (!confirm(`Broadcast "${text}" ke ${onlinePlayers.length} player online?`)) return;
+
+    document.getElementById('global-announce-input').value = '';
+    showToast(`📢 Broadcasting ke ${onlinePlayers.length} player...`, 'warn');
+
+    const command = 'announce:' + text;
+    let success = 0;
+    for (const u of onlinePlayers) {
+      try {
+        const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(u.username)}?key=${API_KEY}&updateMask.fieldPaths=command`;
+        const res = await fetch(url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fields: { command: { stringValue: command } } })
+        });
+        if (res.ok) success++;
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    showToast(`✅ Broadcast: ${success}/${onlinePlayers.length} berhasil`);
+    sendDiscord({
+      title: "📢 Global Announcement",
+      color: 0xffdd00,
+      fields: [
+        { name: "Pesan", value: "`" + text + "`", inline: false },
+        { name: "Target", value: success + " / " + onlinePlayers.length + " player", inline: true },
+        { name: "Players", value: onlinePlayers.slice(0,10).map(u => "`"+u.username+"`").join(", ") + (onlinePlayers.length > 10 ? " +" + (onlinePlayers.length-10) + " more" : ""), inline: false }
+      ],
+      footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
     });
   }
 
