@@ -16,7 +16,7 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbwECJeW93scsqKiq0kCcL2ZxqZIDdzIzl_3C-ixaurbzIbvepHYmH3EtbIWGKJr3HZu/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbwZcIcAsOL2gtpa5N6rSYyIVex2ITqxYM_d793jtOE0O0SYE-gabx7BLRwdCKR-xtBo/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- Discord Webhooks

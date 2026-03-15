@@ -2133,6 +2133,7 @@
           last_used: parseInt(f.last_used?.integerValue || 0),
           expiry: parseInt(f.expiry?.integerValue || 0),
           active: f.active?.booleanValue !== false,
+          paused: f.paused?.booleanValue === true,
           note: f.note?.stringValue || '',
           created_at: parseInt(f.created_at?.integerValue || 0),
           user_limit: parseInt(f.user_limit?.integerValue || 0),
@@ -2171,13 +2172,15 @@
       const isLimitReached = k.user_limit > 0 && k.used_count >= k.user_limit;
       const statusBadge = !k.active
         ? '<span class="badge blacklisted">DISABLED</span>'
-        : isExpired
-          ? '<span class="badge" style="color:#ffaa00;border-color:#ffaa00">EXPIRED</span>'
-          : isLimitReached
-            ? '<span class="badge" style="color:#ff6600;border-color:#ff6600">LIMIT REACHED</span>'
-            : k.used_count > 0
-              ? '<span class="badge active">ACTIVE</span>'
-              : '<span class="badge" style="color:#aaa;border-color:#333">UNUSED</span>';
+        : k.paused
+          ? '<span class="badge" style="color:#ffaa00;border-color:#ffaa00;background:rgba(255,170,0,0.05)">⏸ PAUSED</span>'
+          : isExpired
+            ? '<span class="badge" style="color:#ffaa00;border-color:#ffaa00">EXPIRED</span>'
+            : isLimitReached
+              ? '<span class="badge" style="color:#ff6600;border-color:#ff6600">LIMIT REACHED</span>'
+              : k.used_count > 0
+                ? '<span class="badge active">ACTIVE</span>'
+                : '<span class="badge" style="color:#aaa;border-color:#333">UNUSED</span>';
 
       return `
         <tr class="row-enter" style="animation-delay:${i*0.03}s">
@@ -2207,14 +2210,18 @@
           <td>${statusBadge}</td>
           <td>
             <div class="action-cell">
-              <button class="toggle-btn ${k.active ? 'ban' : 'unban'}" style="font-size:9px;padding:4px 8px"
-                onclick="toggleKeyActive('${k.id}', ${!k.active})">
-                ${k.active ? 'DISABLE' : 'ENABLE'}
-              </button>
+              ${k.active && !k.paused
+                ? `<button class="toggle-btn ban" style="font-size:9px;padding:4px 8px" onclick="pauseKey('${k.id}', '${k.key}')">PAUSE</button>`
+                : k.paused
+                  ? `<button class="toggle-btn unban" style="font-size:9px;padding:4px 8px" onclick="resumeKey('${k.id}', '${k.key}')">RESUME</button>`
+                  : ``
+              }
+              ${!k.paused
+                ? `<button class="toggle-btn ${k.active ? 'ban' : 'unban'}" style="font-size:9px;padding:4px 8px" onclick="toggleKeyActive('${k.id}', '${k.key}', ${!k.active})">${k.active ? 'DISABLE' : 'ENABLE'}</button>`
+                : ``
+              }
               <button class="toggle-btn" style="color:#ff3c3c;border-color:rgba(255,60,60,0.3);font-size:9px;padding:4px 8px"
-                onclick="confirmDeleteKey('${k.id}', '${k.key}')">
-                DEL
-              </button>
+                onclick="confirmDeleteKey('${k.id}', '${k.key}')">DEL</button>
             </div>
           </td>
         </tr>
@@ -2275,6 +2282,7 @@
             assigned_to: { stringValue: assigned },
             expiry: { integerValue: String(expiry) },
             active: { booleanValue: true },
+            paused: { booleanValue: false },
             note: { stringValue: note },
             created_at: { integerValue: String(Math.floor(Date.now()/1000)) },
             used_by: { stringValue: "" },
@@ -2308,13 +2316,28 @@
 
   // DELETE KEY
   async function confirmDeleteKey(keyId, keyVal) {
-    if (!confirm(`Hapus key "${keyVal}"?`)) return;
+    if (!confirm(`Hapus key "${keyVal}"? Semua user yang pakai key ini harus input key baru.`)) return;
+
+    // Cari info key sebelum dihapus
+    const key = allKeys.find(k => k.id === keyId);
 
     try {
       const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyId)}?key=${API_KEY}`;
       const res = await fetch(url, { method: "DELETE" });
       if (!res.ok && res.status !== 404) { showToast('Delete failed', 'error'); return; }
-      showToast('🗑 Key dihapus');
+
+      showToast('🗑️ Key dihapus: ' + keyVal);
+      discord.key({
+        title: "🗑️ Key Dihapus",
+        color: 0xff3c3c,
+        fields: [
+          { name: "Key", value: "`" + keyVal + "`", inline: true },
+          { name: "Assigned To", value: key ? (key.assigned_to || "—") : "—", inline: true },
+          { name: "Used By", value: key && key.used_users.length > 0 ? key.used_users.map(u => "`"+u+"`").join(", ") : "—", inline: false }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+
       allKeys = allKeys.filter(k => k.id !== keyId);
       renderKeys();
     } catch(e) {
@@ -2322,8 +2345,64 @@
     }
   }
 
-  // TOGGLE KEY ACTIVE
-  async function toggleKeyActive(keyId, active) {
+  // PAUSE KEY — key tidak bisa dipakai sementara
+  async function pauseKey(keyId, keyVal) {
+    try {
+      const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyId)}?key=${API_KEY}&updateMask.fieldPaths=paused`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { paused: { booleanValue: true } } })
+      });
+      if (!res.ok) { showToast('Pause failed', 'error'); return; }
+      const k = allKeys.find(k => k.id === keyId);
+      if (k) k.paused = true;
+      renderKeys();
+      showToast('⏸ Key di-pause: ' + keyVal);
+      discord.key({
+        title: "⏸ Key Di-pause",
+        color: 0xffaa00,
+        fields: [
+          { name: "Key", value: "`" + keyVal + "`", inline: true },
+          { name: "Status", value: "PAUSED", inline: true }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  // RESUME KEY — aktifkan kembali dari pause
+  async function resumeKey(keyId, keyVal) {
+    try {
+      const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyId)}?key=${API_KEY}&updateMask.fieldPaths=paused`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { paused: { booleanValue: false } } })
+      });
+      if (!res.ok) { showToast('Resume failed', 'error'); return; }
+      const k = allKeys.find(k => k.id === keyId);
+      if (k) k.paused = false;
+      renderKeys();
+      showToast('▶️ Key di-resume: ' + keyVal);
+      discord.key({
+        title: "▶️ Key Di-resume",
+        color: 0x00ff88,
+        fields: [
+          { name: "Key", value: "`" + keyVal + "`", inline: true },
+          { name: "Status", value: "ACTIVE", inline: true }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  // DISABLE / ENABLE KEY
+  async function toggleKeyActive(keyId, keyVal, active) {
     try {
       const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyId)}?key=${API_KEY}&updateMask.fieldPaths=active`;
       const res = await fetch(url, {
@@ -2335,7 +2414,16 @@
       const k = allKeys.find(k => k.id === keyId);
       if (k) k.active = active;
       renderKeys();
-      showToast(active ? '✓ Key diaktifkan' : '⊘ Key dinonaktifkan');
+      showToast(active ? '✅ Key diaktifkan: ' + keyVal : '⊘ Key di-disable: ' + keyVal);
+      discord.key({
+        title: active ? "✅ Key Diaktifkan" : "⊘ Key Di-disable",
+        color: active ? 0x00ff88 : 0xff3c3c,
+        fields: [
+          { name: "Key", value: "`" + keyVal + "`", inline: true },
+          { name: "Status", value: active ? "ENABLED" : "DISABLED", inline: true }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
     } catch(e) {
       showToast('Failed: ' + e.message, 'error');
     }

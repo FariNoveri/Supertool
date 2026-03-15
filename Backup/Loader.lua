@@ -10,8 +10,8 @@ local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbwECJeW93scsqKiq0kCcL2ZxqZIDdzIzl_3C-ixaurbzIbvepHYmH3EtbIWGKJr3HZu/exec"
-local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/MainLoader.lua"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbwZcIcAsOL2gtpa5N6rSYyIVex2ITqxYM_d793jtOE0O0SYE-gabx7BLRwdCKR-xtBo/exec"
+local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Main.lua"
 
 -- Discord Webhooks
 local WH_KEY    = "https://discord.com/api/webhooks/1482652552372949054/2aQtBrpI_6RAvusTKaP3IgysR-vDZ1azEK6nqXa0kxKZ6w8qQwzFseCgSGDrTK9sfu0_"
@@ -63,6 +63,11 @@ local function validateKey(inputKey)
             -- Cek active
             if isActive == false then
                 return false, "Key ini sudah dinonaktifkan"
+            end
+            -- Cek paused
+            local isPaused = f.paused and f.paused.booleanValue
+            if isPaused == true then
+                return false, "Key ini sedang di-pause, coba lagi nanti"
             end
             -- Cek expiry
             if expiry ~= 0 and os.time() > expiry then
@@ -116,6 +121,10 @@ local function checkSavedKey()
     local kf = kd.fields
     -- Cek masih active
     if kf.active and kf.active.booleanValue == false then
+        return false
+    end
+    -- Cek tidak di-pause
+    if kf.paused and kf.paused.booleanValue == true then
         return false
     end
     -- Cek belum expired
