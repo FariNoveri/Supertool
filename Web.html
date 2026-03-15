@@ -784,7 +784,7 @@
             <tr>
               <th>Key</th>
               <th>Assigned To</th>
-              <th>Used By</th>
+              <th>Users</th>
               <th>Last Used</th>
               <th>Expiry</th>
               <th>Used/Limit</th>
@@ -854,6 +854,18 @@
 
 <!-- Toast -->
 <div id="toast"></div>
+
+<!-- Key Users Modal -->
+<div class="modal-overlay" id="key-users-modal">
+  <div class="modal" style="width:380px;">
+    <div class="modal-title">👥 Users — <span id="key-users-title" style="color:var(--accent);font-size:13px"></span></div>
+    <div class="modal-sub" style="margin-bottom:16px">Semua username yang pernah pakai key ini.</div>
+    <div id="key-users-list" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:20px;"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeKeyUsersModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
 
 <!-- Ban/Unban Confirm Modal -->
 <div class="modal-overlay" id="modal">
@@ -1485,6 +1497,7 @@
           key: f.key?.stringValue || nameParts[nameParts.length - 1],
           assigned_to: f.assigned_to?.stringValue || '',
           used_by: f.used_by?.stringValue || '',
+          used_users: (f.used_users?.arrayValue?.values || []).map(v => v.stringValue).filter(Boolean),
           last_used: parseInt(f.last_used?.integerValue || 0),
           expiry: parseInt(f.expiry?.integerValue || 0),
           active: f.active?.booleanValue !== false,
@@ -1543,7 +1556,16 @@
             </span>
           </td>
           <td style="font-family:var(--mono);font-size:11px;color:var(--text)">${k.assigned_to || '<span style="color:var(--muted)">Siapa saja</span>'}</td>
-          <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.used_by || '—'}</td>
+          <td>
+            ${k.used_users.length === 0
+              ? '<span style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</span>'
+              : `<span style="font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline"
+                  onclick="showKeyUsers('${k.key}', ${JSON.stringify(k.used_users).replace(/'/g, "&#39;")})"
+                  title="Klik untuk lihat list">
+                  ${k.used_users.length} user${k.used_users.length > 1 ? 's' : ''}
+                </span>`
+            }
+          </td>
           <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.last_used ? formatTime(k.last_used) : '—'}</td>
           <td style="font-family:var(--mono);font-size:11px;color:${isExpired ? '#ffaa00' : 'var(--muted)'}">${expiryText}</td>
           <td style="font-family:var(--mono);font-size:11px;color:${k.user_limit > 0 && k.used_count >= k.user_limit ? 'var(--accent2)' : 'var(--muted)'}">
@@ -1690,6 +1712,80 @@
   // Close create key modal on overlay
   document.getElementById('create-key-modal').addEventListener('click', function(e) {
     if (e.target === this) closeCreateKeyModal();
+  });
+
+  // =====================================================
+  // KEY USERS MODAL
+  // =====================================================
+  function showKeyUsers(keyVal, users) {
+    document.getElementById('key-users-title').textContent = keyVal;
+    const list = document.getElementById('key-users-list');
+
+    if (!users || users.length === 0) {
+      list.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:var(--muted);text-align:center;padding:20px">Belum ada user</div>';
+    } else {
+      list.innerHTML = users.map((u, i) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          background:var(--surface2);border:1px solid var(--border);padding:10px 14px;
+          animation:fadeUp 0.2s ${i*0.04}s both">
+          <span style="font-family:var(--mono);font-size:12px;color:var(--text)">${u}</span>
+          <div style="display:flex;gap:6px">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--accent);
+              border:1px solid var(--accent);padding:2px 6px;cursor:pointer"
+              onclick="copyToClipboard('${u}')">COPY</span>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--accent2);
+              border:1px solid rgba(255,60,60,0.3);padding:2px 6px;cursor:pointer"
+              onclick="removeUserFromKey('${keyVal}', '${u}')">REMOVE</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('key-users-modal').classList.add('show');
+  }
+
+  function closeKeyUsersModal() {
+    document.getElementById('key-users-modal').classList.remove('show');
+  }
+
+  async function removeUserFromKey(keyVal, username) {
+    if (!confirm('Hapus ' + username + ' dari key ' + keyVal + '?')) return;
+
+    const key = allKeys.find(k => k.key === keyVal);
+    if (!key) return;
+
+    const newUsers = key.used_users.filter(u => u !== username);
+
+    try {
+      const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyVal)}?key=${API_KEY}&updateMask.fieldPaths=used_users&updateMask.fieldPaths=used_count`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            used_users: {
+              arrayValue: { values: newUsers.map(u => ({ stringValue: u })) }
+            },
+            used_count: { integerValue: String(newUsers.length) }
+          }
+        })
+      });
+
+      if (!res.ok) { showToast('Failed to remove user', 'error'); return; }
+
+      key.used_users = newUsers;
+      key.used_count = newUsers.length;
+      showKeyUsers(keyVal, newUsers);
+      renderKeys();
+      showToast('✓ ' + username + ' dihapus dari key');
+
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+    }
+  }
+
+  document.getElementById('key-users-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeKeyUsersModal();
   });
 </script>
 
