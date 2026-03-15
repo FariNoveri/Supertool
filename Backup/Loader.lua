@@ -10,8 +10,23 @@ local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbwWgh9cUPEqkAx8Z-yXOvkJW2tSfMi_wuMF0zh87k-5FiBgxPpD7jT-ty6Nv4SlTvw9/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbwECJeW93scsqKiq0kCcL2ZxqZIDdzIzl_3C-ixaurbzIbvepHYmH3EtbIWGKJr3HZu/exec"
 local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/MainLoader.lua"
+
+-- Discord Webhooks
+local WH_KEY    = "https://discord.com/api/webhooks/1482652552372949054/2aQtBrpI_6RAvusTKaP3IgysR-vDZ1azEK6nqXa0kxKZ6w8qQwzFseCgSGDrTK9sfu0_"
+local WH_MEMBER = "https://discord.com/api/webhooks/1481139205546573834/uaGSHAPADGKUO4_Kml93yI219AQqurMhxranpM9rUDcxmtl8yJFe3vdb0qVgioGqNTMR"
+
+local function sendWebhook(webhook, embed)
+    pcall(function()
+        game:GetService("HttpService"):RequestAsync({
+            Url = webhook,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = game:GetService("HttpService"):JSONEncode({ embeds = { embed } })
+        })
+    end)
+end
 
 local FIREBASE_PROJECT = "supertool-18bae"
 local API_KEY = "AIzaSyAICeLezq9zrxKzIH2iQMpQVLhzeaebxKg"
@@ -402,7 +417,29 @@ local function doVerify()
             submitBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 
             -- Simpan verified ke Firestore (simpan juga key-nya untuk re-validasi)
-            saveKeyVerified(inputBox.Text:match("^%s*(.-)%s*$"))
+            local usedKey = inputBox.Text:match("^%s*(.-)%s*$")
+            saveKeyVerified(usedKey)
+            -- Webhook: key berhasil diverifikasi
+            task.spawn(function()
+                sendWebhook(WH_KEY, {
+                    title = "🔑 Key Verified",
+                    color = 0x00ff88,
+                    fields = {
+                        { name = "Username", value = "`" .. player.Name .. "`", inline = true },
+                        { name = "Key", value = "`" .. usedKey .. "`", inline = true }
+                    },
+                    footer = { text = "SuperTool Key System • " .. os.date("%Y-%m-%d %H:%M:%S") }
+                })
+                sendWebhook(WH_MEMBER, {
+                    title = "✨ User Baru Verified",
+                    color = 0xaa00ff,
+                    fields = {
+                        { name = "Username", value = "`" .. player.Name .. "`", inline = true },
+                        { name = "Key", value = "`" .. usedKey .. "`", inline = true }
+                    },
+                    footer = { text = "SuperTool Key System • " .. os.date("%Y-%m-%d %H:%M:%S") }
+                })
+            end)
 
             task.wait(1)
 

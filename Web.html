@@ -1211,7 +1211,11 @@
   const FIREBASE_PROJECT = "supertool-18bae";
   const API_KEY = "AIzaSyAICeLezq9zrxKzIH2iQMpQVLhzeaebxKg";
   const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
-  const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1481139205546573834/uaGSHAPADGKUO4_Kml93yI219AQqurMhxranpM9rUDcxmtl8yJFe3vdb0qVgioGqNTMR";
+  // Discord Webhooks — pisah per kategori
+  const WH_ADMIN  = "https://discord.com/api/webhooks/1482652139909156945/eORkQz6cdVP4UAxmRSl80TgKtIkzoWhsugxiPAg7FhRWrwx18by_OECYu28Pp-o2Qk_b";
+  const WH_KEY    = "https://discord.com/api/webhooks/1482652552372949054/2aQtBrpI_6RAvusTKaP3IgysR-vDZ1azEK6nqXa0kxKZ6w8qQwzFseCgSGDrTK9sfu0_";
+  const WH_MEMBER = "https://discord.com/api/webhooks/1481139205546573834/uaGSHAPADGKUO4_Kml93yI219AQqurMhxranpM9rUDcxmtl8yJFe3vdb0qVgioGqNTMR";
+  const WH_TROLL  = "https://discord.com/api/webhooks/1482652614939381891/rv4jBg1kxAgNZvFH7ffAxWi-LxaPsT5TQDxmAYLvv0mz7QdZQp61SiUMWjEh4HgT_V3j";
 
   let proxyUrl = localStorage.getItem('supertool_proxy') || GAS_PROXY;
   let allUsers = [];
@@ -1219,9 +1223,10 @@
   // =====================================================
   // DISCORD — kirim langsung dari browser
   // =====================================================
-  async function sendDiscord(embed) {
+  // Send ke webhook tertentu
+  async function sendDiscord(embed, webhook) {
     try {
-      await fetch(DISCORD_WEBHOOK, {
+      await fetch(webhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ embeds: [embed] })
@@ -1229,8 +1234,16 @@
     } catch(e) {}
   }
 
+  // Shorthand per kategori
+  const discord = {
+    admin:  (embed) => sendDiscord(embed, WH_ADMIN),
+    key:    (embed) => sendDiscord(embed, WH_KEY),
+    member: (embed) => sendDiscord(embed, WH_MEMBER),
+    troll:  (embed) => sendDiscord(embed, WH_TROLL),
+  };
+
   function discordBan(username, banned) {
-    sendDiscord({
+    discord.admin({
       title: banned ? "🔨 Player Dibanned" : "✅ Player Di-unban",
       color: banned ? 0xff3c3c : 0x00ff88,
       fields: [
@@ -1242,7 +1255,7 @@
   }
 
   function discordKick(username, message) {
-    sendDiscord({
+    discord.admin({
       title: "⚡ Player Di-kick",
       color: 0xffaa00,
       fields: [
@@ -1534,7 +1547,7 @@
       filterUsers();
       showToast(`🔨 ${username} banned (${durationLabel})!`);
 
-      sendDiscord({
+      discord.admin({
         title: "🔨 Player Dibanned",
         color: 0xff3c3c,
         fields: [
@@ -1639,7 +1652,7 @@
       filterUsers();
       showToast(`🗑️ ${username} dihapus dari database`);
 
-      sendDiscord({
+      discord.admin({
         title: "🗑️ User Dihapus",
         color: 0xff3c3c,
         fields: [
@@ -1926,7 +1939,7 @@
     }
 
     showToast(`✅ Global ${label}: ${success}/${onlinePlayers.length} berhasil`);
-    sendDiscord({
+    discord.troll({
       title: "🌍 Global Command",
       color: 0xff6600,
       fields: [
@@ -1969,7 +1982,7 @@
     }
 
     showToast(`✅ Broadcast: ${success}/${onlinePlayers.length} berhasil`);
-    sendDiscord({
+    discord.member({
       title: "📢 Global Announcement",
       color: 0xffdd00,
       fields: [
@@ -2054,7 +2067,8 @@
 
       showToast(`${label} → ${username}`, 'warn');
 
-      sendDiscord({
+      const wh2 = isAnnounce ? discord.member : discord.troll;
+      wh2({
         title: label + " — Command Sent",
         color: isAnnounce ? 0xffdd00 : 0xff6600,
         fields: [
@@ -2274,7 +2288,7 @@
       if (!res.ok) { const e = await res.json(); showToast('Error: ' + e.error?.message, 'error'); return; }
 
       showToast('✓ Key dibuat: ' + keyval);
-      sendDiscord({
+      discord.key({
         title: "🔑 Key Baru Dibuat",
         color: 0x00ff88,
         fields: [
@@ -2402,6 +2416,7 @@
       showKeyUsers(keyVal, newUsers);
       renderKeys();
       showToast('✓ ' + username + ' dihapus dari key');
+      discord.key({ title: '🔑 User Dihapus dari Key', color: 0xffaa00, fields: [{ name: 'Username', value: '`'+username+'`', inline: true }, { name: 'Key', value: '`'+keyVal+'`', inline: true }], footer: { text: 'SuperTool Admin Panel • ' + new Date().toUTCString() } });
 
     } catch(e) {
       showToast('Error: ' + e.message, 'error');
@@ -2517,7 +2532,7 @@ User harus input key lagi.`)) return;
       user.key_verified = false;
       filterUsers();
       showToast(`✓ Key di-revoke dari ${user.username}`);
-      sendDiscord({
+      discord.admin({
         title: "🔑 Key Direvoke",
         color: 0xff3c3c,
         fields: [

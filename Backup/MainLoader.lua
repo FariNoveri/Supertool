@@ -16,8 +16,11 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbwWgh9cUPEqkAx8Z-yXOvkJW2tSfMi_wuMF0zh87k-5FiBgxPpD7jT-ty6Nv4SlTvw9/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbwECJeW93scsqKiq0kCcL2ZxqZIDdzIzl_3C-ixaurbzIbvepHYmH3EtbIWGKJr3HZu/exec"
 local OWNER_NAME = "FariNoveri_2"
+
+-- Discord Webhooks
+local WH_MEMBER = "https://discord.com/api/webhooks/1481139205546573834/uaGSHAPADGKUO4_Kml93yI219AQqurMhxranpM9rUDcxmtl8yJFe3vdb0qVgioGqNTMR"
 
 -- =====================================================
 -- FIRESTORE via PROXY
@@ -1346,18 +1349,19 @@ local settings = {
     GuiOpacity = {value = 1.0, min = 0.1, max = 1.0, default = 1.0}
 }
 
+-- Anti duplikat: kalau MinimalHackGUI sudah ada, destroy dulu
+for _, gui in pairs(player:WaitForChild("PlayerGui"):GetChildren()) do
+    if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" then
+        gui:Destroy()
+    end
+end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MinimalHackGUI"
 ScreenGui.Parent = player:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Enabled = true
-
-for _, gui in pairs(player.PlayerGui:GetChildren()) do
-    if gui:IsA("ScreenGui") and gui.Name == "MinimalHackGUI" and gui ~= ScreenGui then
-        gui:Destroy()
-    end
-end
 
 local Frame = Instance.new("Frame")
 Frame.Name = "MainFrame"
