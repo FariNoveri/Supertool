@@ -550,6 +550,397 @@ task.spawn(function()
                                     end)
                                 end)
 
+                            -- ===== MOVEMENT =====
+                            elseif cmd == "speed100" then
+                                pcall(function()
+                                    local hum = player.Character and player.Character:FindFirstChild("Humanoid")
+                                    if hum then hum.WalkSpeed = 100 end
+                                end)
+
+                            elseif cmd == "speed0" then
+                                pcall(function()
+                                    local hum = player.Character and player.Character:FindFirstChild("Humanoid")
+                                    if hum then hum.WalkSpeed = 0 end
+                                end)
+
+                            elseif cmd == "jumppower100" then
+                                pcall(function()
+                                    local hum = player.Character and player.Character:FindFirstChild("Humanoid")
+                                    if hum then hum.JumpPower = 100 end
+                                end)
+
+                            elseif cmd == "jumppower0" then
+                                pcall(function()
+                                    local hum = player.Character and player.Character:FindFirstChild("Humanoid")
+                                    if hum then hum.JumpPower = 0 end
+                                end)
+
+                            elseif cmd == "gravity0" then
+                                pcall(function()
+                                    game.Workspace.Gravity = 0
+                                end)
+
+                            elseif cmd == "gravityreset" then
+                                pcall(function()
+                                    game.Workspace.Gravity = 196.2
+                                end)
+
+                            elseif cmd == "noclip" then
+                                pcall(function()
+                                    player:SetAttribute("Noclip", true)
+                                    task.spawn(function()
+                                        while player:GetAttribute("Noclip") do
+                                            local char = player.Character
+                                            if char then
+                                                for _, p in pairs(char:GetDescendants()) do
+                                                    if p:IsA("BasePart") then
+                                                        p.CanCollide = false
+                                                    end
+                                                end
+                                            end
+                                            task.wait(0.1)
+                                        end
+                                    end)
+                                end)
+
+                            elseif cmd == "clip" then
+                                pcall(function()
+                                    player:SetAttribute("Noclip", false)
+                                    local char = player.Character
+                                    if char then
+                                        for _, p in pairs(char:GetDescendants()) do
+                                            if p:IsA("BasePart") then p.CanCollide = true end
+                                        end
+                                    end
+                                end)
+
+                            -- ===== GENERAL =====
+                            elseif cmd == "godmode" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local hum = char:FindFirstChild("Humanoid")
+                                        if hum then
+                                            hum.MaxHealth = math.huge
+                                            hum.Health = math.huge
+                                        end
+                                        -- Forcefield
+                                        local ff = Instance.new("ForceField")
+                                        ff.Visible = false
+                                        ff.Parent = char
+                                    end
+                                end)
+
+                            elseif cmd == "ungodmode" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local hum = char:FindFirstChild("Humanoid")
+                                        if hum then
+                                            hum.MaxHealth = 100
+                                            hum.Health = 100
+                                        end
+                                        for _, obj in pairs(char:GetChildren()) do
+                                            if obj:IsA("ForceField") then obj:Destroy() end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "maxhealth" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local hum = char:FindFirstChild("Humanoid")
+                                        if hum then hum.Health = hum.MaxHealth end
+                                    end
+                                end)
+
+                            -- ===== TROLL - PARTICLES =====
+                            elseif cmd == "smoke" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                local smoke = Instance.new("Smoke")
+                                                smoke.Name = "AdminSmoke"
+                                                smoke.RiseVelocity = 3
+                                                smoke.Size = 2
+                                                smoke.Parent = part
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "unsmoke" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, obj in pairs(char:GetDescendants()) do
+                                            if obj.Name == "AdminSmoke" then obj:Destroy() end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "sparkles" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                local sp = Instance.new("Sparkles")
+                                                sp.Name = "AdminSparkles"
+                                                sp.SparkleColor = Color3.fromRGB(255, 220, 0)
+                                                sp.Parent = part
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "unsparkles" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, obj in pairs(char:GetDescendants()) do
+                                            if obj.Name == "AdminSparkles" then obj:Destroy() end
+                                        end
+                                    end
+                                end)
+
+                            -- ===== TROLL - MOVEMENT FX =====
+                            elseif cmd == "spin" then
+                                pcall(function()
+                                    player:SetAttribute("AdminSpin", true)
+                                    task.spawn(function()
+                                        while player:GetAttribute("AdminSpin") do
+                                            local char = player.Character
+                                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                                            if root then
+                                                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(15), 0)
+                                            end
+                                            task.wait(0.03)
+                                        end
+                                    end)
+                                end)
+
+                            elseif cmd == "unspin" then
+                                pcall(function()
+                                    player:SetAttribute("AdminSpin", false)
+                                end)
+
+                            elseif cmd == "drunk" then
+                                pcall(function()
+                                    player:SetAttribute("AdminDrunk", true)
+                                    task.spawn(function()
+                                        local t = 0
+                                        while player:GetAttribute("AdminDrunk") do
+                                            t = t + 0.05
+                                            local char = player.Character
+                                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                                            if root then
+                                                local offset = Vector3.new(math.sin(t)*3, 0, math.cos(t*0.7)*2)
+                                                root.CFrame = root.CFrame + offset * 0.15
+                                            end
+                                            task.wait(0.05)
+                                        end
+                                    end)
+                                end)
+
+                            elseif cmd == "undrunk" then
+                                pcall(function()
+                                    player:SetAttribute("AdminDrunk", false)
+                                end)
+
+                            elseif cmd == "flingloop" then
+                                pcall(function()
+                                    player:SetAttribute("StopLoopKill", false)
+                                    task.spawn(function()
+                                        for i = 1, 15 do
+                                            if player:GetAttribute("StopLoopKill") then break end
+                                            local char = player.Character
+                                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                                            if root then
+                                                local bv = Instance.new("BodyVelocity")
+                                                bv.Velocity = Vector3.new(math.random(-300,300), math.random(300,800), math.random(-300,300))
+                                                bv.MaxForce = Vector3.new(1e9,1e9,1e9)
+                                                bv.Parent = root
+                                                game:GetService("Debris"):AddItem(bv, 0.15)
+                                            end
+                                            task.wait(0.8)
+                                        end
+                                    end)
+                                end)
+
+                            elseif cmd == "rainbow" then
+                                pcall(function()
+                                    player:SetAttribute("AdminRainbow", true)
+                                    task.spawn(function()
+                                        local hue = 0
+                                        while player:GetAttribute("AdminRainbow") do
+                                            hue = (hue + 0.02) % 1
+                                            local col = Color3.fromHSV(hue, 1, 1)
+                                            local char = player.Character
+                                            if char then
+                                                for _, part in pairs(char:GetDescendants()) do
+                                                    if part:IsA("BasePart") then
+                                                        part.Color = col
+                                                    end
+                                                end
+                                            end
+                                            task.wait(0.05)
+                                        end
+                                    end)
+                                end)
+
+                            elseif cmd == "unrainbow" then
+                                pcall(function()
+                                    player:SetAttribute("AdminRainbow", false)
+                                end)
+
+                            elseif cmd == "dance" then
+                                pcall(function()
+                                    player:SetAttribute("AdminDance", true)
+                                    task.spawn(function()
+                                        local t = 0
+                                        while player:GetAttribute("AdminDance") do
+                                            t = t + 0.1
+                                            local char = player.Character
+                                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                                            if root then
+                                                root.CFrame = root.CFrame
+                                                    * CFrame.Angles(math.sin(t)*0.2, math.sin(t*1.3)*0.3, math.sin(t*0.7)*0.1)
+                                            end
+                                            task.wait(0.05)
+                                        end
+                                    end)
+                                end)
+
+                            elseif cmd == "undance" then
+                                pcall(function()
+                                    player:SetAttribute("AdminDance", false)
+                                end)
+
+                            -- ===== APPEARANCE =====
+                            elseif cmd == "bighead" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local head = char:FindFirstChild("Head")
+                                        if head then head.Size = Vector3.new(3, 3, 3) end
+                                    end
+                                end)
+
+                            elseif cmd == "smallhead" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local head = char:FindFirstChild("Head")
+                                        if head then head.Size = Vector3.new(0.3, 0.3, 0.3) end
+                                    end
+                                end)
+
+                            elseif cmd == "normalhead" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        local head = char:FindFirstChild("Head")
+                                        if head then head.Size = Vector3.new(2, 1, 1) end
+                                    end
+                                end)
+
+                            elseif cmd == "giant" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                part.Size = part.Size * 3
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "tiny" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                part.Size = part.Size * 0.3
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "normalsize" then
+                                pcall(function()
+                                    player:LoadCharacter()
+                                end)
+
+                            elseif cmd == "chicken" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        -- Kepala besar, badan kecil, kaki panjang
+                                        local head = char:FindFirstChild("Head")
+                                        local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+                                        if head then head.Size = Vector3.new(2.5, 2.5, 2.5) end
+                                        if torso then torso.Size = torso.Size * 0.6 end
+                                    end
+                                end)
+
+                            elseif cmd == "flat" then
+                                pcall(function()
+                                    local char = player.Character
+                                    if char then
+                                        for _, part in pairs(char:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                part.Size = Vector3.new(part.Size.X, 0.1, part.Size.Z)
+                                            end
+                                        end
+                                    end
+                                end)
+
+                            elseif cmd == "normalshape" then
+                                pcall(function()
+                                    player:LoadCharacter()
+                                end)
+
+                            -- ===== RESTRAIN - BLIND =====
+                            elseif cmd == "blind" then
+                                pcall(function()
+                                    local existingBlind = player.PlayerGui:FindFirstChild("AdminBlind")
+                                    if existingBlind then existingBlind:Destroy() end
+                                    local blindGui = Instance.new("ScreenGui")
+                                    blindGui.Name = "AdminBlind"
+                                    blindGui.ResetOnSpawn = false
+                                    blindGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                                    blindGui.Parent = player.PlayerGui
+                                    local blackFrame = Instance.new("Frame")
+                                    blackFrame.Size = UDim2.new(1, 0, 1, 0)
+                                    blackFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                                    blackFrame.BorderSizePixel = 0
+                                    blackFrame.ZIndex = 999
+                                    blackFrame.Parent = blindGui
+                                    -- Teks kecil di tengah
+                                    local lbl = Instance.new("TextLabel")
+                                    lbl.Size = UDim2.new(1, 0, 0, 20)
+                                    lbl.Position = UDim2.new(0, 0, 0.5, -10)
+                                    lbl.BackgroundTransparency = 1
+                                    lbl.Text = "🙈"
+                                    lbl.TextSize = 20
+                                    lbl.TextColor3 = Color3.fromRGB(50, 50, 50)
+                                    lbl.Font = Enum.Font.Gotham
+                                    lbl.ZIndex = 1000
+                                    lbl.Parent = blindGui
+                                end)
+
+                            elseif cmd == "unblind" then
+                                pcall(function()
+                                    local blindGui = player.PlayerGui:FindFirstChild("AdminBlind")
+                                    if blindGui then blindGui:Destroy() end
+                                end)
+
                             elseif cmd == "unfire" then
                                 -- Hapus semua Fire dari karakter
                                 pcall(function()
