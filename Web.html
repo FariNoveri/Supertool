@@ -746,13 +746,14 @@
             <th>Last Online</th>
             <th>Map ID</th>
             <th>Job ID</th>
+            <th>Key</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="user-table">
           <tr>
-            <td colspan="6">
+            <td colspan="7">
               <div class="state-msg">
                 <span class="big">⚙</span>
                 Set proxy URL above then refresh
@@ -852,6 +853,20 @@
   </div>
 </div>
 
+<!-- User Key Info Modal -->
+<div class="modal-overlay" id="user-key-modal">
+  <div class="modal" style="width:400px">
+    <div class="modal-title">🔑 Key Info — <span id="user-key-username" style="color:var(--accent)"></span></div>
+    <div id="user-key-content" style="margin-bottom:20px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeUserKeyModal()">CLOSE</button>
+      <button class="btn" id="user-key-revoke-btn" 
+        style="color:var(--accent2);border-color:rgba(255,60,60,0.3)"
+        onclick="revokeUserKey()">REVOKE KEY</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -867,7 +882,27 @@
   </div>
 </div>
 
-<!-- Ban/Unban Confirm Modal -->
+<!-- Ban Modal with Duration -->
+<div class="modal-overlay" id="ban-modal">
+  <div class="modal" id="ban-modal-inner" style="width:400px">
+    <div class="modal-title">🔨 Ban User — <span id="ban-modal-username" style="color:var(--accent2)"></span></div>
+    <div class="modal-sub" style="margin-bottom:16px">Pilih durasi ban. Player akan di-kick dalam 10 detik.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:20px;">
+      <button class="cmd-btn" onclick="executeBan(0)" style="--c:#ff3c3c">🔴 Permanen</button>
+      <button class="cmd-btn" onclick="executeBan(3600)" style="--c:#ff6600">1 Jam</button>
+      <button class="cmd-btn" onclick="executeBan(21600)" style="--c:#ff6600">6 Jam</button>
+      <button class="cmd-btn" onclick="executeBan(86400)" style="--c:#ffaa00">1 Hari</button>
+      <button class="cmd-btn" onclick="executeBan(259200)" style="--c:#ffaa00">3 Hari</button>
+      <button class="cmd-btn" onclick="executeBan(604800)" style="--c:#ffdd00">1 Minggu</button>
+      <button class="cmd-btn" onclick="executeBan(2592000)" style="--c:#ffdd00">30 Hari</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeBanModal()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unban / general confirm modal -->
 <div class="modal-overlay" id="modal">
   <div class="modal" id="modal-inner">
     <div class="modal-title" id="modal-title">Confirm Action</div>
@@ -875,6 +910,18 @@
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">CANCEL</button>
       <button class="btn primary" id="modal-confirm">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<!-- Remove User Confirm Modal -->
+<div class="modal-overlay" id="remove-user-modal">
+  <div class="modal">
+    <div class="modal-title">🗑️ Hapus User</div>
+    <div class="modal-sub">Hapus <strong id="remove-user-label" style="color:var(--accent2)"></strong> dari database?<br>Data user akan dihapus permanen + key di-revoke.</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeRemoveUserModal()">CANCEL</button>
+      <button class="btn" style="background:#ff3c3c;border-color:#ff3c3c;color:#fff;font-weight:700" onclick="executeRemoveUser()">HAPUS</button>
     </div>
   </div>
 </div>
@@ -1074,7 +1121,10 @@
           map_id: f.map_id?.stringValue || '—',
           job_id: f.job_id?.stringValue || '',
           blacklisted: f.blacklisted?.booleanValue === true || f.blacklisted?.stringValue === 'true',
-          kick_message: f.kick_message?.stringValue || ''
+          kick_message: f.kick_message?.stringValue || '',
+          verified_key: f.verified_key?.stringValue || '',
+          key_verified: f.key_verified?.booleanValue === true,
+          blacklist_expiry: parseInt(f.blacklist_expiry?.integerValue || 0)
         };
       });
 
@@ -1090,6 +1140,8 @@
       renderTable(allUsers);
       document.getElementById('status-text').textContent = 'CONNECTED';
       showToast('Loaded ' + allUsers.length + ' users');
+      // Load keys di background supaya key info tersedia di tab users
+      if (allKeys.length === 0) loadKeys();
 
     } catch (e) {
       showToast('Failed to fetch: ' + e.message, 'error');
@@ -1127,7 +1179,7 @@
     const tbody = document.getElementById('user-table');
 
     if (users.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6"><div class="state-msg"><span class="big">◎</span>No users found</div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7"><div class="state-msg"><span class="big">◎</span>No users found</div></td></tr>`;
       return;
     }
 
@@ -1137,21 +1189,44 @@
         ? '<span class="online-dot"></span>'
         : '<span class="offline-dot"></span>';
 
+      const now = Math.floor(Date.now() / 1000);
+      const isTimedBan = u.blacklisted && u.blacklist_expiry > 0;
+      const banExpired = isTimedBan && now > u.blacklist_expiry;
       const badge = u.blacklisted
-        ? '<span class="badge blacklisted">BLACKLISTED</span>'
+        ? (isTimedBan
+            ? (banExpired
+                ? '<span class="badge" style="color:#888;border-color:#444">BAN EXPIRED</span>'
+                : '<span class="badge blacklisted">BANNED (TEMP)</span>')
+            : '<span class="badge blacklisted">BLACKLISTED</span>')
         : online
           ? '<span class="badge active">ONLINE</span>'
           : '<span class="badge" style="color:#555;border-color:#333">OFFLINE</span>';
 
+      const banLabel = u.blacklisted
+        ? (u.blacklist_expiry > 0 ? "UNBAN (" + formatTimeLeft(u.blacklist_expiry - Math.floor(Date.now()/1000)) + ")" : "UNBAN")
+        : "BAN";
       const actions = u.blacklisted
         ? `<div class="action-cell">
-            <button class="toggle-btn unban" onclick="confirmToggle('${u.username}', false)">UNBAN</button>
+            <button class="toggle-btn unban" onclick="confirmToggle('${u.username}', false)">${banLabel}</button>
+            <button class="toggle-btn" style="color:#ff3c3c;border-color:rgba(255,60,60,0.3)" onclick="confirmRemoveUser('${u.username}')">DEL</button>
            </div>`
         : `<div class="action-cell">
-            <button class="toggle-btn ban" onclick="confirmToggle('${u.username}', true)">BAN</button>
+            <button class="toggle-btn ban" onclick="openBanModal('${u.username}')">BAN</button>
             <button class="toggle-btn kick" onclick="openKickModal('${u.username}')">KICK</button>
             <button class="toggle-btn" style="color:#ff6600;border-color:rgba(255,102,0,0.3)" onclick="openCmdModal('${u.username}')">CMD</button>
+            <button class="toggle-btn" style="color:#ff3c3c;border-color:rgba(255,60,60,0.3)" onclick="confirmRemoveUser('${u.username}')">DEL</button>
            </div>`;
+
+      // Key cell — dibuat terpisah untuk menghindari nested template literal
+      const shortKey = u.verified_key
+        ? (u.verified_key.length > 16 ? u.verified_key.substring(0, 16) + "..." : u.verified_key)
+        : "";
+      let keyCell;
+      if (u.verified_key) {
+        keyCell = "<span data-uname='" + u.username + "' class='key-badge-click' style='font-family:var(--mono);font-size:10px;color:var(--accent);cursor:pointer;border:1px solid rgba(0,255,136,0.2);padding:2px 6px;background:rgba(0,255,136,0.05)'>🔑 " + shortKey + "</span>";
+      } else {
+        keyCell = "<span style='font-family:var(--mono);font-size:10px;color:var(--muted)'>—</span>";
+      }
 
       return `
         <tr class="${u.blacklisted ? 'blacklisted-row' : ''} row-enter" style="animation-delay:${i * 0.03}s">
@@ -1165,6 +1240,7 @@
               : '<span style="color:var(--muted)">—</span>'
             }
           </td>
+          <td>${keyCell}</td>
           <td>${badge}</td>
           <td>${actions}</td>
         </tr>
@@ -1178,25 +1254,32 @@
     renderTable(filtered);
   }
 
+  // Event delegation for key badge clicks
+  document.getElementById('user-table').addEventListener('click', function(e) {
+    const badge = e.target.closest('.key-badge-click');
+    if (badge) showUserKeyInfo(badge.dataset.uname);
+  });
+
   // =====================================================
   // BAN / UNBAN
   // =====================================================
   let pendingAction = null;
+  let pendingBanUsername = null;
 
+  // Old confirmToggle — hanya untuk UNBAN sekarang
   function confirmToggle(username, blacklist) {
-    pendingAction = { username, blacklist };
-    document.getElementById('modal-title').textContent = blacklist ? 'Ban User' : 'Unban User';
-    document.getElementById('modal-sub').innerHTML = blacklist
-      ? `Ban <strong>${username}</strong>?<br>Mereka akan di-kick dalam 10 detik.`
-      : `Unban <strong>${username}</strong>?<br>Mereka akan mendapatkan akses kembali.`;
-
+    if (blacklist) { openBanModal(username); return; }
+    // Unban
+    pendingAction = { username, blacklist: false };
+    document.getElementById('modal-title').textContent = 'Unban User';
+    document.getElementById('modal-sub').innerHTML =
+      `Unban <strong>${username}</strong>?<br>Mereka akan mendapatkan akses kembali.`;
     const confirmBtn = document.getElementById('modal-confirm');
-    confirmBtn.textContent = blacklist ? 'BAN' : 'UNBAN';
-    confirmBtn.style.background = blacklist ? '#ff3c3c' : '#00ff88';
-    confirmBtn.style.borderColor = blacklist ? '#ff3c3c' : '#00ff88';
-    confirmBtn.style.color = blacklist ? '#fff' : '#000';
+    confirmBtn.textContent = 'UNBAN';
+    confirmBtn.style.background = '#00ff88';
+    confirmBtn.style.borderColor = '#00ff88';
+    confirmBtn.style.color = '#000';
     confirmBtn.onclick = executeToggle;
-
     document.getElementById('modal').classList.add('show');
   }
 
@@ -1205,40 +1288,172 @@
     pendingAction = null;
   }
 
-  async function executeToggle() {
-    if (!pendingAction) return;
-    const { username, blacklist } = pendingAction;
-    closeModal();
+  // Ban modal dengan durasi
+  function openBanModal(username) {
+    pendingBanUsername = username;
+    document.getElementById('ban-modal-username').textContent = username;
+    document.getElementById('ban-modal').classList.add('show');
+  }
+
+  function closeBanModal() {
+    document.getElementById('ban-modal').classList.remove('show');
+    pendingBanUsername = null;
+  }
+
+  async function executeBan(durationSecs) {
+    if (!pendingBanUsername) return;
+    const username = pendingBanUsername;
+    closeBanModal();
+
+    const expiry = durationSecs === 0 ? 0 : Math.floor(Date.now() / 1000) + durationSecs;
+    const durationLabel = durationSecs === 0 ? "Permanen"
+      : durationSecs < 3600 ? (durationSecs/60) + " menit"
+      : durationSecs < 86400 ? (durationSecs/3600) + " jam"
+      : (durationSecs/86400) + " hari";
 
     try {
-      // Tulis langsung ke Firestore
-      const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}&updateMask.fieldPaths=blacklisted`;
+      const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}&updateMask.fieldPaths=blacklisted&updateMask.fieldPaths=blacklist_expiry`;
       const res = await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fields: {
-            blacklisted: { booleanValue: blacklist }
+            blacklisted: { booleanValue: true },
+            blacklist_expiry: { integerValue: String(expiry) }
           }
         })
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        showToast('Error: ' + (err.error?.message || res.status), 'error');
-        return;
-      }
+      if (!res.ok) { const e = await res.json(); showToast('Error: ' + e.error?.message, 'error'); return; }
 
       const user = allUsers.find(u => u.username === username);
-      if (user) user.blacklisted = blacklist;
+      if (user) { user.blacklisted = true; user.blacklist_expiry = expiry; }
       updateStats();
       filterUsers();
-      showToast(blacklist ? `🔨 ${username} banned!` : `✅ ${username} unbanned!`);
-      discordBan(username, blacklist);
-    } catch (e) {
+      showToast(`🔨 ${username} banned (${durationLabel})!`);
+
+      sendDiscord({
+        title: "🔨 Player Dibanned",
+        color: 0xff3c3c,
+        fields: [
+          { name: "Username", value: "`" + username + "`", inline: true },
+          { name: "Durasi", value: durationLabel, inline: true },
+          { name: "Expires", value: expiry === 0 ? "Tidak pernah" : new Date(expiry*1000).toUTCString(), inline: false }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+    } catch(e) {
+      showToast('Ban failed: ' + e.message, 'error');
+    }
+  }
+
+  async function executeToggle() {
+    if (!pendingAction) return;
+    const { username } = pendingAction;
+    closeModal();
+
+    try {
+      const url = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}&updateMask.fieldPaths=blacklisted&updateMask.fieldPaths=blacklist_expiry`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            blacklisted: { booleanValue: false },
+            blacklist_expiry: { integerValue: "0" }
+          }
+        })
+      });
+      if (!res.ok) { const e = await res.json(); showToast('Error: ' + e.error?.message, 'error'); return; }
+
+      const user = allUsers.find(u => u.username === username);
+      if (user) { user.blacklisted = false; user.blacklist_expiry = 0; }
+      updateStats();
+      filterUsers();
+      showToast(`✅ ${username} unbanned!`);
+      discordBan(username, false);
+    } catch(e) {
       showToast('Request failed: ' + e.message, 'error');
     }
   }
+
+  // Close ban modal on overlay
+  document.getElementById('ban-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeBanModal();
+  });
+
+  // =====================================================
+  // REMOVE USER
+  // =====================================================
+  let pendingRemoveUser = null;
+
+  function confirmRemoveUser(username) {
+    pendingRemoveUser = username;
+    document.getElementById('remove-user-label').textContent = username;
+    document.getElementById('remove-user-modal').classList.add('show');
+  }
+
+  function closeRemoveUserModal() {
+    document.getElementById('remove-user-modal').classList.remove('show');
+    pendingRemoveUser = null;
+  }
+
+  async function executeRemoveUser() {
+    if (!pendingRemoveUser) return;
+    const username = pendingRemoveUser;
+    closeRemoveUserModal();
+
+    try {
+      const user = allUsers.find(u => u.username === username);
+
+      // 1. Hapus dokumen user dari Firestore
+      const userUrl = `${FIRESTORE_BASE}/users/${encodeURIComponent(username)}?key=${API_KEY}`;
+      await fetch(userUrl, { method: "DELETE" });
+
+      // 2. Revoke key kalau ada
+      if (user && user.verified_key) {
+        const key = allKeys.find(k => k.key === user.verified_key);
+        if (key) {
+          const newUsers = key.used_users.filter(u => u !== username);
+          const keyUrl = `${FIRESTORE_BASE}/keys/${encodeURIComponent(user.verified_key)}?key=${API_KEY}&updateMask.fieldPaths=used_users&updateMask.fieldPaths=used_count`;
+          await fetch(keyUrl, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fields: {
+                used_users: { arrayValue: { values: newUsers.map(u => ({ stringValue: u })) } },
+                used_count: { integerValue: String(newUsers.length) }
+              }
+            })
+          });
+          key.used_users = newUsers;
+          key.used_count = newUsers.length;
+        }
+      }
+
+      // 3. Update local state
+      allUsers = allUsers.filter(u => u.username !== username);
+      updateStats();
+      filterUsers();
+      showToast(`🗑️ ${username} dihapus dari database`);
+
+      sendDiscord({
+        title: "🗑️ User Dihapus",
+        color: 0xff3c3c,
+        fields: [
+          { name: "Username", value: "`" + username + "`", inline: true },
+          { name: "Key Revoked", value: (user && user.verified_key) ? "`" + user.verified_key + "`" : "—", inline: true }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  document.getElementById('remove-user-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeRemoveUserModal();
+  });
 
   // =====================================================
   // KICK
@@ -1560,7 +1775,7 @@
             ${k.used_users.length === 0
               ? '<span style="font-family:var(--mono);font-size:11px;color:var(--muted)">—</span>'
               : `<span style="font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline"
-                  onclick="showKeyUsers('${k.key}', ${JSON.stringify(k.used_users).replace(/'/g, "&#39;")})"
+                  onclick="showKeyUsersByKey('${k.key}')"
                   title="Klik untuk lihat list">
                   ${k.used_users.length} user${k.used_users.length > 1 ? 's' : ''}
                 </span>`
@@ -1717,6 +1932,12 @@
   // =====================================================
   // KEY USERS MODAL
   // =====================================================
+  function showKeyUsersByKey(keyVal) {
+    const key = allKeys.find(k => k.key === keyVal);
+    if (!key) { showToast('Key tidak ditemukan', 'error'); return; }
+    showKeyUsers(keyVal, key.used_users);
+  }
+
   function showKeyUsers(keyVal, users) {
     document.getElementById('key-users-title').textContent = keyVal;
     const list = document.getElementById('key-users-list');
@@ -1786,6 +2007,130 @@
 
   document.getElementById('key-users-modal').addEventListener('click', function(e) {
     if (e.target === this) closeKeyUsersModal();
+  });
+
+  // =====================================================
+  // USER KEY INFO MODAL
+  // =====================================================
+  let currentKeyInfoUser = null;
+
+  function showUserKeyInfo(username) {
+    const user = allUsers.find(u => u.username === username);
+    if (!user || !user.verified_key) return;
+
+    currentKeyInfoUser = username;
+    document.getElementById('user-key-username').textContent = username;
+
+    // Cari key di allKeys
+    const key = allKeys.find(k => k.key === user.verified_key);
+    const now = Math.floor(Date.now() / 1000);
+
+    let keyStatus = '—';
+    let keyColor = 'var(--muted)';
+    if (key) {
+      if (!key.active) { keyStatus = 'DISABLED'; keyColor = 'var(--accent2)'; }
+      else if (key.expiry !== 0 && now > key.expiry) { keyStatus = 'EXPIRED'; keyColor = '#ffaa00'; }
+      else if (key.user_limit > 0 && key.used_count >= key.user_limit) { keyStatus = 'LIMIT REACHED'; keyColor = '#ff6600'; }
+      else { keyStatus = 'ACTIVE'; keyColor = 'var(--accent)'; }
+    }
+
+    const rows = [
+      ['Key Value', `<span style="color:var(--accent);font-family:var(--mono)">${user.verified_key}</span>`],
+      ['Status', `<span style="color:${keyColor};font-family:var(--mono)">${keyStatus}</span>`],
+      ['Assigned To', key ? (key.assigned_to || 'Siapa saja') : '—'],
+      ['Used Count', key ? `${key.used_count} / ${key.user_limit === 0 ? '∞' : key.user_limit}` : '—'],
+      ['Expiry', key ? (key.expiry === 0 ? '∞ Permanen' : (now > key.expiry ? '⚠ Expired' : formatTimeLeft(key.expiry - now))) : '—'],
+      ['Note', key ? (key.note || '—') : '—'],
+    ];
+
+    document.getElementById('user-key-content').innerHTML = `
+      <div style="border:1px solid var(--border);overflow:hidden">
+        ${rows.map(([label, val]) => `
+          <div style="display:flex;border-bottom:1px solid var(--border);last-child:border:none">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--muted);
+              text-transform:uppercase;letter-spacing:1px;padding:10px 14px;
+              width:120px;flex-shrink:0;background:var(--surface2)">${label}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text);
+              padding:10px 14px;word-break:break-all">${val}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    document.getElementById('user-key-modal').classList.add('show');
+  }
+
+  function closeUserKeyModal() {
+    document.getElementById('user-key-modal').classList.remove('show');
+    currentKeyInfoUser = null;
+  }
+
+  async function revokeUserKey() {
+    if (!currentKeyInfoUser) return;
+    const user = allUsers.find(u => u.username === currentKeyInfoUser);
+    if (!user) return;
+
+    if (!confirm(`Revoke key "${user.verified_key}" dari ${currentKeyInfoUser}?
+User harus input key lagi.`)) return;
+
+    const keyVal = user.verified_key;
+    closeUserKeyModal();
+
+    try {
+      // 1. Reset key_verified & verified_key di user doc
+      const userUrl = `${FIRESTORE_BASE}/users/${encodeURIComponent(currentKeyInfoUser || user.username)}?key=${API_KEY}&updateMask.fieldPaths=key_verified&updateMask.fieldPaths=verified_key`;
+      await fetch(userUrl, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            key_verified: { booleanValue: false },
+            verified_key: { stringValue: "" }
+          }
+        })
+      });
+
+      // 2. Hapus user dari used_users di key doc
+      const key = allKeys.find(k => k.key === keyVal);
+      if (key) {
+        const newUsers = key.used_users.filter(u => u !== user.username);
+        const keyUrl = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyVal)}?key=${API_KEY}&updateMask.fieldPaths=used_users&updateMask.fieldPaths=used_count`;
+        await fetch(keyUrl, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fields: {
+              used_users: { arrayValue: { values: newUsers.map(u => ({ stringValue: u })) } },
+              used_count: { integerValue: String(newUsers.length) }
+            }
+          })
+        });
+        key.used_users = newUsers;
+        key.used_count = newUsers.length;
+      }
+
+      // Update local state
+      user.verified_key = '';
+      user.key_verified = false;
+      filterUsers();
+      showToast(`✓ Key di-revoke dari ${user.username}`);
+      sendDiscord({
+        title: "🔑 Key Direvoke",
+        color: 0xff3c3c,
+        fields: [
+          { name: "Username", value: "`" + user.username + "`", inline: true },
+          { name: "Key", value: "`" + keyVal + "`", inline: true }
+        ],
+        footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
+      });
+
+    } catch(e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  document.getElementById('user-key-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeUserKeyModal();
   });
 </script>
 

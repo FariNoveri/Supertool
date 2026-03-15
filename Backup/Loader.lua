@@ -10,7 +10,7 @@ local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbyTCC3Y0pMaZZfl0UWxSKbt39tL9g7_vCK1x69-FjbJ66aCN6p0viEgdPSJ1kStzkeh/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbwWgh9cUPEqkAx8Z-yXOvkJW2tSfMi_wuMF0zh87k-5FiBgxPpD7jT-ty6Nv4SlTvw9/exec"
 local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/MainLoader.lua"
 
 local FIREBASE_PROJECT = "supertool-18bae"

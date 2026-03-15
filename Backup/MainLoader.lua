@@ -16,7 +16,7 @@ local player = Players.LocalPlayer
 -- =====================================================
 -- PROXY CONFIG (Google Apps Script)
 -- =====================================================
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbyTCC3Y0pMaZZfl0UWxSKbt39tL9g7_vCK1x69-FjbJ66aCN6p0viEgdPSJ1kStzkeh/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbwWgh9cUPEqkAx8Z-yXOvkJW2tSfMi_wuMF0zh87k-5FiBgxPpD7jT-ty6Nv4SlTvw9/exec"
 local OWNER_NAME = "FariNoveri_2"
 
 -- =====================================================
@@ -94,17 +94,33 @@ local isBlacklisted = false
 task.spawn(function()
     local userData = firestoreGet("users", player.Name)
 
-    -- Cek blacklist saat pertama load
+    -- Cek blacklist saat pertama load (dengan expiry check)
     if userData and (userData.blacklisted == true or userData.blacklisted == "true") then
-        isBlacklisted = true
-        for _, gui in pairs(player.PlayerGui:GetChildren()) do
-            if gui.Name == "MinimalHackGUI" then
-                gui:Destroy()
+        local expiry = userData.blacklist_expiry or 0
+        -- Cek apakah ban sudah expired
+        if expiry ~= 0 and os.time() > expiry then
+            -- Auto unban via Firestore
+            pcall(function()
+                game:HttpGet(PROXY_URL .. "?action=blacklist&username=" .. player.Name .. "&value=false&expiry=0")
+            end)
+            -- Lanjut load normal
+        else
+            isBlacklisted = true
+            for _, gui in pairs(player.PlayerGui:GetChildren()) do
+                if gui.Name == "MinimalHackGUI" then gui:Destroy() end
             end
+            local kickMsg = "blacklisted! more info why dm on discord FariNoveri#2817"
+            if expiry ~= 0 then
+                local remaining = expiry - os.time()
+                local timeStr = remaining < 3600 and (math.floor(remaining/60) .. " menit")
+                    or remaining < 86400 and (math.floor(remaining/3600) .. " jam")
+                    or (math.floor(remaining/86400) .. " hari")
+                kickMsg = "Kamu di-ban selama " .. timeStr .. " lagi."
+            end
+            warn("[SuperTool] Akses ditolak untuk: " .. player.Name)
+            player:Kick(kickMsg)
+            return
         end
-        warn("[SuperTool] Akses ditolak untuk: " .. player.Name)
-        player:Kick("blacklisted! more info why dm on discord FariNoveri#2817")
-        return
     end
 
     -- Register / update user di Firestore
@@ -159,15 +175,29 @@ task.spawn(function()
                     if check then
                         -- Cek blacklist
                         if check.blacklisted == true or check.blacklisted == "true" then
-                            isBlacklisted = true
-                            for _, gui in pairs(player.PlayerGui:GetChildren()) do
-                                if gui.Name == "MinimalHackGUI" then
-                                    gui:Destroy()
+                            local expiry = check.blacklist_expiry or 0
+                            if expiry ~= 0 and os.time() > expiry then
+                                -- Auto unban
+                                pcall(function()
+                                    game:HttpGet(PROXY_URL .. "?action=blacklist&username=" .. player.Name .. "&value=false&expiry=0")
+                                end)
+                            else
+                                isBlacklisted = true
+                                for _, gui in pairs(player.PlayerGui:GetChildren()) do
+                                    if gui.Name == "MinimalHackGUI" then gui:Destroy() end
                                 end
+                                local kickMsg = "blacklisted! more info why dm on discord FariNoveri#2817"
+                                if expiry ~= 0 then
+                                    local remaining = expiry - os.time()
+                                    local timeStr = remaining < 3600 and (math.floor(remaining/60) .. " menit")
+                                        or remaining < 86400 and (math.floor(remaining/3600) .. " jam")
+                                        or (math.floor(remaining/86400) .. " hari")
+                                    kickMsg = "Kamu di-ban selama " .. timeStr .. " lagi."
+                                end
+                                warn("[SuperTool] Akses dicabut untuk: " .. player.Name)
+                                player:Kick(kickMsg)
+                                return
                             end
-                            warn("[SuperTool] Akses dicabut untuk: " .. player.Name)
-                            player:Kick("blacklisted! more info why dm on discord FariNoveri#2817")
-                            return
                         end
 
                         -- Cek kick_message
