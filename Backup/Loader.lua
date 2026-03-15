@@ -11,7 +11,7 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 
 local PROXY_URL = "https://script.google.com/macros/s/AKfycbwZcIcAsOL2gtpa5N6rSYyIVex2ITqxYM_d793jtOE0O0SYE-gabx7BLRwdCKR-xtBo/exec"
-local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/Main.lua"
+local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/MainLoader.lua"
 
 -- Discord Webhooks
 local WH_KEY    = "https://discord.com/api/webhooks/1482652552372949054/2aQtBrpI_6RAvusTKaP3IgysR-vDZ1azEK6nqXa0kxKZ6w8qQwzFseCgSGDrTK9sfu0_"
