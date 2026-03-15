@@ -941,63 +941,51 @@ task.spawn(function()
                                     if blindGui then blindGui:Destroy() end
                                 end)
 
-                            -- ===== SCREEN FX =====
+                            -- ===== SCREEN FX (semua pakai Lighting effects = cover full layar) =====
+
                             elseif cmd == "screenblind" then
+                                -- Blind: ColorCorrection brightness -1 = layar hitam total
                                 pcall(function()
-                                    local g = player.PlayerGui:FindFirstChild("AdminScreenBlind")
-                                    if g then g:Destroy() end
-                                    local gui = Instance.new("ScreenGui")
-                                    gui.Name = "AdminScreenBlind"
-                                    gui.ResetOnSpawn = false
-                                    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                                    gui.Parent = player.PlayerGui
-                                    local f = Instance.new("Frame")
-                                    f.Size = UDim2.new(1,0,1,0)
-                                    f.BackgroundColor3 = Color3.fromRGB(0,0,0)
-                                    f.BorderSizePixel = 0
-                                    f.ZIndex = 999
-                                    f.Parent = gui
+                                    local L = game:GetService("Lighting")
+                                    local e = L:FindFirstChild("AdminBlind") or Instance.new("ColorCorrectionEffect")
+                                    e.Name = "AdminBlind"
+                                    e.Brightness = -1
+                                    e.Contrast = 0
+                                    e.Saturation = 0
+                                    e.TintColor = Color3.fromRGB(0,0,0)
+                                    e.Parent = L
                                 end)
 
                             elseif cmd == "unscreenblind" then
                                 pcall(function()
-                                    local g = player.PlayerGui:FindFirstChild("AdminScreenBlind")
-                                    if g then g:Destroy() end
+                                    local e = game:GetService("Lighting"):FindFirstChild("AdminBlind")
+                                    if e then e:Destroy() end
                                 end)
 
                             elseif cmd == "screenblur" then
                                 pcall(function()
-                                    local existing = game:GetService("Lighting"):FindFirstChild("AdminBlur")
-                                    if existing then existing:Destroy() end
-                                    local blur = Instance.new("BlurEffect")
-                                    blur.Name = "AdminBlur"
-                                    blur.Size = 40
-                                    blur.Parent = game:GetService("Lighting")
+                                    local L = game:GetService("Lighting")
+                                    local e = L:FindFirstChild("AdminBlur") or Instance.new("BlurEffect")
+                                    e.Name = "AdminBlur"
+                                    e.Size = 40
+                                    e.Parent = L
                                 end)
 
                             elseif cmd == "unscreenblur" then
                                 pcall(function()
-                                    local b = game:GetService("Lighting"):FindFirstChild("AdminBlur")
-                                    if b then b:Destroy() end
+                                    local e = game:GetService("Lighting"):FindFirstChild("AdminBlur")
+                                    if e then e:Destroy() end
                                 end)
 
                             elseif cmd == "screenspin" then
+                                -- Spin camera roll terus menerus
                                 pcall(function()
-                                    local g = player.PlayerGui:FindFirstChild("AdminScreenSpin")
-                                    if g then g:Destroy() end
-                                    local gui = Instance.new("ScreenGui")
-                                    gui.Name = "AdminScreenSpin"
-                                    gui.ResetOnSpawn = false
-                                    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                                    gui.Parent = player.PlayerGui
                                     player:SetAttribute("AdminScreenSpin", true)
                                     task.spawn(function()
-                                        local rot = 0
                                         while player:GetAttribute("AdminScreenSpin") do
-                                            rot = rot + 3
                                             local cam = game.Workspace.CurrentCamera
                                             if cam then
-                                                cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, math.rad(3))
+                                                cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, math.rad(4))
                                             end
                                             task.wait(0.03)
                                         end
@@ -1007,8 +995,13 @@ task.spawn(function()
                             elseif cmd == "unscreenspin" then
                                 pcall(function()
                                     player:SetAttribute("AdminScreenSpin", false)
-                                    local g = player.PlayerGui:FindFirstChild("AdminScreenSpin")
-                                    if g then g:Destroy() end
+                                    -- Reset camera roll
+                                    local cam = game.Workspace.CurrentCamera
+                                    if cam then
+                                        local cf = cam.CFrame
+                                        local x,y,_ = cf:ToEulerAnglesYXZ()
+                                        cam.CFrame = CFrame.new(cf.Position) * CFrame.Angles(x, y, 0)
+                                    end
                                 end)
 
                             elseif cmd == "screenshake" then
@@ -1018,12 +1011,11 @@ task.spawn(function()
                                         while player:GetAttribute("AdminScreenShake") do
                                             local cam = game.Workspace.CurrentCamera
                                             if cam then
-                                                local offset = Vector3.new(
-                                                    math.random(-10,10)*0.05,
-                                                    math.random(-10,10)*0.05,
+                                                cam.CFrame = cam.CFrame * CFrame.new(
+                                                    math.random(-100,100)*0.003,
+                                                    math.random(-100,100)*0.003,
                                                     0
                                                 )
-                                                cam.CFrame = cam.CFrame + offset
                                             end
                                             task.wait(0.04)
                                         end
@@ -1036,37 +1028,18 @@ task.spawn(function()
                                 end)
 
                             elseif cmd == "screenflip" then
+                                -- Flip: putar camera 180 derajat di Z axis
                                 pcall(function()
-                                    local g = player.PlayerGui:FindFirstChild("AdminScreenFlip")
-                                    if g then g:Destroy() end
-                                    local gui = Instance.new("ScreenGui")
-                                    gui.Name = "AdminScreenFlip"
-                                    gui.ResetOnSpawn = false
-                                    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                                    gui.Parent = player.PlayerGui
-                                    -- Frame transparan yang merotasi seluruh content
-                                    local f = Instance.new("Frame")
-                                    f.Size = UDim2.new(1,0,1,0)
-                                    f.BackgroundTransparency = 1
-                                    f.Rotation = 180
-                                    f.ZIndex = 998
-                                    f.Parent = gui
-                                    -- Overlay hitam semi-transparan biar keliatan efeknya
-                                    local overlay = Instance.new("Frame")
-                                    overlay.Size = UDim2.new(1,0,1,0)
-                                    overlay.BackgroundColor3 = Color3.fromRGB(0,0,0)
-                                    overlay.BackgroundTransparency = 0.7
-                                    overlay.ZIndex = 997
-                                    overlay.Parent = gui
-                                    -- Rotate camera
                                     player:SetAttribute("AdminFlipped", true)
                                     task.spawn(function()
                                         while player:GetAttribute("AdminFlipped") do
                                             local cam = game.Workspace.CurrentCamera
                                             if cam then
-                                                cam.CFrame = cam.CFrame * CFrame.Angles(0, 0, math.rad(180))
+                                                local cf = cam.CFrame
+                                                local x,y,_ = cf:ToEulerAnglesYXZ()
+                                                cam.CFrame = CFrame.new(cf.Position) * CFrame.Angles(x, y, math.pi)
                                             end
-                                            task.wait(5)
+                                            task.wait(0.03)
                                         end
                                     end)
                                 end)
@@ -1074,39 +1047,33 @@ task.spawn(function()
                             elseif cmd == "unscreenflip" then
                                 pcall(function()
                                     player:SetAttribute("AdminFlipped", false)
-                                    local g = player.PlayerGui:FindFirstChild("AdminScreenFlip")
-                                    if g then g:Destroy() end
+                                    local cam = game.Workspace.CurrentCamera
+                                    if cam then
+                                        local cf = cam.CFrame
+                                        local x,y,_ = cf:ToEulerAnglesYXZ()
+                                        cam.CFrame = CFrame.new(cf.Position) * CFrame.Angles(x, y, 0)
+                                    end
                                 end)
 
                             elseif cmd == "screennoise" then
+                                -- Noise: ColorCorrection contrast ekstrim random tiap frame
                                 pcall(function()
-                                    local g = player.PlayerGui:FindFirstChild("AdminNoise")
-                                    if g then g:Destroy() end
-                                    local gui = Instance.new("ScreenGui")
-                                    gui.Name = "AdminNoise"
-                                    gui.ResetOnSpawn = false
-                                    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                                    gui.Parent = player.PlayerGui
+                                    local L = game:GetService("Lighting")
+                                    local e = L:FindFirstChild("AdminNoise") or Instance.new("ColorCorrectionEffect")
+                                    e.Name = "AdminNoise"
+                                    e.Parent = L
                                     player:SetAttribute("AdminNoise", true)
                                     task.spawn(function()
                                         while player:GetAttribute("AdminNoise") do
-                                            -- Buat banyak kotak kecil random
-                                            for i = 1, 80 do
-                                                local px = Instance.new("Frame")
-                                                px.Size = UDim2.new(0, math.random(2,8), 0, math.random(2,8))
-                                                px.Position = UDim2.new(math.random(), 0, math.random(), 0)
-                                                local c = math.random(0, 255)
-                                                px.BackgroundColor3 = Color3.fromRGB(c, c, c)
-                                                px.BackgroundTransparency = math.random() * 0.5
-                                                px.BorderSizePixel = 0
-                                                px.ZIndex = 998
-                                                px.Parent = gui
-                                            end
+                                            e.Brightness = math.random(-100,100)*0.01
+                                            e.Contrast = math.random(-100,100)*0.02
+                                            e.Saturation = math.random(-100,100)*0.02
+                                            e.TintColor = Color3.fromRGB(
+                                                math.random(100,255),
+                                                math.random(100,255),
+                                                math.random(100,255)
+                                            )
                                             task.wait(0.05)
-                                            -- Clear
-                                            for _, ch in pairs(gui:GetChildren()) do
-                                                if ch:IsA("Frame") then ch:Destroy() end
-                                            end
                                         end
                                     end)
                                 end)
@@ -1114,66 +1081,59 @@ task.spawn(function()
                             elseif cmd == "unscreennoise" then
                                 pcall(function()
                                     player:SetAttribute("AdminNoise", false)
-                                    local g = player.PlayerGui:FindFirstChild("AdminNoise")
-                                    if g then g:Destroy() end
+                                    local e = game:GetService("Lighting"):FindFirstChild("AdminNoise")
+                                    if e then e:Destroy() end
                                 end)
 
                             elseif cmd == "screenred" then
+                                -- Red tint via ColorCorrection
                                 pcall(function()
-                                    local g = player.PlayerGui:FindFirstChild("AdminScreenRed")
-                                    if g then g:Destroy() end
-                                    local gui = Instance.new("ScreenGui")
-                                    gui.Name = "AdminScreenRed"
-                                    gui.ResetOnSpawn = false
-                                    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                                    gui.Parent = player.PlayerGui
-                                    local f = Instance.new("Frame")
-                                    f.Size = UDim2.new(1,0,1,0)
-                                    f.BackgroundColor3 = Color3.fromRGB(255,0,0)
-                                    f.BackgroundTransparency = 0.6
-                                    f.BorderSizePixel = 0
-                                    f.ZIndex = 997
-                                    f.Parent = gui
+                                    local L = game:GetService("Lighting")
+                                    local e = L:FindFirstChild("AdminRed") or Instance.new("ColorCorrectionEffect")
+                                    e.Name = "AdminRed"
+                                    e.TintColor = Color3.fromRGB(255, 80, 80)
+                                    e.Brightness = 0.05
+                                    e.Saturation = 1
+                                    e.Parent = L
                                 end)
 
                             elseif cmd == "screenzoom" then
                                 pcall(function()
                                     local cam = game.Workspace.CurrentCamera
-                                    if cam then
-                                        cam.FieldOfView = 20
-                                    end
+                                    if cam then cam.FieldOfView = 15 end
                                 end)
 
                             elseif cmd == "unscreenzoom" then
                                 pcall(function()
                                     local cam = game.Workspace.CurrentCamera
-                                    if cam then
-                                        cam.FieldOfView = 70
-                                    end
+                                    if cam then cam.FieldOfView = 70 end
                                 end)
 
                             elseif cmd == "screenclear" then
                                 -- Hapus semua screen FX sekaligus
                                 pcall(function()
-                                    local fxNames = {
-                                        "AdminScreenBlind","AdminScreenSpin","AdminNoise",
-                                        "AdminScreenFlip","AdminScreenRed","AdminBlind"
-                                    }
-                                    for _, name in pairs(fxNames) do
-                                        local g = player.PlayerGui:FindFirstChild(name)
-                                        if g then g:Destroy() end
+                                    local L = game:GetService("Lighting")
+                                    local lightingFX = {"AdminBlind","AdminBlur","AdminNoise","AdminRed"}
+                                    for _, name in pairs(lightingFX) do
+                                        local e = L:FindFirstChild(name)
+                                        if e then e:Destroy() end
                                     end
-                                    -- Clear lighting effects
-                                    local blur = game:GetService("Lighting"):FindFirstChild("AdminBlur")
-                                    if blur then blur:Destroy() end
                                     -- Reset attributes
                                     local attrs = {"AdminScreenSpin","AdminScreenShake","AdminFlipped","AdminNoise"}
                                     for _, attr in pairs(attrs) do
                                         player:SetAttribute(attr, false)
                                     end
-                                    -- Reset camera FOV
+                                    -- Reset camera
                                     local cam = game.Workspace.CurrentCamera
-                                    if cam then cam.FieldOfView = 70 end
+                                    if cam then
+                                        cam.FieldOfView = 70
+                                        local cf = cam.CFrame
+                                        local x,y,_ = cf:ToEulerAnglesYXZ()
+                                        cam.CFrame = CFrame.new(cf.Position) * CFrame.Angles(x, y, 0)
+                                    end
+                                    -- Hapus juga GUI yang masih ada
+                                    local blindGui = player.PlayerGui:FindFirstChild("AdminBlind")
+                                    if blindGui then blindGui:Destroy() end
                                 end)
 
                             elseif cmd == "unfire" then
