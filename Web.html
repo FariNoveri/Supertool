@@ -418,6 +418,7 @@
     display: none;
     place-items: center;
     backdrop-filter: blur(4px);
+    overflow: hidden; /* prevent background scroll */
   }
 
   .modal-overlay.show { display: grid; }
@@ -429,6 +430,7 @@
     width: 420px;
     position: relative;
     animation: fadeUp 0.2s ease;
+    overflow: hidden;
   }
 
   .modal::before {
@@ -622,6 +624,9 @@
   }
   .nav-tab:hover { color: var(--text); }
   .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Hide scrollbar inside cmd modal */
+  .cmd-scroll-area::-webkit-scrollbar { display: none; }
 
   /* COMMAND SECTION */
   .cmd-section-label {
@@ -976,11 +981,12 @@
   <div class="modal" style="width:520px;max-height:90vh;display:flex;flex-direction:column;">
     <div style="flex-shrink:0">
       <div class="modal-title">🎮 Remote Control — <span id="cmd-username-label" style="color:var(--accent)"></span></div>
-      <div class="modal-sub" style="margin-bottom:12px;">Command dikirim ke player dalam ≤3 detik.</div>
+      <div class="modal-sub" style="margin-bottom:8px;">Command dikirim ke player dalam ≤3 detik.</div>
+    <input id="cmd-search" class="search-input" style="margin-bottom:10px;" placeholder="🔍 Search command..." oninput="filterCmds()" />
     </div>
 
     <!-- Scrollable content -->
-    <div style="overflow-y:auto;flex:1;padding-right:4px;margin-right:-4px;">
+    <div style="overflow-y:auto;flex:1;padding-right:4px;margin-right:-4px;scrollbar-width:none;-ms-overflow-style:none;" class="cmd-scroll-area">
 
       <div class="cmd-section-label">— General —</div>
       <div class="cmd-grid" style="margin-bottom:14px;">
@@ -1052,6 +1058,26 @@
         <button class="cmd-btn" onclick="sendCommand('unjail')" style="--c:#ffcc00">🔓 Unjail</button>
         <button class="cmd-btn" onclick="sendCommand('blind')" style="--c:#333333">🙈 Blind</button>
         <button class="cmd-btn" onclick="sendCommand('unblind')" style="--c:#aaaaaa">👀 Unblind</button>
+      </div>
+
+      <div class="cmd-section-label">— Screen FX —</div>
+      <div class="cmd-grid" style="margin-bottom:14px;">
+        <button class="cmd-btn" onclick="sendCommand('screenblind')" style="--c:#111111">⬛ Blind Screen</button>
+        <button class="cmd-btn" onclick="sendCommand('unscreenblind')" style="--c:#aaaaaa">💡 Unblind</button>
+        <button class="cmd-btn" onclick="sendCommand('screenblur')" style="--c:#aabbff">🌫️ Blur Screen</button>
+        <button class="cmd-btn" onclick="sendCommand('unscreenblur')" style="--c:#aaaaaa">🔭 Unblur</button>
+        <button class="cmd-btn" onclick="sendCommand('screenspin')" style="--c:#ff88ff">🌀 Spin Screen</button>
+        <button class="cmd-btn" onclick="sendCommand('unscreenspin')" style="--c:#aaaaaa">⏹️ Stop Spin</button>
+        <button class="cmd-btn" onclick="sendCommand('screenshake')" style="--c:#ff6600">📳 Shake</button>
+        <button class="cmd-btn" onclick="sendCommand('unscreenshake')" style="--c:#aaaaaa">🛑 Stop Shake</button>
+        <button class="cmd-btn" onclick="sendCommand('screenflip')" style="--c:#ff44aa">🙃 Flip Screen</button>
+        <button class="cmd-btn" onclick="sendCommand('unscreenflip')" style="--c:#aaaaaa">🔄 Unflip</button>
+        <button class="cmd-btn" onclick="sendCommand('screennoise')" style="--c:#ffaa00">📺 Static Noise</button>
+        <button class="cmd-btn" onclick="sendCommand('unscreennoise')" style="--c:#aaaaaa">📡 Clear</button>
+        <button class="cmd-btn" onclick="sendCommand('screenred')" style="--c:#ff0000">🔴 Red Tint</button>
+        <button class="cmd-btn" onclick="sendCommand('screenzoom')" style="--c:#ffdd00">🔍 Zoom In</button>
+        <button class="cmd-btn" onclick="sendCommand('unscreenzoom')" style="--c:#aaaaaa">🔎 Zoom Out</button>
+        <button class="cmd-btn" onclick="sendCommand('screenclear')" style="--c:#00ff88">✅ Clear All FX</button>
       </div>
 
       <div class="cmd-section-label">— Announce —</div>
@@ -1359,11 +1385,13 @@
     pendingBanUsername = username;
     document.getElementById('ban-modal-username').textContent = username;
     document.getElementById('ban-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
   }
 
   function closeBanModal() {
     document.getElementById('ban-modal').classList.remove('show');
     pendingBanUsername = null;
+    document.body.style.overflow = '';
   }
 
   async function executeBan(durationSecs) {
@@ -1651,11 +1679,57 @@
     cmdTargetUser = username;
     document.getElementById('cmd-username-label').textContent = username;
     document.getElementById('cmd-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
   }
 
   function closeCmdModal() {
     document.getElementById('cmd-modal').classList.remove('show');
     cmdTargetUser = null;
+    document.body.style.overflow = '';
+    // Reset search
+    const s = document.getElementById('cmd-search');
+    if (s) { s.value = ''; filterCmds(); }
+  }
+
+  function filterCmds() {
+    const q = (document.getElementById('cmd-search')?.value || '').toLowerCase().trim();
+    const btns = document.querySelectorAll('#cmd-modal .cmd-btn');
+    const sections = document.querySelectorAll('#cmd-modal .cmd-section-label');
+    const grids = document.querySelectorAll('#cmd-modal .cmd-grid');
+
+    if (!q) {
+      // Show all
+      btns.forEach(b => b.style.display = '');
+      sections.forEach(s => s.style.display = '');
+      grids.forEach(g => g.style.display = '');
+      return;
+    }
+
+    // Hide all sections/grids first, show matching buttons
+    sections.forEach(s => s.style.display = 'none');
+    grids.forEach(g => g.style.display = 'none');
+
+    btns.forEach(btn => {
+      const text = btn.textContent.toLowerCase();
+      const matches = text.includes(q);
+      btn.style.display = matches ? '' : 'none';
+      if (matches) {
+        // Show parent grid
+        const grid = btn.closest('.cmd-grid');
+        if (grid) {
+          grid.style.display = 'grid';
+          // Show section label before grid
+          let prev = grid.previousElementSibling;
+          while (prev) {
+            if (prev.classList.contains('cmd-section-label')) {
+              prev.style.display = '';
+              break;
+            }
+            prev = prev.previousElementSibling;
+          }
+        }
+      }
+    });
   }
 
   async function sendAnnounce() {
@@ -1689,7 +1763,15 @@
     "chicken":"🐔 Chicken","flat":"🥞 Flat","normalshape":"🔄 Normal Shape",
     "freeze":"🧊 Freeze","unfreeze":"❄️ Unfreeze",
     "jail":"⛓️ Jail","unjail":"🔓 Unjail",
-    "blind":"🙈 Blind","unblind":"👀 Unblind"
+    "blind":"🙈 Blind","unblind":"👀 Unblind",
+    "screenblind":"⬛ Blind Screen","unscreenblind":"💡 Unblind Screen",
+    "screenblur":"🌫️ Blur Screen","unscreenblur":"🔭 Unblur Screen",
+    "screenspin":"🌀 Spin Screen","unscreenspin":"⏹️ Stop Spin",
+    "screenshake":"📳 Shake Screen","unscreenshake":"🛑 Stop Shake",
+    "screenflip":"🙃 Flip Screen","unscreenflip":"🔄 Unflip Screen",
+    "screennoise":"📺 Static Noise","unscreennoise":"📡 Clear Noise",
+    "screenred":"🔴 Red Tint","screenzoom":"🔍 Zoom In",
+    "unscreenzoom":"🔎 Zoom Out","screenclear":"✅ Clear All FX"
   };
 
   async function sendCommand(command, skipClose = false) {
