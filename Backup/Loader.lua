@@ -10,7 +10,7 @@ local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
-local PROXY_URL = "https://script.google.com/macros/s/AKfycbwVSk1-NKRqREzRegVZ98gvNeGdmusYMgkNqn5k7bu83BWXCmMZ0EP158TZfyYNjbsZ/exec"
+local PROXY_URL = "https://script.google.com/macros/s/AKfycbwCAJScwQg_mvWwX0mUTc5sOQlblZDy-W9iO8T8ssE4eb-bTHIEbH5vrO_D6gKBK8Yz/exec"
 local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/FariNoveri/Supertool/main/Backup/MainLoader.lua"
 
 local FIREBASE_PROJECT = "supertool-18bae"
@@ -21,7 +21,6 @@ local FIRESTORE_BASE = "https://firestore.googleapis.com/v1/projects/" .. FIREBA
 -- CEK KEY VIA FIRESTORE LANGSUNG
 -- =====================================================
 local function validateKey(inputKey)
-    -- Ambil semua key dari Firestore
     local url = FIRESTORE_BASE .. "/keys?key=" .. API_KEY .. "&pageSize=200"
     local success, response = pcall(function()
         return game:HttpGet(url)
@@ -38,11 +37,13 @@ local function validateKey(inputKey)
         local assignedTo = f.assigned_to and f.assigned_to.stringValue or ""
         local isActive = f.active and f.active.booleanValue
         local expiry = f.expiry and tonumber(f.expiry.integerValue) or 0
+        local userLimit = f.user_limit and tonumber(f.user_limit.integerValue) or 0
+        local usedCount = f.used_count and tonumber(f.used_count.integerValue) or 0
 
         if keyVal == inputKey then
             -- Cek assigned ke username ini
             if assignedTo ~= "" and assignedTo ~= player.Name then
-                return false, "Key ini milik " .. assignedTo .. ", bukan " .. player.Name
+                return false, "Key ini khusus untuk " .. assignedTo
             end
             -- Cek active
             if isActive == false then
@@ -52,27 +53,27 @@ local function validateKey(inputKey)
             if expiry ~= 0 and os.time() > expiry then
                 return false, "Key sudah expired"
             end
-            -- Valid! Update used_by dan last_used
+            -- Cek user limit
+            if userLimit > 0 and usedCount >= userLimit then
+                return false, "Key sudah mencapai batas " .. userLimit .. " user"
+            end
+            -- Valid! Update via GAS
+            local docId = doc.name:match("([^/]+)$")
             pcall(function()
-                local docId = doc.name:match("([^/]+)$")
-                local patchUrl = FIRESTORE_BASE .. "/keys/" .. docId
-                    .. "?key=" .. API_KEY
-                    .. "&updateMask.fieldPaths=used_by"
-                    .. "&updateMask.fieldPaths=last_used"
                 game:HttpGet(PROXY_URL .. "?action=usekey&keyid=" .. docId .. "&username=" .. player.Name)
             end)
             return true, "OK"
         end
     end
 
-    return false, "Key tidak ditemukan"
+    return false, "Key tidak valid atau tidak ditemukan"
 end
 
 -- =====================================================
 -- CEK APAKAH PLAYER SUDAH PUNYA KEY VALID TERSIMPAN
 -- =====================================================
 local function checkSavedKey()
-    -- Cek di Firestore apakah player sudah pernah validasi key
+    -- Cek di Firestore: player sudah verified + cek key masih valid (tidak expired/disabled)
     local url = FIRESTORE_BASE .. "/users/" .. player.Name .. "?key=" .. API_KEY
     local success, response = pcall(function()
         return game:HttpGet(url)
@@ -83,15 +84,42 @@ local function checkSavedKey()
     if not ok or not data or not data.fields then return false end
 
     local keyVerified = data.fields.key_verified
-    return keyVerified and keyVerified.booleanValue == true
+    if not keyVerified or keyVerified.booleanValue ~= true then return false end
+
+    -- Ambil key yang dipakai player ini
+    local savedKey = data.fields.verified_key and data.fields.verified_key.stringValue or ""
+    if savedKey == "" then return false end
+
+    -- Cek key masih valid di collection keys
+    local keyUrl = FIRESTORE_BASE .. "/keys/" .. savedKey .. "?key=" .. API_KEY
+    local ks, kr = pcall(function() return game:HttpGet(keyUrl) end)
+    if not ks or not kr then return false end
+
+    local ko, kd = pcall(HttpService.JSONDecode, HttpService, kr)
+    if not ko or not kd or not kd.fields then return false end
+
+    local kf = kd.fields
+    -- Cek masih active
+    if kf.active and kf.active.booleanValue == false then
+        return false
+    end
+    -- Cek belum expired
+    local expiry = kf.expiry and tonumber(kf.expiry.integerValue) or 0
+    if expiry ~= 0 and os.time() > expiry then
+        return false
+    end
+
+    return true
 end
 
 -- =====================================================
 -- SAVE KEY VERIFIED KE FIRESTORE
 -- =====================================================
-local function saveKeyVerified()
+local function saveKeyVerified(keyVal)
     pcall(function()
-        game:HttpGet(PROXY_URL .. "?action=setkeyverified&username=" .. player.Name)
+        game:HttpGet(PROXY_URL 
+            .. "?action=setkeyverified&username=" .. player.Name
+            .. "&keyval=" .. (keyVal or ""))
     end)
 end
 
@@ -325,8 +353,8 @@ local function doVerify()
             submitBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
             submitBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 
-            -- Simpan verified ke Firestore
-            saveKeyVerified()
+            -- Simpan verified ke Firestore (simpan juga key-nya untuk re-validasi)
+            saveKeyVerified(inputBox.Text:match("^%s*(.-)%s*$"))
 
             task.wait(1)
 

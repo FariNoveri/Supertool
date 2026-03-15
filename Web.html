@@ -787,6 +787,7 @@
               <th>Used By</th>
               <th>Last Used</th>
               <th>Expiry</th>
+              <th>Used/Limit</th>
               <th>Note</th>
               <th>Status</th>
               <th>Actions</th>
@@ -833,9 +834,15 @@
       </select>
     </div>
 
-    <div style="margin-bottom:20px;">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Note (opsional)</div>
-      <input id="ck-note" class="modal-input" style="margin:0" placeholder="Catatan untuk key ini..." />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">User Limit</div>
+        <input id="ck-userlimit" class="modal-input" style="margin:0" type="number" min="0" placeholder="0 = unlimited" />
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Note (opsional)</div>
+        <input id="ck-note" class="modal-input" style="margin:0" placeholder="Catatan..." />
+      </div>
     </div>
 
     <div class="modal-actions">
@@ -1482,7 +1489,9 @@
           expiry: parseInt(f.expiry?.integerValue || 0),
           active: f.active?.booleanValue !== false,
           note: f.note?.stringValue || '',
-          created_at: parseInt(f.created_at?.integerValue || 0)
+          created_at: parseInt(f.created_at?.integerValue || 0),
+          user_limit: parseInt(f.user_limit?.integerValue || 0),
+          used_count: parseInt(f.used_count?.integerValue || 0)
         };
       });
 
@@ -1514,13 +1523,16 @@
         : isExpired ? '⚠ Expired'
         : formatTimeLeft(k.expiry - now);
 
+      const isLimitReached = k.user_limit > 0 && k.used_count >= k.user_limit;
       const statusBadge = !k.active
         ? '<span class="badge blacklisted">DISABLED</span>'
         : isExpired
           ? '<span class="badge" style="color:#ffaa00;border-color:#ffaa00">EXPIRED</span>'
-          : k.used_by
-            ? '<span class="badge active">USED</span>'
-            : '<span class="badge" style="color:#aaa;border-color:#333">UNUSED</span>';
+          : isLimitReached
+            ? '<span class="badge" style="color:#ff6600;border-color:#ff6600">LIMIT REACHED</span>'
+            : k.used_count > 0
+              ? '<span class="badge active">ACTIVE</span>'
+              : '<span class="badge" style="color:#aaa;border-color:#333">UNUSED</span>';
 
       return `
         <tr class="row-enter" style="animation-delay:${i*0.03}s">
@@ -1534,6 +1546,9 @@
           <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.used_by || '—'}</td>
           <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.last_used ? formatTime(k.last_used) : '—'}</td>
           <td style="font-family:var(--mono);font-size:11px;color:${isExpired ? '#ffaa00' : 'var(--muted)'}">${expiryText}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:${k.user_limit > 0 && k.used_count >= k.user_limit ? 'var(--accent2)' : 'var(--muted)'}">
+            ${k.used_count}${k.user_limit > 0 ? ' / ' + k.user_limit : ' / ∞'}
+          </td>
           <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${k.note || '—'}</td>
           <td>${statusBadge}</td>
           <td>
@@ -1587,6 +1602,7 @@
     const keyval = document.getElementById('ck-keyval').value.trim();
     const assigned = document.getElementById('ck-assigned').value.trim();
     const note = document.getElementById('ck-note').value.trim();
+    const userLimit = parseInt(document.getElementById('ck-userlimit').value) || 0;
     const expiryOffset = parseInt(document.getElementById('ck-expiry').value);
     const expiry = expiryOffset === 0 ? 0 : Math.floor(Date.now()/1000) + expiryOffset;
 
@@ -1595,7 +1611,6 @@
     closeCreateKeyModal();
 
     try {
-      // Tulis langsung ke Firestore
       const url = `${FIRESTORE_BASE}/keys/${encodeURIComponent(keyval)}?key=${API_KEY}`;
       const res = await fetch(url, {
         method: "PATCH",
@@ -1609,7 +1624,9 @@
             note: { stringValue: note },
             created_at: { integerValue: String(Math.floor(Date.now()/1000)) },
             used_by: { stringValue: "" },
-            last_used: { integerValue: "0" }
+            last_used: { integerValue: "0" },
+            user_limit: { integerValue: String(userLimit) },
+            used_count: { integerValue: "0" }
           }
         })
       });
@@ -1623,6 +1640,7 @@
         fields: [
           { name: "Key", value: "`" + keyval + "`", inline: true },
           { name: "Assigned To", value: assigned || "Siapa saja", inline: true },
+          { name: "User Limit", value: userLimit === 0 ? "Unlimited" : String(userLimit), inline: true },
           { name: "Note", value: note || "—", inline: false }
         ],
         footer: { text: "SuperTool Admin Panel • " + new Date().toUTCString() }
