@@ -101,7 +101,6 @@ local function toggleForceField(enabled)
                     end
                 end)
             end
-        else
         end
     else
         if player.Character then
@@ -165,9 +164,6 @@ local function toggleFastRespawn(enabled)
                     local startTime = tick()
                     while not player.Character and Player.fastRespawnEnabled and (tick() - startTime) < 5 do
                         task.wait(0.05)
-                    end
-                    
-                    if player.Character then
                     end
                 end)
             end
@@ -233,7 +229,6 @@ local function toggleNoDeathAnimation(enabled)
                                 track:Stop()
                             end
                         end
-                        
                     end
                 end)
             end
@@ -273,7 +268,6 @@ local function toggleNoDeathAnimation(enabled)
             connections.nodeathanimation:Disconnect()
             connections.nodeathanimation = nil
         end
-        
     end
 end
 
@@ -699,7 +693,6 @@ local function toggleMagnetPlayers(enabled)
             connections.magnetRespawn:Disconnect()
             connections.magnetRespawn = nil
         end
-        
     end
 end
 
@@ -745,7 +738,6 @@ local function setupPlayerMonitoring(targetPlayer)
                 toggleNoDeathAnimation(true)
             end
         end
-        
     end)
     
     if Player.freezeEnabled and targetPlayer.Character then
@@ -887,7 +879,6 @@ local function teleportToPlayer(targetPlayer, direction)
             end
             local newPosition = targetPosition * CFrame.new(offset)
             Player.rootPart.CFrame = newPosition
-        else
         end
     end)
     
@@ -929,7 +920,6 @@ end
 local function showEmoteGui()
     if EmoteGuiFrame then
         EmoteGuiFrame.Visible = not EmoteGuiFrame.Visible
-    else
     end
 end
 
@@ -1262,7 +1252,6 @@ local function showPlayerSelection()
     if PlayerListFrame then
         PlayerListFrame.Visible = true
         Player.updatePlayerList()
-    else
     end
 end
 
@@ -1536,7 +1525,6 @@ function Player.updatePlayerList()
                 bringButton.MouseLeave:Connect(function()
                     bringButton.BackgroundColor3 = Color3.fromRGB(40, 60, 80)
                 end)
-                
             end
             
             createButtonConnections(p)
@@ -1623,8 +1611,17 @@ function Player.init(deps)
     connections = deps.connections or {}
     buttonStates = deps.buttonStates or {}
     ScrollFrame = deps.ScrollFrame
-    ScreenGui = deps.ScreenGui
     
+    -- ================== PERBAIKAN GUI (AUTO CREATE SCREENGUI) ==================
+    ScreenGui = deps.ScreenGui
+    if not ScreenGui and player then
+        ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "PlayerModuleGui"
+        ScreenGui.Parent = player:WaitForChild("PlayerGui")
+        ScreenGui.ResetOnSpawn = false
+    end
+    -- =========================================================================
+
     if not Players or not RunService or not Workspace or not player then
         return
     end
@@ -1711,7 +1708,6 @@ function Player.cleanup()
     Player.playerListVisible = false
     Player.frozenPlayerPositions = {}
     Player.magnetPlayerPositions = {}
-    
 end
 
 local function initUI()
@@ -2002,7 +1998,6 @@ local function initUI()
     end
 
     updateEmoteMenu()
-    
 end
 
 local function initConnections()
@@ -2027,8 +2022,6 @@ local function initConnections()
     connections.characterAdded = player.CharacterAdded:Connect(function(character)
         Player.rootPart = character:WaitForChild("HumanoidRootPart", 5)
         humanoid = character:WaitForChild("Humanoid", 5)
-        if not Player.rootPart or not humanoid then
-        end
         if Player.forceFieldEnabled then
             task.wait(0.1)
             toggleForceField(true)
