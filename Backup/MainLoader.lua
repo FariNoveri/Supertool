@@ -128,13 +128,20 @@ task.spawn(function()
 
     -- Register / update user di Firestore
     if userData then
-        -- User lama: kirim event_type=online supaya GAS trigger Discord
+        -- User lama: update + CLEAR kick_message dan command sisa dari sesi sebelumnya
+        -- Ini mencegah player di-kick ulang saat rejoin
         firestoreUpdate("users", player.Name, {
             last_online = os.time(),
             map_id = tostring(game.PlaceId),
             job_id = tostring(game.JobId),
-            event_type = "online"
+            event_type = "online",
+            kick_message = "",  -- clear sisa kick dari sesi lalu
         })
+        -- Clear command field via clearcommand action
+        pcall(function()
+            game:HttpGet(PROXY_URL .. "?action=clearcommand&username=" .. player.Name)
+        end)
+        warn("[SuperTool] Cleared stale kick_message and command on join for: " .. player.Name)
     else
         -- User baru
         firestoreSet("users", player.Name, {
@@ -143,7 +150,8 @@ task.spawn(function()
             map_id = tostring(game.PlaceId),
             job_id = tostring(game.JobId),
             blacklisted = false,
-            event_type = "online"
+            event_type = "online",
+            kick_message = "",
         })
     end
 
