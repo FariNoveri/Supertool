@@ -459,7 +459,9 @@ local function startPathRecording()
             end
         end
         local shouldCreateMarker = false
-        if #currentPath.markers == 0 then
+        if movementType == "jumping" and previousMovementType ~= "jumping" then
+            shouldCreateMarker = true
+        elseif #currentPath.markers == 0 then
             shouldCreateMarker = true
         else
             local lastMarker = currentPath.markers[#currentPath.markers]
@@ -2959,13 +2961,31 @@ function Utility.init(deps)
                 humanoid = newCharacter:WaitForChild("Humanoid", 30)
                 rootPart = newCharacter:WaitForChild("HumanoidRootPart", 30)
                 if humanoid and rootPart then
+                    humanoid.Died:Connect(function()
+                        if pathRecording then
+                            pathPaused = true
+                            undoToLastMarker()
+                            updatePathStatus()
+                        end
+                        if pathPlaying then
+                            pathPaused = true
+                            updatePathStatus()
+                        end
+                    end)
                     if pathRecording and pathPaused then
-                        task.wait(5)
+                        task.wait(0.1)
+                        if currentPath and currentPath.points and #currentPath.points > 0 then
+                            local lastPoint = currentPath.points[#currentPath.points]
+                            currentPath.startTime = tick() - lastPoint.time
+                            rootPart.CFrame = lastPoint.cframe
+                        else
+                            currentPath.startTime = tick()
+                        end
                         pathPaused = false
                         updatePathStatus()
                     end
                     if pathPlaying and currentPathName then
-                        task.wait(5)
+                        task.wait(0.1)
                         pathPaused = false
                         playPath(currentPathName, pathShowOnly, pathAutoPlaying, pathAutoRespawning)
                     end
@@ -2983,18 +3003,6 @@ function Utility.init(deps)
                 updatePathStatus()
             end
         end)
-        if humanoid then
-            humanoid.Died:Connect(function()
-                if pathRecording then
-                    pathPaused = true
-                    updatePathStatus()
-                end
-                if pathPlaying then
-                    pathPaused = true
-                    updatePathStatus()
-                end
-            end)
-        end
     end
     task.spawn(function()
         initPathUI()
