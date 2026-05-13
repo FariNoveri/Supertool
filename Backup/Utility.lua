@@ -173,14 +173,24 @@ local function updateCharacterReferences()
     return false
 end
 
-local function killPlayer()
+local function resetCharacter()
+    if not updateCharacterReferences() then return end
+    local savedCFrame = rootPart.CFrame
+    local connection
+    connection = player.CharacterAdded:Connect(function(newCharacter)
+        local newRoot = newCharacter:WaitForChild("HumanoidRootPart", 5)
+        if newRoot then
+            task.wait(0.1)
+            newRoot.CFrame = savedCFrame
+        end
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+    end)
     if humanoid then
         humanoid.Health = 0
     end
-end
-
-local function resetCharacter()
-    killPlayer()
 end
 
 local function detectMovementType(velocity, position)
@@ -2889,474 +2899,6 @@ local function setupKeyboardControls()
     end)
 end
 
-local function createDirectTool(gearId)
-    pcall(function()
-        local assets = game:GetObjects("rbxassetid://" .. gearId)
-        local originalTool = assets[1]
-        if not originalTool or not originalTool:IsA("Tool") then
-            return
-        end
-        local newTool = Instance.new("Tool")
-        newTool.Name = originalTool.Name
-        newTool.RequiresHandle = true
-        newTool.CanBeDropped = true
-        for _, child in pairs(originalTool:GetChildren()) do
-            if child.Name == "Handle" or child:IsA("BasePart") or child:IsA("Mesh") or child:IsA("Texture") or child:IsA("Decal") or child:IsA("SpecialMesh") or child:IsA("Script") or child:IsA("LocalScript") or child:IsA("ModuleScript") then
-                local clonedChild = child:Clone()
-                clonedChild.Parent = newTool
-                if clonedChild:IsA("Script") or clonedChild:IsA("LocalScript") then
-                    clonedChild.Disabled = true
-                end
-            end
-        end
-        newTool.Parent = player.Backpack
-        task.wait(0.1)
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            player.Character.Humanoid:EquipTool(newTool)
-        end
-    end)
-end
-
-local function loadGear(id)
-    createDirectTool(id)
-end
-
-local function initGearUI()
-    if GearFrame then return end
-    GearFrame = Instance.new("Frame")
-    GearFrame.Name = "GearFrame"
-    GearFrame.Parent = ScreenGui
-    GearFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    GearFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    GearFrame.BorderSizePixel = 1
-    GearFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
-    GearFrame.Size = UDim2.new(0, 250, 0, 300)
-    GearFrame.Visible = false
-    GearFrame.Active = true
-    GearFrame.Draggable = true
-    local GearTitle = Instance.new("TextLabel")
-    GearTitle.Parent = GearFrame
-    GearTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearTitle.BorderSizePixel = 0
-    GearTitle.Size = UDim2.new(1, 0, 0, 25)
-    GearTitle.Font = Enum.Font.GothamBold
-    GearTitle.Text = "GEAR LOADER"
-    GearTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearTitle.TextSize = 10
-    local CloseGearButton = Instance.new("TextButton")
-    CloseGearButton.Parent = GearFrame
-    CloseGearButton.BackgroundTransparency = 1
-    CloseGearButton.Position = UDim2.new(1, -25, 0, 2)
-    CloseGearButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseGearButton.Font = Enum.Font.GothamBold
-    CloseGearButton.Text = "X"
-    CloseGearButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    CloseGearButton.TextSize = 12
-    GearInput = Instance.new("TextBox")
-    GearInput.Parent = GearFrame
-    GearInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    GearInput.BorderSizePixel = 0
-    GearInput.Position = UDim2.new(0, 5, 0, 30)
-    GearInput.Size = UDim2.new(0.7, -10, 0, 25)
-    GearInput.Font = Enum.Font.Gotham
-    GearInput.PlaceholderText = "Enter Gear ID..."
-    GearInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    GearInput.TextSize = 8
-    local LoadCustomButton = Instance.new("TextButton")
-    LoadCustomButton.Parent = GearFrame
-    LoadCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    LoadCustomButton.BorderSizePixel = 0
-    LoadCustomButton.Position = UDim2.new(0.7, 0, 0, 30)
-    LoadCustomButton.Size = UDim2.new(0.3, -5, 0, 25)
-    LoadCustomButton.Font = Enum.Font.GothamBold
-    LoadCustomButton.Text = "LOAD"
-    LoadCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    LoadCustomButton.TextSize = 8
-    GearScrollFrame = Instance.new("ScrollingFrame")
-    GearScrollFrame.Parent = GearFrame
-    GearScrollFrame.BackgroundTransparency = 1
-    GearScrollFrame.Position = UDim2.new(0, 5, 0, 60)
-    GearScrollFrame.Size = UDim2.new(1, -10, 1, -65)
-    GearScrollFrame.ScrollBarThickness = 3
-    GearScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    GearLayout = Instance.new("UIListLayout")
-    GearLayout.Parent = GearScrollFrame
-    GearLayout.Padding = UDim.new(0, 3)
-    CloseGearButton.MouseButton1Click:Connect(function()
-        GearFrame.Visible = false
-        gearFrameVisible = false
-    end)
-    LoadCustomButton.MouseButton1Click:Connect(function()
-        local id = tonumber(GearInput.Text)
-        if id then
-            loadGear(id)
-            GearInput.Text = ""
-        end
-    end)
-    for _, gear in ipairs(predefinedGears) do
-        local gearItem = Instance.new("TextButton")
-        gearItem.Parent = GearScrollFrame
-        gearItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        gearItem.Size = UDim2.new(1, 0, 0, 25)
-        gearItem.Text = gear.name .. " (ID: " .. gear.id .. ")"
-        gearItem.TextColor3 = Color3.fromRGB(255, 255, 255)
-        gearItem.TextSize = 8
-        gearItem.Font = Enum.Font.Gotham
-        gearItem.MouseButton1Click:Connect(function()
-            loadGear(gear.id)
-        end)
-    end
-    GearScrollFrame.CanvasSize = UDim2.new(0, 0, 0, GearLayout.AbsoluteContentSize.Y + 10)
-end
-
-local function toggleGearManager()
-    if not GearFrame then initGearUI() end
-    gearFrameVisible = not gearFrameVisible
-    GearFrame.Visible = gearFrameVisible
-end
-
-local function spawnObject(id)
-    pcall(function()
-        local assets = game:GetObjects("rbxassetid://" .. id)
-        local obj = assets[1]
-        if obj then
-            obj.Parent = workspace
-        end
-    end)
-end
-
-local function initObjectUI()
-    if ObjectFrame then return end
-    ObjectFrame = Instance.new("Frame")
-    ObjectFrame.Name = "ObjectFrame"
-    ObjectFrame.Parent = ScreenGui
-    ObjectFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    ObjectFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    ObjectFrame.BorderSizePixel = 1
-    ObjectFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
-    ObjectFrame.Size = UDim2.new(0, 250, 0, 300)
-    ObjectFrame.Visible = false
-    ObjectFrame.Active = true
-    ObjectFrame.Draggable = true
-    local ObjectTitle = Instance.new("TextLabel")
-    ObjectTitle.Parent = ObjectFrame
-    ObjectTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    ObjectTitle.BorderSizePixel = 0
-    ObjectTitle.Size = UDim2.new(1, 0, 0, 25)
-    ObjectTitle.Font = Enum.Font.GothamBold
-    ObjectTitle.Text = "OBJECT SPAWNER"
-    ObjectTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ObjectTitle.TextSize = 10
-    local CloseObjectButton = Instance.new("TextButton")
-    CloseObjectButton.Parent = ObjectFrame
-    CloseObjectButton.BackgroundTransparency = 1
-    CloseObjectButton.Position = UDim2.new(1, -25, 0, 2)
-    CloseObjectButton.Size = UDim2.new(0, 20, 0, 20)
-    CloseObjectButton.Font = Enum.Font.GothamBold
-    CloseObjectButton.Text = "X"
-    CloseObjectButton.TextColor3 = Color3.fromRGB(255, 100, 100)
-    CloseObjectButton.TextSize = 12
-    ObjectInput = Instance.new("TextBox")
-    ObjectInput.Parent = ObjectFrame
-    ObjectInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    ObjectInput.BorderSizePixel = 0
-    ObjectInput.Position = UDim2.new(0, 5, 0, 30)
-    ObjectInput.Size = UDim2.new(0.7, -10, 0, 25)
-    ObjectInput.Font = Enum.Font.Gotham
-    ObjectInput.PlaceholderText = "Enter Object ID..."
-    ObjectInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ObjectInput.TextSize = 8
-    local SpawnCustomButton = Instance.new("TextButton")
-    SpawnCustomButton.Parent = ObjectFrame
-    SpawnCustomButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    SpawnCustomButton.BorderSizePixel = 0
-    SpawnCustomButton.Position = UDim2.new(0.7, 0, 0, 30)
-    SpawnCustomButton.Size = UDim2.new(0.3, -5, 0, 25)
-    SpawnCustomButton.Font = Enum.Font.GothamBold
-    SpawnCustomButton.Text = "SPAWN"
-    SpawnCustomButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SpawnCustomButton.TextSize = 8
-    ObjectScrollFrame = Instance.new("ScrollingFrame")
-    ObjectScrollFrame.Parent = ObjectFrame
-    ObjectScrollFrame.BackgroundTransparency = 1
-    ObjectScrollFrame.Position = UDim2.new(0, 5, 0, 60)
-    ObjectScrollFrame.Size = UDim2.new(1, -10, 1, -65)
-    ObjectScrollFrame.ScrollBarThickness = 3
-    ObjectScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    ObjectLayout = Instance.new("UIListLayout")
-    ObjectLayout.Parent = ObjectScrollFrame
-    ObjectLayout.Padding = UDim.new(0, 3)
-    CloseObjectButton.MouseButton1Click:Connect(function()
-        ObjectFrame.Visible = false
-        objectFrameVisible = false
-    end)
-    SpawnCustomButton.MouseButton1Click:Connect(function()
-        local id = tonumber(ObjectInput.Text)
-        if id then
-            spawnObject(id)
-            ObjectInput.Text = ""
-        end
-    end)
-    for _, obj in ipairs(predefinedObjects) do
-        local objItem = Instance.new("TextButton")
-        objItem.Parent = ObjectScrollFrame
-        objItem.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        objItem.Size = UDim2.new(1, 0, 0, 25)
-        objItem.Text = obj.name .. " (ID: " .. obj.id .. ")"
-        objItem.TextColor3 = Color3.fromRGB(255, 255, 255)
-        objItem.TextSize = 8
-        objItem.Font = Enum.Font.Gotham
-        objItem.MouseButton1Click:Connect(function()
-            spawnObject(obj.id)
-        end)
-    end
-    ObjectScrollFrame.CanvasSize = UDim2.new(0, 0, 0, ObjectLayout.AbsoluteContentSize.Y + 10)
-end
-
-local function toggleObjectSpawner()
-    if not ObjectFrame then initObjectUI() end
-    objectFrameVisible = not objectFrameVisible
-    ObjectFrame.Visible = objectFrameVisible
-end
-
-local function applyMessageMods(message)
-    if rainbowChat then
-        local rainbowStr = ""
-        local hue = 0
-        local step = 1 / #message
-        for i = 1, #message do
-            local char = message:sub(i, i)
-            local color = Color3.fromHSV(hue, 1, 1)
-            rainbowStr = rainbowStr .. string.format('<font color="rgb(%d,%d,%d)">%s</font>', math.floor(color.R*255), math.floor(color.G*255), math.floor(color.B*255), char)
-            hue = (hue + step) % 1
-        end
-        message = rainbowStr
-    elseif customChatColor then
-        message = string.format('<font color="rgb(%d,%d,%d)">%s</font>', math.floor(customChatColor.R*255), math.floor(customChatColor.G*255), math.floor(customChatColor.B*255), message)
-    end
-    if customChatFont then
-        message = string.format('<font face="%s">%s</font>', customChatFont.Name, message)
-    end
-    return message
-end
-
-local function setupChatCustom()
-    pcall(function()
-        local chatGui = player.PlayerGui:WaitForChild("Chat", 10)
-        if not chatGui then return end
-        local chatBar = chatGui.Frame.ChatBarParentFrame.Frame.BoxFrame.BackgroundFrame.TextBox
-        local rs = game:GetService("ReplicatedStorage")
-        local chatEventsFolder = rs:WaitForChild("DefaultChatSystemChatEvents")
-        sayMessageRequest = chatEventsFolder:WaitForChild("SayMessageRequest")
-        chatBar.FocusLost:Connect(function(enterPressed)
-            if enterPressed then
-                local msg = chatBar.Text
-                chatBar.Text = ""
-                if #msg > 0 then
-                    local modMsg = applyMessageMods(msg)
-                    sayMessageRequest:FireServer(modMsg, "All")
-                end
-            end
-        end)
-        local messageLog = chatGui.Frame.ChatChannelParentFrame.Frame_MessageLogDisplay.Scroller
-        local ourDisplayName = player.DisplayName
-        local ourUsername = player.Name
-        messageLog.ChildAdded:Connect(function(child)
-            task.wait(0.1)
-            for _, desc in pairs(child:GetDescendants()) do
-                if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-                    local text = desc.Text
-                    local baseName
-                    if text:find(ourDisplayName .. ": ") then
-                        baseName = ourDisplayName
-                    elseif text:find(ourUsername .. ": ") then
-                        baseName = ourUsername
-                    end
-                    if baseName then
-                        local tagged
-                        if tagPosition == "front" then
-                            tagged = nameTag .. baseName
-                        elseif tagPosition == "back" then
-                            tagged = baseName .. nameTag
-                        else
-                            local half = math.floor(#baseName / 2)
-                            tagged = baseName:sub(1, half) .. nameTag .. baseName:sub(half + 1)
-                        end
-                        desc.Text = text:gsub(baseName, tagged, 1)
-                    end
-                end
-            end
-        end)
-    end)
-end
-
-local function initChatUI()
-    if ChatFrame then return end
-    ChatFrame = Instance.new("Frame")
-    ChatFrame.Name = "ChatFrame"
-    ChatFrame.Parent = ScreenGui
-    ChatFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    ChatFrame.BorderColor3 = Color3.fromRGB(45, 45, 45)
-    ChatFrame.BorderSizePixel = 1
-    ChatFrame.Position = UDim2.new(0.5, 0, 0.2, 0)
-    ChatFrame.Size = UDim2.new(0, 250, 0, 300)
-    ChatFrame.Visible = false
-    ChatFrame.Active = true
-    ChatFrame.Draggable = true
-    local title = Instance.new("TextLabel")
-    title.Parent = ChatFrame
-    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    title.BorderSizePixel = 0
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.Font = Enum.Font.GothamBold
-    title.Text = "CHAT CUSTOMIZER"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 10
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Parent = ChatFrame
-    closeBtn.BackgroundTransparency = 1
-    closeBtn.Position = UDim2.new(1, -25, 0, 2)
-    closeBtn.Size = UDim2.new(0, 20, 0, 20)
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeBtn.TextSize = 12
-    closeBtn.MouseButton1Click:Connect(function()
-        ChatFrame.Visible = false
-        chatFrameVisible = false
-    end)
-    local tagLabel = Instance.new("TextLabel")
-    tagLabel.Parent = ChatFrame
-    tagLabel.Position = UDim2.new(0, 5, 0, 30)
-    tagLabel.Size = UDim2.new(0.4, 0, 0, 25)
-    tagLabel.BackgroundTransparency = 1
-    tagLabel.Text = "Name Tag:"
-    tagLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    tagLabel.TextSize = 10
-    tagLabel.Font = Enum.Font.Gotham
-    ChatInputTag = Instance.new("TextBox")
-    ChatInputTag.Parent = ChatFrame
-    ChatInputTag.Position = UDim2.new(0.4, 0, 0, 30)
-    ChatInputTag.Size = UDim2.new(0.6, -5, 0, 25)
-    ChatInputTag.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    ChatInputTag.Text = nameTag
-    ChatInputTag.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ChatInputTag.Font = Enum.Font.Gotham
-    ChatInputTag.TextSize = 10
-    ChatInputTag.FocusLost:Connect(function()
-        nameTag = ChatInputTag.Text
-    end)
-    local posLabel = Instance.new("TextLabel")
-    posLabel.Parent = ChatFrame
-    posLabel.Position = UDim2.new(0, 5, 0, 60)
-    posLabel.Size = UDim2.new(0.4, 0, 0, 25)
-    posLabel.BackgroundTransparency = 1
-    posLabel.Text = "Tag Position:"
-    posLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    posLabel.TextSize = 10
-    posLabel.Font = Enum.Font.Gotham
-    ChatPositionToggle = Instance.new("TextButton")
-    ChatPositionToggle.Parent = ChatFrame
-    ChatPositionToggle.Position = UDim2.new(0.4, 0, 0, 60)
-    ChatPositionToggle.Size = UDim2.new(0.6, -5, 0, 25)
-    ChatPositionToggle.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-    ChatPositionToggle.Text = tagPosition:upper()
-    ChatPositionToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ChatPositionToggle.Font = Enum.Font.Gotham
-    ChatPositionToggle.TextSize = 10
-    ChatPositionToggle.MouseButton1Click:Connect(function()
-        if tagPosition == "front" then
-            tagPosition = "middle"
-        elseif tagPosition == "middle" then
-            tagPosition = "back"
-        else
-            tagPosition = "front"
-        end
-        ChatPositionToggle.Text = tagPosition:upper()
-    end)
-    RainbowToggle = Instance.new("TextButton")
-    RainbowToggle.Parent = ChatFrame
-    RainbowToggle.Position = UDim2.new(0, 5, 0, 90)
-    RainbowToggle.Size = UDim2.new(1, -10, 0, 25)
-    RainbowToggle.BackgroundColor3 = rainbowChat and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(150, 50, 50)
-    RainbowToggle.Text = "Rainbow Chat: " .. (rainbowChat and "ON" or "OFF")
-    RainbowToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    RainbowToggle.Font = Enum.Font.Gotham
-    RainbowToggle.TextSize = 10
-    RainbowToggle.MouseButton1Click:Connect(function()
-        rainbowChat = not rainbowChat
-        RainbowToggle.Text = "Rainbow Chat: " .. (rainbowChat and "ON" or "OFF")
-        RainbowToggle.BackgroundColor3 = rainbowChat and Color3.fromRGB(60, 120, 60) or Color3.fromRGB(150, 50, 50)
-    end)
-    local colorLabel = Instance.new("TextLabel")
-    colorLabel.Parent = ChatFrame
-    colorLabel.Position = UDim2.new(0, 5, 0, 120)
-    colorLabel.Size = UDim2.new(0.4, 0, 0, 25)
-    colorLabel.BackgroundTransparency = 1
-    colorLabel.Text = "Custom Color (HEX):"
-    colorLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    colorLabel.TextSize = 10
-    colorLabel.Font = Enum.Font.Gotham
-    ColorInput = Instance.new("TextBox")
-    ColorInput.Parent = ChatFrame
-    ColorInput.Position = UDim2.new(0.4, 0, 0, 120)
-    ColorInput.Size = UDim2.new(0.6, -5, 0, 25)
-    ColorInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    ColorInput.PlaceholderText = "#RRGGBB or empty to disable"
-    ColorInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ColorInput.Font = Enum.Font.Gotham
-    ColorInput.TextSize = 10
-    ColorInput.FocusLost:Connect(function()
-        if ColorInput.Text == "" then
-            customChatColor = nil
-            return
-        end
-        local r, g, b = ColorInput.Text:match("#?(%x%x)(%x%x)(%x%x)")
-        if r and g and b then
-            customChatColor = Color3.fromRGB(tonumber(r,16), tonumber(g,16), tonumber(b,16))
-        else
-            customChatColor = nil
-        end
-    end)
-    local fontLabel = Instance.new("TextLabel")
-    fontLabel.Parent = ChatFrame
-    fontLabel.Position = UDim2.new(0, 5, 0, 150)
-    fontLabel.Size = UDim2.new(0.4, 0, 0, 25)
-    fontLabel.BackgroundTransparency = 1
-    fontLabel.Text = "Custom Font:"
-    fontLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    fontLabel.TextSize = 10
-    fontLabel.Font = Enum.Font.Gotham
-    FontInput = Instance.new("TextBox")
-    FontInput.Parent = ChatFrame
-    FontInput.Position = UDim2.new(0.4, 0, 0, 150)
-    FontInput.Size = UDim2.new(0.6, -5, 0, 25)
-    FontInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    FontInput.PlaceholderText = "Gotham, Arial, etc or empty"
-    FontInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    FontInput.Font = Enum.Font.Gotham
-    FontInput.TextSize = 10
-    FontInput.FocusLost:Connect(function()
-        if FontInput.Text == "" then
-            customChatFont = nil
-        else
-            if Enum.Font[FontInput.Text] then
-                customChatFont = Enum.Font[FontInput.Text]
-            else
-                customChatFont = nil
-            end
-        end
-    end)
-end
-
-local function toggleChatCustomizer()
-    if not ChatFrame then initChatUI() end
-    chatFrameVisible = not chatFrameVisible
-    ChatFrame.Visible = chatFrameVisible
-end
-
 function Utility.loadUtilityButtons(createButton)
     createButton("Record Path", startPathRecording)
     createButton("Stop Path", stopPathRecording)
@@ -3369,14 +2911,10 @@ function Utility.loadUtilityButtons(createButton)
         end
     end)
     createButton("Clear Visuals", clearPathVisuals)
-    createButton("Kill Player", killPlayer)
     createButton("Reset Character", resetCharacter)
     createButton("Undo Path (Ctrl+Z)", undoToLastMarker)
     createButton("Toggle Object Editor", toggleEditor)
     createButton("Editor History", toggleEditorList)
-    createButton("Gear Manager", toggleGearManager)
-    createButton("Object Spawner", toggleObjectSpawner)
-    createButton("Chat Customizer", toggleChatCustomizer)
 end
 
 function Utility.init(deps)
@@ -3415,7 +2953,6 @@ function Utility.init(deps)
     local pathCount = loadAllSavedPaths()
     setupKeyboardControls()
     setupEditorInput()
-    setupChatCustom()
     if player then
         player.CharacterAdded:Connect(function(newCharacter)
             task.spawn(function()
@@ -3463,9 +3000,6 @@ function Utility.init(deps)
         initPathUI()
         initEditorListUI()
         initCopyListUI()
-        initGearUI()
-        initObjectUI()
-        initChatUI()
     end)
     RunService:BindToRenderStep("ReapplyEdits", Enum.RenderPriority.Last.Value, function()
         if tick() % 5 == 0 then
