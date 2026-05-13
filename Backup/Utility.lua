@@ -407,8 +407,33 @@ local function startPathRecording()
     pathConnection = RunService.Heartbeat:Connect(function()
         if not pathRecording or pathPaused then return end
         if not updateCharacterReferences() then return end
-        local currentTime = tick() - currentPath.startTime
+        
         local position = rootPart.Position
+        
+        if currentPath and currentPath.points and #currentPath.points > 0 then
+            local lastRecordedPos = currentPath.points[#currentPath.points].position
+            if (position - lastRecordedPos).Magnitude > 50 then
+                pathPaused = true
+                undoToLastMarker()
+                updatePathStatus()
+                
+                task.spawn(function()
+                    task.wait(0.1)
+                    if currentPath and currentPath.points and #currentPath.points > 0 then
+                        local lp = currentPath.points[#currentPath.points]
+                        currentPath.startTime = tick() - lp.time
+                        rootPart.CFrame = lp.cframe
+                    else
+                        currentPath.startTime = tick()
+                    end
+                    pathPaused = false
+                    updatePathStatus()
+                end)
+                return
+            end
+        end
+        
+        local currentTime = tick() - currentPath.startTime
         local velocity = rootPart.Velocity
         local movementType = detectMovementType(velocity, position)
         local pathPoint = {
