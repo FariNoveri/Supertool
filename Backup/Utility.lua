@@ -227,7 +227,13 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
         detector.MouseClick:Connect(function(player)
             local closestIndex = 1
             local closestDistance = math.huge
-            for i, point in pairs(currentPath.points or savedPaths[currentPathName].points or {}) do
+            local pts = {}
+            if currentPathName and savedPaths[currentPathName] then
+                pts = savedPaths[currentPathName].points
+            elseif currentPath and currentPath.points then
+                pts = currentPath.points
+            end
+            for i, point in pairs(pts) do
                 local distance = (position - point.position).Magnitude
                 if distance < closestDistance then
                     closestDistance = distance
@@ -251,10 +257,17 @@ local function createPathVisual(position, movementType, isMarker, idleDuration, 
             textLabel.Font = Enum.Font.GothamBold
             textLabel.Text = "START FROM HERE"
             game:GetService("Debris"):AddItem(billboard, 3)
-            pathPauseIndex = closestIndex
-            if pathPlaying then
+            local wasPlaying = pathPlaying
+            local auto = pathAutoPlaying
+            local respawn = pathAutoRespawning
+            local pName = currentPathName
+            
+            if wasPlaying then
                 stopPathPlayback()
-                playPath(currentPathName, false, pathAutoPlaying, pathAutoRespawning)
+            end
+            pathPauseIndex = closestIndex
+            if wasPlaying then
+                playPath(pName, false, auto, respawn)
             end
         end)
     end
@@ -544,35 +557,72 @@ local function playPath(pathName, showOnly, autoPlay, respawn)
         return
     end
     local index = pathPauseIndex
+    local simulatedTime = path.points[index] and path.points[index].time or 0
+    local lastRealTime = tick()
+    
     pathPlayConnection = RunService.Heartbeat:Connect(function()
-        if not pathPlaying or pathPaused then return end
-        if not updateCharacterReferences() then return end
-        if index > #path.points then
-            if pathAutoPlaying then
-                if pathAutoRespawning then
-                    resetCharacter()
-                else
-                    index = 1
-                    playbackOffsetTime = path.points[1].time or 0
-                    playbackStartTime = tick()
-                    playbackPauseTime = 0
-                end
-            else
-                stopPathPlayback()
-                return
-            end
+        if not pathPlaying or pathPaused then 
+            lastRealTime = tick()
+            return 
         end
-        local point = path.points[index]
-        if point then
-            local adjustedTime = point.time - playbackOffsetTime - playbackPauseTime
-            if tick() - playbackStartTime >= adjustedTime then
+        if not updateCharacterReferences() then return end
+        
+        local currentPoint = path.points[index] or path.points[#path.points]
+        local baseWalkSpeed = currentPoint and currentPoint.walkSpeed or 16
+        if baseWalkSpeed == 0 then baseWalkSpeed = 16 end
+        
+        local currentWalkSpeed = humanoid.WalkSpeed
+        local speedMultiplier = (currentWalkSpeed / baseWalkSpeed) * (path.speed or 1)
+        
+        local now = tick()
+        local dt = now - lastRealTime
+        lastRealTime = now
+        
+        simulatedTime = simulatedTime + (dt * speedMultiplier)
+        
+        while true do
+            if index > #path.points then
+                if pathAutoPlaying then
+                    if pathAutoRespawning then
+                        resetCharacter()
+                    else
+                        index = 1
+                        simulatedTime = path.points[1].time or 0
+                    end
+                else
+                    stopPathPlayback()
+                end
+                break
+            end
+            
+            local point = path.points[index]
+            if not point then break end
+            
+            if simulatedTime >= point.time then
                 pcall(function()
                     rootPart.CFrame = point.cframe
-                    rootPart.Velocity = point.movementType == "idle" and Vector3.new(0, 0, 0) or point.velocity
-                    humanoid.WalkSpeed = point.walkSpeed
-                    humanoid.JumpPower = point.jumpPower
+                    
+                    local scaledVelocity = point.velocity
+                    if point.movementType ~= "idle" then
+                        scaledVelocity = Vector3.new(point.velocity.X * speedMultiplier, point.velocity.Y, point.velocity.Z * speedMultiplier)
+                    end
+                    rootPart.Velocity = point.movementType == "idle" and Vector3.new(0, 0, 0) or scaledVelocity
+                    
+                    if point.movementType == "jumping" then
+                        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                    elseif point.movementType == "falling" then
+                        humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+                    elseif point.movementType == "swimming" then
+                        humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
+                    elseif point.movementType == "walking" then
+                        if humanoid:GetState() ~= Enum.HumanoidStateType.Running and humanoid:GetState() ~= Enum.HumanoidStateType.RunningNoPhysics then
+                            humanoid:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+                        end
+                    end
                 end)
                 index = index + 1
+            else
+                break
             end
         end
     end)
